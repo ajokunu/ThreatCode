@@ -1,0 +1,387 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.encrypted_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "encrypted_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "secure-data-bucket",
+            "acl": "private",
+            "versioning": [{"enabled": true}],
+            "logging": {"target_bucket": "secure-logs-bucket"},
+            "server_side_encryption_configuration": {
+              "rule": {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "aws:kms"
+                }
+              }
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.logs_bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "logs_bucket",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "secure-logs-bucket",
+            "acl": "private",
+            "versioning": [{"enabled": true}],
+            "logging": {"target_bucket": "secure-audit-bucket"},
+            "server_side_encryption_configuration": {
+              "rule": {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "aws:kms"
+                }
+              }
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.backup_bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "backup_bucket",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "secure-backup-bucket",
+            "acl": "private",
+            "versioning": [{"enabled": true}],
+            "logging": {"target_bucket": "secure-logs-bucket"},
+            "server_side_encryption_configuration": {
+              "rule": {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "AES256"
+                }
+              }
+            }
+          }
+        },
+        {
+          "address": "aws_iam_policy.scoped_policy",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "scoped_policy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "scoped-s3-read",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::secure-data-bucket\",\"arn:aws:s3:::secure-data-bucket/*\"]}]}"
+          }
+        },
+        {
+          "address": "aws_iam_user.mfa_user",
+          "mode": "managed",
+          "type": "aws_iam_user",
+          "name": "mfa_user",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "secure-deploy-user",
+            "force_destroy": false,
+            "tags": {
+              "mfa_enforced": "true"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.scoped_role",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "scoped_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "scoped-lambda-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\",\"Condition\":{\"StringEquals\":{\"aws:SourceAccount\":\"123456789012\"}}}]}"
+          }
+        },
+        {
+          "address": "aws_instance.private_app",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "private_app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.medium",
+            "associate_public_ip_address": false,
+            "monitoring": true,
+            "root_block_device": [
+              {
+                "encrypted": true,
+                "volume_size": 50,
+                "kms_key_id": "arn:aws:kms:us-east-1:123456789012:key/abc-123"
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_instance.monitored_worker",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "monitored_worker",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.micro",
+            "associate_public_ip_address": false,
+            "monitoring": true,
+            "root_block_device": [
+              {
+                "encrypted": true,
+                "volume_size": 20
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_instance.batch_processor",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "batch_processor",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.small",
+            "associate_public_ip_address": false,
+            "monitoring": true,
+            "root_block_device": [
+              {
+                "encrypted": true,
+                "volume_size": 30
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_vpc.secure_vpc",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "secure_vpc",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.0.0.0/16",
+            "enable_dns_support": true,
+            "tags": {
+              "flow_logs_enabled": "true"
+            }
+          }
+        },
+        {
+          "address": "aws_vpc.secondary_vpc",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "secondary_vpc",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.1.0.0/16",
+            "tags": {
+              "flow_logs_enabled": "true"
+            }
+          }
+        },
+        {
+          "address": "aws_default_security_group.locked_down",
+          "mode": "managed",
+          "type": "aws_default_security_group",
+          "name": "locked_down",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-secure"
+          }
+        },
+        {
+          "address": "aws_security_group.app_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "app_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "app-sg",
+            "vpc_id": "vpc-secure",
+            "ingress": [
+              {
+                "cidr_blocks": ["10.0.0.0/16"],
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp"
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_security_group.db_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "db_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "db-sg",
+            "vpc_id": "vpc-secure",
+            "ingress": [
+              {
+                "security_groups": ["sg-app"],
+                "from_port": 5432,
+                "to_port": 5432,
+                "protocol": "tcp"
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_db_instance.encrypted_db",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "encrypted_db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "engine": "postgres",
+            "instance_class": "db.t3.medium",
+            "publicly_accessible": false,
+            "storage_encrypted": true,
+            "backup_retention_period": 14
+          }
+        },
+        {
+          "address": "aws_db_instance.replica_db",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "replica_db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "engine": "postgres",
+            "instance_class": "db.t3.small",
+            "publicly_accessible": false,
+            "storage_encrypted": true,
+            "backup_retention_period": 7
+          }
+        },
+        {
+          "address": "aws_lambda_function.vpc_lambda",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "vpc_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "secure-processor",
+            "handler": "index.handler",
+            "runtime": "python3.12",
+            "role": "arn:aws:iam::123456789012:role/scoped-lambda-role",
+            "vpc_config": {
+              "subnet_ids": ["subnet-private-a", "subnet-private-b"],
+              "security_group_ids": ["sg-lambda"]
+            },
+            "dead_letter_config": {
+              "target_arn": "arn:aws:sqs:us-east-1:123456789012:dlq"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.event_handler",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "event_handler",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "secure-event-handler",
+            "handler": "events.handler",
+            "runtime": "nodejs20.x",
+            "role": "arn:aws:iam::123456789012:role/scoped-event-role",
+            "vpc_config": {
+              "subnet_ids": ["subnet-private-a"],
+              "security_group_ids": ["sg-lambda"]
+            },
+            "dead_letter_config": {
+              "target_arn": "arn:aws:sns:us-east-1:123456789012:dlq-topic"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.cron_lambda",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "cron_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "secure-cron",
+            "handler": "cron.handler",
+            "runtime": "python3.12",
+            "role": "arn:aws:iam::123456789012:role/scoped-cron-role",
+            "vpc_config": {
+              "subnet_ids": ["subnet-private-b"],
+              "security_group_ids": ["sg-lambda"]
+            },
+            "dead_letter_config": {
+              "target_arn": "arn:aws:sqs:us-east-1:123456789012:cron-dlq"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.private",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-secure",
+            "cidr_block": "10.0.1.0/24",
+            "map_public_ip_on_launch": false
+          }
+        },
+        {
+          "address": "aws_route_table.private_rt",
+          "mode": "managed",
+          "type": "aws_route_table",
+          "name": "private_rt",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-secure"
+          }
+        },
+        {
+          "address": "aws_internet_gateway.igw",
+          "mode": "managed",
+          "type": "aws_internet_gateway",
+          "name": "igw",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-secure"
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {"type": "aws_s3_bucket", "name": "encrypted_data", "expressions": {}},
+        {"type": "aws_s3_bucket", "name": "logs_bucket", "expressions": {}},
+        {"type": "aws_s3_bucket", "name": "backup_bucket", "expressions": {}},
+        {"type": "aws_iam_policy", "name": "scoped_policy", "expressions": {}},
+        {"type": "aws_iam_user", "name": "mfa_user", "expressions": {}},
+        {"type": "aws_iam_role", "name": "scoped_role", "expressions": {}},
+        {"type": "aws_instance", "name": "private_app", "expressions": {}},
+        {"type": "aws_instance", "name": "monitored_worker", "expressions": {}},
+        {"type": "aws_instance", "name": "batch_processor", "expressions": {}},
+        {"type": "aws_vpc", "name": "secure_vpc", "expressions": {}},
+        {"type": "aws_vpc", "name": "secondary_vpc", "expressions": {}},
+        {"type": "aws_default_security_group", "name": "locked_down", "expressions": {}},
+        {"type": "aws_security_group", "name": "app_sg", "expressions": {}},
+        {"type": "aws_security_group", "name": "db_sg", "expressions": {}},
+        {"type": "aws_db_instance", "name": "encrypted_db", "expressions": {}},
+        {"type": "aws_db_instance", "name": "replica_db", "expressions": {}},
+        {"type": "aws_lambda_function", "name": "vpc_lambda", "expressions": {}},
+        {"type": "aws_lambda_function", "name": "event_handler", "expressions": {}},
+        {"type": "aws_lambda_function", "name": "cron_lambda", "expressions": {}},
+        {"type": "aws_subnet", "name": "private", "expressions": {}},
+        {"type": "aws_route_table", "name": "private_rt", "expressions": {}},
+        {"type": "aws_internet_gateway", "name": "igw", "expressions": {}}
+      ]
+    }
+  }
+}

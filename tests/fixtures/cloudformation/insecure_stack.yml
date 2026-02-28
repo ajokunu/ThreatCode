@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Intentionally insecure stack for testing rule coverage
+
+Resources:
+  UnencryptedBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: insecure-test-bucket
+      AccessControl: private
+
+  PublicBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: public-test-bucket
+      AccessControl: public-read
+
+  WildcardPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: wildcard-access
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+
+  PublicDatabase:
+    Type: AWS::RDS::DBInstance
+    DependsOn: UnencryptedBucket
+    Properties:
+      Engine: postgres
+      DBInstanceClass: db.t3.micro
+      PubliclyAccessible: true
+      StorageEncrypted: false
+      BackupRetentionPeriod: 0
+
+  OverpermissiveRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: wide-open-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: sts:AssumeRole

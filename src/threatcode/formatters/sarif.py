@@ -72,6 +72,7 @@ def _threat_to_rule(threat: Threat, rule_id: str) -> dict[str, Any]:
                 "security",
                 f"stride/{threat.stride_category}",
                 f"source/{threat.source.value}",
+                *[f"mitre/{tid}" for tid in threat.mitre_techniques],
             ],
         },
     }

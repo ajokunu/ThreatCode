@@ -14,6 +14,10 @@ rules:
     mitigation: >
       Set publicly_accessible to false and place the RDS instance
       in a private subnet. Use a bastion host or VPN for admin access.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
 
   - id: RDS_NO_ENCRYPTION
     title: RDS instance without encryption at rest
@@ -25,16 +29,19 @@ rules:
     severity: high
     resource_type: aws_db_instance
     condition:
-      storage_encrypted:
-        any_of:
-          - storage_encrypted:
-              not_exists: true
-          - storage_encrypted:
-              equals: false
+      any_of:
+        - storage_encrypted:
+            not_exists: true
+        - storage_encrypted:
+            equals: false
     mitigation: >
       Enable storage encryption using AWS KMS. Note: encryption
       must be enabled at creation time and cannot be added to
       existing instances without migration.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
 
   - id: RDS_NO_BACKUP
     title: RDS instance without automated backups
@@ -54,3 +61,7 @@ rules:
     mitigation: >
       Set backup_retention_period to at least 7 days. Enable
       automated backups and consider cross-region backup replication.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]

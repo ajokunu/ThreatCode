@@ -14,6 +14,10 @@ rules:
     mitigation: >
       Remove public IP association and use a load balancer or
       bastion host for access. Place instances in private subnets.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
 
   - id: EC2_NO_MONITORING
     title: EC2 instance without detailed monitoring
@@ -25,15 +29,18 @@ rules:
     severity: low
     resource_type: aws_instance
     condition:
-      monitoring:
-        any_of:
-          - monitoring:
-              not_exists: true
-          - monitoring:
-              equals: false
+      any_of:
+        - monitoring:
+            not_exists: true
+        - monitoring:
+            equals: false
     mitigation: >
       Enable detailed monitoring and configure CloudWatch alarms
       for suspicious activity patterns.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
 
   - id: EC2_UNENCRYPTED_EBS
     title: EC2 instance with unencrypted root volume
@@ -45,12 +52,15 @@ rules:
     severity: medium
     resource_type: aws_instance
     condition:
-      root_block_device.0.encrypted:
-        any_of:
-          - root_block_device.0.encrypted:
-              not_exists: true
-          - root_block_device.0.encrypted:
-              equals: false
+      any_of:
+        - root_block_device.0.encrypted:
+            not_exists: true
+        - root_block_device.0.encrypted:
+            equals: false
     mitigation: >
       Enable EBS encryption on all volumes using AWS-managed or
       customer-managed KMS keys.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]

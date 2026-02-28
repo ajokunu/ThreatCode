@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
+from threatcode.engine.mitre import BOUNDARY_TACTICS, BOUNDARY_TECHNIQUES, tactics_for_techniques
 from threatcode.engine.rules.loader import Rule, load_all_rules
 from threatcode.engine.rules.matcher import matches_rule
 from threatcode.engine.stride import StrideCategory
@@ -102,6 +103,8 @@ class HybridEngine:
                         "Ensure all data crossing trust boundaries is encrypted in transit "
                         "(TLS/mTLS), authenticated, and validated at the receiving end."
                     ),
+                    mitre_techniques=list(BOUNDARY_TECHNIQUES),
+                    mitre_tactics=list(BOUNDARY_TACTICS),
                 )
             )
         return threats
@@ -128,6 +131,10 @@ class HybridEngine:
         for raw in raw_threats:
             # Unredact resource addresses
             address = redactor.unredact_string(raw.get("resource_address", ""))
+            techniques = raw.get("mitre_techniques", [])
+            tactics = raw.get("mitre_tactics", [])
+            if techniques and not tactics:
+                tactics = tactics_for_techniques(techniques)
             threats.append(
                 Threat(
                     id=_hash_id(f"LLM_{address}_{raw.get('title', '')}"),
@@ -140,6 +147,8 @@ class HybridEngine:
                     resource_address=address,
                     mitigation=raw.get("mitigation", ""),
                     confidence=raw.get("confidence", 0.7),
+                    mitre_techniques=techniques,
+                    mitre_tactics=tactics,
                 )
             )
         return threats
@@ -147,6 +156,11 @@ class HybridEngine:
 
 def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
     threat_id = _hash_id(f"{rule.id}_{node.id}")
+    mitre = rule.metadata.get("mitre", {})
+    techniques = mitre.get("techniques", [])
+    tactics = mitre.get("tactics", [])
+    if techniques and not tactics:
+        tactics = tactics_for_techniques(techniques)
     return Threat(
         id=threat_id,
         title=rule.title,
@@ -159,6 +173,8 @@ def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
         mitigation=rule.mitigation,
         rule_id=rule.id,
         metadata=rule.metadata,
+        mitre_techniques=techniques,
+        mitre_tactics=tactics,
     )
 
 

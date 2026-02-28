@@ -48,6 +48,9 @@ def format_markdown(report: ThreatReport) -> str:
                 f"**Resource:** `{t.resource_address}` | "
                 f"**Source:** {t.source.value}"
             )
+            if t.mitre_techniques:
+                technique_links = ", ".join(t.mitre_techniques)
+                lines.append(f"**MITRE ATT&CK:** {technique_links}")
             lines.append("")
             lines.append(t.description.strip())
             lines.append("")

@@ -15,6 +15,10 @@ rules:
       Replace wildcard actions with specific, scoped actions
       following the principle of least privilege. Use AWS Access
       Analyzer to identify required permissions.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+        tactics: ["TA0001", "TA0003", "TA0004", "TA0005"]
 
   - id: IAM_NO_MFA
     title: IAM user without MFA requirement
@@ -34,6 +38,10 @@ rules:
     mitigation: >
       Enforce MFA for all IAM users via IAM policy conditions
       (aws:MultiFactorAuthPresent). Use virtual or hardware MFA devices.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+        tactics: ["TA0001", "TA0003", "TA0004", "TA0005"]
 
   - id: IAM_OVERPERMISSIVE_ROLE
     title: IAM role with overly broad assume role policy
@@ -51,3 +59,7 @@ rules:
       Restrict the assume role policy to specific, known principals.
       Use conditions (e.g., aws:SourceAccount, aws:SourceArn) to
       further limit role assumption.
+    metadata:
+      mitre:
+        techniques: ["T1078.004", "T1098"]
+        tactics: ["TA0001", "TA0003", "TA0004"]

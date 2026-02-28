@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.1.1"
+version = "0.2.0"
 description = "STRIDE threat model generator from Infrastructure-as-Code definitions"
 readme = "README.md"
 license = "MIT"
@@ -26,10 +26,9 @@ dependencies = [
     "click>=8.1",
     "pydantic>=2.0",
     "python-hcl2>=4.3",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.1",
     "networkx>=3.1",
     "anthropic>=0.39",
-    "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +37,12 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1",
     "mypy>=1.5",
+    "pip-audit>=2.6",
+]
+docs = [
+    "mkdocs-material>=9.0",
+    "mkdocs-autorefs",
+    "mkdocstrings[python]",
 ]
 
 [project.scripts]

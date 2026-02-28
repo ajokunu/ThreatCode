@@ -6,10 +6,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from threatcode.exceptions import UnsupportedFormatError
+from threatcode.exceptions import ParseError, UnsupportedFormatError
 
 if TYPE_CHECKING:
     from threatcode.parsers.base import ParsedOutput
+
+# Reject plan files larger than 50 MB to prevent resource exhaustion
+MAX_INPUT_SIZE_BYTES = 50 * 1024 * 1024
 
 
 def detect_and_parse(path: str | Path) -> ParsedOutput:
@@ -18,6 +21,13 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
 
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
+
+    file_size = path.stat().st_size
+    if file_size > MAX_INPUT_SIZE_BYTES:
+        raise ParseError(
+            f"Input file {path.name} is {file_size / 1024 / 1024:.1f} MB, "
+            f"exceeding the {MAX_INPUT_SIZE_BYTES // 1024 // 1024} MB limit."
+        )
 
     content = path.read_text(encoding="utf-8")
 

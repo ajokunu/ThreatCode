@@ -29,7 +29,7 @@ def cli() -> None:
     "-f",
     "output_format",
     default="json",
-    type=click.Choice(["json", "sarif", "markdown", "bitbucket"]),
+    type=click.Choice(["json", "sarif", "markdown", "bitbucket", "matrix"]),
     help="Output format.",
 )
 @click.option(
@@ -213,6 +213,10 @@ def _format_output(report: ThreatReport, fmt: str) -> str:
         from threatcode.formatters.bitbucket import format_bitbucket
 
         return format_bitbucket(report)
+    elif fmt == "matrix":
+        from threatcode.formatters.attack_navigator import format_attack_navigator
+
+        return format_attack_navigator(report)
     else:
         from threatcode.formatters.json_out import format_json
 

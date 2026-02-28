@@ -16,6 +16,10 @@ rules:
     mitigation: >
       Enable server-side encryption using AES-256 (SSE-S3) or
       AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
 
   - id: S3_PUBLIC_ACCESS
     title: S3 bucket allows public access
@@ -34,6 +38,10 @@ rules:
     mitigation: >
       Set ACL to 'private' and use aws_s3_bucket_public_access_block
       to block all public access at the bucket level.
+    metadata:
+      mitre:
+        techniques: ["T1530", "T1190"]
+        tactics: ["TA0009", "TA0001"]
 
   - id: S3_NO_VERSIONING
     title: S3 bucket without versioning
@@ -53,6 +61,10 @@ rules:
     mitigation: >
       Enable bucket versioning via aws_s3_bucket_versioning resource
       to protect against accidental deletion and enable audit trails.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
 
   - id: S3_NO_LOGGING
     title: S3 bucket without access logging
@@ -69,3 +81,7 @@ rules:
     mitigation: >
       Enable server access logging via aws_s3_bucket_logging resource,
       directing logs to a separate dedicated logging bucket.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

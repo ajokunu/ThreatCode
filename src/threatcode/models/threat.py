@@ -65,6 +65,8 @@ class Threat:
     rule_id: str = ""
     confidence: float = 1.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    mitre_techniques: list[str] = field(default_factory=list)
+    mitre_tactics: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,4 +82,6 @@ class Threat:
             "rule_id": self.rule_id,
             "confidence": self.confidence,
             "metadata": self.metadata,
+            "mitre_techniques": self.mitre_techniques,
+            "mitre_tactics": self.mitre_tactics,
         }

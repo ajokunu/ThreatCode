@@ -17,6 +17,10 @@ rules:
     mitigation: >
       Remove all ingress and egress rules from the default
       security group. Use dedicated security groups for each workload.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
 
   - id: SG_UNRESTRICTED_INGRESS
     title: Security group allows unrestricted ingress
@@ -35,6 +39,10 @@ rules:
     mitigation: >
       Restrict ingress rules to specific, known CIDR blocks or
       security group references. Use VPC endpoints for AWS service access.
+    metadata:
+      mitre:
+        techniques: ["T1190", "T1046"]
+        tactics: ["TA0001", "TA0007"]
 
   - id: VPC_NO_FLOW_LOGS
     title: VPC without flow logs enabled
@@ -52,3 +60,7 @@ rules:
       Enable VPC flow logs and direct them to CloudWatch Logs
       or S3 for analysis. Consider using a REJECT-only filter
       to reduce log volume while capturing blocked traffic.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

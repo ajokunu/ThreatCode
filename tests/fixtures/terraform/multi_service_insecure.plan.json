@@ -1,0 +1,339 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.unencrypted",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "unencrypted",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "insecure-data-bucket",
+            "acl": "private"
+          }
+        },
+        {
+          "address": "aws_s3_bucket.public_bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "public_bucket",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "public-assets-bucket",
+            "acl": "public-read"
+          }
+        },
+        {
+          "address": "aws_s3_bucket.no_versioning",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "no_versioning",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "no-version-bucket",
+            "acl": "private",
+            "server_side_encryption_configuration": {
+              "rule": {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "AES256"
+                }
+              }
+            }
+          }
+        },
+        {
+          "address": "aws_iam_policy.wildcard_policy",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "wildcard_policy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "full-access-policy",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+          }
+        },
+        {
+          "address": "aws_iam_user.no_mfa_user",
+          "mode": "managed",
+          "type": "aws_iam_user",
+          "name": "no_mfa_user",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "deploy-user",
+            "force_destroy": true
+          }
+        },
+        {
+          "address": "aws_iam_role.overpermissive_role",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "overpermissive_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "wide-open-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"sts:AssumeRole\"}]}"
+          }
+        },
+        {
+          "address": "aws_instance.public_web",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "public_web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.large",
+            "associate_public_ip_address": true,
+            "monitoring": false,
+            "root_block_device": [
+              {
+                "encrypted": false,
+                "volume_size": 50
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_instance.unmonitored",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "unmonitored",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.micro",
+            "associate_public_ip_address": true,
+            "root_block_device": [
+              {
+                "encrypted": false,
+                "volume_size": 20
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_instance.unencrypted_ebs",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "unencrypted_ebs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.small",
+            "root_block_device": [
+              {
+                "encrypted": false,
+                "volume_size": 30
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.0.0.0/16",
+            "enable_dns_support": true
+          }
+        },
+        {
+          "address": "aws_vpc.secondary",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "secondary",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.1.0.0/16"
+          }
+        },
+        {
+          "address": "aws_default_security_group.default_open",
+          "mode": "managed",
+          "type": "aws_default_security_group",
+          "name": "default_open",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-12345",
+            "ingress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "from_port": 0,
+                "to_port": 65535,
+                "protocol": "tcp"
+              }
+            ],
+            "egress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1"
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_security_group.wide_open",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "wide_open",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "allow-all",
+            "vpc_id": "vpc-12345",
+            "ingress": "{\"rules\":[{\"cidr_blocks\":[\"0.0.0.0/0\"],\"from_port\":22,\"to_port\":22,\"protocol\":\"tcp\"},{\"cidr_blocks\":[\"0.0.0.0/0\"],\"from_port\":443,\"to_port\":443,\"protocol\":\"tcp\"}]}"
+          }
+        },
+        {
+          "address": "aws_security_group.ipv6_open",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "ipv6_open",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "allow-all-ipv6",
+            "vpc_id": "vpc-12345",
+            "ingress": "{\"rules\":[{\"cidr_blocks\":[\"::/0\"],\"from_port\":80,\"to_port\":80,\"protocol\":\"tcp\"}]}"
+          }
+        },
+        {
+          "address": "aws_db_instance.public_db",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "public_db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "engine": "mysql",
+            "instance_class": "db.t3.medium",
+            "publicly_accessible": true,
+            "storage_encrypted": false,
+            "backup_retention_period": 0
+          }
+        },
+        {
+          "address": "aws_db_instance.no_backup_db",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "no_backup_db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "engine": "postgres",
+            "instance_class": "db.t3.small",
+            "publicly_accessible": false,
+            "storage_encrypted": false,
+            "backup_retention_period": 0
+          }
+        },
+        {
+          "address": "aws_lambda_function.no_vpc_lambda",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "no_vpc_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "data-processor",
+            "handler": "index.handler",
+            "runtime": "python3.12",
+            "role": "arn:aws:iam::123456789012:role/admin-lambda-role"
+          }
+        },
+        {
+          "address": "aws_lambda_function.admin_lambda",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "admin_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "admin-handler",
+            "handler": "admin.handler",
+            "runtime": "nodejs20.x",
+            "role": "arn:aws:iam::123456789012:role/admin-lambda-role"
+          }
+        },
+        {
+          "address": "aws_lambda_function.no_dlq_lambda",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "no_dlq_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "event-processor",
+            "handler": "events.handler",
+            "runtime": "python3.12",
+            "role": "arn:aws:iam::123456789012:role/event-lambda-role",
+            "vpc_config": {
+              "subnet_ids": ["subnet-abc123"],
+              "security_group_ids": ["sg-abc123"]
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.public",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "public",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-12345",
+            "cidr_block": "10.0.1.0/24",
+            "map_public_ip_on_launch": true
+          }
+        },
+        {
+          "address": "aws_route_table.public_rt",
+          "mode": "managed",
+          "type": "aws_route_table",
+          "name": "public_rt",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-12345"
+          }
+        },
+        {
+          "address": "aws_internet_gateway.igw",
+          "mode": "managed",
+          "type": "aws_internet_gateway",
+          "name": "igw",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "vpc-12345"
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {"type": "aws_s3_bucket", "name": "unencrypted", "expressions": {}},
+        {"type": "aws_s3_bucket", "name": "public_bucket", "expressions": {}},
+        {"type": "aws_s3_bucket", "name": "no_versioning", "expressions": {}},
+        {"type": "aws_iam_policy", "name": "wildcard_policy", "expressions": {}},
+        {"type": "aws_iam_user", "name": "no_mfa_user", "expressions": {}},
+        {"type": "aws_iam_role", "name": "overpermissive_role", "expressions": {}},
+        {"type": "aws_instance", "name": "public_web", "expressions": {}, "depends_on": ["aws_subnet.public"]},
+        {"type": "aws_instance", "name": "unmonitored", "expressions": {}, "depends_on": ["aws_subnet.public"]},
+        {"type": "aws_instance", "name": "unencrypted_ebs", "expressions": {}},
+        {"type": "aws_vpc", "name": "main", "expressions": {}},
+        {"type": "aws_vpc", "name": "secondary", "expressions": {}},
+        {"type": "aws_default_security_group", "name": "default_open", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_security_group", "name": "wide_open", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_security_group", "name": "ipv6_open", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_db_instance", "name": "public_db", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_db_instance", "name": "no_backup_db", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_lambda_function", "name": "no_vpc_lambda", "expressions": {}},
+        {"type": "aws_lambda_function", "name": "admin_lambda", "expressions": {}},
+        {"type": "aws_lambda_function", "name": "no_dlq_lambda", "expressions": {}},
+        {"type": "aws_subnet", "name": "public", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_route_table", "name": "public_rt", "expressions": {}, "depends_on": ["aws_vpc.main"]},
+        {"type": "aws_internet_gateway", "name": "igw", "expressions": {}, "depends_on": ["aws_vpc.main"]}
+      ]
+    }
+  }
+}
