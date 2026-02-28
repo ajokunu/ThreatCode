@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2026-02-28
+
+### Changed
+- Rewrite README to lead with library API — ThreatCode is a Python library first, CLI second
+- Position `scan()` as the primary interface, CLI as included convenience
+
 ## [0.1.0] - 2026-02-28
 
 ### Added

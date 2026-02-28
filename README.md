@@ -1,8 +1,105 @@
 # ThreatCode
 
-**STRIDE threat model generator from Infrastructure-as-Code definitions.**
+**A Python library for generating STRIDE threat models from Infrastructure-as-Code.**
 
-ThreatCode automatically generates [STRIDE](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats) threat models from your Terraform plans, HCL files, and CloudFormation templates. It bridges a critical gap in the DevSecOps pipeline: while tools like Checkov, tfsec, and Trivy catch *misconfigurations*, none of them perform actual *threat modeling* — identifying how an attacker could exploit your infrastructure's architecture, trust relationships, and data flows.
+```python
+from threatcode import scan
+
+report = scan("tfplan.json")
+
+for threat in report["threats"]:
+    print(f"[{threat['severity'].upper()}] {threat['title']}")
+    print(f"  Resource: {threat['resource_address']}")
+    print(f"  STRIDE:   {threat['stride_category']}")
+    print(f"  Fix:      {threat['mitigation']}")
+```
+
+ThreatCode parses Terraform plans, HCL files, and CloudFormation templates into a cloud-agnostic infrastructure graph, then runs STRIDE threat analysis against it. It bridges a critical gap in the DevSecOps pipeline: tools like Checkov, tfsec, and Trivy catch *misconfigurations* — ThreatCode performs actual *threat modeling*, identifying how an attacker could exploit your infrastructure's architecture, trust relationships, and data flows.
+
+## Install
+
+```bash
+pip install threatcode
+```
+
+## Library API
+
+The primary interface is the `scan()` function, which accepts any supported IaC file and returns a structured threat report:
+
+```python
+from threatcode import scan
+
+# Basic scan — rules only, no LLM
+report = scan("tfplan.json", no_llm=True)
+
+# Filter by severity
+report = scan("tfplan.json", min_severity="high")
+
+# With custom rules
+report = scan("tfplan.json", extra_rule_paths=["my_rules.yml"])
+
+# With config file
+report = scan("tfplan.json", config_path=".threatcode.yml")
+```
+
+The return value is a dict:
+
+```python
+{
+    "version": "0.1.0",
+    "timestamp": "2026-02-28T15:26:24Z",
+    "scanned_resources": 7,
+    "total_threats": 12,
+    "summary": {"critical": 3, "high": 4, "medium": 5},
+    "threats": [
+        {
+            "id": "8ec379e733ff",
+            "title": "S3 bucket without server-side encryption",
+            "description": "The S3 bucket does not have server-side encryption...",
+            "stride_category": "information_disclosure",
+            "severity": "high",
+            "source": "rule",                           # "rule", "boundary", or "llm"
+            "resource_type": "aws_s3_bucket",
+            "resource_address": "aws_s3_bucket.data",
+            "mitigation": "Enable SSE-S3 or SSE-KMS...",
+            "rule_id": "S3_NO_ENCRYPTION",
+            "confidence": 1.0,
+        },
+        # ...
+    ],
+}
+```
+
+### Programmatic Access to Internals
+
+For deeper integration, you can use the component APIs directly:
+
+```python
+from threatcode.parsers import detect_and_parse
+from threatcode.ir.graph import InfraGraph
+from threatcode.engine.hybrid import HybridEngine
+from threatcode.formatters.sarif import format_sarif
+
+# Parse any supported format (auto-detected)
+parsed = detect_and_parse("tfplan.json")
+
+# Build the infrastructure graph
+graph = InfraGraph.from_parsed(parsed)
+
+# Inspect the graph
+for node_id, node in graph.nodes.items():
+    print(f"{node_id}: {node.category.value} in {node.trust_zone.value} zone")
+
+for edge in graph.get_boundary_crossing_edges():
+    print(f"Boundary crossing: {edge.source} -> {edge.target}")
+
+# Run the threat engine
+engine = HybridEngine()
+report = engine.analyze(graph)
+
+# Output as SARIF
+sarif_json = format_sarif(report)
+```
 
 ## Why This Matters for Organizations
 
@@ -19,13 +116,13 @@ ThreatCode automatically generates [STRIDE](https://learn.microsoft.com/en-us/az
 
 1. **Threat-models-as-code** — Your threat model is derived from what you're actually deploying, not a separate diagram that drifts out of date. Every `terraform plan` produces an up-to-date threat model.
 
-2. **CI/CD native** — Runs in GitHub Actions (SARIF upload to Code Scanning) and Bitbucket Pipelines (Code Insights API). Threats appear as annotations on your pull requests, right next to the code that introduces them.
+2. **CI/CD native** — Plugs into GitHub Actions (SARIF upload to Code Scanning) and Bitbucket Pipelines (Code Insights API). Threats appear as annotations on pull requests, right next to the code that introduces them.
 
-3. **Hybrid analysis engine** — Deterministic YAML rules catch known patterns (public buckets, wildcard IAM, unencrypted databases). An optional LLM layer (Claude API, or any OpenAI-compatible local model) identifies architectural threats that rules can't: implicit trust relationships, missing defense-in-depth, lateral movement attack paths.
+3. **Hybrid analysis engine** — Deterministic YAML rules catch known patterns (public buckets, wildcard IAM, unencrypted databases). An optional LLM layer identifies architectural threats that rules can't: implicit trust relationships, missing defense-in-depth, lateral movement attack paths.
 
-4. **Enterprise-grade redaction** — Before any data reaches an external LLM, ThreatCode strips AWS account IDs, ARNs, IP addresses, tags, and other sensitive fields using configurable placeholder or hash strategies. Supports PCI-DSS and SOC 2 compliance requirements. For zero-trust environments, point it at a local LLM (Ollama, vLLM) and no data leaves your network.
+4. **Enterprise-grade redaction** — Before any data reaches an external LLM, ThreatCode strips AWS account IDs, ARNs, IP addresses, tags, and other sensitive fields using configurable placeholder or hash strategies. PCI-DSS and SOC 2 compliant. For zero-trust environments, point it at a local LLM (Ollama, vLLM) — no data leaves your network.
 
-5. **Actionable output** — Every threat includes a STRIDE classification, severity ranking, the specific resource affected, and a concrete mitigation. No vague "consider improving security" — you get "Set `publicly_accessible = false` on `aws_db_instance.main` and place it in a private subnet."
+5. **Actionable output** — Every threat includes a STRIDE classification, severity ranking, the specific resource affected, and a concrete mitigation. No vague "consider improving security" — you get `Set publicly_accessible = false on aws_db_instance.main and place it in a private subnet.`
 
 ## How It Works
 
@@ -40,72 +137,8 @@ IaC Files ─► Parser Layer ─► Cloud-Agnostic IR ─► Hybrid Threat Engi
 
 1. **Parse** — Reads `terraform show -json` output (resolves all modules, variables, conditionals), raw `.tf` files, or CloudFormation YAML/JSON.
 2. **Build IR** — Constructs a directed graph of infrastructure nodes (compute, storage, network, IAM, etc.) with edges representing dependencies, containment, network flows, and IAM bindings. Each node is classified into a trust zone (internet, DMZ, private, data, management).
-3. **Analyze** — Evaluates 19 built-in YAML rules across 6 AWS services. Detects trust boundary crossings (e.g., DMZ→data zone flows). Optionally sends a redacted graph to an LLM for architectural threat identification.
+3. **Analyze** — Evaluates 19 built-in YAML rules across 6 AWS services. Detects trust boundary crossings (e.g., DMZ to data zone flows). Optionally sends a redacted graph to an LLM for architectural threat identification.
 4. **Report** — Outputs threats in SARIF (GitHub Code Scanning), JSON, Markdown (PR comments), or Bitbucket Code Insights format. Each threat includes STRIDE category, severity, affected resource, and mitigation.
-
-## Quick Start
-
-```bash
-pip install threatcode
-```
-
-### Basic Scan (Rules Only)
-
-```bash
-# Generate a Terraform plan
-terraform plan -out=tfplan
-terraform show -json tfplan > tfplan.json
-
-# Scan it
-threatcode scan tfplan.json --no-llm --format json
-```
-
-### SARIF Output (GitHub Code Scanning)
-
-```bash
-threatcode scan tfplan.json --no-llm --format sarif -o results.sarif
-```
-
-### LLM-Augmented Analysis
-
-```bash
-# With Claude API
-ANTHROPIC_API_KEY=sk-... threatcode scan tfplan.json
-
-# With local LLM (Ollama)
-threatcode scan tfplan.json --config .threatcode.yml
-# .threatcode.yml:
-#   llm:
-#     provider: ollama
-#     base_url: http://localhost:11434
-#     model: llama3
-```
-
-### Dry Run (See What Gets Sent to LLM)
-
-```bash
-threatcode scan tfplan.json --dry-run
-```
-
-### Diff Between Runs
-
-```bash
-threatcode diff baseline.json current.json --format markdown
-```
-
-## GitHub Actions Integration
-
-```yaml
-- name: ThreatCode Scan
-  uses: ./.github/actions/threatcode
-  with:
-    input-file: tfplan.json
-    format: sarif
-    no-llm: 'true'
-    min-severity: medium
-```
-
-This uploads SARIF results directly to GitHub Code Scanning, where threats appear as security alerts on pull requests.
 
 ## Built-in Rules
 
@@ -118,7 +151,11 @@ This uploads SARIF results directly to GitHub Code Scanning, where threats appea
 | RDS | 3 | Public access, no encryption, no backups |
 | Lambda | 3 | No VPC attachment, overpermissive role, no DLQ |
 
-Rules are YAML files with structured dict operators (no `eval()` — safe for enterprise use). Add custom rules by pointing `--rules` at your own YAML files.
+Rules are declarative YAML with structured operators (`not_exists`, `equals`, `contains`, `matches_any`, `all_of`, `any_of`, `none_of`). No `eval()` — enterprise-safe. Add custom rules:
+
+```python
+report = scan("tfplan.json", extra_rule_paths=["my_org_rules.yml"])
+```
 
 ## STRIDE Categories
 
@@ -133,11 +170,31 @@ Every threat is classified into one of the six STRIDE categories:
 | **D**enial of Service | Availability | Lambda without dead letter queue |
 | **E**levation of Privilege | Authorization | IAM policy with wildcard actions |
 
-## Configuration
+## LLM Integration
 
-Create a `.threatcode.yml` in your project root:
+ThreatCode's hybrid engine optionally uses an LLM to identify architectural threats that deterministic rules cannot catch — cross-resource attack paths, implicit trust assumptions, missing segmentation.
+
+```python
+# Claude API
+report = scan("tfplan.json", no_llm=False, config_path=".threatcode.yml")
+
+# Dry run — see what would be sent to the LLM without calling it
+report = scan("tfplan.json")  # configure dry_run: true in .threatcode.yml
+```
+
+### Redaction
+
+All infrastructure data is redacted before reaching any external LLM:
+
+- AWS account IDs, ARNs, IP addresses, email addresses are replaced with placeholders
+- Tags and sensitive metadata are stripped
+- Configurable strategy: `placeholder` (default) or `hash`
+- For full air-gap: use a local LLM via OpenAI-compatible API (Ollama, vLLM, llama.cpp)
+
+### Configuration
 
 ```yaml
+# .threatcode.yml
 llm:
   provider: anthropic          # or "ollama", "openai", "local"
   model: claude-sonnet-4-20250514
@@ -147,40 +204,52 @@ llm:
 redaction:
   enabled: true
   strategy: placeholder        # or "hash"
-  fields:
-    - arn
-    - account_id
-    - tags
-    - ip_address
+  fields: [arn, account_id, tags, ip_address]
 
 min_severity: info
-output_format: json
 no_llm: false
 ```
 
-## Library API
+## CLI (Included)
 
-```python
-from threatcode import scan
+ThreatCode ships with a CLI for quick scans and CI/CD integration:
 
-report = scan(
-    "tfplan.json",
-    no_llm=True,
-    min_severity="medium",
-)
+```bash
+# Rules-only scan, JSON output
+threatcode scan tfplan.json --no-llm --format json
 
-for threat in report["threats"]:
-    print(f"[{threat['severity'].upper()}] {threat['title']}")
-    print(f"  Resource: {threat['resource_address']}")
-    print(f"  STRIDE: {threat['stride_category']}")
-    print(f"  Mitigation: {threat['mitigation']}")
+# SARIF for GitHub Code Scanning
+threatcode scan tfplan.json --no-llm --format sarif -o results.sarif
+
+# Markdown for PR comments
+threatcode scan tfplan.json --no-llm --format markdown
+
+# Diff between two runs
+threatcode diff baseline.json current.json --format markdown
+
+# LLM dry run
+threatcode scan tfplan.json --dry-run
 ```
+
+### GitHub Actions
+
+```yaml
+- name: ThreatCode Scan
+  uses: ./.github/actions/threatcode
+  with:
+    input-file: tfplan.json
+    format: sarif
+    no-llm: 'true'
+    min-severity: medium
+```
+
+Uploads SARIF results to GitHub Code Scanning — threats appear as security alerts on PRs.
 
 ## Architecture
 
 - **Parser layer** — Pluggable parsers for Terraform plan JSON, raw HCL, and CloudFormation. Auto-detection based on file extension and content.
 - **Intermediate Representation** — NetworkX directed graph. Nodes have categories (compute, storage, IAM, etc.) and trust zones. Edges represent dependencies, containment, network flows, and IAM bindings.
-- **Rule engine** — Declarative YAML rules with structured operators (`not_exists`, `equals`, `contains`, `matches_any`, `all_of`, `any_of`, `none_of`). No `eval()` — enterprise-safe.
+- **Rule engine** — Declarative YAML rules with structured operators. No `eval()` — enterprise-safe.
 - **LLM integration** — Anthropic Claude API, OpenAI-compatible (Ollama, vLLM, llama.cpp), or dry-run mode. All data is redacted before leaving your environment.
 - **Output formatters** — SARIF 2.1.0 (GitHub), Bitbucket Code Insights, Markdown, JSON, and diff.
 
