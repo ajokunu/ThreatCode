@@ -1,0 +1,56 @@
+rules:
+  - id: RDS_PUBLIC_ACCESS
+    title: RDS instance is publicly accessible
+    description: >
+      The RDS database instance has publicly_accessible set to true,
+      allowing direct connections from the internet. Database endpoints
+      should never be exposed to the public internet.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: aws_db_instance
+    condition:
+      publicly_accessible:
+        equals: true
+    mitigation: >
+      Set publicly_accessible to false and place the RDS instance
+      in a private subnet. Use a bastion host or VPN for admin access.
+
+  - id: RDS_NO_ENCRYPTION
+    title: RDS instance without encryption at rest
+    description: >
+      The RDS instance does not have storage encryption enabled.
+      Data stored in the database can be read if the underlying
+      storage is compromised.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_db_instance
+    condition:
+      storage_encrypted:
+        any_of:
+          - storage_encrypted:
+              not_exists: true
+          - storage_encrypted:
+              equals: false
+    mitigation: >
+      Enable storage encryption using AWS KMS. Note: encryption
+      must be enabled at creation time and cannot be added to
+      existing instances without migration.
+
+  - id: RDS_NO_BACKUP
+    title: RDS instance without automated backups
+    description: >
+      The RDS instance has backup retention set to 0 or not configured.
+      Without backups, data loss from deletion or corruption cannot
+      be recovered.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_db_instance
+    condition:
+      any_of:
+        - backup_retention_period:
+            not_exists: true
+        - backup_retention_period:
+            equals: 0
+    mitigation: >
+      Set backup_retention_period to at least 7 days. Enable
+      automated backups and consider cross-region backup replication.

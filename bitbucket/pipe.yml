@@ -1,0 +1,38 @@
+# Bitbucket Pipelines example for ThreatCode
+# Add this to your bitbucket-pipelines.yml
+
+# Example usage in bitbucket-pipelines.yml:
+#
+# pipelines:
+#   pull-requests:
+#     '**':
+#       - step:
+#           name: Threat Model
+#           script:
+#             - pip install threatcode
+#             - terraform init
+#             - terraform plan -out=tfplan
+#             - terraform show -json tfplan > tfplan.json
+#             - threatcode scan tfplan.json --format bitbucket --no-llm -o threatcode-report.json
+#             - |
+#               # Upload to Bitbucket Code Insights
+#               REPORT=$(cat threatcode-report.json | python -c "import sys,json; print(json.dumps(json.load(sys.stdin)['report']))")
+#               ANNOTATIONS=$(cat threatcode-report.json | python -c "import sys,json; print(json.dumps(json.load(sys.stdin)['annotations']))")
+#               COMMIT=${BITBUCKET_COMMIT}
+#               REPO=${BITBUCKET_REPO_FULL_NAME}
+#
+#               # Create report
+#               curl -X PUT \
+#                 "https://api.bitbucket.org/2.0/repositories/${REPO}/commit/${COMMIT}/reports/threatcode" \
+#                 -H "Content-Type: application/json" \
+#                 -H "Authorization: Bearer ${BB_AUTH_TOKEN}" \
+#                 -d "${REPORT}"
+#
+#               # Create annotations
+#               for row in $(echo "${ANNOTATIONS}" | python -c "import sys,json; [print(json.dumps(a)) for a in json.load(sys.stdin)]"); do
+#                 curl -X POST \
+#                   "https://api.bitbucket.org/2.0/repositories/${REPO}/commit/${COMMIT}/reports/threatcode/annotations" \
+#                   -H "Content-Type: application/json" \
+#                   -H "Authorization: Bearer ${BB_AUTH_TOKEN}" \
+#                   -d "${row}"
+#               done

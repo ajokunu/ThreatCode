@@ -1,0 +1,96 @@
+name: 'ThreatCode STRIDE Threat Model'
+description: 'Generate STRIDE threat models from IaC and upload as SARIF to GitHub Code Scanning'
+
+inputs:
+  input-file:
+    description: 'Path to terraform plan JSON file'
+    required: true
+  format:
+    description: 'Output format (sarif, json, markdown)'
+    required: false
+    default: 'sarif'
+  min-severity:
+    description: 'Minimum severity to report (critical, high, medium, low, info)'
+    required: false
+    default: 'info'
+  no-llm:
+    description: 'Disable LLM analysis'
+    required: false
+    default: 'true'
+  config-file:
+    description: 'Path to .threatcode.yml config file'
+    required: false
+    default: ''
+  extra-rules:
+    description: 'Comma-separated paths to additional rule files'
+    required: false
+    default: ''
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+
+outputs:
+  sarif-file:
+    description: 'Path to generated SARIF file'
+    value: ${{ steps.scan.outputs.sarif-file }}
+  threat-count:
+    description: 'Total number of threats found'
+    value: ${{ steps.scan.outputs.threat-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install ThreatCode
+      shell: bash
+      run: pip install threatcode
+
+    - name: Run ThreatCode scan
+      id: scan
+      shell: bash
+      run: |
+        ARGS="--format ${{ inputs.format }} --min-severity ${{ inputs.min-severity }}"
+
+        if [ "${{ inputs.no-llm }}" = "true" ]; then
+          ARGS="$ARGS --no-llm"
+        fi
+
+        if [ -n "${{ inputs.config-file }}" ]; then
+          ARGS="$ARGS --config ${{ inputs.config-file }}"
+        fi
+
+        if [ -n "${{ inputs.extra-rules }}" ]; then
+          IFS=',' read -ra RULES <<< "${{ inputs.extra-rules }}"
+          for rule in "${RULES[@]}"; do
+            ARGS="$ARGS --rules $rule"
+          done
+        fi
+
+        SARIF_FILE="threatcode-results.sarif"
+
+        if [ "${{ inputs.format }}" = "sarif" ]; then
+          ARGS="$ARGS -o $SARIF_FILE"
+        fi
+
+        threatcode scan ${{ inputs.input-file }} $ARGS || true
+
+        echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+
+        if [ -f "$SARIF_FILE" ]; then
+          COUNT=$(python -c "import json; d=json.load(open('$SARIF_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))")
+          echo "threat-count=$COUNT" >> "$GITHUB_OUTPUT"
+        else
+          echo "threat-count=0" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.format == 'sarif'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif-file }}
+        category: threatcode

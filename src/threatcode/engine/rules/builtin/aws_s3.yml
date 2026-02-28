@@ -1,0 +1,71 @@
+rules:
+  - id: S3_NO_ENCRYPTION
+    title: S3 bucket without server-side encryption
+    description: >
+      The S3 bucket does not have server-side encryption configured.
+      Data at rest may be accessible if storage media is compromised.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_s3_bucket
+    condition:
+      any_of:
+        - server_side_encryption_configuration:
+            not_exists: true
+        - server_side_encryption_configuration:
+            is_empty: true
+    mitigation: >
+      Enable server-side encryption using AES-256 (SSE-S3) or
+      AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.
+
+  - id: S3_PUBLIC_ACCESS
+    title: S3 bucket allows public access
+    description: >
+      The S3 bucket ACL or policy allows public read or write access.
+      This can lead to data exposure or unauthorized data modification.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: aws_s3_bucket
+    condition:
+      any_of:
+        - acl:
+            matches_any: ["public-read", "public-read-write", "authenticated-read"]
+        - policy:
+            contains: '"Effect":"Allow","Principal":"*"'
+    mitigation: >
+      Set ACL to 'private' and use aws_s3_bucket_public_access_block
+      to block all public access at the bucket level.
+
+  - id: S3_NO_VERSIONING
+    title: S3 bucket without versioning
+    description: >
+      The S3 bucket does not have versioning enabled.
+      Without versioning, deleted or overwritten objects cannot be recovered,
+      and tampering is harder to detect.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_s3_bucket
+    condition:
+      any_of:
+        - versioning:
+            not_exists: true
+        - versioning.0.enabled:
+            equals: false
+    mitigation: >
+      Enable bucket versioning via aws_s3_bucket_versioning resource
+      to protect against accidental deletion and enable audit trails.
+
+  - id: S3_NO_LOGGING
+    title: S3 bucket without access logging
+    description: >
+      The S3 bucket does not have access logging configured.
+      Without logging, unauthorized access attempts cannot be detected
+      and actions cannot be attributed to specific actors.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_s3_bucket
+    condition:
+      logging:
+        not_exists: true
+    mitigation: >
+      Enable server access logging via aws_s3_bucket_logging resource,
+      directing logs to a separate dedicated logging bucket.

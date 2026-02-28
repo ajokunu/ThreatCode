@@ -1,0 +1,50 @@
+rules:
+  - id: LAMBDA_NO_VPC
+    title: Lambda function not attached to VPC
+    description: >
+      The Lambda function runs outside a VPC, meaning it has
+      direct internet access and cannot leverage VPC security
+      controls like security groups and NACLs.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: aws_lambda_function
+    condition:
+      vpc_config:
+        not_exists: true
+    mitigation: >
+      Attach the Lambda function to a VPC with appropriate
+      security groups. Use VPC endpoints for AWS service access.
+
+  - id: LAMBDA_OVERPERMISSIVE_ROLE
+    title: Lambda function with broad execution role
+    description: >
+      The Lambda function's execution role may have overly
+      broad permissions, allowing it to access resources
+      beyond its intended scope.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: aws_lambda_function
+    condition:
+      role:
+        contains: "admin"
+    mitigation: >
+      Apply the principle of least privilege to the Lambda
+      execution role. Use separate roles per function with
+      only the permissions needed for that function's purpose.
+
+  - id: LAMBDA_NO_DLQ
+    title: Lambda function without dead letter queue
+    description: >
+      The Lambda function does not have a dead letter queue
+      configured. Failed invocations may be silently lost,
+      affecting reliability and making it difficult to
+      diagnose processing failures.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: aws_lambda_function
+    condition:
+      dead_letter_config:
+        not_exists: true
+    mitigation: >
+      Configure a dead letter queue (SQS or SNS) to capture
+      failed invocations for retry or investigation.

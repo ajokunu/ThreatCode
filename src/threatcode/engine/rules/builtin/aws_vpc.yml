@@ -1,0 +1,54 @@
+rules:
+  - id: VPC_DEFAULT_SG_OPEN
+    title: Default security group allows traffic
+    description: >
+      The default security group has not been locked down.
+      Any resource inadvertently placed in the default SG
+      may have unintended network access.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: aws_default_security_group
+    condition:
+      any_of:
+        - ingress:
+            exists: true
+        - egress:
+            exists: true
+    mitigation: >
+      Remove all ingress and egress rules from the default
+      security group. Use dedicated security groups for each workload.
+
+  - id: SG_UNRESTRICTED_INGRESS
+    title: Security group allows unrestricted ingress
+    description: >
+      The security group allows inbound traffic from 0.0.0.0/0
+      or ::/0, potentially exposing services to the entire internet.
+    stride_category: spoofing
+    severity: high
+    resource_type: aws_security_group
+    condition:
+      any_of:
+        - ingress:
+            contains: "0.0.0.0/0"
+        - ingress:
+            contains: "::/0"
+    mitigation: >
+      Restrict ingress rules to specific, known CIDR blocks or
+      security group references. Use VPC endpoints for AWS service access.
+
+  - id: VPC_NO_FLOW_LOGS
+    title: VPC without flow logs enabled
+    description: >
+      The VPC does not have flow logs configured.
+      Without flow logs, network traffic patterns cannot be
+      analyzed for security incidents or anomalies.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_vpc
+    condition:
+      tags.flow_logs_enabled:
+        not_exists: true
+    mitigation: >
+      Enable VPC flow logs and direct them to CloudWatch Logs
+      or S3 for analysis. Consider using a REJECT-only filter
+      to reduce log volume while capturing blocked traffic.

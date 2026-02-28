@@ -1,0 +1,53 @@
+rules:
+  - id: IAM_WILDCARD_ACTION
+    title: IAM policy with wildcard actions
+    description: >
+      The IAM policy grants wildcard (*) actions, providing unrestricted
+      access to AWS services. This violates least privilege and could
+      allow an attacker to escalate privileges across the account.
+    stride_category: elevation_of_privilege
+    severity: critical
+    resource_type: aws_iam_policy
+    condition:
+      policy:
+        contains: '"Action":"*"'
+    mitigation: >
+      Replace wildcard actions with specific, scoped actions
+      following the principle of least privilege. Use AWS Access
+      Analyzer to identify required permissions.
+
+  - id: IAM_NO_MFA
+    title: IAM user without MFA requirement
+    description: >
+      The IAM user or login profile does not enforce multi-factor
+      authentication. Without MFA, compromised credentials alone
+      grant full access.
+    stride_category: spoofing
+    severity: high
+    resource_type: aws_iam_user
+    condition:
+      any_of:
+        - force_destroy:
+            equals: true
+        - tags.mfa_enforced:
+            not_exists: true
+    mitigation: >
+      Enforce MFA for all IAM users via IAM policy conditions
+      (aws:MultiFactorAuthPresent). Use virtual or hardware MFA devices.
+
+  - id: IAM_OVERPERMISSIVE_ROLE
+    title: IAM role with overly broad assume role policy
+    description: >
+      The IAM role's trust policy allows assumption by overly broad
+      principals (e.g., all accounts, all services). This could allow
+      unintended entities to assume the role.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: aws_iam_role
+    condition:
+      assume_role_policy:
+        contains: '"Principal":"*"'
+    mitigation: >
+      Restrict the assume role policy to specific, known principals.
+      Use conditions (e.g., aws:SourceAccount, aws:SourceArn) to
+      further limit role assumption.

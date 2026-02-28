@@ -1,0 +1,159 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.data",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "my-company-data-bucket",
+            "acl": "private",
+            "tags": {
+              "Environment": "production",
+              "Team": "platform"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.public_assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "public_assets",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "my-company-public-assets",
+            "acl": "public-read",
+            "tags": {
+              "Environment": "production"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.logs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "logs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "my-company-logs",
+            "acl": "private",
+            "versioning": [
+              {
+                "enabled": true
+              }
+            ],
+            "logging": {
+              "target_bucket": "my-company-audit-logs"
+            },
+            "server_side_encryption_configuration": {
+              "rule": {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "aws:kms"
+                }
+              }
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.lambda_exec",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_exec",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "lambda-execution-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+          }
+        },
+        {
+          "address": "aws_iam_policy.s3_full",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "s3_full",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "s3-full-access",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+          }
+        },
+        {
+          "address": "aws_instance.web",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t3.micro",
+            "associate_public_ip_address": true,
+            "tags": {
+              "Name": "web-server"
+            }
+          }
+        },
+        {
+          "address": "aws_db_instance.main",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "engine": "postgres",
+            "instance_class": "db.t3.micro",
+            "publicly_accessible": true,
+            "storage_encrypted": false,
+            "backup_retention_period": 0
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "type": "aws_s3_bucket",
+          "name": "data",
+          "expressions": {}
+        },
+        {
+          "type": "aws_s3_bucket",
+          "name": "public_assets",
+          "expressions": {}
+        },
+        {
+          "type": "aws_s3_bucket",
+          "name": "logs",
+          "expressions": {}
+        },
+        {
+          "type": "aws_iam_role",
+          "name": "lambda_exec",
+          "expressions": {}
+        },
+        {
+          "type": "aws_iam_policy",
+          "name": "s3_full",
+          "expressions": {}
+        },
+        {
+          "type": "aws_instance",
+          "name": "web",
+          "expressions": {},
+          "depends_on": ["aws_s3_bucket.data"]
+        },
+        {
+          "type": "aws_db_instance",
+          "name": "main",
+          "expressions": {},
+          "depends_on": ["aws_instance.web"]
+        }
+      ]
+    }
+  }
+}

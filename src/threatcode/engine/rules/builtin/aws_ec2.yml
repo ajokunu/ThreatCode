@@ -1,0 +1,56 @@
+rules:
+  - id: EC2_PUBLIC_IP
+    title: EC2 instance with public IP address
+    description: >
+      The EC2 instance is configured with a public IP address,
+      directly exposing it to internet traffic. This increases
+      the attack surface significantly.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_instance
+    condition:
+      associate_public_ip_address:
+        equals: true
+    mitigation: >
+      Remove public IP association and use a load balancer or
+      bastion host for access. Place instances in private subnets.
+
+  - id: EC2_NO_MONITORING
+    title: EC2 instance without detailed monitoring
+    description: >
+      The EC2 instance does not have detailed monitoring enabled.
+      Without monitoring, unauthorized access or resource abuse
+      may go undetected and actions cannot be attributed.
+    stride_category: repudiation
+    severity: low
+    resource_type: aws_instance
+    condition:
+      monitoring:
+        any_of:
+          - monitoring:
+              not_exists: true
+          - monitoring:
+              equals: false
+    mitigation: >
+      Enable detailed monitoring and configure CloudWatch alarms
+      for suspicious activity patterns.
+
+  - id: EC2_UNENCRYPTED_EBS
+    title: EC2 instance with unencrypted root volume
+    description: >
+      The EC2 instance root block device is not encrypted.
+      Data on the volume can be accessed if the underlying
+      storage media is compromised.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_instance
+    condition:
+      root_block_device.0.encrypted:
+        any_of:
+          - root_block_device.0.encrypted:
+              not_exists: true
+          - root_block_device.0.encrypted:
+              equals: false
+    mitigation: >
+      Enable EBS encryption on all volumes using AWS-managed or
+      customer-managed KMS keys.
