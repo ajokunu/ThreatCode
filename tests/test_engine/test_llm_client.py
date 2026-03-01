@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from threatcode.engine.llm.client import (
     DryRunLLMClient,
     OpenAICompatibleLLMClient,

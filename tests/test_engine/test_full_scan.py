@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.ir.graph import InfraGraph
 from threatcode.models.threat import ThreatSource

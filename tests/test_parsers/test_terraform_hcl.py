@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from threatcode.exceptions import ParseError
 from threatcode.parsers.terraform_hcl import TerraformHCLParser
 

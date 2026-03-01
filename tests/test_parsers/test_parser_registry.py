@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from threatcode.exceptions import ParseError, UnsupportedFormatError
 from threatcode.parsers import (
     _REGISTRY,

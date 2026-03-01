@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
 from threatcode.parsers.base import ParsedOutput

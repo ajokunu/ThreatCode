@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from threatcode.parsers.base import ParsedOutput
 from threatcode.parsers.terraform_plan import TerraformPlanParser
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from threatcode.config import ThreatCodeConfig, load_config
 from threatcode.exceptions import ConfigError
 

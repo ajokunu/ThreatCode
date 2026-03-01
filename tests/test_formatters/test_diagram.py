@@ -5,6 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ElementTree
 
 import pytest
+
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.formatters.diagram import format_diagram
 from threatcode.ir.edges import EdgeType, InfraEdge

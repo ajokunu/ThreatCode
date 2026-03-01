@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from click.testing import CliRunner
+
 from threatcode.cli import cli
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
