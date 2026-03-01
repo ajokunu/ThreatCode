@@ -7,6 +7,7 @@ Security controls:
 - No execution of LLM responses — all output is JSON-parsed only
 - Prompt injection guard: system prompt instructs model to ignore injections
 - Model version pinning: explicit model IDs, no "latest" aliases
+- SSRF protection: base_url validated against internal/loopback addresses
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import json
 import logging
 import sys
 from abc import ABC, abstractmethod
+from urllib.parse import urlparse
 
 from threatcode.engine.llm.prompts import SYSTEM_PROMPT
 from threatcode.exceptions import LLMError
@@ -25,6 +27,48 @@ logger = logging.getLogger(__name__)
 MAX_PROMPT_LENGTH = 256 * 1024  # 256 KB
 # Security: API timeout in seconds
 API_TIMEOUT_SECONDS = 120
+
+# SSRF protection: blocked hostname patterns for OpenAI-compatible base_url
+_BLOCKED_HOSTS = frozenset({
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "0.0.0.0",
+    "metadata.google.internal",
+    "169.254.169.254",  # AWS/GCP instance metadata
+    "metadata.internal",
+})
+
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+
+def _validate_base_url(url: str) -> None:
+    """Validate that a base_url is safe (not SSRF-exploitable)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        raise LLMError(f"Unsafe URL scheme '{parsed.scheme}' — only http/https allowed")
+
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise LLMError("base_url must include a hostname")
+
+    if hostname in _BLOCKED_HOSTS:
+        raise LLMError(f"base_url hostname '{hostname}' is blocked (internal/loopback)")
+
+    # Block 169.254.x.x (link-local / cloud metadata) and 10.x / 172.16-31.x / 192.168.x
+    if hostname.startswith("169.254.") or hostname.startswith("10."):
+        raise LLMError(f"base_url hostname '{hostname}' is blocked (private/metadata range)")
+    if hostname.startswith("172."):
+        parts = hostname.split(".")
+        if len(parts) >= 2:
+            try:
+                second = int(parts[1])
+                if 16 <= second <= 31:
+                    raise LLMError(f"base_url hostname '{hostname}' is blocked (private range)")
+            except ValueError:
+                pass
+    if hostname.startswith("192.168."):
+        raise LLMError(f"base_url hostname '{hostname}' is blocked (private range)")
 
 
 class BaseLLMClient(ABC):
@@ -77,7 +121,11 @@ class AnthropicLLMClient(BaseLLMClient):
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
+            if not message.content:
+                raise LLMError("Anthropic API returned empty content")
             return message.content[0].text
+        except LLMError:
+            raise
         except Exception as e:
             raise LLMError(f"Anthropic API call failed: {e}") from e
 
@@ -93,6 +141,7 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         max_tokens: int = 4096,
         timeout: int = API_TIMEOUT_SECONDS,
     ) -> None:
+        _validate_base_url(base_url)
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
@@ -139,15 +188,18 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
 
 
 class DryRunLLMClient(BaseLLMClient):
-    """Prints what would be sent to the LLM without calling it."""
+    """Shows metadata about what would be sent to the LLM, without calling it.
+
+    Security: Only logs lengths and metadata — never logs prompt content,
+    which may contain infrastructure details even after redaction.
+    """
 
     def analyze(self, prompt: str) -> str:
         sys.stderr.write("=== DRY RUN: LLM Payload ===\n")
         sys.stderr.write(f"System prompt length: {len(SYSTEM_PROMPT)} chars\n")
         sys.stderr.write(f"Analysis prompt length: {len(prompt)} chars\n")
-        sys.stderr.write("--- System Prompt ---\n")
-        sys.stderr.write(SYSTEM_PROMPT[:500] + "...\n")
-        sys.stderr.write("--- Analysis Prompt ---\n")
-        sys.stderr.write(prompt[:2000] + "...\n")
+        sys.stderr.write("(Prompt content suppressed — use logging at DEBUG level to inspect)\n")
         sys.stderr.write("=== END DRY RUN ===\n")
+        logger.debug("DryRun system prompt: %s", SYSTEM_PROMPT[:500])
+        logger.debug("DryRun analysis prompt: %s", prompt[:2000])
         return '{"threats": []}'

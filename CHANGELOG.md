@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.1] - 2026-02-28
+
+### Security
+- **SSRF protection**: OpenAI-compatible LLM client validates `base_url` — blocks internal/loopback/private IP ranges and cloud metadata endpoints (169.254.169.254)
+- **Recursion depth limits**: Rule matcher (max 10), Terraform module walker (max 50), and redactor (max 50) now cap recursion depth to prevent stack overflow from malicious inputs
+- **DryRunLLMClient no longer leaks prompt content** to stderr — only shows metadata (lengths); full content available at DEBUG log level only
+- **stride_category validation**: Threat dataclass validates STRIDE category values on construction, defaults unknown values to `information_disclosure`
+- **Expanded redaction**: Added 11 sensitive field names (secret, password, token, api_key, access_key, secret_key, connection_string, credentials, private_key, certificate)
+- **Config auto-discovery warning**: Logs warning when auto-discovered `.threatcode.yml` sets `llm.base_url`, recommending `--config` flag in CI
+- **Path traversal protection**: `extra_rule_paths` resolved to absolute paths and validated before loading
+- **Rule ID uniqueness**: Enforced across all loaded rules — duplicates now raise `RuleLoadError`
+- **MITRE ID validation**: Rule loader validates technique IDs match `T####(.###)?` and tactic IDs match `TA####`
+- **Anthropic client empty response guard**: Checks for empty `message.content` before indexing
+
 ## [0.2.0] - 2026-02-28
 
 ### Added

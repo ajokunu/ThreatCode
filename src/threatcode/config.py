@@ -1,7 +1,13 @@
-"""Pydantic configuration model + .threatcode.yml loader."""
+"""Pydantic configuration model + .threatcode.yml loader.
+
+Security: config auto-discovery loads .threatcode.yml from CWD.
+In CI, use --config to specify an explicit path rather than relying on auto-discovery,
+which could load a malicious config from a cloned repository.
+"""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +15,8 @@ import yaml
 from pydantic import BaseModel, Field
 
 from threatcode.exceptions import ConfigError
+
+logger = logging.getLogger(__name__)
 
 
 class LLMConfig(BaseModel):
@@ -37,18 +45,34 @@ class ThreatCodeConfig(BaseModel):
 
 
 def load_config(config_path: Path | None = None) -> ThreatCodeConfig:
-    """Load config from .threatcode.yml, falling back to defaults."""
+    """Load config from .threatcode.yml, falling back to defaults.
+
+    Security note: auto-discovery from CWD means a cloned repo can supply
+    its own .threatcode.yml. In CI, always use --config with an explicit path.
+    """
     if config_path and config_path.exists():
         return _load_from_file(config_path)
 
-    # Search up from cwd
+    # Search from cwd then home
     for candidate in [
         Path.cwd() / ".threatcode.yml",
         Path.cwd() / ".threatcode.yaml",
         Path.home() / ".threatcode.yml",
     ]:
         if candidate.exists():
-            return _load_from_file(candidate)
+            logger.info(
+                "Auto-discovered config at %s — use --config for explicit path in CI",
+                candidate,
+            )
+            cfg = _load_from_file(candidate)
+            # Security: warn if auto-discovered config sets LLM base_url
+            if cfg.llm.base_url:
+                logger.warning(
+                    "Auto-discovered config sets llm.base_url='%s'. "
+                    "In CI pipelines, use --config with a trusted config file.",
+                    cfg.llm.base_url,
+                )
+            return cfg
 
     return ThreatCodeConfig()
 

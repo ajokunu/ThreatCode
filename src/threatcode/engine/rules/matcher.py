@@ -1,6 +1,7 @@
 """Safe declarative condition evaluator for rule matching.
 
 Supports structured dict operators — no eval() ever.
+Security: recursion depth is capped to prevent stack overflow from malicious rules.
 """
 
 from __future__ import annotations
@@ -10,12 +11,20 @@ from typing import Any
 from threatcode.engine.rules.loader import Rule
 from threatcode.ir.nodes import InfraNode
 
+# Max nesting depth for logical operators (all_of, any_of, none_of, not)
+MAX_CONDITION_DEPTH = 10
 
-def evaluate_condition(condition: dict[str, Any], node: InfraNode) -> bool:
+
+def evaluate_condition(
+    condition: dict[str, Any], node: InfraNode, _depth: int = 0
+) -> bool:
     """Evaluate a rule condition against an infrastructure node."""
+    if _depth > MAX_CONDITION_DEPTH:
+        return False  # Fail closed on excessively nested conditions
+
     op = _detect_operator(condition)
     if op:
-        return _OPERATORS[op](condition[op], node)
+        return _OPERATORS[op](condition[op], node, _depth + 1)
     return _evaluate_property_conditions(condition, node)
 
 
@@ -127,21 +136,21 @@ def _resolve_path(data: dict[str, Any], path: str) -> Any:
     return current
 
 
-# Logical operators
-def _op_all_of(conditions: list[dict[str, Any]], node: InfraNode) -> bool:
-    return all(evaluate_condition(c, node) for c in conditions)
+# Logical operators (depth-limited)
+def _op_all_of(conditions: list[dict[str, Any]], node: InfraNode, depth: int) -> bool:
+    return all(evaluate_condition(c, node, depth) for c in conditions)
 
 
-def _op_any_of(conditions: list[dict[str, Any]], node: InfraNode) -> bool:
-    return any(evaluate_condition(c, node) for c in conditions)
+def _op_any_of(conditions: list[dict[str, Any]], node: InfraNode, depth: int) -> bool:
+    return any(evaluate_condition(c, node, depth) for c in conditions)
 
 
-def _op_none_of(conditions: list[dict[str, Any]], node: InfraNode) -> bool:
-    return not any(evaluate_condition(c, node) for c in conditions)
+def _op_none_of(conditions: list[dict[str, Any]], node: InfraNode, depth: int) -> bool:
+    return not any(evaluate_condition(c, node, depth) for c in conditions)
 
 
-def _op_not(condition: dict[str, Any], node: InfraNode) -> bool:
-    return not evaluate_condition(condition, node)
+def _op_not(condition: dict[str, Any], node: InfraNode, depth: int) -> bool:
+    return not evaluate_condition(condition, node, depth)
 
 
 _OPERATORS: dict[str, Any] = {

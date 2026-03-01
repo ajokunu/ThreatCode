@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class Severity(str, Enum):
@@ -51,6 +54,16 @@ class ThreatSource(str, Enum):
     BOUNDARY = "boundary"
 
 
+_VALID_STRIDE_CATEGORIES = frozenset({
+    "spoofing",
+    "tampering",
+    "repudiation",
+    "information_disclosure",
+    "denial_of_service",
+    "elevation_of_privilege",
+})
+
+
 @dataclass
 class Threat:
     id: str
@@ -67,6 +80,15 @@ class Threat:
     metadata: dict[str, Any] = field(default_factory=dict)
     mitre_techniques: list[str] = field(default_factory=list)
     mitre_tactics: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.stride_category not in _VALID_STRIDE_CATEGORIES:
+            logger.warning(
+                "Unknown stride_category '%s' on threat '%s' — defaulting",
+                self.stride_category,
+                self.title,
+            )
+            self.stride_category = "information_disclosure"
 
     def to_dict(self) -> dict[str, Any]:
         return {

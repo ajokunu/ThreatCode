@@ -1,11 +1,21 @@
-"""Terraform plan JSON parser (primary input format)."""
+"""Terraform plan JSON parser (primary input format).
+
+Security: recursion depth is capped to prevent stack overflow from
+deeply nested Terraform modules in malicious plan files.
+"""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from threatcode.exceptions import ParseError
 from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
+
+logger = logging.getLogger(__name__)
+
+# Max nesting depth for Terraform module recursion
+MAX_MODULE_DEPTH = 50
 
 
 class TerraformPlanParser(BaseParser):
@@ -21,7 +31,7 @@ class TerraformPlanParser(BaseParser):
         # Walk planned_values for resolved attribute values
         planned = data.get("planned_values", {})
         root_module = planned.get("root_module", {})
-        self._walk_module(root_module, resources, dep_map, module_prefix="")
+        self._walk_module(root_module, resources, dep_map, module_prefix="", depth=0)
 
         return ParsedOutput(
             resources=resources,
@@ -39,7 +49,14 @@ class TerraformPlanParser(BaseParser):
         resources: list[ParsedResource],
         dep_map: dict[str, list[str]],
         module_prefix: str,
+        depth: int = 0,
     ) -> None:
+        if depth > MAX_MODULE_DEPTH:
+            logger.warning(
+                "Module nesting depth %d exceeds limit %d — skipping",
+                depth, MAX_MODULE_DEPTH,
+            )
+            return
         for res in module.get("resources", []):
             address = res.get("address", "")
             rtype = res.get("type", "")
@@ -62,14 +79,14 @@ class TerraformPlanParser(BaseParser):
         # Recurse into child modules
         for child in module.get("child_modules", []):
             child_addr = child.get("address", "")
-            self._walk_module(child, resources, dep_map, module_prefix=child_addr)
+            self._walk_module(child, resources, dep_map, module_prefix=child_addr, depth=depth + 1)
 
     def _build_dependency_map(self, data: dict[str, Any]) -> dict[str, list[str]]:
         """Extract dependency info from the configuration block."""
         dep_map: dict[str, list[str]] = {}
         config = data.get("configuration", {})
         root = config.get("root_module", {})
-        self._walk_config_module(root, dep_map, prefix="")
+        self._walk_config_module(root, dep_map, prefix="", depth=0)
         return dep_map
 
     def _walk_config_module(
@@ -77,7 +94,11 @@ class TerraformPlanParser(BaseParser):
         module: dict[str, Any],
         dep_map: dict[str, list[str]],
         prefix: str,
+        depth: int = 0,
     ) -> None:
+        if depth > MAX_MODULE_DEPTH:
+            logger.warning("Config module nesting depth %d exceeds limit — skipping", depth)
+            return
         for res in module.get("resources", []):
             rtype = res.get("type", "")
             name = res.get("name", "")
@@ -97,7 +118,7 @@ class TerraformPlanParser(BaseParser):
             child_prefix = f"module.{call_key}"
             if prefix:
                 child_prefix = f"{prefix}.module.{call_key}"
-            self._walk_config_module(child_module, dep_map, prefix=child_prefix)
+            self._walk_config_module(child_module, dep_map, prefix=child_prefix, depth=depth + 1)
 
     def _extract_references(self, expressions: dict[str, Any]) -> list[str]:
         """Extract resource references from HCL expressions."""

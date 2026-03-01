@@ -1,10 +1,19 @@
-"""ARN/account/tag/IP redaction before LLM calls."""
+"""ARN/account/tag/IP redaction before LLM calls.
+
+Security: recursion depth is capped to prevent stack overflow on deeply nested data.
+"""
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Max recursion depth for nested data structures
+MAX_REDACT_DEPTH = 50
 
 # Patterns to redact
 _PATTERNS: dict[str, re.Pattern[str]] = {
@@ -30,12 +39,15 @@ class Redactor:
         self._counter = 0
         self._extra_fields = set(extra_fields or [])
 
-    def redact(self, data: Any) -> Any:
+    def redact(self, data: Any, _depth: int = 0) -> Any:
         """Recursively redact sensitive values in a data structure."""
+        if _depth > MAX_REDACT_DEPTH:
+            return "[REDACTED_DEPTH_LIMIT]"
+
         if isinstance(data, dict):
-            return {k: self._redact_field(k, v) for k, v in data.items()}
+            return {k: self._redact_field(k, v, _depth) for k, v in data.items()}
         if isinstance(data, list):
-            return [self.redact(item) for item in data]
+            return [self.redact(item, _depth + 1) for item in data]
         if isinstance(data, str):
             return self._redact_string(data)
         return data
@@ -47,7 +59,7 @@ class Redactor:
             result = result.replace(redacted, original)
         return result
 
-    def _redact_field(self, key: str, value: Any) -> Any:
+    def _redact_field(self, key: str, value: Any, depth: int = 0) -> Any:
         """Redact a dict field based on key name."""
         sensitive_keys = {
             "arn",
@@ -59,6 +71,16 @@ class Redactor:
             "public_ip",
             "owner_id",
             "caller_reference",
+            "secret",
+            "password",
+            "token",
+            "api_key",
+            "access_key",
+            "secret_key",
+            "connection_string",
+            "credentials",
+            "private_key",
+            "certificate",
         }
         sensitive_keys.update(self._extra_fields)
 
@@ -67,7 +89,7 @@ class Redactor:
                 return self._get_placeholder(value, key)
             if isinstance(value, dict):
                 return {k: self._get_placeholder(str(v), f"{key}.{k}") for k, v in value.items()}
-        return self.redact(value)
+        return self.redact(value, depth + 1)
 
     def _redact_string(self, text: str) -> str:
         """Apply regex-based redaction to a string."""
