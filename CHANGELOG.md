@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.1] - 2026-03-01
+
+### Added
+- **SVG threat model diagram renderer**: `--format diagram` produces a purpose-built data flow diagram with trust zone swim lanes, DFD-standard node shapes (process, data store, data flow, external entity), bezier curve edges, threat severity badges, and a visual legend
+- **`analyze()` public API**: New function returning `AnalysisResult` with both the infrastructure graph and threat report — enables diagram rendering and topology analysis from the library API
+- **`AnalysisResult` model**: Dataclass wrapping `InfraGraph` + `ThreatReport` with `.to_dict()` and `.to_svg()` convenience methods
+- **12 diagram tests**: XML validity, viewBox, zone rendering, node shapes by STRIDE element type, edge rendering, boundary crossing highlighting, threat badges, header metadata, legend, empty graph, multi-service fixture
+
+### Changed
+- CLI `--format` choice now includes `diagram` alongside json, sarif, markdown, bitbucket, matrix
+- `_format_output()` in CLI accepts optional `graph` parameter for diagram rendering
+
+### Fixed
+- **CI typecheck failures**: Added `types-networkx` and `types-PyYAML` stubs to dev dependencies
+- Fixed `no-any-return` mypy errors in `edges.py`, `matcher.py`, `client.py`
+- Fixed Anthropic client type narrowing for `message.content[0]` union type
+- Removed unused `type: ignore` comments in parser registry
+- Fixed `DiGraph` missing type parameter in `graph.py`
+
 ## [0.3.0] - 2026-03-01
 
 ### Added

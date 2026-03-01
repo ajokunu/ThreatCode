@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.3.0"
+version = "0.3.1"
 description = "Threat Model as Code — automated threat modeling from Infrastructure-as-Code"
 readme = "README.md"
 license = "MIT"
@@ -38,6 +38,8 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.5",
     "pip-audit>=2.6",
+    "types-networkx>=3.1",
+    "types-PyYAML>=6.0",
 ]
 docs = [
     "mkdocs-material>=9.0",

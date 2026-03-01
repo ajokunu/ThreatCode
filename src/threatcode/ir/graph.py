@@ -37,7 +37,7 @@ class InfraGraph:
     """Directed graph representing infrastructure topology."""
 
     def __init__(self) -> None:
-        self._graph: nx.DiGraph = nx.DiGraph()
+        self._graph: nx.DiGraph[str] = nx.DiGraph()
         self._nodes: dict[str, InfraNode] = {}
         self._edges: list[InfraEdge] = []
         self._type_index: dict[str, list[str]] = {}

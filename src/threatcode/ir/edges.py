@@ -25,4 +25,4 @@ class InfraEdge:
     @property
     def crosses_trust_boundary(self) -> bool:
         """Check if this edge crosses a trust boundary (set by graph builder)."""
-        return self.metadata.get("crosses_trust_boundary", False)
+        return bool(self.metadata.get("crosses_trust_boundary", False))

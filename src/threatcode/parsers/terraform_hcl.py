@@ -25,7 +25,7 @@ class TerraformHCLParser(BaseParser):
 
         try:
             with open(path, encoding="utf-8") as f:
-                data = hcl2.load(f)
+                data = hcl2.load(f)  # type: ignore[attr-defined]
         except Exception as e:
             raise ParseError(f"Failed to parse HCL file {path}: {e}") from e
 

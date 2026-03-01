@@ -123,7 +123,10 @@ class AnthropicLLMClient(BaseLLMClient):
             )
             if not message.content:
                 raise LLMError("Anthropic API returned empty content")
-            return message.content[0].text
+            block = message.content[0]
+            if not hasattr(block, "text"):
+                raise LLMError("Anthropic API returned non-text content block")
+            return str(block.text)
         except LLMError:
             raise
         except Exception as e:
@@ -182,7 +185,7 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:
                 data = json.loads(resp.read().decode())
-                return data["choices"][0]["message"]["content"]
+                return str(data["choices"][0]["message"]["content"])
         except (urllib.error.URLError, KeyError, json.JSONDecodeError) as e:
             raise LLMError(f"OpenAI-compatible API call failed: {e}") from e
 

@@ -99,7 +99,7 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
             if entry.detector(path, content, parsed_data):
                 parser = entry.factory()
                 if hasattr(parser, "parse_file") and parsed_data is None:
-                    return parser.parse_file(path)  # type: ignore[union-attr]
+                    return parser.parse_file(path)  # type: ignore[no-any-return]
                 return parser.parse(parsed_data or content, source_path=str(path))
         except (ParseError, UnsupportedFormatError):
             raise
@@ -133,19 +133,19 @@ def _detect_terraform_hcl(path: Path, content: str, data: Any) -> bool:
     return path.suffix == ".tf"
 
 
-def _factory_terraform_plan() -> BaseParser:  # type: ignore[type-arg]
+def _factory_terraform_plan() -> BaseParser:
     from threatcode.parsers.terraform_plan import TerraformPlanParser
 
     return TerraformPlanParser()
 
 
-def _factory_cloudformation() -> BaseParser:  # type: ignore[type-arg]
+def _factory_cloudformation() -> BaseParser:
     from threatcode.parsers.cloudformation import CloudFormationParser
 
     return CloudFormationParser()
 
 
-def _factory_terraform_hcl() -> BaseParser:  # type: ignore[type-arg]
+def _factory_terraform_hcl() -> BaseParser:
     from threatcode.parsers.terraform_hcl import TerraformHCLParser
 
     return TerraformHCLParser()

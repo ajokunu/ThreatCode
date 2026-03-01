@@ -13,6 +13,7 @@ from threatcode import __version__
 if TYPE_CHECKING:
     from threatcode.config import ThreatCodeConfig
     from threatcode.engine.llm.client import BaseLLMClient
+    from threatcode.ir.graph import InfraGraph
     from threatcode.models.report import ThreatReport
 
 
@@ -29,7 +30,7 @@ def cli() -> None:
     "-f",
     "output_format",
     default="json",
-    type=click.Choice(["json", "sarif", "markdown", "bitbucket", "matrix"]),
+    type=click.Choice(["json", "sarif", "markdown", "bitbucket", "matrix", "diagram"]),
     help="Output format.",
 )
 @click.option(
@@ -118,7 +119,7 @@ def scan(
         report.threats = report.filter_by_severity(Severity(min_severity))
 
     # Format output
-    output = _format_output(report, output_format)
+    output = _format_output(report, output_format, graph=graph)
 
     if output_path:
         Path(output_path).write_text(output, encoding="utf-8")
@@ -196,7 +197,12 @@ def _build_llm_client(config: ThreatCodeConfig, dry_run: bool) -> BaseLLMClient 
     return None
 
 
-def _format_output(report: ThreatReport, fmt: str) -> str:
+def _format_output(
+    report: ThreatReport,
+    fmt: str,
+    *,
+    graph: InfraGraph | None = None,
+) -> str:
     if fmt == "json":
         from threatcode.formatters.json_out import format_json
 
@@ -217,6 +223,12 @@ def _format_output(report: ThreatReport, fmt: str) -> str:
         from threatcode.formatters.attack_navigator import format_attack_navigator
 
         return format_attack_navigator(report)
+    elif fmt == "diagram":
+        from threatcode.formatters.diagram import format_diagram
+
+        if graph is None:
+            raise click.ClickException("Diagram format requires graph context.")
+        return format_diagram(report, graph)
     else:
         from threatcode.formatters.json_out import format_json
 

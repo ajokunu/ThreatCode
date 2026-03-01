@@ -24,7 +24,7 @@ def evaluate_condition(
 
     op = _detect_operator(condition)
     if op:
-        return _OPERATORS[op](condition[op], node, _depth + 1)
+        return bool(_OPERATORS[op](condition[op], node, _depth + 1))
     return _evaluate_property_conditions(condition, node)
 
 
@@ -61,7 +61,7 @@ def _evaluate_single(key: str, check: Any, node: InfraNode) -> bool:
         return _evaluate_check_operators(check, value, props, key)
 
     # Direct equality
-    return value == check
+    return bool(value == check)
 
 
 def _evaluate_check_operators(
