@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.2.1"
-description = "STRIDE threat model generator from Infrastructure-as-Code definitions"
+version = "0.2.2"
+description = "Threat Model as Code — automated threat modeling from Infrastructure-as-Code"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

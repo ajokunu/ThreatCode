@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2] - 2026-02-28
+
+### Changed
+- Reposition README around "Threat Model as Code" market positioning
+- Update tagline, examples, and value prop to lead with MITRE ATT&CK integration
+- Add ATT&CK Navigator and MITRE fields to README examples
+- Update pyproject.toml description to match new positioning
+
 ## [0.2.1] - 2026-02-28
 
 ### Security
