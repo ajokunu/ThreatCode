@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from threatcode.constants import VALID_STRIDE_CATEGORIES
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,16 +56,6 @@ class ThreatSource(str, Enum):
     BOUNDARY = "boundary"
 
 
-_VALID_STRIDE_CATEGORIES = frozenset({
-    "spoofing",
-    "tampering",
-    "repudiation",
-    "information_disclosure",
-    "denial_of_service",
-    "elevation_of_privilege",
-})
-
-
 @dataclass
 class Threat:
     id: str
@@ -82,7 +74,7 @@ class Threat:
     mitre_tactics: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        if self.stride_category not in _VALID_STRIDE_CATEGORIES:
+        if self.stride_category not in VALID_STRIDE_CATEGORIES:
             logger.warning(
                 "Unknown stride_category '%s' on threat '%s' — defaulting",
                 self.stride_category,

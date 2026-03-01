@@ -15,6 +15,23 @@ from threatcode.ir.nodes import (
 )
 from threatcode.parsers.base import ParsedOutput, ParsedResource
 
+# Containment hint registry: (property_name, target_resource_type)
+# When a resource has property_name set, look for nodes of target_resource_type.
+_CONTAINMENT_HINTS: list[tuple[str, str]] = [
+    ("vpc_id", "aws_vpc"),
+    ("vnet_id", "azurerm_virtual_network"),
+    ("network_id", "google_compute_network"),
+]
+
+
+def register_containment_hint(property_name: str, target_type: str) -> None:
+    """Register a custom containment hint for edge inference.
+
+    When a resource has `property_name` in its properties, an edge is inferred
+    to nodes matching `target_type`.
+    """
+    _CONTAINMENT_HINTS.append((property_name, target_type))
+
 
 class InfraGraph:
     """Directed graph representing infrastructure topology."""
@@ -23,6 +40,7 @@ class InfraGraph:
         self._graph: nx.DiGraph = nx.DiGraph()
         self._nodes: dict[str, InfraNode] = {}
         self._edges: list[InfraEdge] = []
+        self._type_index: dict[str, list[str]] = {}
 
     @classmethod
     def from_parsed(cls, parsed: ParsedOutput) -> InfraGraph:
@@ -95,6 +113,8 @@ class InfraGraph:
         )
         self._nodes[resource.address] = node
         self._graph.add_node(resource.address)
+        # Maintain type index for O(1) lookups during edge inference
+        self._type_index.setdefault(resource.resource_type, []).append(resource.address)
 
     def _infer_edges(self, resources: list[ParsedResource]) -> None:
         for resource in resources:
@@ -111,30 +131,36 @@ class InfraGraph:
 
     def _infer_containment(self, resource: ParsedResource) -> None:
         props = resource.properties
-        # VPC containment
-        vpc_id = props.get("vpc_id")
-        if vpc_id and isinstance(vpc_id, str):
-            for nid, node in self._nodes.items():
-                if node.resource_type == "aws_vpc" and nid != resource.address:
-                    self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
-                    break
+
+        # Registry-driven containment hints
+        for prop_name, target_type in _CONTAINMENT_HINTS:
+            value = props.get(prop_name)
+            if value and isinstance(value, str):
+                for nid in self._type_index.get(target_type, []):
+                    if nid != resource.address:
+                        self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
+                        break
 
         # Subnet containment
         subnet_id = props.get("subnet_id")
         subnet_ids = props.get("subnet_ids") or props.get("subnets") or []
         if subnet_id:
             subnet_ids = [subnet_id]
-        if isinstance(subnet_ids, list):
-            for nid, node in self._nodes.items():
-                if node.resource_type.endswith("subnet") and nid != resource.address:
-                    self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
+        if isinstance(subnet_ids, list) and subnet_ids:
+            for rtype, nids in self._type_index.items():
+                if rtype.endswith("subnet"):
+                    for nid in nids:
+                        if nid != resource.address:
+                            self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
 
         # Security group attachment
         sg_ids = props.get("security_groups") or props.get("vpc_security_group_ids") or []
-        if isinstance(sg_ids, list):
-            for nid, node in self._nodes.items():
-                if "security_group" in node.resource_type and nid != resource.address:
-                    self._add_edge(resource.address, nid, EdgeType.NETWORK_FLOW)
+        if isinstance(sg_ids, list) and sg_ids:
+            for rtype, nids in self._type_index.items():
+                if "security_group" in rtype:
+                    for nid in nids:
+                        if nid != resource.address:
+                            self._add_edge(resource.address, nid, EdgeType.NETWORK_FLOW)
 
     def _infer_iam_edges(self, resource: ParsedResource) -> None:
         rtype = resource.resource_type
@@ -143,18 +169,29 @@ class InfraGraph:
         # Role attachment
         if rtype == "aws_iam_role_policy_attachment":
             role = props.get("role", "")
-            for nid, node in self._nodes.items():
-                if node.resource_type == "aws_iam_role" and node.name == role:
-                    self._add_edge(resource.address, nid, EdgeType.IAM_BINDING)
-                    break
+            if role:
+                self._match_iam_role(resource.address, role)
 
         # Instance profile → role
         if rtype == "aws_iam_instance_profile":
             role = props.get("role", "")
-            for nid, node in self._nodes.items():
-                if node.resource_type == "aws_iam_role" and node.name == role:
-                    self._add_edge(resource.address, nid, EdgeType.IAM_BINDING)
-                    break
+            if role:
+                self._match_iam_role(resource.address, role)
+
+    def _match_iam_role(self, source_address: str, role_ref: str) -> None:
+        """Match an IAM role reference, trying address-based match first."""
+        # Try address-based match first (e.g., aws_iam_role.my_role)
+        address_candidate = f"aws_iam_role.{role_ref}"
+        if address_candidate in self._nodes:
+            self._add_edge(source_address, address_candidate, EdgeType.IAM_BINDING)
+            return
+
+        # Fall back to name-based match
+        for nid in self._type_index.get("aws_iam_role", []):
+            node = self._nodes[nid]
+            if node.name == role_ref:
+                self._add_edge(source_address, nid, EdgeType.IAM_BINDING)
+                return
 
     def _add_edge(self, source: str, target: str, edge_type: EdgeType) -> None:
         edge = InfraEdge(source=source, target=target, edge_type=edge_type)

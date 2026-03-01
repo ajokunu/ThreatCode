@@ -119,6 +119,44 @@ TRUST_ZONE_MAP: dict[str, TrustZone] = {
     "aws_cloudwatch": TrustZone.MANAGEMENT,
 }
 
+# Pre-sorted prefix lists (longest prefix first) — rebuilt on registration
+_CATEGORY_PREFIXES: list[tuple[str, NodeCategory]] = sorted(
+    CATEGORY_MAP.items(), key=lambda x: -len(x[0])
+)
+_TRUST_ZONE_PREFIXES: list[tuple[str, TrustZone]] = sorted(
+    TRUST_ZONE_MAP.items(), key=lambda x: -len(x[0])
+)
+
+
+def _rebuild_category_prefixes() -> None:
+    """Rebuild pre-sorted category prefix list after registration."""
+    global _CATEGORY_PREFIXES
+    _CATEGORY_PREFIXES = sorted(CATEGORY_MAP.items(), key=lambda x: -len(x[0]))
+
+
+def _rebuild_trust_zone_prefixes() -> None:
+    """Rebuild pre-sorted trust zone prefix list after registration."""
+    global _TRUST_ZONE_PREFIXES
+    _TRUST_ZONE_PREFIXES = sorted(TRUST_ZONE_MAP.items(), key=lambda x: -len(x[0]))
+
+
+def register_category(prefix: str, category: NodeCategory) -> None:
+    """Register a custom resource type prefix → NodeCategory mapping.
+
+    Use this to extend ThreatCode for non-cloud resource types (K8s, Docker, etc.).
+    """
+    CATEGORY_MAP[prefix] = category
+    _rebuild_category_prefixes()
+
+
+def register_trust_zone(prefix: str, zone: TrustZone) -> None:
+    """Register a custom resource type prefix → TrustZone mapping.
+
+    Use this to extend ThreatCode for non-cloud resource types (K8s, Docker, etc.).
+    """
+    TRUST_ZONE_MAP[prefix] = zone
+    _rebuild_trust_zone_prefixes()
+
 
 def categorize_resource(resource_type: str) -> NodeCategory:
     """Determine node category from resource type using prefix matching."""
@@ -126,7 +164,7 @@ def categorize_resource(resource_type: str) -> NodeCategory:
     if resource_type in CATEGORY_MAP:
         return CATEGORY_MAP[resource_type]
     # Prefix match (e.g., aws_s3_bucket matches aws_s3)
-    for prefix, category in sorted(CATEGORY_MAP.items(), key=lambda x: -len(x[0])):
+    for prefix, category in _CATEGORY_PREFIXES:
         if resource_type.startswith(prefix):
             return category
     return NodeCategory.UNKNOWN
@@ -142,7 +180,7 @@ def infer_trust_zone(resource_type: str, properties: dict[str, Any]) -> TrustZon
     if properties.get("publicly_accessible"):
         return TrustZone.DMZ
 
-    for prefix, zone in sorted(TRUST_ZONE_MAP.items(), key=lambda x: -len(x[0])):
+    for prefix, zone in _TRUST_ZONE_PREFIXES:
         if resource_type.startswith(prefix):
             return zone
 

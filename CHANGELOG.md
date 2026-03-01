@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.0] - 2026-03-01
+
+### Added
+- **Pluggable parser registry**: `register_parser()` API lets users add custom parsers for any structured format (Kubernetes, Docker Compose, OpenAPI, etc.) without modifying core code
+- **Node category registration**: `register_category()` extends resource type → NodeCategory mapping for non-cloud domains
+- **Trust zone registration**: `register_trust_zone()` extends resource type → TrustZone mapping for non-cloud domains
+- **Containment hint registry**: `register_containment_hint()` adds custom property → resource type mappings for edge inference
+- **Validation constants module**: `threatcode.constants` provides `VALID_STRIDE_CATEGORIES` and `VALID_SEVERITIES` as single source of truth
+- **GitHub Actions CI workflow**: Matrix testing across Python 3.10–3.13 with lint, typecheck, test, and dependency audit
+- **Makefile**: Standard targets for `install`, `dev`, `test`, `lint`, `typecheck`, `format`, `audit`, `docs`, `clean`, `ci`
+- **13 new test files** covering CLI, config, LLM client (SSRF tests), all formatters, parser registry, IR nodes, models, and exceptions
+- **HCL test fixture**: `tests/fixtures/terraform/simple.tf` for Terraform HCL parser tests
+
+### Changed
+- **IR edge inference optimized**: Type-indexed lookups replace O(n²) nested loops in containment and IAM inference — now O(n) per resource
+- **Pre-sorted prefix matching**: `categorize_resource()` and `infer_trust_zone()` use pre-sorted prefix lists built at module load instead of sorting on every call
+- **IAM role matching improved**: Address-based match (`aws_iam_role.{name}`) tried first, falling back to name-based match — reduces false positives
+- **Containment inference generified**: Registry-driven hints support `vpc_id→aws_vpc`, `vnet_id→azurerm_virtual_network`, `network_id→google_compute_network` out of the box, extensible via `register_containment_hint()`
+- **Parser detection refactored**: Hardcoded if-elif chain replaced with priority-sorted registry — fully backward compatible
+- **Validation constants consolidated**: STRIDE categories and severity levels defined once in `threatcode.constants`, imported by `models/threat.py`, `engine/llm/parser.py`, and `engine/rules/loader.py`
+
+### Removed
+- **Dead code**: `ir/boundaries.py` (78 lines, never imported) — boundary analysis was already implemented in `engine/hybrid.py` and `ir/graph.py`
+
+### Fixed
+- IAM edge inference could miss role matches when Terraform address format differed from the `role` property value
+
 ## [0.2.2] - 2026-02-28
 
 ### Changed

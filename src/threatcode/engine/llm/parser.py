@@ -12,17 +12,9 @@ import logging
 import re
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from threatcode.constants import VALID_SEVERITIES, VALID_STRIDE_CATEGORIES
 
-VALID_STRIDE = {
-    "spoofing",
-    "tampering",
-    "repudiation",
-    "information_disclosure",
-    "denial_of_service",
-    "elevation_of_privilege",
-}
-VALID_SEVERITY = {"critical", "high", "medium", "low", "info"}
+logger = logging.getLogger(__name__)
 
 # Security: reject LLM responses over 512 KB to prevent memory abuse
 MAX_RESPONSE_LENGTH = 512 * 1024
@@ -123,11 +115,11 @@ def _validate_threat(raw: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     stride = raw.get("stride_category", "").lower().strip()
-    if stride not in VALID_STRIDE:
+    if stride not in VALID_STRIDE_CATEGORIES:
         stride = "tampering"
 
     severity = raw.get("severity", "medium").lower().strip()
-    if severity not in VALID_SEVERITY:
+    if severity not in VALID_SEVERITIES:
         severity = "medium"
 
     confidence = raw.get("confidence", 0.7)

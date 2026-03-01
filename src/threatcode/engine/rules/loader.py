@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from threatcode.constants import VALID_SEVERITIES, VALID_STRIDE_CATEGORIES
 from threatcode.exceptions import RuleLoadError
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,6 @@ _TACTIC_ID_RE = re.compile(r"^TA\d{4}$")
 # Security limits
 MAX_RULES_PER_FILE = 100
 MAX_TOTAL_RULES = 500
-
-VALID_SEVERITIES = {"critical", "high", "medium", "low", "info"}
-VALID_STRIDE_CATEGORIES = {
-    "spoofing",
-    "tampering",
-    "repudiation",
-    "information_disclosure",
-    "denial_of_service",
-    "elevation_of_privilege",
-}
 
 
 @dataclass
