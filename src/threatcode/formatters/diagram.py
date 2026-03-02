@@ -78,7 +78,10 @@ _PROCESS_CATEGORIES = {
 }
 _DATA_STORE_CATEGORIES = {NodeCategory.STORAGE, NodeCategory.DATABASE}
 _DATA_FLOW_CATEGORIES = {
-    NodeCategory.NETWORK, NodeCategory.CDN, NodeCategory.DNS, NodeCategory.MESSAGING,
+    NodeCategory.NETWORK,
+    NodeCategory.CDN,
+    NodeCategory.DNS,
+    NodeCategory.MESSAGING,
 }
 _ENTITY_CATEGORIES = {NodeCategory.IAM}
 
@@ -165,7 +168,7 @@ class DiagramRenderer:
             f'<svg xmlns="http://www.w3.org/2000/svg" '
             f'viewBox="0 0 {w:.0f} {h:.0f}" '
             f'width="{w:.0f}" height="{h:.0f}" '
-            f'font-family={_quote(FONT_FAMILY)}>'
+            f"font-family={_quote(FONT_FAMILY)}>"
         )
 
     def _svg_defs(self) -> str:
@@ -179,10 +182,8 @@ class DiagramRenderer:
             '<filter id="glow" x="-10%" y="-10%" width="120%" height="120%">'
             '<feGaussianBlur stdDeviation="2" result="blur"/>'
             '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>'
-            "</filter>"
+            "</filter>" + self._svg_arrow_markers() + "</defs>"
             # Arrow markers per edge type
-            + self._svg_arrow_markers()
-            + "</defs>"
         )
 
     def _svg_arrow_markers(self) -> str:
@@ -264,7 +265,10 @@ class DiagramRenderer:
         if threats:
             worst = max(threats, key=lambda t: t.severity.rank)
             badge = self._svg_threat_badge(
-                x + NODE_W - 10, y - 4, len(threats), worst.severity.value,
+                x + NODE_W - 10,
+                y - 4,
+                len(threats),
+                worst.severity.value,
             )
             parts.append(badge)
 
@@ -294,10 +298,7 @@ class DiagramRenderer:
         hw = w / 2
         hh = h / 2
         points = f"{cx},{cy - hh} {cx + hw},{cy} {cx},{cy + hh} {cx - hw},{cy}"
-        return (
-            f'<polygon points="{points}" '
-            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>'
-        )
+        return f'<polygon points="{points}" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>'
 
     def _svg_node_entity(self, x: float, y: float, w: float, h: float) -> str:
         return (
@@ -382,12 +383,9 @@ class DiagramRenderer:
             ("medium", "#eab308"),
             ("low", "#3b82f6"),
         ]:
+            items.append(f'<circle cx="{lx2 + 4:.0f}" cy="{ly2 - 3:.0f}" r="4" fill="{color}"/>')
             items.append(
-                f'<circle cx="{lx2 + 4:.0f}" cy="{ly2 - 3:.0f}" r="4" fill="{color}"/>'
-            )
-            items.append(
-                f'<text x="{lx2 + 12:.0f}" y="{ly2:.0f}" fill="#64748b" '
-                f'font-size="9">{sev}</text>'
+                f'<text x="{lx2 + 12:.0f}" y="{ly2:.0f}" fill="#64748b" font-size="9">{sev}</text>'
             )
             lx2 += 72
 

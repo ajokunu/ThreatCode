@@ -18,16 +18,18 @@ class TestFormatJson:
 
     def test_threats_serialized(self) -> None:
         report = ThreatReport(scanned_resources=1)
-        report.add(Threat(
-            id="t1",
-            title="Test",
-            description="Desc",
-            stride_category="tampering",
-            severity=Severity.HIGH,
-            source=ThreatSource.RULE,
-            resource_type="aws_s3_bucket",
-            resource_address="aws_s3_bucket.test",
-        ))
+        report.add(
+            Threat(
+                id="t1",
+                title="Test",
+                description="Desc",
+                stride_category="tampering",
+                severity=Severity.HIGH,
+                source=ThreatSource.RULE,
+                resource_type="aws_s3_bucket",
+                resource_address="aws_s3_bucket.test",
+            )
+        )
         data = json.loads(format_json(report))
         assert len(data["threats"]) == 1
         assert data["threats"][0]["id"] == "t1"

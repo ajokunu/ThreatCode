@@ -54,7 +54,8 @@ class TerraformPlanParser(BaseParser):
         if depth > MAX_MODULE_DEPTH:
             logger.warning(
                 "Module nesting depth %d exceeds limit %d — skipping",
-                depth, MAX_MODULE_DEPTH,
+                depth,
+                MAX_MODULE_DEPTH,
             )
             return
         for res in module.get("resources", []):

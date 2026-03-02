@@ -23,6 +23,7 @@ MAX_RESPONSE_LENGTH = 512 * 1024
 # Security: cap the number of threats from a single LLM response
 MAX_LLM_THREATS = 100
 
+
 def parse_llm_threats(response: str) -> list[dict[str, Any]]:
     """Parse and validate LLM response into threat dicts.
 
@@ -35,8 +36,7 @@ def parse_llm_threats(response: str) -> list[dict[str, Any]]:
     """
     if len(response) > MAX_RESPONSE_LENGTH:
         logger.warning(
-            "LLM response truncated: %d chars exceeds %d char limit — "
-            "output may be incomplete",
+            "LLM response truncated: %d chars exceeds %d char limit — output may be incomplete",
             len(response),
             MAX_RESPONSE_LENGTH,
         )
@@ -59,9 +59,7 @@ def parse_llm_threats(response: str) -> list[dict[str, Any]]:
             threats.append(threat)
 
     if len(raw_list) > MAX_LLM_THREATS:
-        logger.warning(
-            "LLM returned %d threats, capped at %d", len(raw_list), MAX_LLM_THREATS
-        )
+        logger.warning("LLM returned %d threats, capped at %d", len(raw_list), MAX_LLM_THREATS)
 
     return threats
 
@@ -105,14 +103,18 @@ def _validate_threat(raw: dict[str, Any]) -> dict[str, Any] | None:
 
     stride = raw.get("stride_category", "").lower().strip()
     if stride not in VALID_STRIDE_CATEGORIES:
-        logger.debug("LLM threat '%s': invalid stride_category '%s', defaulting to 'tampering'",
-                      title, stride)
+        logger.debug(
+            "LLM threat '%s': invalid stride_category '%s', defaulting to 'tampering'",
+            title,
+            stride,
+        )
         stride = "tampering"
 
     severity = raw.get("severity", "medium").lower().strip()
     if severity not in VALID_SEVERITIES:
-        logger.debug("LLM threat '%s': invalid severity '%s', defaulting to 'medium'",
-                      title, severity)
+        logger.debug(
+            "LLM threat '%s': invalid severity '%s', defaulting to 'medium'", title, severity
+        )
         severity = "medium"
 
     confidence = raw.get("confidence", 0.7)

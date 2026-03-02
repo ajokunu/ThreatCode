@@ -24,13 +24,15 @@ logger = logging.getLogger(__name__)
 # Fields safe to load from auto-discovered (untrusted) config files.
 # Security-sensitive fields like llm.api_key, llm.base_url, extra_rule_paths
 # are stripped from auto-discovered configs with a warning.
-_SAFE_AUTO_FIELDS = frozenset({
-    "min_severity",
-    "output_format",
-    "no_llm",
-    "dry_run",
-    "redaction",
-})
+_SAFE_AUTO_FIELDS = frozenset(
+    {
+        "min_severity",
+        "output_format",
+        "no_llm",
+        "dry_run",
+        "redaction",
+    }
+)
 
 
 class LLMConfig(BaseModel):

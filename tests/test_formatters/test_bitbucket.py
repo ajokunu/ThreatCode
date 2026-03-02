@@ -11,16 +11,18 @@ from threatcode.models.threat import Severity, Threat, ThreatSource
 
 def _make_report(severity: Severity) -> ThreatReport:
     report = ThreatReport(scanned_resources=3)
-    report.add(Threat(
-        id="t1",
-        title="Test Threat",
-        description="Description",
-        stride_category="tampering",
-        severity=severity,
-        source=ThreatSource.RULE,
-        resource_type="aws_s3_bucket",
-        resource_address="aws_s3_bucket.test",
-    ))
+    report.add(
+        Threat(
+            id="t1",
+            title="Test Threat",
+            description="Description",
+            stride_category="tampering",
+            severity=severity,
+            source=ThreatSource.RULE,
+            resource_type="aws_s3_bucket",
+            resource_address="aws_s3_bucket.test",
+        )
+    )
     return report
 
 

@@ -146,9 +146,7 @@ class TestConfigHardening:
         from threatcode.config import load_config
 
         config_file = tmp_path / ".threatcode.yml"
-        config_file.write_text(
-            "llm:\n  base_url: http://my-ollama:11434\n  provider: ollama\n"
-        )
+        config_file.write_text("llm:\n  base_url: http://my-ollama:11434\n  provider: ollama\n")
         cfg = load_config(config_file)
         assert cfg.llm.base_url == "http://my-ollama:11434"
         assert cfg.llm.provider == "ollama"
@@ -406,9 +404,11 @@ class TestGraphLimits:
 
         # Fill edges to the limit
         fake_attrs = {
-            "source": "a", "target": "b",
+            "source": "a",
+            "target": "b",
             "edge_type": EdgeType.DEPENDENCY,
-            "crosses_trust_boundary": False, "metadata": {},
+            "crosses_trust_boundary": False,
+            "metadata": {},
         }
         fake_edge_cls = type("FakeEdge", (), fake_attrs)
         for i in range(MAX_EDGES):
@@ -437,7 +437,8 @@ class TestCLIHardening:
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('resource "aws_s3_bucket" "test" { bucket = "test" }')
         result = runner.invoke(
-            scan, [str(tf_file), "-o", str(tmp_path), "--no-llm"],
+            scan,
+            [str(tf_file), "-o", str(tmp_path), "--no-llm"],
         )
         assert result.exit_code != 0
         stderr = (result.stderr_bytes or b"").decode().lower()
@@ -484,7 +485,8 @@ class TestFormatterSanitization:
 
 class TestDryRunSecurity:
     def test_dryrun_no_prompt_content_in_debug(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """A02-02: DryRun DEBUG logs must not contain prompt content."""
         import logging

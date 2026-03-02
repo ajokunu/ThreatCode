@@ -108,9 +108,7 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
         except (ParseError, UnsupportedFormatError):
             raise
         except Exception as exc:
-            logger.debug(
-                "Parser '%s' failed for %s: %s", entry.name, path.name, exc
-            )
+            logger.debug("Parser '%s' failed for %s: %s", entry.name, path.name, exc)
             continue
 
     raise UnsupportedFormatError(

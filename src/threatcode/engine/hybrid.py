@@ -72,9 +72,7 @@ class HybridEngine:
                 for t in llm_threats:
                     report.add(t)
             except Exception:
-                logger.exception(
-                    "LLM analysis failed — returning rule-based results only"
-                )
+                logger.exception("LLM analysis failed — returning rule-based results only")
 
         logger.info(
             "Analysis complete: total_threats=%d (rule=%d, boundary=%d, llm=%d)",

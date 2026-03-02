@@ -118,9 +118,9 @@ class TestCloudFormationFixture:
         expected_subset = {
             "S3_NO_ENCRYPTION",  # server_side_encryption_configuration not_exists → True
             "S3_NO_VERSIONING",  # versioning not_exists → True
-            "S3_NO_LOGGING",     # logging not_exists → True
-            "RDS_NO_BACKUP",     # backup_retention_period not_exists → True
-            "RDS_NO_ENCRYPTION", # storage_encrypted not_exists → True
+            "S3_NO_LOGGING",  # logging not_exists → True
+            "RDS_NO_BACKUP",  # backup_retention_period not_exists → True
+            "RDS_NO_ENCRYPTION",  # storage_encrypted not_exists → True
         }
         missing = expected_subset - fired_ids
         assert not missing, f"CFN fixture should trigger these rules but didn't: {missing}"

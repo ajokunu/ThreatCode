@@ -241,9 +241,7 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
             with opener.open(req, timeout=self._timeout) as resp:
                 raw_bytes = resp.read(MAX_RESPONSE_SIZE + 1)
                 if len(raw_bytes) > MAX_RESPONSE_SIZE:
-                    raise LLMError(
-                        f"Response body exceeds {MAX_RESPONSE_SIZE} byte limit"
-                    )
+                    raise LLMError(f"Response body exceeds {MAX_RESPONSE_SIZE} byte limit")
                 raw = raw_bytes.decode("utf-8")
                 data = json.loads(raw)
                 return str(data["choices"][0]["message"]["content"])
@@ -272,6 +270,7 @@ class DryRunLLMClient(BaseLLMClient):
         sys.stderr.write("=== END DRY RUN ===\n")
         logger.debug(
             "DryRun: system_prompt_len=%d, analysis_prompt_len=%d",
-            len(SYSTEM_PROMPT), len(prompt),
+            len(SYSTEM_PROMPT),
+            len(prompt),
         )
         return '{"threats": []}'

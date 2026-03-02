@@ -96,15 +96,11 @@ def load_rules_from_file(path: Path) -> list[Rule]:
                 f"got {type(rule.condition).__name__}"
             )
         if rule.metadata and not isinstance(rule.metadata, dict):
-            raise RuleLoadError(
-                f"Rule {rule.id} in {path}: metadata must be a mapping"
-            )
+            raise RuleLoadError(f"Rule {rule.id} in {path}: metadata must be a mapping")
 
         # Validate schema
         if rule.severity not in VALID_SEVERITIES:
-            raise RuleLoadError(
-                f"Rule {rule.id} in {path}: invalid severity '{rule.severity}'"
-            )
+            raise RuleLoadError(f"Rule {rule.id} in {path}: invalid severity '{rule.severity}'")
         if rule.stride_category not in VALID_STRIDE_CATEGORIES:
             raise RuleLoadError(
                 f"Rule {rule.id} in {path}: invalid stride_category '{rule.stride_category}'"
@@ -119,18 +115,21 @@ def load_rules_from_file(path: Path) -> list[Rule]:
                 if not _TECHNIQUE_ID_RE.match(tid):
                     logger.warning(
                         "Rule %s: invalid MITRE technique ID '%s' — expected T#### or T####.###",
-                        rule.id, tid,
+                        rule.id,
+                        tid,
                     )
                 elif tid not in TECHNIQUE_DB:
                     logger.warning(
                         "Rule %s: MITRE technique ID '%s' not found in known technique database",
-                        rule.id, tid,
+                        rule.id,
+                        tid,
                     )
             for tac_id in mitre.get("tactics", []):
                 if not _TACTIC_ID_RE.match(tac_id):
                     logger.warning(
                         "Rule %s: invalid MITRE tactic ID '%s' — expected TA####",
-                        rule.id, tac_id,
+                        rule.id,
+                        tac_id,
                     )
 
         rules.append(rule)
@@ -183,8 +182,6 @@ def load_all_rules(extra_paths: list[Path] | None = None) -> list[Rule]:
         rules.extend(extra_rules)
 
     if len(rules) > MAX_TOTAL_RULES:
-        raise RuleLoadError(
-            f"Total rule count {len(rules)} exceeds limit of {MAX_TOTAL_RULES}"
-        )
+        raise RuleLoadError(f"Total rule count {len(rules)} exceeds limit of {MAX_TOTAL_RULES}")
 
     return rules

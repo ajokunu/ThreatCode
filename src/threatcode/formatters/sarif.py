@@ -137,6 +137,4 @@ def _severity_to_sarif_level(severity: Severity) -> str:
 
 
 def _to_pascal_case(text: str) -> str:
-    return "".join(
-        word.capitalize() for word in re.split(r"[\s_\-]+", text) if word
-    )
+    return "".join(word.capitalize() for word in re.split(r"[\s_\-]+", text) if word)

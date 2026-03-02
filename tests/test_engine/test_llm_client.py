@@ -17,7 +17,9 @@ _PATCH_GAI = "threatcode.engine.llm.client.socket.getaddrinfo"
 
 
 def _mock_resolve(
-    ip: str, port: int = 443, family: int = 2,
+    ip: str,
+    port: int = 443,
+    family: int = 2,
 ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
     """Create a mock getaddrinfo result."""
     return [(family, 1, 6, "", (ip, port))]
@@ -118,7 +120,8 @@ class TestDryRunClient:
         assert "[]" in result
 
     def test_writes_metadata_to_stderr(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         client = DryRunLLMClient()
         client.analyze("test prompt")

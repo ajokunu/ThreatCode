@@ -18,7 +18,8 @@ from threatcode.models.threat import Severity, Threat, ThreatSource
 
 
 def _make_graph_with_nodes(
-    nodes: list[InfraNode], edges: list[InfraEdge] | None = None,
+    nodes: list[InfraNode],
+    edges: list[InfraEdge] | None = None,
 ) -> InfraGraph:
     """Build a minimal InfraGraph from a list of nodes and optional edges."""
     graph = InfraGraph()
@@ -139,8 +140,11 @@ class TestDiagramFormatter:
         report = _make_report(n_resources=5)
         svg = format_diagram(report, graph)
         all_zones = [
-            TrustZone.INTERNET, TrustZone.DMZ, TrustZone.PRIVATE,
-            TrustZone.DATA, TrustZone.MANAGEMENT,
+            TrustZone.INTERNET,
+            TrustZone.DMZ,
+            TrustZone.PRIVATE,
+            TrustZone.DATA,
+            TrustZone.MANAGEMENT,
         ]
         for zone in all_zones:
             assert f'class="zone-{zone.value}"' in svg
@@ -170,7 +174,8 @@ class TestDiagramFormatter:
         # The entity node has an inner rect offset by 3px
         root = ElementTree.fromstring(svg)
         entity_groups = [
-            g for g in root.iter("{http://www.w3.org/2000/svg}g")
+            g
+            for g in root.iter("{http://www.w3.org/2000/svg}g")
             if g.get("data-id") == "aws_iam_role.exec"
         ]
         assert len(entity_groups) == 1
@@ -183,8 +188,7 @@ class TestDiagramFormatter:
         svg = format_diagram(report, graph)
         root = ElementTree.fromstring(svg)
         paths = [
-            p for p in root.iter("{http://www.w3.org/2000/svg}path")
-            if p.get("class") == "edge"
+            p for p in root.iter("{http://www.w3.org/2000/svg}path") if p.get("class") == "edge"
         ]
         assert len(paths) == len(SAMPLE_EDGES)
 
@@ -194,7 +198,8 @@ class TestDiagramFormatter:
         svg = format_diagram(report, graph)
         root = ElementTree.fromstring(svg)
         boundary_paths = [
-            p for p in root.iter("{http://www.w3.org/2000/svg}path")
+            p
+            for p in root.iter("{http://www.w3.org/2000/svg}path")
             if p.get("data-boundary") == "true"
         ]
         assert len(boundary_paths) == 2
@@ -214,7 +219,8 @@ class TestDiagramFormatter:
         # S3 node should have badge with count 2
         root = ElementTree.fromstring(svg)
         s3_group = [
-            g for g in root.iter("{http://www.w3.org/2000/svg}g")
+            g
+            for g in root.iter("{http://www.w3.org/2000/svg}g")
             if g.get("data-id") == "aws_s3_bucket.data"
         ]
         assert len(s3_group) == 1
@@ -255,7 +261,9 @@ class TestDiagramFormatter:
 
         fixture_path = (
             Path(__file__).parent.parent
-            / "fixtures" / "terraform" / "multi_service_insecure.plan.json"
+            / "fixtures"
+            / "terraform"
+            / "multi_service_insecure.plan.json"
         )
         if not fixture_path.exists():
             pytest.skip("multi_service_insecure fixture not available")
@@ -273,7 +281,6 @@ class TestDiagramFormatter:
 
         # All nodes rendered
         node_groups = [
-            g for g in root.iter("{http://www.w3.org/2000/svg}g")
-            if g.get("class") == "node"
+            g for g in root.iter("{http://www.w3.org/2000/svg}g") if g.get("class") == "node"
         ]
         assert len(node_groups) == graph.node_count

@@ -60,18 +60,20 @@ def _build_layer(report: ThreatReport) -> dict[str, Any]:
     for tid, info in sorted(technique_map.items()):
         sev = info["severity"]
         comment = f"{info['count']} finding(s): " + "; ".join(info["threats"][:5])
-        techniques.append({
-            "techniqueID": tid,
-            "tactic": "",
-            "score": _SEVERITY_SCORE.get(sev, 10),
-            "color": _SEVERITY_COLOR.get(sev, "#cccccc"),
-            "comment": comment,
-            "enabled": True,
-            "metadata": [
-                {"name": "findings", "value": str(info["count"])},
-                {"name": "max_severity", "value": sev.value},
-            ],
-        })
+        techniques.append(
+            {
+                "techniqueID": tid,
+                "tactic": "",
+                "score": _SEVERITY_SCORE.get(sev, 10),
+                "color": _SEVERITY_COLOR.get(sev, "#cccccc"),
+                "comment": comment,
+                "enabled": True,
+                "metadata": [
+                    {"name": "findings", "value": str(info["count"])},
+                    {"name": "max_severity", "value": sev.value},
+                ],
+            }
+        )
 
     return {
         "name": "ThreatCode Threat Model",

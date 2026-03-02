@@ -185,9 +185,7 @@ class InfraGraph:
                         if node and nid != resource.address:
                             # Match by address or name against referenced IDs
                             if nid in ref_ids or (node.name and node.name in ref_ids):
-                                self._add_edge(
-                                    resource.address, nid, EdgeType.CONTAINMENT
-                                )
+                                self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
 
         # Security group attachment — match only if we have a reference
         sg_ids = props.get("security_groups") or props.get("vpc_security_group_ids") or []
@@ -199,9 +197,7 @@ class InfraGraph:
                         node = self._nodes.get(nid)
                         if node and nid != resource.address:
                             if nid in ref_ids or (node.name and node.name in ref_ids):
-                                self._add_edge(
-                                    resource.address, nid, EdgeType.NETWORK_FLOW
-                                )
+                                self._add_edge(resource.address, nid, EdgeType.NETWORK_FLOW)
 
     def _infer_iam_edges(self, resource: ParsedResource) -> None:
         rtype = resource.resource_type
@@ -243,7 +239,9 @@ class InfraGraph:
         if len(self._edges) >= MAX_EDGES:
             logger.warning(
                 "Edge limit reached (%d) — skipping edge %s -> %s",
-                MAX_EDGES, source, target,
+                MAX_EDGES,
+                source,
+                target,
             )
             return
 

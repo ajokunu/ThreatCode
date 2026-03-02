@@ -29,8 +29,7 @@ def _build_report(report: ThreatReport) -> dict[str, Any]:
     return {
         "title": "ThreatCode STRIDE Threat Model",
         "details": (
-            f"Scanned {report.scanned_resources} resources, "
-            f"found {len(report.threats)} threats."
+            f"Scanned {report.scanned_resources} resources, found {len(report.threats)} threats."
         ),
         "report_type": "SECURITY",
         "reporter": "ThreatCode",

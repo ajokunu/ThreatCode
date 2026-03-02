@@ -48,10 +48,12 @@ class TestAttackNavigator:
         assert techniques[0]["enabled"] is True
 
     def test_multiple_threats_same_technique(self) -> None:
-        report = ThreatReport(threats=[
-            _make_threat("RULE_A", ["T1530"], Severity.MEDIUM),
-            _make_threat("RULE_B", ["T1530"], Severity.CRITICAL),
-        ])
+        report = ThreatReport(
+            threats=[
+                _make_threat("RULE_A", ["T1530"], Severity.MEDIUM),
+                _make_threat("RULE_B", ["T1530"], Severity.CRITICAL),
+            ]
+        )
         layer = json.loads(format_attack_navigator(report))
 
         techniques = layer["techniques"]
@@ -60,9 +62,11 @@ class TestAttackNavigator:
         assert techniques[0]["score"] == 100  # CRITICAL
 
     def test_multiple_techniques(self) -> None:
-        report = ThreatReport(threats=[
-            _make_threat("RULE_A", ["T1530", "T1190"]),
-        ])
+        report = ThreatReport(
+            threats=[
+                _make_threat("RULE_A", ["T1530", "T1190"]),
+            ]
+        )
         layer = json.loads(format_attack_navigator(report))
 
         tech_ids = {t["techniqueID"] for t in layer["techniques"]}
@@ -79,10 +83,12 @@ class TestAttackNavigator:
         assert layer["techniques"] == []
 
     def test_valid_json_output(self) -> None:
-        report = ThreatReport(threats=[
-            _make_threat("S3_NO_ENC", ["T1530"]),
-            _make_threat("S3_PUB", ["T1530", "T1190"]),
-        ])
+        report = ThreatReport(
+            threats=[
+                _make_threat("S3_NO_ENC", ["T1530"]),
+                _make_threat("S3_PUB", ["T1530", "T1190"]),
+            ]
+        )
         output = format_attack_navigator(report)
         layer = json.loads(output)
         assert isinstance(layer, dict)

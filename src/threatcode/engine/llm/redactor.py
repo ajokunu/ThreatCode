@@ -22,9 +22,7 @@ MAX_REDACTION_MAPPINGS = 10_000
 # Patterns to redact — aws_account_id requires word-boundary context to reduce
 # false positives on arbitrary 12-digit numbers
 _PATTERNS: dict[str, re.Pattern[str]] = {
-    "aws_account_id": re.compile(
-        r"(?:account[_-]?id|arn:aws)[:\s\"'=]*(\d{12})\b"
-    ),
+    "aws_account_id": re.compile(r"(?:account[_-]?id|arn:aws)[:\s\"'=]*(\d{12})\b"),
     "aws_arn": re.compile(r"arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+"),
     "ip_v4": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
     "ip_v6": re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"),
@@ -32,31 +30,33 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
-_SENSITIVE_KEYS = frozenset({
-    "arn",
-    "account_id",
-    "tags",
-    "tag",
-    "ip_address",
-    "private_ip",
-    "public_ip",
-    "owner_id",
-    "caller_reference",
-    "secret",
-    "password",
-    "token",
-    "api_key",
-    "access_key",
-    "secret_key",
-    "connection_string",
-    "credentials",
-    "private_key",
-    "certificate",
-    "name",
-    "module",
-    "provider",
-    "source_location",
-})
+_SENSITIVE_KEYS = frozenset(
+    {
+        "arn",
+        "account_id",
+        "tags",
+        "tag",
+        "ip_address",
+        "private_ip",
+        "public_ip",
+        "owner_id",
+        "caller_reference",
+        "secret",
+        "password",
+        "token",
+        "api_key",
+        "access_key",
+        "secret_key",
+        "connection_string",
+        "credentials",
+        "private_key",
+        "certificate",
+        "name",
+        "module",
+        "provider",
+        "source_location",
+    }
+)
 
 
 class Redactor:
@@ -115,10 +115,7 @@ class Redactor:
                 for k, v in value.items()
             }
         if isinstance(value, list):
-            return [
-                self._redact_sensitive_value(item, f"{label}[]", depth + 1)
-                for item in value
-            ]
+            return [self._redact_sensitive_value(item, f"{label}[]", depth + 1) for item in value]
         # Non-string primitives (int, float, bool) — redact as string
         if value is not None:
             return self._get_placeholder(str(value), label)

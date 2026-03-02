@@ -18,9 +18,7 @@ logger = logging.getLogger(__name__)
 MAX_CONDITION_DEPTH = 10
 
 
-def evaluate_condition(
-    condition: dict[str, Any], node: InfraNode, _depth: int = 0
-) -> bool:
+def evaluate_condition(condition: dict[str, Any], node: InfraNode, _depth: int = 0) -> bool:
     """Evaluate a rule condition against an infrastructure node."""
     if _depth > MAX_CONDITION_DEPTH:
         return False  # Fail closed on excessively nested conditions

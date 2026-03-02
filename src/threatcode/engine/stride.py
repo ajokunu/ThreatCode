@@ -24,22 +24,22 @@ class StrideCategory(str, Enum):
 
 _DESCRIPTIONS: dict[StrideCategory, str] = {
     StrideCategory.SPOOFING: (
-        "Pretending to be something or someone other than yourself. " "Threatens authentication."
+        "Pretending to be something or someone other than yourself. Threatens authentication."
     ),
     StrideCategory.TAMPERING: (
-        "Modifying data or code without authorization. " "Threatens integrity."
+        "Modifying data or code without authorization. Threatens integrity."
     ),
     StrideCategory.REPUDIATION: (
-        "Claiming to have not performed an action. " "Threatens non-repudiation and audit trails."
+        "Claiming to have not performed an action. Threatens non-repudiation and audit trails."
     ),
     StrideCategory.INFORMATION_DISCLOSURE: (
-        "Exposing information to unauthorized parties. " "Threatens confidentiality."
+        "Exposing information to unauthorized parties. Threatens confidentiality."
     ),
     StrideCategory.DENIAL_OF_SERVICE: (
-        "Denying or degrading service to users. " "Threatens availability."
+        "Denying or degrading service to users. Threatens availability."
     ),
     StrideCategory.ELEVATION_OF_PRIVILEGE: (
-        "Gaining capabilities without proper authorization. " "Threatens authorization boundaries."
+        "Gaining capabilities without proper authorization. Threatens authorization boundaries."
     ),
 }
 

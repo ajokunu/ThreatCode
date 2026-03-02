@@ -53,9 +53,20 @@ class TestThreat:
         t = self._make_threat()
         d = t.to_dict()
         assert set(d.keys()) == {
-            "id", "title", "description", "stride_category", "severity",
-            "source", "resource_type", "resource_address", "mitigation",
-            "rule_id", "confidence", "metadata", "mitre_techniques", "mitre_tactics",
+            "id",
+            "title",
+            "description",
+            "stride_category",
+            "severity",
+            "source",
+            "resource_type",
+            "resource_address",
+            "mitigation",
+            "rule_id",
+            "confidence",
+            "metadata",
+            "mitre_techniques",
+            "mitre_tactics",
         }
 
     def test_to_dict_serializes_enums(self) -> None:

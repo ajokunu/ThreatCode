@@ -65,12 +65,14 @@ class TestRegisterParser:
         class DummyParser(BaseParser):
             def parse(self, data: Any, source_path: str = "") -> ParsedOutput:
                 return ParsedOutput(
-                    resources=[ParsedResource(
-                        resource_type="custom_widget",
-                        address="custom_widget.test",
-                        name="test",
-                        provider="custom",
-                    )],
+                    resources=[
+                        ParsedResource(
+                            resource_type="custom_widget",
+                            address="custom_widget.test",
+                            name="test",
+                            provider="custom",
+                        )
+                    ],
                     source_path=source_path,
                     format_type="custom",
                 )

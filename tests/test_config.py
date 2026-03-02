@@ -31,7 +31,9 @@ class TestThreatCodeConfig:
 
 class TestLoadConfig:
     def test_load_defaults_when_no_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = load_config(None)
@@ -70,7 +72,9 @@ class TestLoadConfig:
             load_config(Path("/nonexistent/.threatcode.yml"))
 
     def test_restricted_fields_stripped_on_auto_discovery(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.chdir(tmp_path)

@@ -10,17 +10,19 @@ from threatcode.models.threat import Severity, Threat, ThreatSource
 def _make_report(*severities: Severity) -> ThreatReport:
     report = ThreatReport(scanned_resources=5)
     for i, sev in enumerate(severities):
-        report.add(Threat(
-            id=f"t{i}",
-            title=f"Threat {i}",
-            description=f"Description {i}",
-            stride_category="tampering",
-            severity=sev,
-            source=ThreatSource.RULE,
-            resource_type="aws_s3_bucket",
-            resource_address=f"aws_s3_bucket.test{i}",
-            mitigation=f"Fix {i}",
-        ))
+        report.add(
+            Threat(
+                id=f"t{i}",
+                title=f"Threat {i}",
+                description=f"Description {i}",
+                stride_category="tampering",
+                severity=sev,
+                source=ThreatSource.RULE,
+                resource_type="aws_s3_bucket",
+                resource_address=f"aws_s3_bucket.test{i}",
+                mitigation=f"Fix {i}",
+            )
+        )
     return report
 
 
@@ -47,16 +49,18 @@ class TestFormatMarkdown:
 
     def test_mitre_techniques_shown(self) -> None:
         report = ThreatReport(scanned_resources=1)
-        report.add(Threat(
-            id="t1",
-            title="Test",
-            description="Desc",
-            stride_category="tampering",
-            severity=Severity.HIGH,
-            source=ThreatSource.RULE,
-            resource_type="aws_s3_bucket",
-            resource_address="aws_s3_bucket.test",
-            mitre_techniques=["T1530"],
-        ))
+        report.add(
+            Threat(
+                id="t1",
+                title="Test",
+                description="Desc",
+                stride_category="tampering",
+                severity=Severity.HIGH,
+                source=ThreatSource.RULE,
+                resource_type="aws_s3_bucket",
+                resource_address="aws_s3_bucket.test",
+                mitre_techniques=["T1530"],
+            )
+        )
         md = format_markdown(report)
         assert "T1530" in md
