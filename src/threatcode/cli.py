@@ -103,7 +103,11 @@ def scan(
         sys.exit(1)
 
     # Build IR graph
-    graph = InfraGraph.from_parsed(parsed)
+    try:
+        graph = InfraGraph.from_parsed(parsed)
+    except Exception as e:
+        click.echo(f"Error building infrastructure graph: {type(e).__name__}: {e}", err=True)
+        sys.exit(1)
 
     # Build LLM client if needed
     llm_client = None
@@ -112,8 +116,12 @@ def scan(
 
     # Run engine
     extra_paths = [Path(p) for p in extra_rules]
-    engine = HybridEngine(config=config, extra_rule_paths=extra_paths, llm_client=llm_client)
-    report = engine.analyze(graph, input_file=input_file)
+    try:
+        engine = HybridEngine(config=config, extra_rule_paths=extra_paths, llm_client=llm_client)
+        report = engine.analyze(graph, input_file=input_file)
+    except Exception as e:
+        click.echo(f"Error during analysis: {type(e).__name__}: {e}", err=True)
+        sys.exit(1)
 
     # Filter by severity
     if min_severity != "info":
@@ -159,8 +167,12 @@ def diff(baseline: str, current: str, output_format: str) -> None:
     """Compare two threat model reports and show differences."""
     from threatcode.formatters.diff import compute_diff, format_diff
 
-    result = compute_diff(baseline, current)
-    output = format_diff(result, output_format)
+    try:
+        result = compute_diff(baseline, current)
+        output = format_diff(result, output_format)
+    except Exception as e:
+        click.echo(f"Error computing diff: {type(e).__name__}: {e}", err=True)
+        sys.exit(1)
     click.echo(output)
 
 
@@ -201,6 +213,11 @@ def _build_llm_client(config: ThreatCodeConfig, dry_run: bool) -> BaseLLMClient 
             max_tokens=config.llm.max_tokens,
         )
 
+    click.echo(
+        f"Warning: Unknown LLM provider '{config.llm.provider}'. "
+        "Supported: anthropic, openai, ollama, local. Falling back to rules-only.",
+        err=True,
+    )
     return None
 
 

@@ -65,10 +65,16 @@ class HybridEngine:
             report.add(t)
 
         # Phase 3: LLM-augmented analysis (if client available)
+        llm_threats: list[Threat] = []
         if self._llm_client is not None:
-            llm_threats = self._run_llm_analysis(graph, rule_threats)
-            for t in llm_threats:
-                report.add(t)
+            try:
+                llm_threats = self._run_llm_analysis(graph, rule_threats)
+                for t in llm_threats:
+                    report.add(t)
+            except Exception:
+                logger.exception(
+                    "LLM analysis failed — returning rule-based results only"
+                )
 
         logger.info(
             "Analysis complete: total_threats=%d (rule=%d, boundary=%d, llm=%d)",
@@ -151,8 +157,11 @@ class HybridEngine:
 
         threats: list[Threat] = []
         for raw in raw_threats:
-            # Unredact resource addresses
+            # Unredact LLM-sourced fields that may contain redacted placeholders
             address = redactor.unredact_string(raw.get("resource_address", ""))
+            raw["title"] = redactor.unredact_string(raw.get("title", ""))
+            raw["description"] = redactor.unredact_string(raw.get("description", ""))
+            raw["mitigation"] = redactor.unredact_string(raw.get("mitigation", ""))
             confidence = raw.get("confidence", 0.7)
 
             # Cap confidence if resource_address is not in the graph
@@ -167,13 +176,17 @@ class HybridEngine:
             tactics = raw.get("mitre_tactics", [])
             if techniques and not tactics:
                 tactics = tactics_for_techniques(techniques)
+            try:
+                sev = Severity(raw.get("severity", "medium"))
+            except ValueError:
+                sev = Severity.MEDIUM
             threats.append(
                 Threat(
                     id=_hash_id(f"LLM_{address}_{raw.get('title', '')}"),
                     title=raw.get("title", "LLM-identified threat"),
                     description=raw.get("description", ""),
                     stride_category=raw.get("stride_category", "tampering"),
-                    severity=Severity(raw.get("severity", "medium")),
+                    severity=sev,
                     source=ThreatSource.LLM,
                     resource_type=raw.get("resource_type", ""),
                     resource_address=address,

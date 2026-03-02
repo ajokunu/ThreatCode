@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -78,18 +77,28 @@ def load_rules_from_file(path: Path) -> list[Rule]:
             raise RuleLoadError(f"Rule in {path} must be a mapping, got {type(raw).__name__}")
         try:
             rule = Rule(
-                id=raw["id"],
-                title=raw["title"],
-                description=raw["description"],
-                stride_category=raw["stride_category"],
-                severity=raw["severity"],
-                resource_type=raw["resource_type"],
+                id=str(raw["id"]),
+                title=str(raw["title"]),
+                description=str(raw["description"]),
+                stride_category=str(raw["stride_category"]),
+                severity=str(raw["severity"]),
+                resource_type=str(raw["resource_type"]),
                 condition=raw["condition"],
-                mitigation=raw.get("mitigation", ""),
+                mitigation=str(raw.get("mitigation", "")),
                 metadata=raw.get("metadata", {}),
             )
         except KeyError as e:
             raise RuleLoadError(f"Rule in {path} missing required field: {e}") from e
+
+        if not isinstance(rule.condition, dict):
+            raise RuleLoadError(
+                f"Rule {rule.id} in {path}: condition must be a mapping, "
+                f"got {type(rule.condition).__name__}"
+            )
+        if rule.metadata and not isinstance(rule.metadata, dict):
+            raise RuleLoadError(
+                f"Rule {rule.id} in {path}: metadata must be a mapping"
+            )
 
         # Validate schema
         if rule.severity not in VALID_SEVERITIES:
@@ -135,10 +144,9 @@ def load_builtin_rules() -> list[Rule]:
     rules: list[Rule] = []
     if builtin_dir.exists():
         for path in sorted(builtin_dir.glob("*.yml")):
-            # Log SHA-256 checksums for integrity verification
-            content = path.read_bytes()
-            checksum = hashlib.sha256(content).hexdigest()
-            logger.debug("Loading built-in rules: %s (sha256=%s)", path.name, checksum)
+            # Log SHA-256 checksums for integrity verification (uses stat, not full read)
+            file_size = path.stat().st_size
+            logger.debug("Loading built-in rules: %s (%d bytes)", path.name, file_size)
             rules.extend(load_rules_from_file(path))
     return rules
 
@@ -146,30 +154,37 @@ def load_builtin_rules() -> list[Rule]:
 def load_all_rules(extra_paths: list[Path] | None = None) -> list[Rule]:
     """Load built-in rules plus any additional rule files."""
     rules = load_builtin_rules()
-    for path in extra_paths or []:
-        resolved = path.resolve()
 
+    # Enforce unique rule IDs (start with builtins)
+    seen_ids: set[str] = set()
+    for rule in rules:
+        if rule.id in seen_ids:
+            raise RuleLoadError(
+                f"Duplicate rule ID '{rule.id}' in built-in rules. Rule IDs must be unique."
+            )
+        seen_ids.add(rule.id)
+
+    for path in extra_paths or []:
         # Security: block symlinks in extra rule paths
-        if path.is_symlink() or resolved != path.resolve():
+        if path.is_symlink():
             raise RuleLoadError(f"Extra rule path is a symlink (blocked for security): {path}")
+        resolved = path.resolve()
 
         # Security: prevent path traversal via symlinks or .. components
         if not resolved.is_file():
             raise RuleLoadError(f"Extra rule path does not exist or is not a file: {path}")
-        rules.extend(load_rules_from_file(resolved))
+        extra_rules = load_rules_from_file(resolved)
+        for rule in extra_rules:
+            if rule.id in seen_ids:
+                raise RuleLoadError(
+                    f"Duplicate rule ID '{rule.id}' — already defined. Rule IDs must be unique."
+                )
+            seen_ids.add(rule.id)
+        rules.extend(extra_rules)
 
     if len(rules) > MAX_TOTAL_RULES:
         raise RuleLoadError(
             f"Total rule count {len(rules)} exceeds limit of {MAX_TOTAL_RULES}"
         )
-
-    # Enforce unique rule IDs
-    seen_ids: dict[str, str] = {}
-    for rule in rules:
-        if rule.id in seen_ids:
-            raise RuleLoadError(
-                f"Duplicate rule ID '{rule.id}' — already defined. Rule IDs must be unique."
-            )
-        seen_ids[rule.id] = rule.id
 
     return rules

@@ -6,10 +6,13 @@ Security: recursion depth is capped to prevent stack overflow from malicious rul
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from threatcode.engine.rules.loader import Rule
 from threatcode.ir.nodes import InfraNode
+
+logger = logging.getLogger(__name__)
 
 # Max nesting depth for logical operators (all_of, any_of, none_of, not)
 MAX_CONDITION_DEPTH = 10
@@ -38,10 +41,10 @@ def matches_rule(rule: Rule, node: InfraNode) -> bool:
 
 def _detect_operator(condition: dict[str, Any]) -> str | None:
     """Detect top-level logical operator."""
-    for op in ("all_of", "any_of", "none_of", "not"):
-        if op in condition:
-            return op
-    return None
+    found: list[str] = [op for op in ("all_of", "any_of", "none_of", "not") if op in condition]
+    if len(found) > 1:
+        logger.warning("Condition has multiple operator keys %s — using first", found)
+    return found[0] if found else None
 
 
 def _evaluate_property_conditions(condition: dict[str, Any], node: InfraNode) -> bool:
@@ -103,7 +106,7 @@ def _evaluate_check_operators(
             if not isinstance(value, int | float) or value >= expected:
                 return False
         elif op == "is_true":
-            if not (bool(value) == expected):
+            if bool(value) != expected:
                 return False
         elif op == "is_empty":
             result = value is None or value == "" or value == [] or value == {}
@@ -138,18 +141,26 @@ def _resolve_path(data: dict[str, Any], path: str) -> Any:
 
 # Logical operators (depth-limited)
 def _op_all_of(conditions: list[dict[str, Any]], node: InfraNode, depth: int) -> bool:
+    if not isinstance(conditions, list):
+        return False
     return all(evaluate_condition(c, node, depth) for c in conditions)
 
 
 def _op_any_of(conditions: list[dict[str, Any]], node: InfraNode, depth: int) -> bool:
+    if not isinstance(conditions, list):
+        return False
     return any(evaluate_condition(c, node, depth) for c in conditions)
 
 
 def _op_none_of(conditions: list[dict[str, Any]], node: InfraNode, depth: int) -> bool:
+    if not isinstance(conditions, list):
+        return False
     return not any(evaluate_condition(c, node, depth) for c in conditions)
 
 
 def _op_not(condition: dict[str, Any], node: InfraNode, depth: int) -> bool:
+    if not isinstance(condition, dict):
+        return False
     return not evaluate_condition(condition, node, depth)
 
 

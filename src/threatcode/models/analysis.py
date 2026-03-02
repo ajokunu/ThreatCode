@@ -18,7 +18,9 @@ class AnalysisResult:
     report: ThreatReport
 
     def to_dict(self) -> dict[str, Any]:
-        return self.report.to_dict()
+        result = self.report.to_dict()
+        result["graph"] = self.graph.to_dict()
+        return result
 
     def to_svg(self) -> str:
         from threatcode.formatters.diagram import format_diagram

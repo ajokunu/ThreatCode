@@ -65,9 +65,9 @@ class TestLoadConfig:
         cfg = load_config(None)
         assert cfg.no_llm is True
 
-    def test_nonexistent_explicit_path_returns_defaults(self) -> None:
-        cfg = load_config(Path("/nonexistent/.threatcode.yml"))
-        assert isinstance(cfg, ThreatCodeConfig)
+    def test_nonexistent_explicit_path_raises_error(self) -> None:
+        with pytest.raises(ConfigError, match="Config file not found"):
+            load_config(Path("/nonexistent/.threatcode.yml"))
 
     def test_restricted_fields_stripped_on_auto_discovery(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

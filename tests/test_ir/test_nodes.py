@@ -8,6 +8,8 @@ from threatcode.ir.nodes import (
     InfraNode,
     NodeCategory,
     TrustZone,
+    _rebuild_category_prefixes,
+    _rebuild_trust_zone_prefixes,
     categorize_resource,
     infer_trust_zone,
     register_category,
@@ -57,19 +59,23 @@ class TestInferTrustZone:
 class TestRegisterCategory:
     def test_register_and_categorize(self) -> None:
         register_category("k8s_deployment", NodeCategory.CONTAINER)
-        assert categorize_resource("k8s_deployment") == NodeCategory.CONTAINER
-        assert categorize_resource("k8s_deployment_v1") == NodeCategory.CONTAINER
-        # Clean up
-        del CATEGORY_MAP["k8s_deployment"]
+        try:
+            assert categorize_resource("k8s_deployment") == NodeCategory.CONTAINER
+            assert categorize_resource("k8s_deployment_v1") == NodeCategory.CONTAINER
+        finally:
+            CATEGORY_MAP.pop("k8s_deployment", None)
+            _rebuild_category_prefixes()
 
 
 class TestRegisterTrustZone:
     def test_register_and_infer(self) -> None:
         register_trust_zone("k8s_ingress", TrustZone.DMZ)
-        zone = infer_trust_zone("k8s_ingress_controller", {})
-        assert zone == TrustZone.DMZ
-        # Clean up
-        del TRUST_ZONE_MAP["k8s_ingress"]
+        try:
+            zone = infer_trust_zone("k8s_ingress_controller", {})
+            assert zone == TrustZone.DMZ
+        finally:
+            TRUST_ZONE_MAP.pop("k8s_ingress", None)
+            _rebuild_trust_zone_prefixes()
 
 
 class TestInfraNode:

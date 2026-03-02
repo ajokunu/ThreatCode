@@ -62,10 +62,16 @@ _RULE_ID_RE = re.compile(r"[^A-Za-z0-9_.\-]")
 
 
 def _sanitize_for_prompt(text: str, max_len: int = 200) -> str:
-    """Strip control characters and truncate text for safe prompt inclusion."""
+    """Strip control characters, bidi overrides, and truncate for safe prompt inclusion."""
     # Remove ASCII control characters (0x00-0x1F except \n \r \t, and 0x7F)
     cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    # Remove Unicode bidi override characters that can disguise text direction
+    cleaned = re.sub(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", cleaned)
     return cleaned[:max_len]
+
+
+# Max size for serialized graph data in prompt (200KB, leaves room for system prompt)
+MAX_GRAPH_JSON_LENGTH = 200 * 1024
 
 
 def build_analysis_prompt(
@@ -74,6 +80,8 @@ def build_analysis_prompt(
 ) -> str:
     """Build the analysis prompt with graph context."""
     graph_json = json.dumps(graph_data, indent=2)
+    if len(graph_json) > MAX_GRAPH_JSON_LENGTH:
+        graph_json = graph_json[:MAX_GRAPH_JSON_LENGTH] + "\n... [truncated]"
 
     existing_note = ""
     if existing_rule_ids:

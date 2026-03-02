@@ -49,12 +49,15 @@ def _build_annotations(report: ThreatReport) -> list[dict[str, Any]]:
     """Build Code Insights annotations."""
     annotations: list[dict[str, Any]] = []
     for threat in report.threats:
+        # Bitbucket API limits: summary 450 chars, details 2000 chars
+        summary = threat.title[:450]
+        details = threat.description.strip()[:2000]
         annotations.append(
             {
                 "external_id": threat.id,
                 "annotation_type": "VULNERABILITY",
-                "summary": threat.title,
-                "details": threat.description.strip(),
+                "summary": summary,
+                "details": details,
                 "severity": _to_bb_severity(threat.severity),
                 "path": threat.resource_address,
                 "line": 1,
@@ -63,11 +66,14 @@ def _build_annotations(report: ThreatReport) -> list[dict[str, Any]]:
     return annotations
 
 
+_BB_SEVERITIES: dict[Severity, str] = {
+    Severity.CRITICAL: "CRITICAL",
+    Severity.HIGH: "HIGH",
+    Severity.MEDIUM: "MEDIUM",
+    Severity.LOW: "LOW",
+    Severity.INFO: "LOW",
+}
+
+
 def _to_bb_severity(severity: Severity) -> str:
-    return {
-        Severity.CRITICAL: "CRITICAL",
-        Severity.HIGH: "HIGH",
-        Severity.MEDIUM: "MEDIUM",
-        Severity.LOW: "LOW",
-        Severity.INFO: "LOW",
-    }[severity]
+    return _BB_SEVERITIES.get(severity, "MEDIUM")

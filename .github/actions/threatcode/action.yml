@@ -42,7 +42,7 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -53,19 +53,27 @@ runs:
     - name: Run ThreatCode scan
       id: scan
       shell: bash
+      # Use environment variables to prevent shell injection from inputs
+      env:
+        TC_INPUT_FILE: ${{ inputs.input-file }}
+        TC_FORMAT: ${{ inputs.format }}
+        TC_MIN_SEVERITY: ${{ inputs.min-severity }}
+        TC_NO_LLM: ${{ inputs.no-llm }}
+        TC_CONFIG_FILE: ${{ inputs.config-file }}
+        TC_EXTRA_RULES: ${{ inputs.extra-rules }}
       run: |
-        ARGS="--format ${{ inputs.format }} --min-severity ${{ inputs.min-severity }}"
+        ARGS="--format $TC_FORMAT --min-severity $TC_MIN_SEVERITY"
 
-        if [ "${{ inputs.no-llm }}" = "true" ]; then
+        if [ "$TC_NO_LLM" = "true" ]; then
           ARGS="$ARGS --no-llm"
         fi
 
-        if [ -n "${{ inputs.config-file }}" ]; then
-          ARGS="$ARGS --config ${{ inputs.config-file }}"
+        if [ -n "$TC_CONFIG_FILE" ]; then
+          ARGS="$ARGS --config $TC_CONFIG_FILE"
         fi
 
-        if [ -n "${{ inputs.extra-rules }}" ]; then
-          IFS=',' read -ra RULES <<< "${{ inputs.extra-rules }}"
+        if [ -n "$TC_EXTRA_RULES" ]; then
+          IFS=',' read -ra RULES <<< "$TC_EXTRA_RULES"
           for rule in "${RULES[@]}"; do
             ARGS="$ARGS --rules $rule"
           done
@@ -73,16 +81,16 @@ runs:
 
         SARIF_FILE="threatcode-results.sarif"
 
-        if [ "${{ inputs.format }}" = "sarif" ]; then
+        if [ "$TC_FORMAT" = "sarif" ]; then
           ARGS="$ARGS -o $SARIF_FILE"
         fi
 
-        threatcode scan ${{ inputs.input-file }} $ARGS || true
+        threatcode scan "$TC_INPUT_FILE" $ARGS || true
 
         echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
 
         if [ -f "$SARIF_FILE" ]; then
-          COUNT=$(python -c "import json; d=json.load(open('$SARIF_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))")
+          COUNT=$(python -c "import json, sys; d=json.load(open(sys.argv[1])); print(len(d.get('runs',[{}])[0].get('results',[])))" "$SARIF_FILE")
           echo "threat-count=$COUNT" >> "$GITHUB_OUTPUT"
         else
           echo "threat-count=0" >> "$GITHUB_OUTPUT"
@@ -90,7 +98,7 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning
       if: inputs.format == 'sarif'
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@ea9e4e37992a54ee68a9571ad585ae0e9ce4e12b # v3.28.13
       with:
         sarif_file: ${{ steps.scan.outputs.sarif-file }}
         category: threatcode

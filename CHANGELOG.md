@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.4.3] - 2026-03-02
+
+### Security
+- **Action command injection**: Composite action (`action.yml`) now uses environment variables instead of direct `${{ inputs.* }}` interpolation in shell — prevents shell injection via crafted input values
+- **Action SHA pinning**: Pinned `setup-python` and `codeql-action/upload-sarif` to SHA hashes in composite action
+- **SSRF 0.0.0.0 blocking**: `_validate_base_url()` now checks `is_unspecified` — blocks the unspecified address (`0.0.0.0`)
+- **SSRF port fallback**: DNS resolution uses port 80 for `http://` URLs (was incorrectly defaulting to 443)
+- **Response size limit**: OpenAI-compatible client caps response body at 10 MB to prevent memory exhaustion
+- **Bidi character stripping**: `_sanitize_for_prompt()` removes Unicode bidirectional override characters (U+200E–U+202E, U+2066–U+2069)
+- **Redactor prefix collision**: `unredact_string()` replaces longest placeholders first to prevent partial-match corruption
+- **Redactor sensitive value recursion**: Nested dicts/lists under sensitive keys now fully redacted (previously only top-level dict values were replaced)
+
+### Fixed
+- **LLM failure resilience**: `LLMError` from LLM analysis no longer propagates — rule-based results are preserved with a logged warning
+- **Edge dedup ordering**: Edge dedup key is now committed only after confirming the edge passes the limit check
+- **Confidence type guard**: `Threat.confidence` validates type before clamping — non-numeric values default to 1.0
+- **Severity ValueError in public API**: `scan()`/`analyze()` now convert invalid `min_severity` to `ThreatCodeError` instead of leaking `ValueError`
+- **subnet_id merge**: `subnet_id` is now merged into `subnet_ids` list instead of clobbering it
+- **Type index cleanup**: Duplicate resource addresses properly remove old entries from `_type_index`
+- **LLM field unredaction**: `title`, `description`, and `mitigation` from LLM output are now unredacted alongside `resource_address`
+- **AnalysisResult.to_dict()**: Now includes `graph` topology data, not just the threat report
+- **CloudFormation detection**: Requires `Resources` plus a second CFN-specific key to avoid false positives on arbitrary YAML with a `Resources` key
+- **Bitbucket field limits**: Annotation `summary` capped at 450 chars, `details` at 2000 chars per Bitbucket API limits
+- **Multiple operator warning**: Rule matcher warns when a condition contains multiple operator keys (`all_of`, `any_of`, etc.)
+- **Rule ID dedup**: Duplicate rule IDs are now checked incrementally during loading (builtins checked before extras)
+- **CLI error handling**: `InfraGraph.from_parsed()`, `engine.analyze()`, and `diff` command wrapped in error handlers
+- **LLM response truncation log**: Warning now correctly says "chars" instead of "bytes"
+
+## [0.4.2] - 2026-03-02
+
+### Fixed
+- **Config explicit path**: `--config` pointing to nonexistent file now raises `ConfigError` instead of silently falling through to auto-discovery
+- **CLI unknown provider**: Unknown LLM provider now warns and falls back to rules-only instead of silently returning None
+- **Public API DRY**: Extracted shared `_run_pipeline()` helper — `scan()` and `analyze()` no longer duplicate 90% of their code
+- **Parser truthiness bug**: `parsed_data or content` replaced with `parsed_data if parsed_data is not None` — empty dicts no longer skipped
+- **Swallowed exceptions**: Parser registry now logs `DEBUG` messages when parsers fail instead of silently swallowing
+- **SARIF ruleIndex**: Each result now references the correct `ruleIndex` instead of hardcoded `0` — fixes GitHub Code Scanning misattribution
+- **Edge deduplication**: Infrastructure graph now deduplicates edges by (source, target, type) tuple
+- **Subnet/SG false edges**: Subnet and security group inference now matches by reference ID, not blindly connecting ALL nodes of matching type
+- **Redactor iteration safety**: `_redact_string` collects all regex matches before mutating, fixing potential mid-iteration corruption
+- **Redactor overflow mapping**: Overflow placeholder now stored in `_reverse` dict for proper unredaction
+- **Redactor performance**: `sensitive_keys` set built once at init instead of rebuilt on every `_redact_field` call
+- **Severity total ordering**: `__eq__` now uses rank-based comparison consistent with `__lt__`, fixing sort stability
+- **Confidence bounds**: `Threat.confidence` clamped to [0.0, 1.0] on construction
+- **LLM Severity ValueError**: `hybrid.py` catches `ValueError` from invalid severity strings instead of crashing
+- **Matcher type guards**: `all_of`/`any_of`/`none_of`/`not` operators validate input types before evaluation
+- **Symlink detection**: Fixed tautological `resolved != path.resolve()` comparison in rule loader
+- **Rule field types**: Rule loader now coerces YAML fields to `str` and validates `condition`/`metadata` types
+- **Bitbucket severity fallback**: `_to_bb_severity` uses `.get()` with `"MEDIUM"` fallback instead of bare dict indexing
+- **SARIF severity fallback**: `_severity_to_sarif_level` uses `.get()` with `"warning"` fallback
+- **SARIF PascalCase**: `_to_pascal_case` now handles hyphens and underscores
+- **Diff error handling**: `compute_diff` validates file existence and JSON validity with clear error messages
+- **DRY `_escape_md`**: Extracted to `formatters/_utils.py` shared by `markdown.py` and `diff.py`
+- **Exception chains**: `ValueError` from `ipaddress` now properly chained with `from e`
+- **OpenAI client**: Catches `IndexError` and `UnicodeDecodeError` for empty/malformed API responses
+- **Graph prompt size**: `build_analysis_prompt` caps graph JSON at 200KB to prevent prompt overflow
+- **Duplicate node warning**: Graph logs warning when a resource address is seen twice
+- **Unused imports**: Removed dead `hashlib` import from `loader.py`, dead `_ALLOWED_THREAT_KEYS` from `parser.py`
+- **Test global state**: `test_nodes.py` registration tests use `try/finally` for cleanup guarantees
+- **`__main__.py`**: Added `if __name__ == "__main__"` guard
+
+### Changed
+- **CI**: Added `permissions: contents: read`, `concurrency` group, `timeout-minutes`, `cache: pip`, `fail-fast: false`, `ruff format --check`
+- **Build**: Removed unused `setuptools-scm` from build requirements
+- **LLM parser**: Logs `DEBUG` message when defaulting invalid `stride_category` or `severity` from LLM output
+
 ## [0.4.1] - 2026-03-02
 
 ### Fixed

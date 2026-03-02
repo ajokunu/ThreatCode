@@ -24,16 +24,17 @@ def format_sarif(report: ThreatReport, indent: int = 2) -> str:
 def _build_sarif(report: ThreatReport) -> dict[str, Any]:
     rules: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
-    rule_ids_seen: set[str] = set()
+    rule_id_to_index: dict[str, int] = {}
 
     for threat in report.threats:
         # Add rule definition (deduplicate by rule_id or threat id)
         rule_key = threat.rule_id or threat.id
-        if rule_key not in rule_ids_seen:
-            rule_ids_seen.add(rule_key)
+        if rule_key not in rule_id_to_index:
+            rule_id_to_index[rule_key] = len(rules)
             rules.append(_threat_to_rule(threat, rule_key))
 
-        results.append(_threat_to_result(threat, rule_key))
+        rule_index = rule_id_to_index[rule_key]
+        results.append(_threat_to_result(threat, rule_key, rule_index))
 
     return {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
@@ -84,10 +85,10 @@ def _threat_to_rule(threat: Threat, rule_id: str) -> dict[str, Any]:
     }
 
 
-def _threat_to_result(threat: Threat, rule_id: str) -> dict[str, Any]:
+def _threat_to_result(threat: Threat, rule_id: str, rule_index: int) -> dict[str, Any]:
     return {
         "ruleId": rule_id,
-        "ruleIndex": 0,
+        "ruleIndex": rule_index,
         "level": _severity_to_sarif_level(threat.severity),
         "message": {
             "text": (
@@ -122,15 +123,20 @@ def _threat_to_result(threat: Threat, rule_id: str) -> dict[str, Any]:
     }
 
 
+_SARIF_LEVELS: dict[Severity, str] = {
+    Severity.CRITICAL: "error",
+    Severity.HIGH: "error",
+    Severity.MEDIUM: "warning",
+    Severity.LOW: "note",
+    Severity.INFO: "note",
+}
+
+
 def _severity_to_sarif_level(severity: Severity) -> str:
-    return {
-        Severity.CRITICAL: "error",
-        Severity.HIGH: "error",
-        Severity.MEDIUM: "warning",
-        Severity.LOW: "note",
-        Severity.INFO: "note",
-    }[severity]
+    return _SARIF_LEVELS.get(severity, "warning")
 
 
 def _to_pascal_case(text: str) -> str:
-    return "".join(word.capitalize() for word in text.split())
+    return "".join(
+        word.capitalize() for word in re.split(r"[\s_\-]+", text) if word
+    )

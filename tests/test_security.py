@@ -337,15 +337,15 @@ class TestRuleLoaderHardening:
         with pytest.raises(RuleLoadError, match="byte limit"):
             load_rules_from_file(large_file)
 
-    def test_builtin_rules_log_checksums(self, caplog: pytest.LogCaptureFixture) -> None:
-        """A08-01: Built-in rule files log SHA-256 checksums."""
+    def test_builtin_rules_log_file_info(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A08-01: Built-in rule files log file info at DEBUG level."""
         import logging
 
         from threatcode.engine.rules.loader import load_builtin_rules
 
         with caplog.at_level(logging.DEBUG):
             load_builtin_rules()
-        assert any("sha256=" in r.message for r in caplog.records)
+        assert any("Loading built-in rules:" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

@@ -32,6 +32,33 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
+_SENSITIVE_KEYS = frozenset({
+    "arn",
+    "account_id",
+    "tags",
+    "tag",
+    "ip_address",
+    "private_ip",
+    "public_ip",
+    "owner_id",
+    "caller_reference",
+    "secret",
+    "password",
+    "token",
+    "api_key",
+    "access_key",
+    "secret_key",
+    "connection_string",
+    "credentials",
+    "private_key",
+    "certificate",
+    "name",
+    "module",
+    "provider",
+    "source_location",
+})
+
+
 class Redactor:
     """Redacts sensitive values from data before sending to LLM."""
 
@@ -44,7 +71,7 @@ class Redactor:
         self._mapping: dict[str, str] = {}  # original -> redacted
         self._reverse: dict[str, str] = {}  # redacted -> original
         self._counter = 0
-        self._extra_fields = set(extra_fields or [])
+        self._sensitive_keys = _SENSITIVE_KEYS | set(extra_fields or [])
 
     def redact(self, data: Any, _depth: int = 0) -> Any:
         """Recursively redact sensitive values in a data structure."""
@@ -62,60 +89,61 @@ class Redactor:
     def unredact_string(self, text: str) -> str:
         """Reverse redaction on a string."""
         result = text
-        for redacted, original in self._reverse.items():
+        # Sort by longest placeholder first to avoid prefix collisions
+        # (e.g. REDACTED_x_10 must be replaced before REDACTED_x_1)
+        for redacted, original in sorted(
+            self._reverse.items(), key=lambda kv: len(kv[0]), reverse=True
+        ):
             result = result.replace(redacted, original)
         return result
 
     def _redact_field(self, key: str, value: Any, depth: int = 0) -> Any:
         """Redact a dict field based on key name."""
-        sensitive_keys = {
-            "arn",
-            "account_id",
-            "tags",
-            "tag",
-            "ip_address",
-            "private_ip",
-            "public_ip",
-            "owner_id",
-            "caller_reference",
-            "secret",
-            "password",
-            "token",
-            "api_key",
-            "access_key",
-            "secret_key",
-            "connection_string",
-            "credentials",
-            "private_key",
-            "certificate",
-            "name",
-            "module",
-            "provider",
-            "source_location",
-        }
-        sensitive_keys.update(self._extra_fields)
-
-        if key.lower() in sensitive_keys:
-            if isinstance(value, str):
-                return self._get_placeholder(value, key)
-            if isinstance(value, dict):
-                return {k: self._get_placeholder(str(v), f"{key}.{k}") for k, v in value.items()}
+        if key.lower() in self._sensitive_keys:
+            return self._redact_sensitive_value(value, key, depth)
         return self.redact(value, depth + 1)
+
+    def _redact_sensitive_value(self, value: Any, label: str, depth: int = 0) -> Any:
+        """Recursively redact all leaf values under a sensitive key."""
+        if depth > MAX_REDACT_DEPTH:
+            return "[REDACTED_DEPTH_LIMIT]"
+        if isinstance(value, str):
+            return self._get_placeholder(value, label)
+        if isinstance(value, dict):
+            return {
+                k: self._redact_sensitive_value(v, f"{label}.{k}", depth + 1)
+                for k, v in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                self._redact_sensitive_value(item, f"{label}[]", depth + 1)
+                for item in value
+            ]
+        # Non-string primitives (int, float, bool) — redact as string
+        if value is not None:
+            return self._get_placeholder(str(value), label)
+        return value
 
     def _redact_string(self, text: str) -> str:
         """Apply regex-based redaction to a string."""
         result = text
         for pattern_name, pattern in _PATTERNS.items():
+            # Collect all matches from current result (not original text),
+            # so each pattern sees the output of previous patterns
+            matches: list[str] = []
             for match in pattern.finditer(result):
-                # For aws_account_id, redact only the captured group (the 12-digit number)
                 if pattern_name == "aws_account_id" and match.lastindex:
-                    original = match.group(1)
+                    matches.append(match.group(1))
                 else:
-                    original = match.group()
-                if original not in self._mapping:
-                    placeholder = self._get_placeholder(original, pattern_name)
-                    self._mapping[original] = placeholder
-                result = result.replace(original, self._mapping[original])
+                    matches.append(match.group())
+            # Deduplicate while preserving order, then replace
+            seen: set[str] = set()
+            for original in matches:
+                if original in seen:
+                    continue
+                seen.add(original)
+                placeholder = self._get_placeholder(original, pattern_name)
+                result = result.replace(original, placeholder)
         return result
 
     def _get_placeholder(self, original: str, label: str) -> str:
@@ -128,7 +156,10 @@ class Redactor:
                 "Redaction mapping limit reached (%d entries) — using generic placeholder",
                 MAX_REDACTION_MAPPINGS,
             )
-            return f"REDACTED_{label}_overflow"
+            placeholder = f"REDACTED_{label}_overflow"
+            # Don't grow _mapping, but still allow reverse lookup
+            self._reverse[placeholder] = original
+            return placeholder
 
         if self._strategy == "hash":
             h = hashlib.sha256(original.encode()).hexdigest()[:8]

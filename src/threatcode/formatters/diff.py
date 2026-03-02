@@ -3,20 +3,31 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
+from threatcode.exceptions import ThreatCodeError
+from threatcode.formatters._utils import escape_md as _escape_md
 
-def _escape_md(text: str) -> str:
-    """Escape characters that have special meaning in Markdown."""
-    return re.sub(r"([<>\[\]()`])", r"\\\1", text)
+
+def _load_report(path: str) -> dict[str, Any]:
+    """Load and validate a threat report JSON file."""
+    file_path = Path(path)
+    if not file_path.exists():
+        raise ThreatCodeError(f"Report file not found: {file_path.name}")
+    try:
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ThreatCodeError(f"Invalid JSON in report file {file_path.name}: {e}") from e
+    if not isinstance(data, dict):
+        raise ThreatCodeError(f"Report file {file_path.name} must contain a JSON object")
+    return data
 
 
 def compute_diff(baseline_path: str, current_path: str) -> dict[str, Any]:
     """Compare two threat report JSON files."""
-    baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
-    current = json.loads(Path(current_path).read_text(encoding="utf-8"))
+    baseline = _load_report(baseline_path)
+    current = _load_report(current_path)
 
     baseline_threats = {t["id"]: t for t in baseline.get("threats", [])}
     current_threats = {t["id"]: t for t in current.get("threats", [])}

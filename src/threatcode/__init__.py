@@ -5,10 +5,60 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from threatcode.models.analysis import AnalysisResult
+from threatcode.exceptions import ThreatCodeError as ThreatCodeError
 
-__version__ = "0.4.1"
+if TYPE_CHECKING:
+    from threatcode.ir.graph import InfraGraph
+    from threatcode.models.analysis import AnalysisResult
+    from threatcode.models.report import ThreatReport
+
+__version__ = "0.4.3"
+
+
+def _run_pipeline(
+    input_path: str | Path,
+    *,
+    no_llm: bool = True,
+    min_severity: str = "info",
+    config_path: str | Path | None = None,
+    extra_rule_paths: list[str | Path] | None = None,
+) -> tuple[InfraGraph, ThreatReport]:
+    """Shared analysis pipeline for scan() and analyze().
+
+    Returns:
+        Tuple of (InfraGraph, ThreatReport).
+
+    Raises:
+        ThreatCodeError: On any analysis failure.
+    """
+    from threatcode.config import load_config
+    from threatcode.engine.hybrid import HybridEngine
+    from threatcode.ir.graph import InfraGraph
+    from threatcode.models.threat import Severity
+    from threatcode.parsers import detect_and_parse
+
+    cfg_path = Path(config_path) if config_path else None
+    config = load_config(cfg_path)
+    config.no_llm = no_llm
+
+    parsed = detect_and_parse(input_path)
+    graph = InfraGraph.from_parsed(parsed)
+
+    extra = [Path(p) for p in (extra_rule_paths or [])]
+    engine = HybridEngine(config=config, extra_rule_paths=extra)
+    report = engine.analyze(graph, input_file=str(input_path))
+
+    if min_severity != "info":
+        try:
+            threshold = Severity(min_severity)
+        except ValueError as e:
+            raise ThreatCodeError(
+                f"Invalid severity '{min_severity}'. "
+                f"Valid values: critical, high, medium, low, info"
+            ) from e
+        report.threats = report.filter_by_severity(threshold)
+
+    return graph, report
 
 
 def scan(
@@ -32,27 +82,18 @@ def scan(
 
     Returns:
         Threat report as a dictionary.
+
+    Raises:
+        ThreatCodeError: On parsing, config, or analysis failures.
+        FileNotFoundError: If input_path does not exist.
     """
-    from threatcode.config import load_config
-    from threatcode.engine.hybrid import HybridEngine
-    from threatcode.ir.graph import InfraGraph
-    from threatcode.models.threat import Severity
-    from threatcode.parsers import detect_and_parse
-
-    cfg_path = Path(config_path) if config_path else None
-    config = load_config(cfg_path)
-    config.no_llm = no_llm
-
-    parsed = detect_and_parse(input_path)
-    graph = InfraGraph.from_parsed(parsed)
-
-    extra = [Path(p) for p in (extra_rule_paths or [])]
-    engine = HybridEngine(config=config, extra_rule_paths=extra)
-    report = engine.analyze(graph, input_file=str(input_path))
-
-    if min_severity != "info":
-        report.threats = report.filter_by_severity(Severity(min_severity))
-
+    _graph, report = _run_pipeline(
+        input_path,
+        no_llm=no_llm,
+        min_severity=min_severity,
+        config_path=config_path,
+        extra_rule_paths=extra_rule_paths,
+    )
     return report.to_dict()
 
 
@@ -78,26 +119,18 @@ def analyze(
 
     Returns:
         AnalysisResult with .graph (InfraGraph) and .report (ThreatReport).
+
+    Raises:
+        ThreatCodeError: On parsing, config, or analysis failures.
+        FileNotFoundError: If input_path does not exist.
     """
-    from threatcode.config import load_config
-    from threatcode.engine.hybrid import HybridEngine
-    from threatcode.ir.graph import InfraGraph
     from threatcode.models.analysis import AnalysisResult
-    from threatcode.models.threat import Severity
-    from threatcode.parsers import detect_and_parse
 
-    cfg_path = Path(config_path) if config_path else None
-    config = load_config(cfg_path)
-    config.no_llm = no_llm
-
-    parsed = detect_and_parse(input_path)
-    graph = InfraGraph.from_parsed(parsed)
-
-    extra = [Path(p) for p in (extra_rule_paths or [])]
-    engine = HybridEngine(config=config, extra_rule_paths=extra)
-    report = engine.analyze(graph, input_file=str(input_path))
-
-    if min_severity != "info":
-        report.threats = report.filter_by_severity(Severity(min_severity))
-
+    graph, report = _run_pipeline(
+        input_path,
+        no_llm=no_llm,
+        min_severity=min_severity,
+        config_path=config_path,
+        extra_rule_paths=extra_rule_paths,
+    )
     return AnalysisResult(graph=graph, report=report)

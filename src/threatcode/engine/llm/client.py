@@ -28,12 +28,14 @@ from threatcode.exceptions import LLMError
 
 logger = logging.getLogger(__name__)
 
-# Security: max prompt size to prevent excessive API costs
-MAX_PROMPT_LENGTH = 256 * 1024  # 256 KB
+# Security: max prompt size (in chars) to prevent excessive API costs
+MAX_PROMPT_LENGTH = 256 * 1024  # 256K chars
 # Security: API timeout in seconds
 API_TIMEOUT_SECONDS = 120
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
+# Security: max response body size to prevent memory abuse
+MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def _validate_base_url(url: str) -> None:
@@ -59,8 +61,11 @@ def _validate_base_url(url: str) -> None:
         )
 
     # Resolve hostname to IP addresses and validate each one
+    default_port = 443 if parsed.scheme == "https" else 80
     try:
-        addrinfo = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        addrinfo = socket.getaddrinfo(
+            hostname, parsed.port or default_port, proto=socket.IPPROTO_TCP
+        )
     except socket.gaierror as e:
         raise LLMError(f"Cannot resolve hostname '{hostname}': {e}") from e
 
@@ -71,13 +76,15 @@ def _validate_base_url(url: str) -> None:
         ip_str = sockaddr[0]
         try:
             addr = ipaddress.ip_address(ip_str)
-        except ValueError:
-            raise LLMError(f"base_url resolved to invalid IP: {ip_str}")
+        except ValueError as e:
+            raise LLMError(f"base_url resolved to invalid IP: {ip_str}") from e
 
         # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             addr = addr.ipv4_mapped
 
+        if addr.is_unspecified:
+            raise LLMError(f"base_url resolves to unspecified address ({ip_str})")
         if addr.is_loopback:
             raise LLMError(f"base_url resolves to loopback address ({ip_str})")
         if addr.is_private:
@@ -148,7 +155,7 @@ class AnthropicLLMClient(BaseLLMClient):
     def analyze(self, prompt: str) -> str:
         if len(prompt) > MAX_PROMPT_LENGTH:
             logger.warning(
-                "Prompt truncated: %d bytes exceeds %d limit",
+                "Prompt truncated: %d chars exceeds %d limit",
                 len(prompt),
                 MAX_PROMPT_LENGTH,
             )
@@ -232,9 +239,21 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         try:
             opener = urllib.request.build_opener(_SafeRedirectHandler)
             with opener.open(req, timeout=self._timeout) as resp:
-                data = json.loads(resp.read().decode())
+                raw_bytes = resp.read(MAX_RESPONSE_SIZE + 1)
+                if len(raw_bytes) > MAX_RESPONSE_SIZE:
+                    raise LLMError(
+                        f"Response body exceeds {MAX_RESPONSE_SIZE} byte limit"
+                    )
+                raw = raw_bytes.decode("utf-8")
+                data = json.loads(raw)
                 return str(data["choices"][0]["message"]["content"])
-        except (urllib.error.URLError, KeyError, json.JSONDecodeError) as e:
+        except (
+            urllib.error.URLError,
+            KeyError,
+            IndexError,
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+        ) as e:
             raise LLMError(f"OpenAI-compatible API call failed: {e}") from e
 
 

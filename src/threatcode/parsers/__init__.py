@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from threatcode.exceptions import ParseError, UnsupportedFormatError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from threatcode.parsers.base import BaseParser, ParsedOutput
@@ -100,10 +103,14 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
                 parser = entry.factory()
                 if hasattr(parser, "parse_file") and parsed_data is None:
                     return parser.parse_file(path)  # type: ignore[no-any-return]
-                return parser.parse(parsed_data or content, source_path=str(path))
+                data = parsed_data if parsed_data is not None else content
+                return parser.parse(data, source_path=str(path))
         except (ParseError, UnsupportedFormatError):
             raise
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                "Parser '%s' failed for %s: %s", entry.name, path.name, exc
+            )
             continue
 
     raise UnsupportedFormatError(
@@ -124,9 +131,16 @@ def _detect_terraform_plan(path: Path, content: str, data: Any) -> bool:
 
 
 def _detect_cloudformation(path: Path, content: str, data: Any) -> bool:
-    return isinstance(data, dict) and (
-        "AWSTemplateFormatVersion" in data or "Resources" in data
-    )
+    if not isinstance(data, dict):
+        return False
+    if "AWSTemplateFormatVersion" in data:
+        return True
+    # Require "Resources" plus at least one other CFN-specific key to avoid false positives
+    if "Resources" in data and any(
+        k in data for k in ("Description", "Parameters", "Outputs", "Mappings", "Conditions")
+    ):
+        return True
+    return False
 
 
 def _detect_terraform_hcl(path: Path, content: str, data: Any) -> bool:

@@ -23,21 +23,6 @@ MAX_RESPONSE_LENGTH = 512 * 1024
 # Security: cap the number of threats from a single LLM response
 MAX_LLM_THREATS = 100
 
-# Known threat fields — anything else is dropped
-_ALLOWED_THREAT_KEYS = {
-    "title",
-    "description",
-    "stride_category",
-    "severity",
-    "resource_type",
-    "resource_address",
-    "mitigation",
-    "confidence",
-    "mitre_techniques",
-    "mitre_tactics",
-}
-
-
 def parse_llm_threats(response: str) -> list[dict[str, Any]]:
     """Parse and validate LLM response into threat dicts.
 
@@ -50,7 +35,7 @@ def parse_llm_threats(response: str) -> list[dict[str, Any]]:
     """
     if len(response) > MAX_RESPONSE_LENGTH:
         logger.warning(
-            "LLM response truncated: %d bytes exceeds %d byte limit — "
+            "LLM response truncated: %d chars exceeds %d char limit — "
             "output may be incomplete",
             len(response),
             MAX_RESPONSE_LENGTH,
@@ -120,10 +105,14 @@ def _validate_threat(raw: dict[str, Any]) -> dict[str, Any] | None:
 
     stride = raw.get("stride_category", "").lower().strip()
     if stride not in VALID_STRIDE_CATEGORIES:
+        logger.debug("LLM threat '%s': invalid stride_category '%s', defaulting to 'tampering'",
+                      title, stride)
         stride = "tampering"
 
     severity = raw.get("severity", "medium").lower().strip()
     if severity not in VALID_SEVERITIES:
+        logger.debug("LLM threat '%s': invalid severity '%s', defaulting to 'medium'",
+                      title, severity)
         severity = "medium"
 
     confidence = raw.get("confidence", 0.7)

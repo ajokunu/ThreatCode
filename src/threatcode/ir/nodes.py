@@ -24,7 +24,7 @@ class NodeCategory(str, Enum):
     @property
     def stride_element(self) -> str:
         """Map to STRIDE element type."""
-        return _CATEGORY_TO_STRIDE[self]
+        return _CATEGORY_TO_STRIDE.get(self, "process")
 
 
 class TrustZone(str, Enum):

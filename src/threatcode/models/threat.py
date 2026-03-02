@@ -12,6 +12,15 @@ from threatcode.constants import VALID_STRIDE_CATEGORIES
 logger = logging.getLogger(__name__)
 
 
+_SEVERITY_RANKS: dict[str, int] = {
+    "critical": 4,
+    "high": 3,
+    "medium": 2,
+    "low": 1,
+    "info": 0,
+}
+
+
 class Severity(str, Enum):
     CRITICAL = "critical"
     HIGH = "high"
@@ -21,13 +30,15 @@ class Severity(str, Enum):
 
     @property
     def rank(self) -> int:
-        return {
-            Severity.CRITICAL: 4,
-            Severity.HIGH: 3,
-            Severity.MEDIUM: 2,
-            Severity.LOW: 1,
-            Severity.INFO: 0,
-        }[self]
+        return _SEVERITY_RANKS[self.value]
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Severity):
+            return self.rank == other.rank
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.value)
 
     def __ge__(self, other: object) -> bool:
         if not isinstance(other, Severity):
@@ -81,6 +92,15 @@ class Threat:
                 self.title,
             )
             self.stride_category = "information_disclosure"
+
+        # Validate and clamp confidence to valid range
+        if not isinstance(self.confidence, (int, float)):
+            logger.warning(
+                "Invalid confidence type %s, defaulting to 1.0",
+                type(self.confidence).__name__,
+            )
+            self.confidence = 1.0
+        self.confidence = max(0.0, min(1.0, float(self.confidence)))
 
     def to_dict(self) -> dict[str, Any]:
         return {

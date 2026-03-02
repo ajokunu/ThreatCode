@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-import re
-
+from threatcode.formatters._utils import escape_md as _escape_md
 from threatcode.models.report import ThreatReport
 from threatcode.models.threat import Threat
-
-
-def _escape_md(text: str) -> str:
-    """Escape characters that have special meaning in Markdown."""
-    return re.sub(r"([<>\[\]()`])", r"\\\1", text)
 
 
 def format_markdown(report: ThreatReport) -> str:

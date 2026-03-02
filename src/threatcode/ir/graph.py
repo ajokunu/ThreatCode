@@ -48,6 +48,7 @@ class InfraGraph:
         self._graph: nx.DiGraph[str] = nx.DiGraph()
         self._nodes: dict[str, InfraNode] = {}
         self._edges: list[InfraEdge] = []
+        self._edge_keys: set[tuple[str, str, str]] = set()  # (source, target, type) dedup
         self._type_index: dict[str, list[str]] = {}
 
     @classmethod
@@ -115,6 +116,16 @@ class InfraGraph:
 
         category = categorize_resource(resource.resource_type)
         trust_zone = infer_trust_zone(resource.resource_type, resource.properties)
+        if resource.address in self._nodes:
+            logger.warning(
+                "Duplicate resource address '%s' — overwriting previous node",
+                resource.address,
+            )
+            # Remove old entry from type index to avoid stale references
+            old_type = self._nodes[resource.address].resource_type
+            old_list = self._type_index.get(old_type, [])
+            if resource.address in old_list:
+                old_list.remove(resource.address)
         node = InfraNode(
             id=resource.address,
             resource_type=resource.resource_type,
@@ -155,26 +166,42 @@ class InfraGraph:
                         self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
                         break
 
-        # Subnet containment
+        # Subnet containment — match only if we have a reference
         subnet_id = props.get("subnet_id")
         subnet_ids = props.get("subnet_ids") or props.get("subnets") or []
         if subnet_id:
-            subnet_ids = [subnet_id]
+            # Merge single subnet_id into the list rather than clobbering it
+            if isinstance(subnet_ids, list):
+                subnet_ids = [subnet_id, *subnet_ids]
+            else:
+                subnet_ids = [subnet_id]
         if isinstance(subnet_ids, list) and subnet_ids:
+            # Build set of referenced subnet IDs for matching
+            ref_ids = set(str(s) for s in subnet_ids if s)
             for rtype, nids in self._type_index.items():
                 if rtype.endswith("subnet"):
                     for nid in nids:
-                        if nid != resource.address:
-                            self._add_edge(resource.address, nid, EdgeType.CONTAINMENT)
+                        node = self._nodes.get(nid)
+                        if node and nid != resource.address:
+                            # Match by address or name against referenced IDs
+                            if nid in ref_ids or (node.name and node.name in ref_ids):
+                                self._add_edge(
+                                    resource.address, nid, EdgeType.CONTAINMENT
+                                )
 
-        # Security group attachment
+        # Security group attachment — match only if we have a reference
         sg_ids = props.get("security_groups") or props.get("vpc_security_group_ids") or []
         if isinstance(sg_ids, list) and sg_ids:
+            ref_ids = set(str(s) for s in sg_ids if s)
             for rtype, nids in self._type_index.items():
                 if "security_group" in rtype:
                     for nid in nids:
-                        if nid != resource.address:
-                            self._add_edge(resource.address, nid, EdgeType.NETWORK_FLOW)
+                        node = self._nodes.get(nid)
+                        if node and nid != resource.address:
+                            if nid in ref_ids or (node.name and node.name in ref_ids):
+                                self._add_edge(
+                                    resource.address, nid, EdgeType.NETWORK_FLOW
+                                )
 
     def _infer_iam_edges(self, resource: ParsedResource) -> None:
         rtype = resource.resource_type
@@ -208,6 +235,11 @@ class InfraGraph:
                 return
 
     def _add_edge(self, source: str, target: str, edge_type: EdgeType) -> None:
+        # Deduplicate edges
+        key = (source, target, edge_type.value)
+        if key in self._edge_keys:
+            return
+
         if len(self._edges) >= MAX_EDGES:
             logger.warning(
                 "Edge limit reached (%d) — skipping edge %s -> %s",
@@ -215,6 +247,8 @@ class InfraGraph:
             )
             return
 
+        # Only commit the dedup key after confirming the edge will be added
+        self._edge_keys.add(key)
         edge = InfraEdge(source=source, target=target, edge_type=edge_type)
         self._edges.append(edge)
         self._graph.add_edge(source, target, type=edge_type.value)

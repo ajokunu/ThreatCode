@@ -64,7 +64,9 @@ def load_config(config_path: Path | None = None) -> ThreatCodeConfig:
     its own .threatcode.yml. In CI, always use --config with an explicit path.
     Auto-discovered configs are restricted to safe fields only.
     """
-    if config_path and config_path.exists():
+    if config_path:
+        if not config_path.exists():
+            raise ConfigError(f"Config file not found: {config_path}")
         return _load_from_file(config_path, trusted=True)
 
     # Skip home directory search when running in CI

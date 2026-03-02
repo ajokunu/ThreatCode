@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.4.1"
+version = "0.4.3"
 description = "Threat Model as Code — automated threat modeling from Infrastructure-as-Code"
 readme = "README.md"
 license = "MIT"
