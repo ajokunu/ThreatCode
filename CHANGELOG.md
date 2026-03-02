@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0] - 2026-03-02
+
+### Added
+- **SVG diagram overhaul**: Complete rewrite of `--format diagram` output to be a self-contained, understandable document
+- **Node tooltips**: Native browser tooltips (`<title>`) on every node showing full resource ID, zone, category, and all threats with severity/STRIDE details
+- **Edge tooltips**: All edges now have tooltips — boundary crossings explain the trust boundary, others show the edge type and endpoints
+- **Boundary edge labels**: Trust boundary crossing edges display a `ZONE -> ZONE` label at their midpoint with a contrasting background
+- **Summary bar**: Severity breakdown bar below the header with color-coded pills showing threat counts per severity and total STRIDE category count
+- **Threat detail table**: Full SVG table below the diagram listing every threat sorted by severity, showing resource, title, STRIDE category, and source with alternating row backgrounds
+- **CSS hover interactivity**: `<style>` block with hover effects for nodes (thicker stroke), edges (wider stroke), and threat table rows
+- **3-column legend**: Overhauled legend with mini SVG shapes (rounded rect, cylinder, diamond, double-rect), actual line samples for each edge type, and severity badge explanations
+
+### Changed
+- **Node labels**: Top line now shows full resource type (e.g., `aws_s3_bucket`), center shows short name (e.g., `data`) in bold — replaces cryptic category-only label
+- **Node width**: Widened from 130px to 160px to fit longer resource type labels
+- **Legend height**: Expanded from 56px to 140px for proper 3-column layout with real shapes
+- **Layout computation**: Canvas height now accounts for summary bar, threat table, and expanded legend
+- **Edge rendering**: Edges wrapped in `<g class="edge-group">` groups for proper tooltip targeting
+- **Legend content**: Replaced Unicode box-drawing characters with actual SVG shape primitives
+- 39 diagram tests (up from 12) covering tooltips, edge labels, summary bar, threat table, legend shapes, CSS styles, and sort ordering
+
 ## [0.4.3] - 2026-03-02
 
 ### Security

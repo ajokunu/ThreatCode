@@ -15,14 +15,17 @@ if TYPE_CHECKING:
     from threatcode.models.threat import Threat
 
 # Layout constants
-NODE_W = 130
+NODE_W = 160
 NODE_H = 54
 NODE_GAP_X = 36
 NODE_GAP_Y = 24
 LANE_PAD_X = 80
 LANE_PAD_Y = 20
 HEADER_H = 44
-LEGEND_H = 56
+SUMMARY_BAR_H = 32
+LEGEND_H = 140
+THREAT_TABLE_ROW_H = 20
+THREAT_TABLE_HEADER_H = 28
 MIN_LANE_H = 90
 MAX_NODES_PER_ROW = 5
 CANVAS_PAD = 20
@@ -60,6 +63,14 @@ EDGE_STYLES: dict[EdgeType, tuple[str, str, str]] = {
     EdgeType.DATA_FLOW: ("#22c55e", "1.5", ""),
 }
 
+EDGE_LABELS: dict[EdgeType, str] = {
+    EdgeType.DEPENDENCY: "Dependency",
+    EdgeType.CONTAINMENT: "Containment",
+    EdgeType.NETWORK_FLOW: "Network Flow",
+    EdgeType.IAM_BINDING: "IAM Binding",
+    EdgeType.DATA_FLOW: "Data Flow",
+}
+
 SEVERITY_COLORS: dict[str, str] = {
     "critical": "#ef4444",
     "high": "#f97316",
@@ -68,7 +79,18 @@ SEVERITY_COLORS: dict[str, str] = {
     "info": "#94a3b8",
 }
 
-# STRIDE element → shape mapping
+SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+
+STRIDE_DISPLAY: dict[str, str] = {
+    "spoofing": "Spoofing",
+    "tampering": "Tampering",
+    "repudiation": "Repudiation",
+    "information_disclosure": "Info Disclosure",
+    "denial_of_service": "Denial of Service",
+    "elevation_of_privilege": "Elevation of Privilege",
+}
+
+# STRIDE element -> shape mapping
 _PROCESS_CATEGORIES = {
     NodeCategory.COMPUTE,
     NodeCategory.SERVERLESS,
@@ -88,13 +110,20 @@ _ENTITY_CATEGORIES = {NodeCategory.IAM}
 FONT_FAMILY = '"Inter", "Segoe UI", system-ui, sans-serif'
 
 
+def _truncate(text: str, max_len: int) -> str:
+    """Truncate text with ellipsis if it exceeds max_len."""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
 class DiagramRenderer:
     """Renders a threat model data flow diagram as SVG."""
 
     def __init__(self, report: ThreatReport, graph: InfraGraph) -> None:
         self.report = report
         self.graph = graph
-        # Layout state — populated by _compute_layout
+        # Layout state -- populated by _compute_layout
         self._node_positions: dict[str, tuple[float, float]] = {}
         self._zone_lanes: list[tuple[TrustZone, float, float, list[Any]]] = []
         self._canvas_w = 0.0
@@ -106,6 +135,7 @@ class DiagramRenderer:
         parts.append(self._svg_open())
         parts.append(self._svg_defs())
         parts.append(self._svg_header())
+        parts.append(self._svg_summary_bar())
         for zone, y, h, nodes in self._zone_lanes:
             parts.append(self._svg_zone_lane(zone, y, h, nodes))
         for edge in self.graph.edges:
@@ -116,15 +146,16 @@ class DiagramRenderer:
             node = self.graph.get_node(node_id)
             if node:
                 parts.append(self._svg_node(node, x, y))
-        parts.append(self._svg_legend(self._canvas_h - LEGEND_H))
+        parts.append(self._svg_threat_table())
+        parts.append(self._svg_legend())
         parts.append("</svg>")
         return "\n".join(parts)
 
-    # ── Layout ──────────────────────────────────────────────────────
+    # -- Layout ---------------------------------------------------------------
 
     def _compute_layout(self) -> None:
         zones_map = self.graph.nodes_by_zone()
-        y_cursor = HEADER_H + CANVAS_PAD
+        y_cursor = HEADER_H + SUMMARY_BAR_H + CANVAS_PAD
         max_lane_w = 0.0
 
         for zone in ZONE_ORDER:
@@ -137,7 +168,6 @@ class DiagramRenderer:
             lane_h = max(MIN_LANE_H, rows * (NODE_H + NODE_GAP_Y) + LANE_PAD_Y * 2)
             lane_w = LANE_PAD_X + cols * (NODE_W + NODE_GAP_X) + NODE_GAP_X
 
-            # Position nodes within lane
             for i, node in enumerate(nodes):
                 col = i % MAX_NODES_PER_ROW
                 row = i // MAX_NODES_PER_ROW
@@ -153,13 +183,34 @@ class DiagramRenderer:
         if not self._zone_lanes:
             max_lane_w = 400
 
-        self._canvas_w = max(max_lane_w + CANVAS_PAD * 2, 400)
-        self._canvas_h = y_cursor + LEGEND_H + CANVAS_PAD
+        # Threat table height
+        n_threats = len(self.report.threats)
+        threat_table_h = 0.0
+        if n_threats > 0:
+            threat_table_h = (
+                THREAT_TABLE_HEADER_H
+                + n_threats * THREAT_TABLE_ROW_H
+                + 40  # section title + padding
+            )
+
+        # Ensure canvas is wide enough for 3-column legend
+        min_legend_w = 700
+        self._canvas_w = max(max_lane_w + CANVAS_PAD * 2, 400, min_legend_w)
+        self._canvas_h = y_cursor + threat_table_h + LEGEND_H + CANVAS_PAD
+
+        # Store for render()
+        self._threat_table_y = y_cursor
+        self._legend_y = y_cursor + threat_table_h
 
     def _threats_for_node(self, node_id: str) -> list[Threat]:
         return [t for t in self.report.threats if t.resource_address == node_id]
 
-    # ── SVG building blocks ─────────────────────────────────────────
+    def _sorted_threats(self) -> list[Threat]:
+        """Return all threats sorted by severity (critical first)."""
+        rank = {s: i for i, s in enumerate(SEVERITY_ORDER)}
+        return sorted(self.report.threats, key=lambda t: rank.get(t.severity.value, 99))
+
+    # -- SVG building blocks --------------------------------------------------
 
     def _svg_open(self) -> str:
         w = self._canvas_w
@@ -174,16 +225,28 @@ class DiagramRenderer:
     def _svg_defs(self) -> str:
         return (
             "<defs>"
-            # Drop shadow filter
-            '<filter id="shadow" x="-4%" y="-4%" width="108%" height="116%">'
+            + self._svg_style()
+            + '<filter id="shadow" x="-4%" y="-4%" width="108%" height="116%">'
             '<feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/>'
             "</filter>"
-            # Glow filter for boundary-crossing edges
             '<filter id="glow" x="-10%" y="-10%" width="120%" height="120%">'
             '<feGaussianBlur stdDeviation="2" result="blur"/>'
             '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>'
             "</filter>" + self._svg_arrow_markers() + "</defs>"
-            # Arrow markers per edge type
+        )
+
+    def _svg_style(self) -> str:
+        return (
+            "<style>"
+            ".node { cursor: pointer; }"
+            ".node:hover rect, .node:hover ellipse, "
+            ".node:hover polygon { stroke-width: 2.5; stroke: #475569; }"
+            ".edge { cursor: pointer; }"
+            ".edge:hover { stroke-width: 3 !important; opacity: 0.9; }"
+            ".threat-row:hover rect { opacity: 0.8; }"
+            ".tooltip { display: none; }"
+            ".node:hover .tooltip, .edge:hover .tooltip { display: block; }"
+            "</style>"
         )
 
     def _svg_arrow_markers(self) -> str:
@@ -196,7 +259,6 @@ class DiagramRenderer:
                 f'<polygon points="0 0, 10 3.5, 0 7" fill="{color}"/>'
                 f"</marker>"
             )
-        # Boundary crossing marker (red)
         markers.append(
             '<marker id="arrow-boundary" viewBox="0 0 10 7" refX="10" refY="3.5" '
             'markerWidth="8" markerHeight="6" orient="auto-start-reverse">'
@@ -220,6 +282,59 @@ class DiagramRenderer:
             f'font-size="11" text-anchor="end">{_esc(meta)}  {_esc(ts)}</text>'
         )
 
+    def _svg_summary_bar(self) -> str:
+        w = self._canvas_w
+        y = HEADER_H
+        parts: list[str] = [
+            '<g class="summary-bar">',
+            f'<rect x="0" y="{y}" width="{w:.0f}" height="{SUMMARY_BAR_H}" fill="#f1f5f9"/>',
+            f'<line x1="0" y1="{y + SUMMARY_BAR_H}" x2="{w:.0f}" '
+            f'y2="{y + SUMMARY_BAR_H}" stroke="#e2e8f0" stroke-width="1"/>',
+        ]
+
+        # Count threats by severity
+        counts: dict[str, int] = {}
+        stride_cats: set[str] = set()
+        for t in self.report.threats:
+            counts[t.severity.value] = counts.get(t.severity.value, 0) + 1
+            stride_cats.add(t.stride_category)
+
+        cx = 16.0
+        cy = y + SUMMARY_BAR_H / 2 + 4
+        for sev in SEVERITY_ORDER:
+            count = counts.get(sev, 0)
+            if count == 0:
+                continue
+            color = SEVERITY_COLORS.get(sev, "#94a3b8")
+            label = f"{count} {sev.capitalize()}"
+            pill_w = len(label) * 6.5 + 16
+            # Pill background
+            parts.append(
+                f'<rect x="{cx:.0f}" y="{cy - 10:.0f}" width="{pill_w:.0f}" '
+                f'height="18" rx="9" fill="{color}" opacity="0.15"/>'
+            )
+            # Pill dot
+            parts.append(f'<circle cx="{cx + 10:.0f}" cy="{cy - 1:.0f}" r="3" fill="{color}"/>')
+            # Pill text
+            parts.append(
+                f'<text x="{cx + 17:.0f}" y="{cy + 3:.0f}" fill="{color}" '
+                f'font-size="10" font-weight="600">{_esc(label)}</text>'
+            )
+            cx += pill_w + 8
+
+        # Total summary
+        total = len(self.report.threats)
+        n_stride = len(stride_cats)
+        if total > 0:
+            summary = f"Total: {total} threats across {n_stride} STRIDE categories"
+            parts.append(
+                f'<text x="{w - 16:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+                f'font-size="9" text-anchor="end">{_esc(summary)}</text>'
+            )
+
+        parts.append("</g>")
+        return "\n".join(parts)
+
     def _svg_zone_lane(self, zone: TrustZone, y: float, h: float, nodes: list[Any]) -> str:
         w = self._canvas_w
         fill, border = ZONE_COLORS.get(zone, ("#f8fafc", "#cbd5e1"))
@@ -236,7 +351,6 @@ class DiagramRenderer:
     def _svg_node(self, node: Any, x: float, y: float) -> str:
         threats = self._threats_for_node(node.id)
         cat = node.category
-        # Select shape
         if cat in _DATA_STORE_CATEGORIES:
             shape = self._svg_node_datastore(x, y, NODE_W, NODE_H)
         elif cat in _DATA_FLOW_CATEGORIES:
@@ -246,21 +360,28 @@ class DiagramRenderer:
         else:
             shape = self._svg_node_process(x, y, NODE_W, NODE_H)
 
+        # Resource type (first part of ID before the dot, or resource_type)
+        res_type = node.resource_type if node.resource_type else node.id.split(".")[0]
+        res_type_display = _truncate(res_type, 22)
+
         # Short name: last segment after dot
         short_name = node.name if "." not in node.id else node.id.rsplit(".", 1)[-1]
-        cat_label = cat.value
 
         parts = [
             f'<g class="node" data-id="{_esc(node.id)}" filter="url(#shadow)">',
             shape,
-            # Category label (top-left)
-            f'<text x="{x + 8:.0f}" y="{y + 14:.0f}" fill="#94a3b8" '
-            f'font-size="8">{_esc(cat_label)}</text>',
-            # Resource name (center)
+            # Resource type label (top, 8px gray)
+            f'<text x="{x + NODE_W / 2:.0f}" y="{y + 14:.0f}" fill="#94a3b8" '
+            f'font-size="8" text-anchor="middle">{_esc(res_type_display)}</text>',
+            # Resource short name (center, 11px bold)
             f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_H / 2 + 5:.0f}" '
-            f'fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">'
+            f'fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">'
             f"{_esc(short_name)}</text>",
         ]
+
+        # Tooltip via <title>
+        tooltip = self._node_tooltip(node, threats)
+        parts.append(f"<title>{_esc(tooltip)}</title>")
 
         if threats:
             worst = max(threats, key=lambda t: t.severity.rank)
@@ -274,6 +395,23 @@ class DiagramRenderer:
 
         parts.append("</g>")
         return "\n".join(parts)
+
+    def _node_tooltip(self, node: Any, threats: list[Threat]) -> str:
+        """Build native browser tooltip text for a node."""
+        zone_label = ZONE_LABELS.get(node.trust_zone, node.trust_zone.value.upper())
+        lines = [
+            node.id,
+            f"Zone: {zone_label} | Category: {node.category.value}",
+        ]
+        if threats:
+            sorted_threats = sorted(threats, key=lambda t: -t.severity.rank)
+            lines.append("")
+            lines.append(f"{len(threats)} threats:")
+            for t in sorted_threats:
+                sev = t.severity.value.upper()
+                stride = STRIDE_DISPLAY.get(t.stride_category, t.stride_category)
+                lines.append(f"  {sev} - {t.title} ({stride})")
+        return "\n".join(lines)
 
     def _svg_node_process(self, x: float, y: float, w: float, h: float) -> str:
         return (
@@ -342,66 +480,338 @@ class DiagramRenderer:
             filt = ""
 
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        return (
+
+        # Build tooltip
+        tooltip = self._edge_tooltip(edge)
+
+        parts: list[str] = [
+            '<g class="edge-group">',
             f'<path d="{path_d}" fill="none" stroke="{color}" '
             f'stroke-width="{width}"{dash_attr} '
             f'marker-end="{marker}"{filt} '
             f'class="edge" data-type="{edge.edge_type.value}" '
-            f'data-boundary="{str(is_boundary).lower()}"/>'
+            f'data-boundary="{str(is_boundary).lower()}"/>',
+            f"<title>{_esc(tooltip)}</title>",
+        ]
+
+        # Edge label for boundary crossings
+        if is_boundary:
+            label = self._edge_label_text(edge)
+            if label:
+                mx = (x1 + x2) / 2
+                my = (y1 + y2) / 2
+                parts.append(self._svg_edge_label(mx, my, label))
+
+        parts.append("</g>")
+        return "\n".join(parts)
+
+    def _edge_tooltip(self, edge: InfraEdge) -> str:
+        """Build tooltip text for an edge."""
+        if edge.crosses_trust_boundary:
+            src_zone = edge.metadata.get("source_zone", "?")
+            tgt_zone = edge.metadata.get("target_zone", "?")
+            return (
+                f"Trust boundary crossing: {src_zone} -> {tgt_zone}\n"
+                f"Data should be encrypted, authenticated, and validated"
+            )
+        label = EDGE_LABELS.get(edge.edge_type, edge.edge_type.value)
+        return f"{label}: {edge.source} -> {edge.target}"
+
+    def _edge_label_text(self, edge: InfraEdge) -> str:
+        """Return zone transition label for boundary-crossing edges."""
+        src_zone = edge.metadata.get("source_zone", "")
+        tgt_zone = edge.metadata.get("target_zone", "")
+        if src_zone and tgt_zone:
+            return f"{src_zone.upper()} -> {tgt_zone.upper()}"
+        return ""
+
+    def _svg_edge_label(self, x: float, y: float, text: str) -> str:
+        """Render a small label at the midpoint of a boundary-crossing edge."""
+        text_w = len(text) * 5.5 + 8
+        return (
+            f'<rect x="{x - text_w / 2:.0f}" y="{y - 7:.0f}" '
+            f'width="{text_w:.0f}" height="14" rx="3" fill="#ffffff" '
+            f'stroke="#ef4444" stroke-width="0.5" opacity="0.95"/>'
+            f'<text x="{x:.0f}" y="{y + 3:.0f}" fill="#ef4444" '
+            f'font-size="8" font-weight="500" text-anchor="middle" '
+            f'class="edge-label">{_esc(text)}</text>'
         )
 
-    def _svg_legend(self, y: float) -> str:
+    def _svg_threat_table(self) -> str:
+        """Render a full threat listing table below the diagram."""
+        threats = self._sorted_threats()
+        if not threats:
+            return ""
+
+        y = self._threat_table_y
         w = self._canvas_w
-        lx = 16.0
-        items: list[str] = [
+        parts: list[str] = ['<g class="threat-table">']
+
+        # Section title
+        parts.append(
+            f'<text x="16" y="{y + 18:.0f}" fill="#1e293b" '
+            f'font-size="12" font-weight="600">Threat Findings</text>'
+        )
+        y += 28
+
+        # Column widths (proportional to canvas)
+        col_sev_w = 70
+        col_res_w = min(180, w * 0.22)
+        col_threat_w = min(280, w * 0.35)
+        col_stride_w = min(130, w * 0.16)
+        col_source_w = 60
+
+        # Header row
+        parts.append(
+            f'<rect x="16" y="{y:.0f}" width="{w - 32:.0f}" '
+            f'height="{THREAT_TABLE_HEADER_H}" rx="4" fill="#1e293b"/>'
+        )
+        hx = 24.0
+        hy = y + THREAT_TABLE_HEADER_H / 2 + 4
+        headers = [
+            ("Severity", col_sev_w),
+            ("Resource", col_res_w),
+            ("Threat", col_threat_w),
+            ("STRIDE Category", col_stride_w),
+            ("Source", col_source_w),
+        ]
+        for label, col_w in headers:
+            parts.append(
+                f'<text x="{hx:.0f}" y="{hy:.0f}" fill="#ffffff" '
+                f'font-size="9" font-weight="600">{_esc(label)}</text>'
+            )
+            hx += col_w
+
+        y += THREAT_TABLE_HEADER_H
+
+        # Data rows
+        for i, threat in enumerate(threats):
+            row_fill = "#ffffff" if i % 2 == 0 else "#f8fafc"
+            parts.append(
+                f'<g class="threat-row">'
+                f'<rect x="16" y="{y:.0f}" width="{w - 32:.0f}" '
+                f'height="{THREAT_TABLE_ROW_H}" fill="{row_fill}"/>'
+            )
+
+            rx = 24.0
+            ry = y + THREAT_TABLE_ROW_H / 2 + 3.5
+
+            # Severity dot + label
+            sev = threat.severity.value
+            sev_color = SEVERITY_COLORS.get(sev, "#94a3b8")
+            sev_label = sev.upper()[:4]
+            parts.append(f'<circle cx="{rx + 4:.0f}" cy="{ry - 2:.0f}" r="3" fill="{sev_color}"/>')
+            parts.append(
+                f'<text x="{rx + 12:.0f}" y="{ry:.0f}" fill="{sev_color}" '
+                f'font-size="9" font-weight="600">{_esc(sev_label)}</text>'
+            )
+            rx += col_sev_w
+
+            # Resource
+            res_display = _truncate(threat.resource_address, 28)
+            parts.append(
+                f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#475569" '
+                f'font-size="9">{_esc(res_display)}</text>'
+            )
+            rx += col_res_w
+
+            # Threat title
+            title_display = _truncate(threat.title, 45)
+            parts.append(
+                f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#1e293b" '
+                f'font-size="9">{_esc(title_display)}</text>'
+            )
+            rx += col_threat_w
+
+            # STRIDE category
+            stride = STRIDE_DISPLAY.get(threat.stride_category, threat.stride_category)
+            parts.append(
+                f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#64748b" '
+                f'font-size="9">{_esc(stride)}</text>'
+            )
+            rx += col_stride_w
+
+            # Source
+            parts.append(
+                f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#94a3b8" '
+                f'font-size="9">{_esc(threat.source.value)}</text>'
+            )
+
+            # Row tooltip
+            parts.append(f"<title>{_esc(threat.title)}: {_esc(threat.description)}</title>")
+            parts.append("</g>")
+            y += THREAT_TABLE_ROW_H
+
+        parts.append("</g>")
+        return "\n".join(parts)
+
+    def _svg_legend(self) -> str:
+        """Render a 3-column legend with mini SVG shapes, line samples, and severity badges."""
+        y = self._legend_y
+        w = self._canvas_w
+        parts: list[str] = [
+            '<g class="legend">',
             f'<rect x="0" y="{y:.0f}" width="{w:.0f}" height="{LEGEND_H}" fill="#f8fafc"/>',
             f'<line x1="0" y1="{y:.0f}" x2="{w:.0f}" y2="{y:.0f}" '
             f'stroke="#e2e8f0" stroke-width="1"/>',
         ]
 
-        ly = y + 20
-        # Node shapes
-        shapes = [
-            ("\u25c7 data_flow", "#3b82f6"),
-            ("\u256d\u256e process", "#64748b"),
-            ("\u2503\u2503 data_store", "#22c55e"),
-            ("\u250c\u2510 entity", "#f97316"),
+        col1_x = 24.0
+        col2_x = col1_x + 220
+        col3_x = col2_x + 220
+
+        # -- Column 1: Node Shapes --
+        cy = y + 20
+        parts.append(
+            f'<text x="{col1_x:.0f}" y="{cy:.0f}" fill="#1e293b" '
+            f'font-size="10" font-weight="600">Node Shapes</text>'
+        )
+        cy += 18
+
+        # Process (rounded rect)
+        parts.append(
+            f'<rect x="{col1_x:.0f}" y="{cy - 7:.0f}" width="18" height="12" '
+            f'rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+            f'font-size="9">Process (compute, serverless, container)</text>'
+        )
+        cy += 20
+
+        # Data Store (cylinder)
+        cx_cyl = col1_x + 9
+        parts.append(
+            f'<rect x="{col1_x:.0f}" y="{cy - 4:.0f}" width="18" height="8" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<ellipse cx="{cx_cyl:.0f}" cy="{cy - 4:.0f}" rx="9" ry="3" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<ellipse cx="{cx_cyl:.0f}" cy="{cy + 4:.0f}" rx="9" ry="3" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+            f'font-size="9">Data Store (storage, database)</text>'
+        )
+        cy += 20
+
+        # Data Flow (diamond)
+        dx = col1_x + 9
+        dy = cy
+        parts.append(
+            f'<polygon points="{dx},{dy - 6} {dx + 9},{dy} {dx},{dy + 6} {dx - 9},{dy}" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+            f'font-size="9">Data Flow (network, cdn, messaging)</text>'
+        )
+        cy += 20
+
+        # External Entity (double rect)
+        parts.append(
+            f'<rect x="{col1_x:.0f}" y="{cy - 7:.0f}" width="18" height="12" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<rect x="{col1_x + 2:.0f}" y="{cy - 5:.0f}" width="14" height="8" '
+            f'fill="none" stroke="#cbd5e1" stroke-width="0.8"/>'
+        )
+        parts.append(
+            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+            f'font-size="9">External Entity (IAM)</text>'
+        )
+
+        # -- Column 2: Edge Types --
+        cy = y + 20
+        parts.append(
+            f'<text x="{col2_x:.0f}" y="{cy:.0f}" fill="#1e293b" '
+            f'font-size="10" font-weight="600">Edge Types</text>'
+        )
+        cy += 18
+
+        edge_legend = [
+            (EdgeType.DEPENDENCY, "Dependency"),
+            (EdgeType.CONTAINMENT, "Containment"),
+            (EdgeType.NETWORK_FLOW, "Network Flow"),
+            (EdgeType.IAM_BINDING, "IAM Binding"),
+            (EdgeType.DATA_FLOW, "Data Flow"),
         ]
-        for label, color in shapes:
-            items.append(
-                f'<text x="{lx:.0f}" y="{ly:.0f}" fill="{color}" '
-                f'font-size="9" font-weight="500">{_esc(label)}</text>'
+        for etype, label in edge_legend:
+            color, width, dash = EDGE_STYLES[etype]
+            dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+            parts.append(
+                f'<line x1="{col2_x:.0f}" y1="{cy:.0f}" '
+                f'x2="{col2_x + 30:.0f}" y2="{cy:.0f}" '
+                f'stroke="{color}" stroke-width="{width}"{dash_attr}/>'
             )
-            lx += 90
-
-        # Severity colors
-        ly2 = y + 40
-        lx2 = 16.0
-        for sev, color in [
-            ("critical", "#ef4444"),
-            ("high", "#f97316"),
-            ("medium", "#eab308"),
-            ("low", "#3b82f6"),
-        ]:
-            items.append(f'<circle cx="{lx2 + 4:.0f}" cy="{ly2 - 3:.0f}" r="4" fill="{color}"/>')
-            items.append(
-                f'<text x="{lx2 + 12:.0f}" y="{ly2:.0f}" fill="#64748b" font-size="9">{sev}</text>'
+            # Arrow head
+            parts.append(
+                f'<polygon points="{col2_x + 30:.0f},{cy - 3} '
+                f'{col2_x + 36:.0f},{cy} {col2_x + 30:.0f},{cy + 3}" fill="{color}"/>'
             )
-            lx2 += 72
+            parts.append(
+                f'<text x="{col2_x + 42:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+                f'font-size="9">{_esc(label)}</text>'
+            )
+            cy += 16
 
-        items.append(
-            f'<text x="{w - 16:.0f}" y="{ly:.0f}" fill="#cbd5e1" '
+        # Boundary crossing (red glow)
+        parts.append(
+            f'<line x1="{col2_x:.0f}" y1="{cy:.0f}" '
+            f'x2="{col2_x + 30:.0f}" y2="{cy:.0f}" '
+            f'stroke="#ef4444" stroke-width="2" filter="url(#glow)"/>'
+        )
+        parts.append(
+            f'<polygon points="{col2_x + 30:.0f},{cy - 3} '
+            f'{col2_x + 36:.0f},{cy} {col2_x + 30:.0f},{cy + 3}" fill="#ef4444"/>'
+        )
+        parts.append(
+            f'<text x="{col2_x + 42:.0f}" y="{cy + 3:.0f}" fill="#ef4444" '
+            f'font-size="9" font-weight="600">Trust Boundary Crossing</text>'
+        )
+
+        # -- Column 3: Severity Badges --
+        cy = y + 20
+        parts.append(
+            f'<text x="{col3_x:.0f}" y="{cy:.0f}" fill="#1e293b" '
+            f'font-size="10" font-weight="600">Severity Badges</text>'
+        )
+        cy += 18
+
+        for sev in ["critical", "high", "medium", "low"]:
+            color = SEVERITY_COLORS[sev]
+            parts.append(f'<circle cx="{col3_x + 6:.0f}" cy="{cy:.0f}" r="5" fill="{color}"/>')
+            parts.append(
+                f'<text x="{col3_x + 16:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+                f'font-size="9">{sev.capitalize()}</text>'
+            )
+            cy += 16
+
+        # Explanation
+        parts.append(
+            f'<text x="{col3_x:.0f}" y="{cy + 6:.0f}" fill="#94a3b8" '
+            f'font-size="8">Badge number = threat count on resource</text>'
+        )
+
+        # Footer
+        parts.append(
+            f'<text x="{w - 16:.0f}" y="{y + LEGEND_H - 8:.0f}" fill="#cbd5e1" '
             f'font-size="9" text-anchor="end">Generated by ThreatCode</text>'
         )
 
-        return f'<g class="legend">{"".join(items)}</g>'
+        parts.append("</g>")
+        return "\n".join(parts)
 
-    # ── Geometry helpers ────────────────────────────────────────────
+    # -- Geometry helpers -----------------------------------------------------
 
     def _bezier(self, x1: float, y1: float, x2: float, y2: float) -> str:
         dy = abs(y2 - y1)
         if dy < 10:
-            # Same-zone: shallow curve
             offset = 20.0
         else:
             offset = dy * 0.4
