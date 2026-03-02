@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from threatcode.models.analysis import AnalysisResult
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 
 def scan(

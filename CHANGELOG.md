@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.1] - 2026-03-02
+
+### Fixed
+- CI `pip-audit --strict` failing because local editable package not found on PyPI — added `--skip-editable`
+
 ## [0.4.0] - 2026-03-02
 
 ### Security

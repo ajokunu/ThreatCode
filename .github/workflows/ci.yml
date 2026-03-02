@@ -54,4 +54,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: pip-audit --strict
+      - run: pip freeze --exclude threatcode > _audit_reqs.txt && pip-audit --strict -r _audit_reqs.txt
