@@ -1,6 +1,7 @@
 """ARN/account/tag/IP redaction before LLM calls.
 
 Security: recursion depth is capped to prevent stack overflow on deeply nested data.
+Mapping size is capped to prevent memory exhaustion.
 """
 
 from __future__ import annotations
@@ -15,9 +16,15 @@ logger = logging.getLogger(__name__)
 # Max recursion depth for nested data structures
 MAX_REDACT_DEPTH = 50
 
-# Patterns to redact
+# Max unique values tracked in the redaction mapping
+MAX_REDACTION_MAPPINGS = 10_000
+
+# Patterns to redact — aws_account_id requires word-boundary context to reduce
+# false positives on arbitrary 12-digit numbers
 _PATTERNS: dict[str, re.Pattern[str]] = {
-    "aws_account_id": re.compile(r"\b\d{12}\b"),
+    "aws_account_id": re.compile(
+        r"(?:account[_-]?id|arn:aws)[:\s\"'=]*(\d{12})\b"
+    ),
     "aws_arn": re.compile(r"arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+"),
     "ip_v4": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
     "ip_v6": re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"),
@@ -81,6 +88,10 @@ class Redactor:
             "credentials",
             "private_key",
             "certificate",
+            "name",
+            "module",
+            "provider",
+            "source_location",
         }
         sensitive_keys.update(self._extra_fields)
 
@@ -96,7 +107,11 @@ class Redactor:
         result = text
         for pattern_name, pattern in _PATTERNS.items():
             for match in pattern.finditer(result):
-                original = match.group()
+                # For aws_account_id, redact only the captured group (the 12-digit number)
+                if pattern_name == "aws_account_id" and match.lastindex:
+                    original = match.group(1)
+                else:
+                    original = match.group()
                 if original not in self._mapping:
                     placeholder = self._get_placeholder(original, pattern_name)
                     self._mapping[original] = placeholder
@@ -106,6 +121,14 @@ class Redactor:
     def _get_placeholder(self, original: str, label: str) -> str:
         if original in self._mapping:
             return self._mapping[original]
+
+        # Cap mapping size to prevent memory exhaustion
+        if len(self._mapping) >= MAX_REDACTION_MAPPINGS:
+            logger.warning(
+                "Redaction mapping limit reached (%d entries) — using generic placeholder",
+                MAX_REDACTION_MAPPINGS,
+            )
+            return f"REDACTED_{label}_overflow"
 
         if self._strategy == "hash":
             h = hashlib.sha256(original.encode()).hexdigest()[:8]

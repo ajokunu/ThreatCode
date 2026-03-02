@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import re
+
 from threatcode.models.report import ThreatReport
 from threatcode.models.threat import Threat
+
+
+def _escape_md(text: str) -> str:
+    """Escape characters that have special meaning in Markdown."""
+    return re.sub(r"([<>\[\]()`])", r"\\\1", text)
 
 
 def format_markdown(report: ThreatReport) -> str:
@@ -41,21 +48,21 @@ def format_markdown(report: ThreatReport) -> str:
 
         for t in sorted(threats, key=lambda x: -x.severity.rank):
             icon = _severity_icon(t.severity.value)
-            lines.append(f"### {icon} {t.title}")
+            lines.append(f"### {icon} {_escape_md(t.title)}")
             lines.append("")
             lines.append(
                 f"**Severity:** {t.severity.value.capitalize()} | "
-                f"**Resource:** `{t.resource_address}` | "
+                f"**Resource:** `{_escape_md(t.resource_address)}` | "
                 f"**Source:** {t.source.value}"
             )
             if t.mitre_techniques:
                 technique_links = ", ".join(t.mitre_techniques)
                 lines.append(f"**MITRE ATT&CK:** {technique_links}")
             lines.append("")
-            lines.append(t.description.strip())
+            lines.append(_escape_md(t.description.strip()))
             lines.append("")
             if t.mitigation:
-                lines.append(f"> **Mitigation:** {t.mitigation.strip()}")
+                lines.append(f"> **Mitigation:** {_escape_md(t.mitigation.strip())}")
                 lines.append("")
 
     if not report.threats:

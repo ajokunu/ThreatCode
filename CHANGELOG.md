@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.4.0] - 2026-03-02
+
+### Security
+- **SSRF protection rewrite**: `_validate_base_url()` now resolves hostnames via DNS and validates ALL resolved IPs using the `ipaddress` module — blocks loopback, private, link-local, reserved, and IPv4-mapped IPv6 addresses (A10-01..04)
+- **Safe redirect handler**: OpenAI-compatible client uses `_SafeRedirectHandler` that re-validates redirect targets against SSRF checks
+- **HTTP key warning**: Warns when API key is sent over plain HTTP (A07-01)
+- **Config auto-discovery hardening**: Auto-discovered configs restricted to safe fields only (`min_severity`, `output_format`, `no_llm`, `dry_run`, `redaction`); security-sensitive fields stripped with warning (A01-01)
+- **API key in config warning**: Warns to stderr when `api_key` found in config file — recommends environment variable (A02-01)
+- **CI config skip**: Home directory config search skipped when `CI` env var is set (A07-02)
+- **Prompt injection hardening**: Rule IDs sanitized before prompt inclusion; graph data wrapped in XML-style delimiters; system prompt reduced architecture exposure (LLM01-01, LLM01-02, LLM07-01)
+- **Redaction improvements**: Added `name`, `module`, `provider`, `source_location` to sensitive keys; capped mapping at 10,000 entries; improved AWS account ID regex to require context (LLM02-01, LLM02-02, LLM10-07)
+- **MITRE validation**: LLM technique/tactic IDs validated against known databases, not just prefix format; rule loader also validates against TECHNIQUE_DB (LLM05-03, LLM09-01)
+- **LLM resource validation**: Resource addresses from LLM output validated against graph — unknown addresses capped at 0.5 confidence (LLM09-02)
+- **Structured security logging**: Analysis pipeline logs start/completion with resource count, rule count, LLM status (A09-01)
+- **Rule loader**: Blocks symlinks in extra rule paths; rejects rule files over 1 MB; logs SHA-256 checksums of built-in rules (A01-03, A04-03, A08-01, LLM04-03)
+- **Graph limits**: MAX_NODES=10,000 (raises error), MAX_EDGES=50,000 (warns and skips) (LLM10-05, LLM10-06)
+- **CLI hardening**: Validates output path is not a directory; creates parent dirs; sanitizes filesystem paths in errors (A01-04, A05-01)
+- **Formatter sanitization**: Markdown/diff formatters escape `< > [ ] ( )` in LLM-sourced fields; SARIF formatter strips non-URI characters from resource addresses (LLM05-01, LLM05-02)
+- **DryRun logging**: Removed prompt content from DEBUG logs entirely — only lengths logged (A02-02, A09-02)
+- **Temperature parameter**: AnthropicLLMClient and OpenAICompatibleLLMClient accept and pass `temperature` parameter (LLM10-03)
+- **max_tokens validation**: Validates and clamps max_tokens to [1, 8192] range with warning (LLM10-04)
+- **CI hardening**: GitHub Actions pinned to SHA hashes; `pip-audit --strict` (A06-02, A08-03)
+- **Dependency pinning**: Added upper bounds to all runtime dependencies (A06-01)
+- **Removed dead field**: `RedactionConfig.enabled` removed (LLM02-02)
+
+### Changed
+- `_validate_base_url()` rewritten to use `ipaddress` module + `socket.getaddrinfo()`
+- Auto-discovered configs now restrict which fields are loaded
+- `_load_from_file()` accepts `trusted` parameter
+- LLM parser validates MITRE IDs against databases instead of prefix-only checks
+
 ## [0.3.1] - 2026-03-01
 
 ### Added

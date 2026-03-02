@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
+
+
+def _escape_md(text: str) -> str:
+    """Escape characters that have special meaning in Markdown."""
+    return re.sub(r"([<>\[\]()`])", r"\\\1", text)
 
 
 def compute_diff(baseline_path: str, current_path: str) -> dict[str, Any]:
@@ -53,7 +59,9 @@ def _format_diff_markdown(diff: dict[str, Any]) -> str:
         lines.append(f"## New Threats (+{len(added)})")
         lines.append("")
         for t in added:
-            lines.append(f"- **{t['title']}** ({t['severity']}) — `{t['resource_address']}`")
+            title = _escape_md(t["title"])
+            addr = _escape_md(t["resource_address"])
+            lines.append(f"- **{title}** ({t['severity']}) — `{addr}`")
         lines.append("")
 
     removed = diff.get("removed", [])
@@ -61,7 +69,9 @@ def _format_diff_markdown(diff: dict[str, Any]) -> str:
         lines.append(f"## Resolved Threats (-{len(removed)})")
         lines.append("")
         for t in removed:
-            lines.append(f"- ~~{t['title']}~~ ({t['severity']}) — `{t['resource_address']}`")
+            title = _escape_md(t["title"])
+            addr = _escape_md(t["resource_address"])
+            lines.append(f"- ~~{title}~~ ({t['severity']}) — `{addr}`")
         lines.append("")
 
     if not added and not removed:

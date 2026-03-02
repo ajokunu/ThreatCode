@@ -98,7 +98,8 @@ def scan(
     try:
         parsed = detect_and_parse(input_file)
     except Exception as e:
-        click.echo(f"Error parsing {input_file}: {e}", err=True)
+        # Don't leak full filesystem paths in error messages
+        click.echo(f"Error parsing input file: {type(e).__name__}: {e}", err=True)
         sys.exit(1)
 
     # Build IR graph
@@ -122,8 +123,14 @@ def scan(
     output = _format_output(report, output_format, graph=graph)
 
     if output_path:
-        Path(output_path).write_text(output, encoding="utf-8")
-        click.echo(f"Output written to {output_path}")
+        out = Path(output_path)
+        if out.is_dir():
+            click.echo("Error: output path is a directory, not a file.", err=True)
+            sys.exit(1)
+        # Create parent directories if they don't exist
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(output, encoding="utf-8")
+        click.echo(f"Output written to {out.name}")
     else:
         click.echo(output)
 

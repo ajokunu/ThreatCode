@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.3.1"
+version = "0.4.0"
 description = "Threat Model as Code — automated threat modeling from Infrastructure-as-Code"
 readme = "README.md"
 license = "MIT"
@@ -23,12 +23,12 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = [
-    "click>=8.1",
-    "pydantic>=2.0",
-    "python-hcl2>=4.3",
-    "pyyaml>=6.0.1",
-    "networkx>=3.1",
-    "anthropic>=0.39",
+    "click>=8.1,<9",
+    "pydantic>=2.0,<3",
+    "python-hcl2>=4.3,<5",
+    "pyyaml>=6.0.1,<7",
+    "networkx>=3.1,<4",
+    "anthropic>=0.39,<1",
 ]
 
 [project.optional-dependencies]

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import networkx as nx
 
+from threatcode.exceptions import ThreatCodeError
 from threatcode.ir.edges import EdgeType, InfraEdge
 from threatcode.ir.nodes import (
     InfraNode,
@@ -14,6 +16,12 @@ from threatcode.ir.nodes import (
     infer_trust_zone,
 )
 from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+logger = logging.getLogger(__name__)
+
+# Security: cap graph size to prevent resource exhaustion
+MAX_NODES = 10_000
+MAX_EDGES = 50_000
 
 # Containment hint registry: (property_name, target_resource_type)
 # When a resource has property_name set, look for nodes of target_resource_type.
@@ -99,6 +107,12 @@ class InfraGraph:
         }
 
     def _add_resource(self, resource: ParsedResource) -> None:
+        if len(self._nodes) >= MAX_NODES:
+            raise ThreatCodeError(
+                f"Infrastructure graph exceeds {MAX_NODES} node limit. "
+                "Split your IaC into smaller modules or increase MAX_NODES."
+            )
+
         category = categorize_resource(resource.resource_type)
         trust_zone = infer_trust_zone(resource.resource_type, resource.properties)
         node = InfraNode(
@@ -194,6 +208,13 @@ class InfraGraph:
                 return
 
     def _add_edge(self, source: str, target: str, edge_type: EdgeType) -> None:
+        if len(self._edges) >= MAX_EDGES:
+            logger.warning(
+                "Edge limit reached (%d) — skipping edge %s -> %s",
+                MAX_EDGES, source, target,
+            )
+            return
+
         edge = InfraEdge(source=source, target=target, edge_type=edge_type)
         self._edges.append(edge)
         self._graph.add_edge(source, target, type=edge_type.value)

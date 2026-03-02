@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from typing import Any
 import yaml
 
 from threatcode.constants import VALID_SEVERITIES, VALID_STRIDE_CATEGORIES
+from threatcode.engine.mitre import TECHNIQUE_DB
 from threatcode.exceptions import RuleLoadError
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ _TACTIC_ID_RE = re.compile(r"^TA\d{4}$")
 # Security limits
 MAX_RULES_PER_FILE = 100
 MAX_TOTAL_RULES = 500
+MAX_RULE_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
 
 
 @dataclass
@@ -40,6 +43,17 @@ class Rule:
 
 def load_rules_from_file(path: Path) -> list[Rule]:
     """Load rules from a single YAML file."""
+    # Check file size before reading
+    try:
+        file_size = path.stat().st_size
+    except OSError as e:
+        raise RuleLoadError(f"Cannot stat rule file {path}: {e}") from e
+
+    if file_size > MAX_RULE_FILE_SIZE:
+        raise RuleLoadError(
+            f"Rule file {path} is {file_size} bytes, exceeding {MAX_RULE_FILE_SIZE} byte limit"
+        )
+
     try:
         content = path.read_text(encoding="utf-8")
         data = yaml.safe_load(content)
@@ -89,13 +103,18 @@ def load_rules_from_file(path: Path) -> list[Rule]:
         if not isinstance(rule.condition, dict) or not rule.condition:
             raise RuleLoadError(f"Rule {rule.id} in {path}: condition must be a non-empty mapping")
 
-        # Validate MITRE metadata format if present
+        # Validate MITRE metadata format and existence in TECHNIQUE_DB
         mitre = rule.metadata.get("mitre", {})
         if mitre:
             for tid in mitre.get("techniques", []):
                 if not _TECHNIQUE_ID_RE.match(tid):
                     logger.warning(
                         "Rule %s: invalid MITRE technique ID '%s' — expected T#### or T####.###",
+                        rule.id, tid,
+                    )
+                elif tid not in TECHNIQUE_DB:
+                    logger.warning(
+                        "Rule %s: MITRE technique ID '%s' not found in known technique database",
                         rule.id, tid,
                     )
             for tac_id in mitre.get("tactics", []):
@@ -116,6 +135,10 @@ def load_builtin_rules() -> list[Rule]:
     rules: list[Rule] = []
     if builtin_dir.exists():
         for path in sorted(builtin_dir.glob("*.yml")):
+            # Log SHA-256 checksums for integrity verification
+            content = path.read_bytes()
+            checksum = hashlib.sha256(content).hexdigest()
+            logger.debug("Loading built-in rules: %s (sha256=%s)", path.name, checksum)
             rules.extend(load_rules_from_file(path))
     return rules
 
@@ -125,6 +148,11 @@ def load_all_rules(extra_paths: list[Path] | None = None) -> list[Rule]:
     rules = load_builtin_rules()
     for path in extra_paths or []:
         resolved = path.resolve()
+
+        # Security: block symlinks in extra rule paths
+        if path.is_symlink() or resolved != path.resolve():
+            raise RuleLoadError(f"Extra rule path is a symlink (blocked for security): {path}")
+
         # Security: prevent path traversal via symlinks or .. components
         if not resolved.is_file():
             raise RuleLoadError(f"Extra rule path does not exist or is not a file: {path}")

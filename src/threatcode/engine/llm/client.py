@@ -7,16 +7,21 @@ Security controls:
 - No execution of LLM responses — all output is JSON-parsed only
 - Prompt injection guard: system prompt instructs model to ignore injections
 - Model version pinning: explicit model IDs, no "latest" aliases
-- SSRF protection: base_url validated against internal/loopback addresses
+- SSRF protection: base_url validated via DNS resolution + ipaddress checks
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import socket
 import sys
+import urllib.request
 from abc import ABC, abstractmethod
+from typing import IO, Any
 from urllib.parse import urlparse
+from urllib.request import HTTPRedirectHandler
 
 from threatcode.engine.llm.prompts import SYSTEM_PROMPT
 from threatcode.exceptions import LLMError
@@ -28,22 +33,16 @@ MAX_PROMPT_LENGTH = 256 * 1024  # 256 KB
 # Security: API timeout in seconds
 API_TIMEOUT_SECONDS = 120
 
-# SSRF protection: blocked hostname patterns for OpenAI-compatible base_url
-_BLOCKED_HOSTS = frozenset({
-    "localhost",
-    "127.0.0.1",
-    "::1",
-    "0.0.0.0",
-    "metadata.google.internal",
-    "169.254.169.254",  # AWS/GCP instance metadata
-    "metadata.internal",
-})
-
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
 def _validate_base_url(url: str) -> None:
-    """Validate that a base_url is safe (not SSRF-exploitable)."""
+    """Validate that a base_url is safe (not SSRF-exploitable).
+
+    Resolves hostname via DNS and checks ALL resolved IPs against the
+    ipaddress module — blocks loopback, private, link-local, reserved,
+    and IPv4-mapped IPv6 addresses.
+    """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:
         raise LLMError(f"Unsafe URL scheme '{parsed.scheme}' — only http/https allowed")
@@ -52,23 +51,57 @@ def _validate_base_url(url: str) -> None:
     if not hostname:
         raise LLMError("base_url must include a hostname")
 
-    if hostname in _BLOCKED_HOSTS:
-        raise LLMError(f"base_url hostname '{hostname}' is blocked (internal/loopback)")
+    # Warn when sending API key over plain HTTP
+    if parsed.scheme == "http":
+        logger.warning(
+            "base_url uses plain HTTP — API key will be sent unencrypted. "
+            "Use HTTPS for production deployments."
+        )
 
-    # Block 169.254.x.x (link-local / cloud metadata) and 10.x / 172.16-31.x / 192.168.x
-    if hostname.startswith("169.254.") or hostname.startswith("10."):
-        raise LLMError(f"base_url hostname '{hostname}' is blocked (private/metadata range)")
-    if hostname.startswith("172."):
-        parts = hostname.split(".")
-        if len(parts) >= 2:
-            try:
-                second = int(parts[1])
-                if 16 <= second <= 31:
-                    raise LLMError(f"base_url hostname '{hostname}' is blocked (private range)")
-            except ValueError:
-                pass
-    if hostname.startswith("192.168."):
-        raise LLMError(f"base_url hostname '{hostname}' is blocked (private range)")
+    # Resolve hostname to IP addresses and validate each one
+    try:
+        addrinfo = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as e:
+        raise LLMError(f"Cannot resolve hostname '{hostname}': {e}") from e
+
+    if not addrinfo:
+        raise LLMError(f"Hostname '{hostname}' resolved to no addresses")
+
+    for family, _type, _proto, _canonname, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(ip_str)
+        except ValueError:
+            raise LLMError(f"base_url resolved to invalid IP: {ip_str}")
+
+        # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+
+        if addr.is_loopback:
+            raise LLMError(f"base_url resolves to loopback address ({ip_str})")
+        if addr.is_private:
+            raise LLMError(f"base_url resolves to private address ({ip_str})")
+        if addr.is_link_local:
+            raise LLMError(f"base_url resolves to link-local address ({ip_str})")
+        if addr.is_reserved:
+            raise LLMError(f"base_url resolves to reserved address ({ip_str})")
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    """HTTP redirect handler that validates redirect targets against SSRF."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        _validate_base_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class BaseLLMClient(ABC):
@@ -91,19 +124,26 @@ class AnthropicLLMClient(BaseLLMClient):
         model: str = "claude-sonnet-4-20250514",
         max_tokens: int = 4096,
         timeout: int = API_TIMEOUT_SECONDS,
+        temperature: float = 0.2,
     ) -> None:
         try:
             import anthropic
         except ImportError as e:
             raise LLMError("anthropic package required: pip install anthropic") from e
 
+        # Validate max_tokens range
+        if not 1 <= max_tokens <= 8192:
+            logger.warning("max_tokens %d out of range [1, 8192], clamping", max_tokens)
+        max_tokens = max(1, min(max_tokens, 8192))
+
         self._client = anthropic.Anthropic(
             api_key=api_key,
             timeout=float(timeout),
         )
         self._model = model
-        self._max_tokens = min(max_tokens, 8192)  # Cap at 8K
+        self._max_tokens = max_tokens
         self._timeout = timeout
+        self._temperature = max(0.0, min(temperature, 1.0))
 
     def analyze(self, prompt: str) -> str:
         if len(prompt) > MAX_PROMPT_LENGTH:
@@ -118,6 +158,7 @@ class AnthropicLLMClient(BaseLLMClient):
             message = self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
+                temperature=self._temperature,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -143,17 +184,23 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         model: str = "llama3",
         max_tokens: int = 4096,
         timeout: int = API_TIMEOUT_SECONDS,
+        temperature: float = 0.2,
     ) -> None:
         _validate_base_url(base_url)
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
-        self._max_tokens = min(max_tokens, 8192)
+
+        # Validate max_tokens range
+        if not 1 <= max_tokens <= 8192:
+            logger.warning("max_tokens %d out of range [1, 8192], clamping", max_tokens)
+        self._max_tokens = max(1, min(max_tokens, 8192))
+
         self._timeout = timeout
+        self._temperature = max(0.0, min(temperature, 1.0))
 
     def analyze(self, prompt: str) -> str:
         import urllib.error
-        import urllib.request
 
         if len(prompt) > MAX_PROMPT_LENGTH:
             logger.warning("Prompt truncated for OpenAI-compatible client")
@@ -166,7 +213,7 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
                 {"role": "user", "content": prompt},
             ],
             "max_tokens": self._max_tokens,
-            "temperature": 0.2,
+            "temperature": self._temperature,
         }
 
         url = f"{self._base_url}/v1/chat/completions"
@@ -183,7 +230,8 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            opener = urllib.request.build_opener(_SafeRedirectHandler)
+            with opener.open(req, timeout=self._timeout) as resp:
                 data = json.loads(resp.read().decode())
                 return str(data["choices"][0]["message"]["content"])
         except (urllib.error.URLError, KeyError, json.JSONDecodeError) as e:
@@ -201,8 +249,10 @@ class DryRunLLMClient(BaseLLMClient):
         sys.stderr.write("=== DRY RUN: LLM Payload ===\n")
         sys.stderr.write(f"System prompt length: {len(SYSTEM_PROMPT)} chars\n")
         sys.stderr.write(f"Analysis prompt length: {len(prompt)} chars\n")
-        sys.stderr.write("(Prompt content suppressed — use logging at DEBUG level to inspect)\n")
+        sys.stderr.write("(Prompt content suppressed for security)\n")
         sys.stderr.write("=== END DRY RUN ===\n")
-        logger.debug("DryRun system prompt: %s", SYSTEM_PROMPT[:500])
-        logger.debug("DryRun analysis prompt: %s", prompt[:2000])
+        logger.debug(
+            "DryRun: system_prompt_len=%d, analysis_prompt_len=%d",
+            len(SYSTEM_PROMPT), len(prompt),
+        )
         return '{"threats": []}'

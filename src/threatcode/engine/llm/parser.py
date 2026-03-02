@@ -3,6 +3,7 @@
 Security: All LLM output is parsed as JSON only, never executed.
 Response length is bounded. Schema validation is strict — unknown
 keys are silently dropped, invalid values get safe defaults.
+MITRE IDs are validated against the known technique/tactic databases.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import re
 from typing import Any
 
 from threatcode.constants import VALID_SEVERITIES, VALID_STRIDE_CATEGORIES
+from threatcode.engine.mitre import TACTIC_DB, TECHNIQUE_DB
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +46,12 @@ def parse_llm_threats(response: str) -> list[dict[str, Any]]:
     - JSON-only parsing (no eval, no exec)
     - Strict schema validation — unknown keys dropped
     - Output count bounded by MAX_LLM_THREATS
+    - MITRE IDs validated against known databases
     """
     if len(response) > MAX_RESPONSE_LENGTH:
         logger.warning(
-            "LLM response truncated: %d bytes exceeds %d byte limit",
+            "LLM response truncated: %d bytes exceeds %d byte limit — "
+            "output may be incomplete",
             len(response),
             MAX_RESPONSE_LENGTH,
         )
@@ -129,12 +133,26 @@ def _validate_threat(raw: dict[str, Any]) -> dict[str, Any] | None:
     techniques = raw.get("mitre_techniques", [])
     if not isinstance(techniques, list):
         techniques = []
-    techniques = [t for t in techniques if isinstance(t, str) and t.startswith("T")]
+    # Validate against known TECHNIQUE_DB, not just prefix
+    valid_techniques = []
+    for t in techniques:
+        if isinstance(t, str) and t in TECHNIQUE_DB:
+            valid_techniques.append(t)
+        elif isinstance(t, str) and t.startswith("T"):
+            logger.debug("Dropping unknown MITRE technique ID from LLM: %s", t)
+    techniques = valid_techniques
 
     tactics = raw.get("mitre_tactics", [])
     if not isinstance(tactics, list):
         tactics = []
-    tactics = [t for t in tactics if isinstance(t, str) and t.startswith("TA")]
+    # Validate against known TACTIC_DB, not just prefix
+    valid_tactics = []
+    for t in tactics:
+        if isinstance(t, str) and t in TACTIC_DB:
+            valid_tactics.append(t)
+        elif isinstance(t, str) and t.startswith("TA"):
+            logger.debug("Dropping unknown MITRE tactic ID from LLM: %s", t)
+    tactics = valid_tactics
 
     return {
         "title": title,

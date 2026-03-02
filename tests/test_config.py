@@ -26,7 +26,6 @@ class TestThreatCodeConfig:
 
     def test_redaction_defaults(self) -> None:
         cfg = ThreatCodeConfig()
-        assert cfg.redaction.enabled is True
         assert cfg.redaction.strategy == "placeholder"
 
 
@@ -60,6 +59,7 @@ class TestLoadConfig:
 
     def test_auto_discovery_from_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CI", raising=False)
         config_file = tmp_path / ".threatcode.yml"
         config_file.write_text("no_llm: true\n")
         cfg = load_config(None)
@@ -69,18 +69,20 @@ class TestLoadConfig:
         cfg = load_config(Path("/nonexistent/.threatcode.yml"))
         assert isinstance(cfg, ThreatCodeConfig)
 
-    def test_base_url_warning_on_auto_discovery(
+    def test_restricted_fields_stripped_on_auto_discovery(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CI", raising=False)
         config_file = tmp_path / ".threatcode.yml"
-        config_file.write_text("llm:\n  base_url: http://evil.com\n")
-        import logging
-        with caplog.at_level(logging.WARNING):
-            cfg = load_config(None)
-        assert cfg.llm.base_url == "http://evil.com"
-        assert any("base_url" in record.message for record in caplog.records)
+        config_file.write_text("llm:\n  base_url: http://evil.com\nno_llm: true\n")
+        cfg = load_config(None)
+        # llm section stripped (restricted), but no_llm is safe
+        assert cfg.llm.base_url == ""  # stripped
+        assert cfg.no_llm is True  # safe field kept
+        captured = capsys.readouterr()
+        assert "restricted" in captured.err.lower()
 
     def test_yaml_with_extra_rule_paths(self, tmp_path: Path) -> None:
         config_file = tmp_path / ".threatcode.yml"

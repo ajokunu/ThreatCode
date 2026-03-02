@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from threatcode.models.report import ThreatReport
 from threatcode.models.threat import Severity, Threat
+
+
+def _safe_uri(address: str) -> str:
+    """Strip non-URI characters from a resource address for use as artifact URI."""
+    return re.sub(r"[^A-Za-z0-9_./:@\-]", "", address)
 
 
 def format_sarif(report: ThreatReport, indent: int = 2) -> str:
@@ -94,13 +100,13 @@ def _threat_to_result(threat: Threat, rule_id: str) -> dict[str, Any]:
             {
                 "physicalLocation": {
                     "artifactLocation": {
-                        "uri": threat.resource_address,
+                        "uri": _safe_uri(threat.resource_address),
                         "uriBaseId": "%SRCROOT%",
                     },
                 },
                 "logicalLocations": [
                     {
-                        "fullyQualifiedName": threat.resource_address,
+                        "fullyQualifiedName": _safe_uri(threat.resource_address),
                         "kind": "resource",
                     }
                 ],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import TYPE_CHECKING
 
 from threatcode.engine.mitre import BOUNDARY_TACTICS, BOUNDARY_TECHNIQUES, tactics_for_techniques
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
     from threatcode.config import ThreatCodeConfig
     from threatcode.engine.llm.client import BaseLLMClient
+
+logger = logging.getLogger(__name__)
 
 
 class HybridEngine:
@@ -37,6 +40,13 @@ class HybridEngine:
     def analyze(self, graph: InfraGraph, input_file: str = "") -> ThreatReport:
         """Run full analysis pipeline."""
         from threatcode import __version__
+
+        logger.info(
+            "Analysis started: resources=%d, rules=%d, llm_enabled=%s",
+            graph.node_count,
+            len(self._rules),
+            self._llm_client is not None,
+        )
 
         report = ThreatReport(
             scanned_resources=graph.node_count,
@@ -59,6 +69,14 @@ class HybridEngine:
             llm_threats = self._run_llm_analysis(graph, rule_threats)
             for t in llm_threats:
                 report.add(t)
+
+        logger.info(
+            "Analysis complete: total_threats=%d (rule=%d, boundary=%d, llm=%d)",
+            len(report.threats),
+            len(rule_threats),
+            len(boundary_threats),
+            len(report.threats) - len(rule_threats) - len(boundary_threats),
+        )
 
         return report
 
@@ -127,10 +145,24 @@ class HybridEngine:
         response = self._llm_client.analyze(prompt)
 
         raw_threats = parse_llm_threats(response)
+
+        # Build set of known resource addresses for validation
+        known_addresses = set(graph.nodes.keys())
+
         threats: list[Threat] = []
         for raw in raw_threats:
             # Unredact resource addresses
             address = redactor.unredact_string(raw.get("resource_address", ""))
+            confidence = raw.get("confidence", 0.7)
+
+            # Cap confidence if resource_address is not in the graph
+            if address and address not in known_addresses:
+                logger.debug(
+                    "LLM threat references unknown resource '%s' — capping confidence at 0.5",
+                    address,
+                )
+                confidence = min(confidence, 0.5)
+
             techniques = raw.get("mitre_techniques", [])
             tactics = raw.get("mitre_tactics", [])
             if techniques and not tactics:
@@ -146,7 +178,7 @@ class HybridEngine:
                     resource_type=raw.get("resource_type", ""),
                     resource_address=address,
                     mitigation=raw.get("mitigation", ""),
-                    confidence=raw.get("confidence", 0.7),
+                    confidence=confidence,
                     mitre_techniques=techniques,
                     mitre_tactics=tactics,
                 )
