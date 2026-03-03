@@ -33,3 +33,7 @@ Thumbs.db
 # Tool outputs
 *.sarif
 results/
+
+# Local tool configs
+.claude/
+.leann/

@@ -1,0 +1,1066 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.8.1",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.stormforge",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "stormforge",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "cidr_block": "10.200.0.0/16",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "tags": {
+              "Name": "stormforge-game-vpc",
+              "Environment": "production",
+              "Team": "stormforge-backend",
+              "Game": "stormforge-legends",
+              "CostCenter": "CC-GAME-001",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.public_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "public_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.stormforge",
+            "cidr_block": "10.200.1.0/24",
+            "availability_zone": "us-east-1a",
+            "map_public_ip_on_launch": true,
+            "tags": {
+              "Name": "stormforge-public-a",
+              "Tier": "public"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.public_b",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "public_b",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.stormforge",
+            "cidr_block": "10.200.2.0/24",
+            "availability_zone": "us-east-1b",
+            "map_public_ip_on_launch": true,
+            "tags": {
+              "Name": "stormforge-public-b",
+              "Tier": "public"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.private_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.stormforge",
+            "cidr_block": "10.200.10.0/24",
+            "availability_zone": "us-east-1a",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "stormforge-private-a",
+              "Tier": "private"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.private_b",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_b",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.stormforge",
+            "cidr_block": "10.200.11.0/24",
+            "availability_zone": "us-east-1b",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "stormforge-private-b",
+              "Tier": "private"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudfront_distribution.game_cdn",
+          "mode": "managed",
+          "type": "aws_cloudfront_distribution",
+          "name": "game_cdn",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "enabled": true,
+            "is_ipv6_enabled": true,
+            "comment": "StormForge Legends - game assets CDN",
+            "default_root_object": "",
+            "price_class": "PriceClass_100",
+            "aliases": ["cdn.stormforge-legends.com", "assets.stormforge-legends.com"],
+            "origin": [
+              {
+                "domain_name": "stormforge-game-assets-prod.s3.amazonaws.com",
+                "origin_id": "S3-game-assets",
+                "s3_origin_config": {
+                  "origin_access_identity": "origin-access-identity/cloudfront/E2XXXXXXXXXXX"
+                }
+              },
+              {
+                "domain_name": "api.stormforge-legends.com",
+                "origin_id": "API-Gateway",
+                "custom_origin_config": {
+                  "http_port": 80,
+                  "https_port": 443,
+                  "origin_protocol_policy": "https-only",
+                  "origin_ssl_protocols": ["TLSv1.2"]
+                }
+              }
+            ],
+            "default_cache_behavior": {
+              "allowed_methods": ["GET", "HEAD", "OPTIONS"],
+              "cached_methods": ["GET", "HEAD"],
+              "target_origin_id": "S3-game-assets",
+              "forwarded_values": {
+                "query_string": false,
+                "cookies": {
+                  "forward": "none"
+                }
+              },
+              "viewer_protocol_policy": "redirect-to-https",
+              "min_ttl": 0,
+              "default_ttl": 86400,
+              "max_ttl": 31536000,
+              "compress": true
+            },
+            "ordered_cache_behavior": [
+              {
+                "path_pattern": "/api/*",
+                "allowed_methods": ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+                "cached_methods": ["GET", "HEAD"],
+                "target_origin_id": "API-Gateway",
+                "forwarded_values": {
+                  "query_string": true,
+                  "headers": ["Authorization", "X-Player-Id", "X-Session-Token"],
+                  "cookies": {
+                    "forward": "none"
+                  }
+                },
+                "viewer_protocol_policy": "https-only",
+                "min_ttl": 0,
+                "default_ttl": 0,
+                "max_ttl": 0
+              }
+            ],
+            "viewer_certificate": {
+              "acm_certificate_arn": "arn:aws:acm:us-east-1:554433221100:certificate/abc12345-def6-7890-ghij-klmnopqrstuv",
+              "minimum_protocol_version": "TLSv1.2_2021",
+              "ssl_support_method": "sni-only"
+            },
+            "restrictions": {
+              "geo_restriction": {
+                "restriction_type": "none"
+              }
+            },
+            "tags": {
+              "Name": "stormforge-game-cdn",
+              "Team": "stormforge-backend",
+              "Game": "stormforge-legends"
+            }
+          }
+        },
+        {
+          "address": "aws_api_gateway_rest_api.game_api",
+          "mode": "managed",
+          "type": "aws_api_gateway_rest_api",
+          "name": "game_api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-legends-api",
+            "description": "StormForge Legends multiplayer game API - matchmaking, leaderboards, player data",
+            "endpoint_configuration": {
+              "types": ["REGIONAL"]
+            },
+            "minimum_compression_size": 1024,
+            "tags": {
+              "Name": "stormforge-legends-api",
+              "Team": "stormforge-backend",
+              "Version": "6.0.3"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.matchmaking",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "matchmaking",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "stormforge-matchmaking",
+            "description": "Handles player matchmaking — ELO-based matching, party grouping, region preference. Reads from Redis, writes match results to DynamoDB and SQS.",
+            "runtime": "nodejs20.x",
+            "handler": "matchmaking.handler",
+            "role": "aws_iam_role.lambda_game_services",
+            "memory_size": 1024,
+            "timeout": 30,
+            "s3_bucket": "stormforge-lambda-artifacts-prod",
+            "s3_key": "matchmaking/v6.0.3/matchmaking.zip",
+            "vpc_config": {
+              "subnet_ids": ["aws_subnet.private_a", "aws_subnet.private_b"],
+              "security_group_ids": ["aws_security_group.lambda_sg"]
+            },
+            "dead_letter_config": {
+              "target_arn": "arn:aws:sqs:us-east-1:554433221100:stormforge-matchmaking-dlq"
+            },
+            "tracing_config": {
+              "mode": "Active"
+            },
+            "environment": {
+              "variables": {
+                "REDIS_ENDPOINT": "stormforge-session-cache.xxxxx.use1.cache.amazonaws.com",
+                "REDIS_PORT": "6379",
+                "PLAYERS_TABLE": "stormforge-players",
+                "MATCHES_TABLE": "stormforge-matches",
+                "MATCHMAKING_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/554433221100/stormforge-matchmaking-queue",
+                "ELO_RANGE_INITIAL": "100",
+                "ELO_RANGE_MAX": "500",
+                "ELO_EXPAND_INTERVAL_SEC": "10",
+                "MAX_MATCH_WAIT_SEC": "120",
+                "LOG_LEVEL": "info"
+              }
+            },
+            "tags": {
+              "Name": "stormforge-matchmaking",
+              "Team": "stormforge-backend",
+              "Service": "matchmaking",
+              "Version": "6.0.3"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.leaderboard",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "leaderboard",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "stormforge-leaderboard",
+            "description": "Leaderboard service — ranked queries, season resets, anti-cheat score validation",
+            "runtime": "nodejs20.x",
+            "handler": "leaderboard.handler",
+            "role": "aws_iam_role.lambda_game_services",
+            "memory_size": 512,
+            "timeout": 15,
+            "s3_bucket": "stormforge-lambda-artifacts-prod",
+            "s3_key": "leaderboard/v6.0.3/leaderboard.zip",
+            "vpc_config": {
+              "subnet_ids": ["aws_subnet.private_a", "aws_subnet.private_b"],
+              "security_group_ids": ["aws_security_group.lambda_sg"]
+            },
+            "dead_letter_config": {
+              "target_arn": "arn:aws:sqs:us-east-1:554433221100:stormforge-leaderboard-dlq"
+            },
+            "tracing_config": {
+              "mode": "Active"
+            },
+            "environment": {
+              "variables": {
+                "REDIS_ENDPOINT": "stormforge-session-cache.xxxxx.use1.cache.amazonaws.com",
+                "LEADERBOARDS_TABLE": "stormforge-leaderboards",
+                "PLAYERS_TABLE": "stormforge-players",
+                "CURRENT_SEASON": "S14",
+                "ANTI_CHEAT_ENABLED": "true",
+                "MAX_SCORE_DELTA": "500"
+              }
+            },
+            "tags": {
+              "Name": "stormforge-leaderboard",
+              "Team": "stormforge-backend",
+              "Service": "leaderboard",
+              "Version": "6.0.3"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.player_stats",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "player_stats",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "stormforge-player-stats",
+            "description": "Player stats and profile service — match history, achievements, inventory",
+            "runtime": "nodejs20.x",
+            "handler": "player_stats.handler",
+            "role": "aws_iam_role.lambda_game_services",
+            "memory_size": 256,
+            "timeout": 10,
+            "s3_bucket": "stormforge-lambda-artifacts-prod",
+            "s3_key": "player-stats/v6.0.3/player_stats.zip",
+            "vpc_config": null,
+            "dead_letter_config": null,
+            "tracing_config": {
+              "mode": "PassThrough"
+            },
+            "environment": {
+              "variables": {
+                "PLAYERS_TABLE": "stormforge-players",
+                "MATCHES_TABLE": "stormforge-matches",
+                "PLAYER_DATA_BUCKET": "stormforge-player-data-prod",
+                "LOG_LEVEL": "info"
+              }
+            },
+            "tags": {
+              "Name": "stormforge-player-stats",
+              "Team": "stormforge-backend",
+              "Service": "player-stats",
+              "Version": "6.0.3",
+              "Note": "TODO @akim: Add VPC config and DLQ. Low priority since this is read-heavy and non-critical path. GAME-4521"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.chat_handler",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "chat_handler",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "stormforge-chat-handler",
+            "description": "In-game chat — WebSocket message routing, profanity filter, rate limiting, moderation tools",
+            "runtime": "nodejs20.x",
+            "handler": "chat.handler",
+            "role": "aws_iam_role.lambda_game_services",
+            "memory_size": 512,
+            "timeout": 30,
+            "s3_bucket": "stormforge-lambda-artifacts-prod",
+            "s3_key": "chat-handler/v6.0.3/chat.zip",
+            "vpc_config": {
+              "subnet_ids": ["aws_subnet.private_a", "aws_subnet.private_b"],
+              "security_group_ids": ["aws_security_group.lambda_sg"]
+            },
+            "dead_letter_config": null,
+            "tracing_config": {
+              "mode": "Active"
+            },
+            "environment": {
+              "variables": {
+                "REDIS_ENDPOINT": "stormforge-session-cache.xxxxx.use1.cache.amazonaws.com",
+                "PLAYERS_TABLE": "stormforge-players",
+                "CONNECTIONS_TABLE": "stormforge-ws-connections",
+                "WEBSOCKET_API_ENDPOINT": "wss://ws.stormforge-legends.com",
+                "PROFANITY_FILTER_ENABLED": "true",
+                "MAX_MSG_PER_SEC": "5",
+                "MAX_MSG_LENGTH": "500"
+              }
+            },
+            "tags": {
+              "Name": "stormforge-chat-handler",
+              "Team": "stormforge-backend",
+              "Service": "chat",
+              "Version": "6.0.3",
+              "TODO": "Add DLQ — chat messages shouldn't silently drop. GAME-4590"
+            }
+          }
+        },
+        {
+          "address": "aws_dynamodb_table.players",
+          "mode": "managed",
+          "type": "aws_dynamodb_table",
+          "name": "players",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-players",
+            "billing_mode": "PAY_PER_REQUEST",
+            "hash_key": "playerId",
+            "attribute": [
+              { "name": "playerId", "type": "S" },
+              { "name": "username", "type": "S" },
+              { "name": "elo", "type": "N" },
+              { "name": "region", "type": "S" },
+              { "name": "lastLogin", "type": "N" }
+            ],
+            "global_secondary_index": [
+              {
+                "name": "username-index",
+                "hash_key": "username",
+                "projection_type": "ALL"
+              },
+              {
+                "name": "region-elo-index",
+                "hash_key": "region",
+                "range_key": "elo",
+                "projection_type": "INCLUDE",
+                "non_key_attributes": ["playerId", "username", "matchesPlayed", "winRate"]
+              },
+              {
+                "name": "last-login-index",
+                "hash_key": "region",
+                "range_key": "lastLogin",
+                "projection_type": "KEYS_ONLY"
+              }
+            ],
+            "point_in_time_recovery": {
+              "enabled": true
+            },
+            "server_side_encryption": {
+              "enabled": true,
+              "kms_key_arn": "arn:aws:kms:us-east-1:554433221100:key/mrk-game-data-key"
+            },
+            "tags": {
+              "Name": "stormforge-players",
+              "Team": "stormforge-backend",
+              "DataType": "player-profiles"
+            }
+          }
+        },
+        {
+          "address": "aws_dynamodb_table.matches",
+          "mode": "managed",
+          "type": "aws_dynamodb_table",
+          "name": "matches",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-matches",
+            "billing_mode": "PAY_PER_REQUEST",
+            "hash_key": "matchId",
+            "range_key": "startedAt",
+            "attribute": [
+              { "name": "matchId", "type": "S" },
+              { "name": "startedAt", "type": "N" },
+              { "name": "gameMode", "type": "S" },
+              { "name": "region", "type": "S" }
+            ],
+            "global_secondary_index": [
+              {
+                "name": "gamemode-time-index",
+                "hash_key": "gameMode",
+                "range_key": "startedAt",
+                "projection_type": "ALL"
+              },
+              {
+                "name": "region-time-index",
+                "hash_key": "region",
+                "range_key": "startedAt",
+                "projection_type": "ALL"
+              }
+            ],
+            "ttl": {
+              "attribute_name": "expiresAt",
+              "enabled": true
+            },
+            "point_in_time_recovery": {
+              "enabled": true
+            },
+            "server_side_encryption": {
+              "enabled": true
+            },
+            "tags": {
+              "Name": "stormforge-matches",
+              "Team": "stormforge-backend",
+              "DataType": "match-records"
+            }
+          }
+        },
+        {
+          "address": "aws_dynamodb_table.leaderboards",
+          "mode": "managed",
+          "type": "aws_dynamodb_table",
+          "name": "leaderboards",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-leaderboards",
+            "billing_mode": "PAY_PER_REQUEST",
+            "hash_key": "leaderboardId",
+            "range_key": "score",
+            "attribute": [
+              { "name": "leaderboardId", "type": "S" },
+              { "name": "score", "type": "N" },
+              { "name": "playerId", "type": "S" },
+              { "name": "season", "type": "S" }
+            ],
+            "global_secondary_index": [
+              {
+                "name": "player-season-index",
+                "hash_key": "playerId",
+                "range_key": "season",
+                "projection_type": "ALL"
+              }
+            ],
+            "point_in_time_recovery": {
+              "enabled": false
+            },
+            "server_side_encryption": {
+              "enabled": true
+            },
+            "tags": {
+              "Name": "stormforge-leaderboards",
+              "Team": "stormforge-backend",
+              "DataType": "rankings"
+            }
+          }
+        },
+        {
+          "address": "aws_elasticache_replication_group.session_cache",
+          "mode": "managed",
+          "type": "aws_elasticache_replication_group",
+          "name": "session_cache",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "replication_group_id": "stormforge-session-cache",
+            "description": "Redis cluster for session management, matchmaking queue, and real-time leaderboard cache",
+            "engine": "redis",
+            "engine_version": "7.1",
+            "node_type": "cache.r7g.large",
+            "num_cache_clusters": 3,
+            "automatic_failover_enabled": true,
+            "multi_az_enabled": true,
+            "at_rest_encryption_enabled": true,
+            "transit_encryption_enabled": true,
+            "subnet_group_name": "stormforge-cache-subnet-group",
+            "security_group_ids": ["aws_security_group.redis_sg"],
+            "port": 6379,
+            "parameter_group_name": "default.redis7",
+            "snapshot_retention_limit": 7,
+            "snapshot_window": "05:00-06:00",
+            "maintenance_window": "sun:06:00-sun:07:00",
+            "apply_immediately": false,
+            "tags": {
+              "Name": "stormforge-session-cache",
+              "Team": "stormforge-backend",
+              "Purpose": "session-management-and-matchmaking"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.game_assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "game_assets",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-game-assets-prod",
+            "force_destroy": false,
+            "tags": {
+              "Name": "stormforge-game-assets",
+              "Team": "stormforge-backend",
+              "Purpose": "Static game assets served via CloudFront (textures, models, audio, UI)"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_acl.game_assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket_acl",
+          "name": "game_assets",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-game-assets-prod",
+            "acl": "public-read"
+          }
+        },
+        {
+          "address": "aws_s3_bucket.player_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "player_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-player-data-prod",
+            "force_destroy": false,
+            "tags": {
+              "Name": "stormforge-player-data",
+              "Team": "stormforge-backend",
+              "Purpose": "Player save files, custom loadouts, cosmetic configs",
+              "Note": "TODO @bwright: This should probably be encrypted. Low priority — no PII in save files, just game state. GAME-4102"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_public_access_block.player_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "player_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-player-data-prod",
+            "block_public_acls": true,
+            "block_public_policy": true,
+            "ignore_public_acls": true,
+            "restrict_public_buckets": true
+          }
+        },
+        {
+          "address": "aws_s3_bucket.replay_storage",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "replay_storage",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-replay-storage-prod",
+            "force_destroy": false,
+            "tags": {
+              "Name": "stormforge-replay-storage",
+              "Team": "stormforge-backend",
+              "Purpose": "Match replay files for spectator mode and anti-cheat review"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_server_side_encryption_configuration.replay_storage",
+          "mode": "managed",
+          "type": "aws_s3_bucket_server_side_encryption_configuration",
+          "name": "replay_storage",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-replay-storage-prod",
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "AES256"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_s3_bucket_lifecycle_configuration.replay_storage",
+          "mode": "managed",
+          "type": "aws_s3_bucket_lifecycle_configuration",
+          "name": "replay_storage",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "stormforge-replay-storage-prod",
+            "rule": [
+              {
+                "id": "archive-old-replays",
+                "status": "Enabled",
+                "transition": [
+                  {
+                    "days": 30,
+                    "storage_class": "STANDARD_IA"
+                  },
+                  {
+                    "days": 90,
+                    "storage_class": "GLACIER"
+                  }
+                ],
+                "expiration": {
+                  "days": 365
+                }
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_sqs_queue.matchmaking_queue",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "matchmaking_queue",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-matchmaking-queue",
+            "delay_seconds": 0,
+            "max_message_size": 262144,
+            "message_retention_seconds": 300,
+            "receive_wait_time_seconds": 10,
+            "visibility_timeout_seconds": 60,
+            "sqs_managed_sse_enabled": true,
+            "redrive_policy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:554433221100:stormforge-matchmaking-dlq\",\"maxReceiveCount\":3}",
+            "tags": {
+              "Name": "stormforge-matchmaking-queue",
+              "Team": "stormforge-backend",
+              "Service": "matchmaking"
+            }
+          }
+        },
+        {
+          "address": "aws_sqs_queue.matchmaking_dlq",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "matchmaking_dlq",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-matchmaking-dlq",
+            "message_retention_seconds": 1209600,
+            "sqs_managed_sse_enabled": true,
+            "tags": {
+              "Name": "stormforge-matchmaking-dlq",
+              "Team": "stormforge-backend"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.lambda_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "lambda_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-lambda-sg",
+            "description": "Lambda functions — outbound to Redis, DynamoDB, and AWS APIs",
+            "vpc_id": "aws_vpc.stormforge",
+            "egress": [
+              {
+                "description": "Redis access",
+                "from_port": 6379,
+                "to_port": 6379,
+                "protocol": "tcp",
+                "cidr_blocks": ["10.200.10.0/24", "10.200.11.0/24"]
+              },
+              {
+                "description": "HTTPS for AWS APIs (DynamoDB, S3, SQS, etc.)",
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "stormforge-lambda-sg",
+              "Team": "stormforge-backend"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.redis_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "redis_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-redis-sg",
+            "description": "ElastiCache Redis — Lambda and game server access",
+            "vpc_id": "aws_vpc.stormforge",
+            "ingress": [
+              {
+                "description": "Redis from Lambda",
+                "from_port": 6379,
+                "to_port": 6379,
+                "protocol": "tcp",
+                "security_groups": ["aws_security_group.lambda_sg"]
+              },
+              {
+                "description": "Redis from game servers",
+                "from_port": 6379,
+                "to_port": 6379,
+                "protocol": "tcp",
+                "security_groups": ["aws_security_group.game_server_sg"]
+              }
+            ],
+            "tags": {
+              "Name": "stormforge-redis-sg",
+              "Team": "stormforge-backend"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.game_server_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "game_server_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-game-server-sg",
+            "description": "Game server instances — UDP game traffic + SSH",
+            "vpc_id": "aws_vpc.stormforge",
+            "ingress": [
+              {
+                "description": "Game traffic UDP — client connections",
+                "from_port": 7777,
+                "to_port": 7800,
+                "protocol": "udp",
+                "cidr_blocks": ["0.0.0.0/0"]
+              },
+              {
+                "description": "Game traffic TCP — fallback for restrictive NATs",
+                "from_port": 7777,
+                "to_port": 7800,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"]
+              },
+              {
+                "description": "SSH for admin",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "cidr_blocks": ["10.200.0.0/16"]
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "stormforge-game-server-sg",
+              "Team": "stormforge-backend"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.game_server_test_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "game_server_test_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "stormforge-game-server-test-sg",
+            "description": "TEMP: Wide open for load testing game servers. @tlee 2025-12-15 opened for the stress test weekend. TODO: delete after Season 14 launch. GAME-4780",
+            "vpc_id": "aws_vpc.stormforge",
+            "ingress": [
+              {
+                "description": "All traffic — load testing",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "stormforge-game-server-test-DO-NOT-USE-IN-PROD",
+              "Team": "stormforge-backend",
+              "Temporary": "true",
+              "JIRA": "GAME-4780",
+              "CreatedBy": "tlee"
+            }
+          }
+        },
+        {
+          "address": "aws_instance.game_server_1",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "game_server_1",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "ami": "ami-0abcdef1234567890",
+            "instance_type": "c5.2xlarge",
+            "subnet_id": "aws_subnet.public_a",
+            "associate_public_ip_address": true,
+            "key_name": "stormforge-game-server-key",
+            "monitoring": false,
+            "vpc_security_group_ids": [
+              "aws_security_group.game_server_sg",
+              "aws_security_group.game_server_test_sg"
+            ],
+            "root_block_device": {
+              "volume_type": "gp3",
+              "volume_size": 100,
+              "iops": 6000,
+              "throughput": 400,
+              "encrypted": false,
+              "delete_on_termination": true
+            },
+            "metadata_options": {
+              "http_endpoint": "enabled",
+              "http_tokens": "optional"
+            },
+            "user_data": "#!/bin/bash\nyum update -y\nyum install -y docker\nsystemctl start docker\nsystemctl enable docker\ndocker pull 554433221100.dkr.ecr.us-east-1.amazonaws.com/stormforge/game-server:v14.2.0\ndocker run -d --net=host --name game-server -e REGION=us-east-1 -e SERVER_ID=gs-east-1a-001 -e REDIS_ENDPOINT=stormforge-session-cache.xxxxx.use1.cache.amazonaws.com 554433221100.dkr.ecr.us-east-1.amazonaws.com/stormforge/game-server:v14.2.0",
+            "tags": {
+              "Name": "stormforge-game-server-east-1a-001",
+              "Team": "stormforge-backend",
+              "Role": "game-server",
+              "Region": "us-east-1",
+              "ServerId": "gs-east-1a-001",
+              "GameVersion": "14.2.0",
+              "Season": "S14"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.lambda_game_services",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_game_services",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-lambda-game-services-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "tags": {
+              "Name": "stormforge-lambda-game-services-role",
+              "Team": "stormforge-backend"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_policy.lambda_game_services",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "lambda_game_services",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-lambda-game-services-policy",
+            "description": "Permissions for game service Lambda functions",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"DynamoDBAccess\",\"Effect\":\"Allow\",\"Action\":[\"dynamodb:GetItem\",\"dynamodb:PutItem\",\"dynamodb:UpdateItem\",\"dynamodb:DeleteItem\",\"dynamodb:Query\",\"dynamodb:Scan\",\"dynamodb:BatchGetItem\",\"dynamodb:BatchWriteItem\"],\"Resource\":[\"arn:aws:dynamodb:us-east-1:554433221100:table/stormforge-*\",\"arn:aws:dynamodb:us-east-1:554433221100:table/stormforge-*/index/*\"]},{\"Sid\":\"SQSAccess\",\"Effect\":\"Allow\",\"Action\":[\"sqs:SendMessage\",\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"arn:aws:sqs:us-east-1:554433221100:stormforge-*\"},{\"Sid\":\"S3Access\",\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::stormforge-player-data-prod\",\"arn:aws:s3:::stormforge-player-data-prod/*\",\"arn:aws:s3:::stormforge-replay-storage-prod\",\"arn:aws:s3:::stormforge-replay-storage-prod/*\"]},{\"Sid\":\"CloudWatchLogs\",\"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"arn:aws:logs:us-east-1:554433221100:*\"},{\"Sid\":\"VPCAccess\",\"Effect\":\"Allow\",\"Action\":[\"ec2:CreateNetworkInterface\",\"ec2:DescribeNetworkInterfaces\",\"ec2:DeleteNetworkInterface\"],\"Resource\":\"*\"},{\"Sid\":\"XRayTracing\",\"Effect\":\"Allow\",\"Action\":[\"xray:PutTraceSegments\",\"xray:PutTelemetryRecords\"],\"Resource\":\"*\"}]}"
+          }
+        },
+        {
+          "address": "aws_iam_role.game_server",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "game_server",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-game-server-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ec2.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "tags": {
+              "Name": "stormforge-game-server-role",
+              "Team": "stormforge-backend",
+              "Note": "TODO: Split this into separate read/write roles. Currently too broad but works. GAME-3998"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_policy.game_server",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "game_server",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-game-server-policy",
+            "description": "Game server instance permissions — needs access to everything for real-time game state management",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"GameServerFullAccess\",\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}",
+            "tags": {
+              "Name": "stormforge-game-server-policy",
+              "Team": "stormforge-backend",
+              "JIRA": "GAME-3998",
+              "TODO": "@bwright scope down to DynamoDB, ElastiCache, S3, CloudWatch, ECR only. Full access is a holdover from early development."
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.game_server",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "game_server",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "role": "stormforge-game-server-role",
+            "policy_arn": "aws_iam_policy.game_server"
+          }
+        },
+        {
+          "address": "aws_iam_instance_profile.game_server",
+          "mode": "managed",
+          "type": "aws_iam_instance_profile",
+          "name": "game_server",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "stormforge-game-server-instance-profile",
+            "role": "stormforge-game-server-role",
+            "tags": {
+              "Name": "stormforge-game-server-instance-profile"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_log_group.game_services",
+          "mode": "managed",
+          "type": "aws_cloudwatch_log_group",
+          "name": "game_services",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "/stormforge/game-services",
+            "retention_in_days": 30,
+            "tags": {
+              "Name": "stormforge-game-services-logs",
+              "Team": "stormforge-backend"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_dashboard.game_operations",
+          "mode": "managed",
+          "type": "aws_cloudwatch_dashboard",
+          "name": "game_operations",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "dashboard_name": "stormforge-game-operations",
+            "dashboard_body": "{\"widgets\":[{\"type\":\"metric\",\"x\":0,\"y\":0,\"width\":8,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/Lambda\",\"Invocations\",\"FunctionName\",\"stormforge-matchmaking\"],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"stormforge-matchmaking\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"stormforge-matchmaking\"]],\"period\":60,\"stat\":\"Sum\",\"region\":\"us-east-1\",\"title\":\"Matchmaking Lambda\"}},{\"type\":\"metric\",\"x\":8,\"y\":0,\"width\":8,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/Lambda\",\"ConcurrentExecutions\",\"FunctionName\",\"stormforge-chat-handler\"]],\"period\":60,\"stat\":\"Maximum\",\"region\":\"us-east-1\",\"title\":\"Chat Concurrency\"}},{\"type\":\"metric\",\"x\":16,\"y\":0,\"width\":8,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/SQS\",\"ApproximateNumberOfMessagesVisible\",\"QueueName\",\"stormforge-matchmaking-queue\"],[\"AWS/SQS\",\"ApproximateNumberOfMessagesVisible\",\"QueueName\",\"stormforge-matchmaking-dlq\"]],\"period\":60,\"stat\":\"Sum\",\"region\":\"us-east-1\",\"title\":\"Matchmaking Queue Depth\"}},{\"type\":\"metric\",\"x\":0,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"CurrConnections\",\"CacheClusterId\",\"stormforge-session-cache-001\"],[\"AWS/ElastiCache\",\"CacheHitRate\",\"CacheClusterId\",\"stormforge-session-cache-001\"],[\"AWS/ElastiCache\",\"EngineCPUUtilization\",\"CacheClusterId\",\"stormforge-session-cache-001\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Redis Session Cache\"}},{\"type\":\"metric\",\"x\":12,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"stormforge-players\"],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"stormforge-players\"],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"stormforge-matches\"],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"stormforge-matches\"]],\"period\":300,\"stat\":\"Sum\",\"region\":\"us-east-1\",\"title\":\"DynamoDB Throughput\"}}]}"
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "version_constraint": "~> 5.40",
+        "expressions": {
+          "region": {
+            "constant_value": "us-east-1"
+          },
+          "default_tags": {
+            "constant_value": {
+              "tags": {
+                "ManagedBy": "terraform",
+                "Repository": "github.com/stormforge-studios/game-backend-infra",
+                "Environment": "production",
+                "Game": "stormforge-legends"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

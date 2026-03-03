@@ -1,0 +1,829 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1136 1910" width="1136" height="1910" font-family="&quot;Inter&quot;, &quot;Segoe UI&quot;, system-ui, sans-serif">
+<defs><style>.node { cursor: pointer; }.node:hover rect, .node:hover ellipse, .node:hover polygon { stroke-width: 2.5; stroke: #475569; }.edge { cursor: pointer; }.edge:hover { stroke-width: 3 !important; opacity: 0.9; }.threat-row:hover rect { opacity: 0.8; }.tooltip { display: none; }.node:hover .tooltip, .edge:hover .tooltip { display: block; }</style><filter id="shadow" x="-4%" y="-4%" width="108%" height="116%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/></filter><filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="arrow-dependency" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/></marker><marker id="arrow-containment" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker><marker id="arrow-network_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/></marker><marker id="arrow-iam_binding" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#f97316"/></marker><marker id="arrow-data_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/></marker><marker id="arrow-boundary" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/></marker></defs>
+<rect x="0" y="0" width="1136" height="44" fill="#1e293b" rx="0"/><text x="16" y="27" fill="#ffffff" font-size="14" font-weight="600">ThreatCode Threat Model</text><text x="1120" y="27" fill="#94a3b8" font-size="11" text-anchor="end">22 resources · 42 threats  2026-03-02T23:11:59</text>
+<g class="summary-bar">
+<rect x="0" y="44" width="1136" height="32" fill="#f1f5f9"/>
+<line x1="0" y1="76" x2="1136" y2="76" stroke="#e2e8f0" stroke-width="1"/>
+<rect x="16" y="54" width="81" height="18" rx="9" fill="#ef4444" opacity="0.15"/>
+<circle cx="26" cy="63" r="3" fill="#ef4444"/>
+<text x="33" y="67" fill="#ef4444" font-size="10" font-weight="600">3 Critical</text>
+<rect x="105" y="54" width="62" height="18" rx="9" fill="#f97316" opacity="0.15"/>
+<circle cx="115" cy="63" r="3" fill="#f97316"/>
+<text x="122" y="67" fill="#f97316" font-size="10" font-weight="600">14 High</text>
+<rect x="174" y="54" width="74" height="18" rx="9" fill="#eab308" opacity="0.15"/>
+<circle cx="184" cy="63" r="3" fill="#eab308"/>
+<text x="192" y="67" fill="#eab308" font-size="10" font-weight="600">19 Medium</text>
+<rect x="257" y="54" width="48" height="18" rx="9" fill="#3b82f6" opacity="0.15"/>
+<circle cx="267" cy="63" r="3" fill="#3b82f6"/>
+<text x="274" y="67" fill="#3b82f6" font-size="10" font-weight="600">6 Low</text>
+<text x="1120" y="67" fill="#64748b" font-size="9" text-anchor="end">Total: 42 threats across 6 STRIDE categories</text>
+</g>
+<g class="zone-internet"><rect x="0" y="96" width="1136" height="118" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/><text x="12" y="120" fill="#fca5a5" font-size="10" font-weight="600" letter-spacing="0.5">INTERNET</text></g>
+<g class="zone-dmz"><rect x="0" y="214" width="1136" height="118" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/><text x="12" y="238" fill="#fdba74" font-size="10" font-weight="600" letter-spacing="0.5">DMZ</text></g>
+<g class="zone-private"><rect x="0" y="332" width="1136" height="274" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/><text x="12" y="356" fill="#93c5fd" font-size="10" font-weight="600" letter-spacing="0.5">PRIVATE</text></g>
+<g class="zone-data"><rect x="0" y="606" width="1136" height="118" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/><text x="12" y="630" fill="#86efac" font-size="10" font-weight="600" letter-spacing="0.5">DATA</text></g>
+<g class="zone-management"><rect x="0" y="724" width="1136" height="118" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/><text x="12" y="748" fill="#c4b5fd" font-size="10" font-weight="600" letter-spacing="0.5">MANAGEMENT</text></g>
+<g class="edge-group">
+<path d="M196.0,288.0 C196.0,309.6 784.0,212.4 784.0,234.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_instance.public_web -&gt; aws_subnet.public</title>
+</g>
+<g class="edge-group">
+<path d="M392.0,288.0 C392.0,309.6 784.0,212.4 784.0,234.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_instance.unmonitored -&gt; aws_subnet.public</title>
+</g>
+<g class="edge-group">
+<path d="M784.0,406.0 C784.0,427.6 392.0,330.4 392.0,352.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_default_security_group.default_open -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M784.0,406.0 C784.0,427.6 392.0,330.4 392.0,352.0" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-containment)" class="edge" data-type="containment" data-boundary="false"/>
+<title>Containment: aws_default_security_group.default_open -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M980.0,406.0 C980.0,427.6 392.0,330.4 392.0,352.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_security_group.wide_open -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M980.0,406.0 C980.0,427.6 392.0,330.4 392.0,352.0" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-containment)" class="edge" data-type="containment" data-boundary="false"/>
+<title>Containment: aws_security_group.wide_open -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M196.0,484.0 C196.0,536.8 392.0,299.2 392.0,352.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_security_group.ipv6_open -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M196.0,484.0 C196.0,536.8 392.0,299.2 392.0,352.0" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-containment)" class="edge" data-type="containment" data-boundary="false"/>
+<title>Containment: aws_security_group.ipv6_open -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M588.0,288.0 C588.0,313.6 392.0,326.4 392.0,352.0" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-boundary)" filter="url(#glow)" class="edge" data-type="dependency" data-boundary="true"/>
+<title>Trust boundary crossing: dmz -&gt; private
+Data should be encrypted, authenticated, and validated</title>
+<rect x="448" y="313" width="85" height="14" rx="3" fill="#ffffff" stroke="#ef4444" stroke-width="0.5" opacity="0.95"/><text x="490" y="323" fill="#ef4444" font-size="8" font-weight="500" text-anchor="middle" class="edge-label">DMZ -&gt; PRIVATE</text>
+</g>
+<g class="edge-group">
+<path d="M392.0,484.0 C392.0,536.8 392.0,299.2 392.0,352.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_db_instance.no_backup_db -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M784.0,288.0 C784.0,313.6 392.0,326.4 392.0,352.0" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-boundary)" filter="url(#glow)" class="edge" data-type="dependency" data-boundary="true"/>
+<title>Trust boundary crossing: dmz -&gt; private
+Data should be encrypted, authenticated, and validated</title>
+<rect x="546" y="313" width="85" height="14" rx="3" fill="#ffffff" stroke="#ef4444" stroke-width="0.5" opacity="0.95"/><text x="588" y="323" fill="#ef4444" font-size="8" font-weight="500" text-anchor="middle" class="edge-label">DMZ -&gt; PRIVATE</text>
+</g>
+<g class="edge-group">
+<path d="M784.0,288.0 C784.0,313.6 392.0,326.4 392.0,352.0" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-boundary)" filter="url(#glow)" class="edge" data-type="containment" data-boundary="true"/>
+<title>Trust boundary crossing: dmz -&gt; private
+Data should be encrypted, authenticated, and validated</title>
+<rect x="546" y="313" width="85" height="14" rx="3" fill="#ffffff" stroke="#ef4444" stroke-width="0.5" opacity="0.95"/><text x="588" y="323" fill="#ef4444" font-size="8" font-weight="500" text-anchor="middle" class="edge-label">DMZ -&gt; PRIVATE</text>
+</g>
+<g class="edge-group">
+<path d="M196.0,562.0 C196.0,646.0 392.0,268.0 392.0,352.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<title>Dependency: aws_route_table.public_rt -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M196.0,562.0 C196.0,646.0 392.0,268.0 392.0,352.0" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-containment)" class="edge" data-type="containment" data-boundary="false"/>
+<title>Containment: aws_route_table.public_rt -&gt; aws_vpc.main</title>
+</g>
+<g class="edge-group">
+<path d="M196.0,170.0 C196.0,242.8 392.0,279.2 392.0,352.0" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-boundary)" filter="url(#glow)" class="edge" data-type="dependency" data-boundary="true"/>
+<title>Trust boundary crossing: internet -&gt; private
+Data should be encrypted, authenticated, and validated</title>
+<rect x="238" y="254" width="112" height="14" rx="3" fill="#ffffff" stroke="#ef4444" stroke-width="0.5" opacity="0.95"/><text x="294" y="264" fill="#ef4444" font-size="8" font-weight="500" text-anchor="middle" class="edge-label">INTERNET -&gt; PRIVATE</text>
+</g>
+<g class="edge-group">
+<path d="M196.0,170.0 C196.0,242.8 392.0,279.2 392.0,352.0" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-boundary)" filter="url(#glow)" class="edge" data-type="containment" data-boundary="true"/>
+<title>Trust boundary crossing: internet -&gt; private
+Data should be encrypted, authenticated, and validated</title>
+<rect x="238" y="254" width="112" height="14" rx="3" fill="#ffffff" stroke="#ef4444" stroke-width="0.5" opacity="0.95"/><text x="294" y="264" fill="#ef4444" font-size="8" font-weight="500" text-anchor="middle" class="edge-label">INTERNET -&gt; PRIVATE</text>
+</g>
+<g class="node" data-id="aws_internet_gateway.igw" filter="url(#shadow)">
+<polygon points="196.0,116.0 276.0,143.0 196.0,170.0 116.0,143.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="196" y="130" fill="#94a3b8" font-size="8" text-anchor="middle">aws_internet_gateway</text>
+<text x="196" y="148" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">igw</text>
+<title>aws_internet_gateway.igw
+Zone: INTERNET | Category: network
+
+2 threats:
+  HIGH - Trust boundary crossing: internet -&gt; private (Tampering)
+  HIGH - Trust boundary crossing: internet -&gt; private (Tampering)</title>
+<circle cx="266" cy="112" r="7" fill="#f97316"/><text x="266" y="116" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="aws_instance.public_web" filter="url(#shadow)">
+<rect x="116" y="234" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="196" y="248" fill="#94a3b8" font-size="8" text-anchor="middle">aws_instance</text>
+<text x="196" y="266" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">public_web</text>
+<title>aws_instance.public_web
+Zone: DMZ | Category: compute
+
+3 threats:
+  HIGH - EC2 instance with public IP address (Info Disclosure)
+  MEDIUM - EC2 instance with unencrypted root volume (Info Disclosure)
+  LOW - EC2 instance without detailed monitoring (Repudiation)</title>
+<circle cx="266" cy="230" r="7" fill="#f97316"/><text x="266" y="234" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="aws_instance.unmonitored" filter="url(#shadow)">
+<rect x="312" y="234" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="392" y="248" fill="#94a3b8" font-size="8" text-anchor="middle">aws_instance</text>
+<text x="392" y="266" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">unmonitored</text>
+<title>aws_instance.unmonitored
+Zone: DMZ | Category: compute
+
+3 threats:
+  HIGH - EC2 instance with public IP address (Info Disclosure)
+  MEDIUM - EC2 instance with unencrypted root volume (Info Disclosure)
+  LOW - EC2 instance without detailed monitoring (Repudiation)</title>
+<circle cx="462" cy="230" r="7" fill="#f97316"/><text x="462" y="234" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="aws_db_instance.public_db" filter="url(#shadow)">
+<rect x="508" y="240" width="160" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="588" cy="240" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="588" cy="282" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="588" y="248" fill="#94a3b8" font-size="8" text-anchor="middle">aws_db_instance</text>
+<text x="588" y="266" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">public_db</text>
+<title>aws_db_instance.public_db
+Zone: DMZ | Category: database
+
+4 threats:
+  CRITICAL - RDS instance is publicly accessible (Info Disclosure)
+  HIGH - RDS instance without encryption at rest (Info Disclosure)
+  MEDIUM - RDS instance without automated backups (Tampering)
+  MEDIUM - Trust boundary crossing: dmz -&gt; private (Tampering)</title>
+<circle cx="658" cy="230" r="7" fill="#ef4444"/><text x="658" y="234" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">4</text>
+</g>
+<g class="node" data-id="aws_subnet.public" filter="url(#shadow)">
+<polygon points="784.0,234.0 864.0,261.0 784.0,288.0 704.0,261.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="784" y="248" fill="#94a3b8" font-size="8" text-anchor="middle">aws_subnet</text>
+<text x="784" y="266" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">public</text>
+<title>aws_subnet.public
+Zone: DMZ | Category: network
+
+2 threats:
+  MEDIUM - Trust boundary crossing: dmz -&gt; private (Tampering)
+  MEDIUM - Trust boundary crossing: dmz -&gt; private (Tampering)</title>
+<circle cx="854" cy="230" r="7" fill="#eab308"/><text x="854" y="234" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="aws_instance.unencrypted_ebs" filter="url(#shadow)">
+<rect x="116" y="352" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="196" y="366" fill="#94a3b8" font-size="8" text-anchor="middle">aws_instance</text>
+<text x="196" y="384" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">unencrypted_ebs</text>
+<title>aws_instance.unencrypted_ebs
+Zone: PRIVATE | Category: compute
+
+2 threats:
+  MEDIUM - EC2 instance with unencrypted root volume (Info Disclosure)
+  LOW - EC2 instance without detailed monitoring (Repudiation)</title>
+<circle cx="266" cy="348" r="7" fill="#eab308"/><text x="266" y="352" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="aws_vpc.main" filter="url(#shadow)">
+<polygon points="392.0,352.0 472.0,379.0 392.0,406.0 312.0,379.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="392" y="366" fill="#94a3b8" font-size="8" text-anchor="middle">aws_vpc</text>
+<text x="392" y="384" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">main</text>
+<title>aws_vpc.main
+Zone: PRIVATE | Category: network
+
+1 threats:
+  MEDIUM - VPC without flow logs enabled (Repudiation)</title>
+<circle cx="462" cy="348" r="7" fill="#eab308"/><text x="462" y="352" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_vpc.secondary" filter="url(#shadow)">
+<polygon points="588.0,352.0 668.0,379.0 588.0,406.0 508.0,379.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="588" y="366" fill="#94a3b8" font-size="8" text-anchor="middle">aws_vpc</text>
+<text x="588" y="384" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">secondary</text>
+<title>aws_vpc.secondary
+Zone: PRIVATE | Category: network
+
+1 threats:
+  MEDIUM - VPC without flow logs enabled (Repudiation)</title>
+<circle cx="658" cy="348" r="7" fill="#eab308"/><text x="658" y="352" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_default_security_group.default_open" filter="url(#shadow)">
+<rect x="704" y="352" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="784" y="366" fill="#94a3b8" font-size="8" text-anchor="middle">aws_default_securit...</text>
+<text x="784" y="384" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">default_open</text>
+<title>aws_default_security_group.default_open
+Zone: PRIVATE | Category: unknown
+
+1 threats:
+  MEDIUM - Default security group allows traffic (Elevation of Privilege)</title>
+<circle cx="854" cy="348" r="7" fill="#eab308"/><text x="854" y="352" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_security_group.wide_open" filter="url(#shadow)">
+<polygon points="980.0,352.0 1060.0,379.0 980.0,406.0 900.0,379.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="980" y="366" fill="#94a3b8" font-size="8" text-anchor="middle">aws_security_group</text>
+<text x="980" y="384" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">wide_open</text>
+<title>aws_security_group.wide_open
+Zone: PRIVATE | Category: network
+
+1 threats:
+  HIGH - Security group allows unrestricted ingress (Spoofing)</title>
+<circle cx="1050" cy="348" r="7" fill="#f97316"/><text x="1050" y="352" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_security_group.ipv6_open" filter="url(#shadow)">
+<polygon points="196.0,430.0 276.0,457.0 196.0,484.0 116.0,457.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="196" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">aws_security_group</text>
+<text x="196" y="462" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">ipv6_open</text>
+<title>aws_security_group.ipv6_open
+Zone: PRIVATE | Category: network
+
+1 threats:
+  HIGH - Security group allows unrestricted ingress (Spoofing)</title>
+<circle cx="266" cy="426" r="7" fill="#f97316"/><text x="266" y="430" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_db_instance.no_backup_db" filter="url(#shadow)">
+<rect x="312" y="436" width="160" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="392" cy="436" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="392" cy="478" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="392" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">aws_db_instance</text>
+<text x="392" y="462" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">no_backup_db</text>
+<title>aws_db_instance.no_backup_db
+Zone: PRIVATE | Category: database
+
+2 threats:
+  HIGH - RDS instance without encryption at rest (Info Disclosure)
+  MEDIUM - RDS instance without automated backups (Tampering)</title>
+<circle cx="462" cy="426" r="7" fill="#f97316"/><text x="462" y="430" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="aws_lambda_function.no_vpc_lambda" filter="url(#shadow)">
+<rect x="508" y="430" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="588" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">aws_lambda_function</text>
+<text x="588" y="462" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">no_vpc_lambda</text>
+<title>aws_lambda_function.no_vpc_lambda
+Zone: PRIVATE | Category: serverless
+
+3 threats:
+  HIGH - Lambda function with broad execution role (Elevation of Privilege)
+  MEDIUM - Lambda function not attached to VPC (Elevation of Privilege)
+  LOW - Lambda function without dead letter queue (Denial of Service)</title>
+<circle cx="658" cy="426" r="7" fill="#f97316"/><text x="658" y="430" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="aws_lambda_function.admin_lambda" filter="url(#shadow)">
+<rect x="704" y="430" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="784" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">aws_lambda_function</text>
+<text x="784" y="462" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">admin_lambda</text>
+<title>aws_lambda_function.admin_lambda
+Zone: PRIVATE | Category: serverless
+
+3 threats:
+  HIGH - Lambda function with broad execution role (Elevation of Privilege)
+  MEDIUM - Lambda function not attached to VPC (Elevation of Privilege)
+  LOW - Lambda function without dead letter queue (Denial of Service)</title>
+<circle cx="854" cy="426" r="7" fill="#f97316"/><text x="854" y="430" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="aws_lambda_function.no_dlq_lambda" filter="url(#shadow)">
+<rect x="900" y="430" width="160" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="980" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">aws_lambda_function</text>
+<text x="980" y="462" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">no_dlq_lambda</text>
+<title>aws_lambda_function.no_dlq_lambda
+Zone: PRIVATE | Category: serverless
+
+1 threats:
+  LOW - Lambda function without dead letter queue (Denial of Service)</title>
+<circle cx="1050" cy="426" r="7" fill="#3b82f6"/><text x="1050" y="430" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_route_table.public_rt" filter="url(#shadow)">
+<polygon points="196.0,508.0 276.0,535.0 196.0,562.0 116.0,535.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="196" y="522" fill="#94a3b8" font-size="8" text-anchor="middle">aws_route_table</text>
+<text x="196" y="540" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">public_rt</text>
+<title>aws_route_table.public_rt
+Zone: PRIVATE | Category: network</title>
+</g>
+<g class="node" data-id="aws_s3_bucket.unencrypted" filter="url(#shadow)">
+<rect x="116" y="632" width="160" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="196" cy="632" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="196" cy="674" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="196" y="640" fill="#94a3b8" font-size="8" text-anchor="middle">aws_s3_bucket</text>
+<text x="196" y="658" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">unencrypted</text>
+<title>aws_s3_bucket.unencrypted
+Zone: DATA | Category: storage
+
+3 threats:
+  HIGH - S3 bucket without server-side encryption (Info Disclosure)
+  MEDIUM - S3 bucket without versioning (Tampering)
+  MEDIUM - S3 bucket without access logging (Repudiation)</title>
+<circle cx="266" cy="622" r="7" fill="#f97316"/><text x="266" y="626" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="aws_s3_bucket.public_bucket" filter="url(#shadow)">
+<rect x="312" y="632" width="160" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="392" cy="632" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="392" cy="674" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="392" y="640" fill="#94a3b8" font-size="8" text-anchor="middle">aws_s3_bucket</text>
+<text x="392" y="658" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">public_bucket</text>
+<title>aws_s3_bucket.public_bucket
+Zone: DATA | Category: storage
+
+4 threats:
+  CRITICAL - S3 bucket allows public access (Info Disclosure)
+  HIGH - S3 bucket without server-side encryption (Info Disclosure)
+  MEDIUM - S3 bucket without versioning (Tampering)
+  MEDIUM - S3 bucket without access logging (Repudiation)</title>
+<circle cx="462" cy="622" r="7" fill="#ef4444"/><text x="462" y="626" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">4</text>
+</g>
+<g class="node" data-id="aws_s3_bucket.no_versioning" filter="url(#shadow)">
+<rect x="508" y="632" width="160" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="588" cy="632" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="588" cy="674" rx="80.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="588" y="640" fill="#94a3b8" font-size="8" text-anchor="middle">aws_s3_bucket</text>
+<text x="588" y="658" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">no_versioning</text>
+<title>aws_s3_bucket.no_versioning
+Zone: DATA | Category: storage
+
+2 threats:
+  MEDIUM - S3 bucket without versioning (Tampering)
+  MEDIUM - S3 bucket without access logging (Repudiation)</title>
+<circle cx="658" cy="622" r="7" fill="#eab308"/><text x="658" y="626" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="aws_iam_policy.wildcard_policy" filter="url(#shadow)">
+<rect x="116" y="744" width="160" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="119" y="747" width="154" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="196" y="758" fill="#94a3b8" font-size="8" text-anchor="middle">aws_iam_policy</text>
+<text x="196" y="776" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">wildcard_policy</text>
+<title>aws_iam_policy.wildcard_policy
+Zone: MANAGEMENT | Category: iam
+
+1 threats:
+  CRITICAL - IAM policy with wildcard actions (Elevation of Privilege)</title>
+<circle cx="266" cy="740" r="7" fill="#ef4444"/><text x="266" y="744" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_iam_user.no_mfa_user" filter="url(#shadow)">
+<rect x="312" y="744" width="160" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="315" y="747" width="154" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="392" y="758" fill="#94a3b8" font-size="8" text-anchor="middle">aws_iam_user</text>
+<text x="392" y="776" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">no_mfa_user</text>
+<title>aws_iam_user.no_mfa_user
+Zone: MANAGEMENT | Category: iam
+
+1 threats:
+  HIGH - IAM user without MFA requirement (Spoofing)</title>
+<circle cx="462" cy="740" r="7" fill="#f97316"/><text x="462" y="744" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="aws_iam_role.overpermissive_role" filter="url(#shadow)">
+<rect x="508" y="744" width="160" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="511" y="747" width="154" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="588" y="758" fill="#94a3b8" font-size="8" text-anchor="middle">aws_iam_role</text>
+<text x="588" y="776" fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">overpermissive_role</text>
+<title>aws_iam_role.overpermissive_role
+Zone: MANAGEMENT | Category: iam
+
+1 threats:
+  HIGH - IAM role with overly broad assume role policy (Elevation of Privilege)</title>
+<circle cx="658" cy="740" r="7" fill="#f97316"/><text x="658" y="744" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="threat-table">
+<text x="16" y="860" fill="#1e293b" font-size="12" font-weight="600">Threat Findings</text>
+<rect x="16" y="870" width="1104" height="28" rx="4" fill="#1e293b"/>
+<text x="24" y="888" fill="#ffffff" font-size="9" font-weight="600">Severity</text>
+<text x="94" y="888" fill="#ffffff" font-size="9" font-weight="600">Resource</text>
+<text x="274" y="888" fill="#ffffff" font-size="9" font-weight="600">Threat</text>
+<text x="554" y="888" fill="#ffffff" font-size="9" font-weight="600">STRIDE Category</text>
+<text x="684" y="888" fill="#ffffff" font-size="9" font-weight="600">Source</text>
+<g class="threat-row"><rect x="16" y="898" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="910" r="3" fill="#ef4444"/>
+<text x="36" y="912" fill="#ef4444" font-size="9" font-weight="600">CRIT</text>
+<text x="94" y="912" fill="#475569" font-size="9">aws_s3_bucket.public_bucket</text>
+<text x="274" y="912" fill="#1e293b" font-size="9">S3 bucket allows public access</text>
+<text x="554" y="912" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="912" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket allows public access: The S3 bucket ACL or policy allows public read or write access. This can lead to data exposure or unauthorized data modification.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="918" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="930" r="3" fill="#ef4444"/>
+<text x="36" y="932" fill="#ef4444" font-size="9" font-weight="600">CRIT</text>
+<text x="94" y="932" fill="#475569" font-size="9">aws_iam_policy.wildcard_p...</text>
+<text x="274" y="932" fill="#1e293b" font-size="9">IAM policy with wildcard actions</text>
+<text x="554" y="932" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="932" fill="#94a3b8" font-size="9">rule</text>
+<title>IAM policy with wildcard actions: The IAM policy grants wildcard (*) actions, providing unrestricted access to AWS services. This violates least privilege and could allow an attacker to escalate privileges across the account.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="938" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="950" r="3" fill="#ef4444"/>
+<text x="36" y="952" fill="#ef4444" font-size="9" font-weight="600">CRIT</text>
+<text x="94" y="952" fill="#475569" font-size="9">aws_db_instance.public_db</text>
+<text x="274" y="952" fill="#1e293b" font-size="9">RDS instance is publicly accessible</text>
+<text x="554" y="952" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="952" fill="#94a3b8" font-size="9">rule</text>
+<title>RDS instance is publicly accessible: The RDS database instance has publicly_accessible set to true, allowing direct connections from the internet. Database endpoints should never be exposed to the public internet.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="958" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="970" r="3" fill="#f97316"/>
+<text x="36" y="972" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="972" fill="#475569" font-size="9">aws_s3_bucket.unencrypted</text>
+<text x="274" y="972" fill="#1e293b" font-size="9">S3 bucket without server-side encryption</text>
+<text x="554" y="972" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="972" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without server-side encryption: The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="978" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="990" r="3" fill="#f97316"/>
+<text x="36" y="992" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="992" fill="#475569" font-size="9">aws_s3_bucket.public_bucket</text>
+<text x="274" y="992" fill="#1e293b" font-size="9">S3 bucket without server-side encryption</text>
+<text x="554" y="992" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="992" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without server-side encryption: The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="998" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1010" r="3" fill="#f97316"/>
+<text x="36" y="1012" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1012" fill="#475569" font-size="9">aws_iam_user.no_mfa_user</text>
+<text x="274" y="1012" fill="#1e293b" font-size="9">IAM user without MFA requirement</text>
+<text x="554" y="1012" fill="#64748b" font-size="9">Spoofing</text>
+<text x="684" y="1012" fill="#94a3b8" font-size="9">rule</text>
+<title>IAM user without MFA requirement: The IAM user or login profile does not enforce multi-factor authentication. Without MFA, compromised credentials alone grant full access.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1018" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1030" r="3" fill="#f97316"/>
+<text x="36" y="1032" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1032" fill="#475569" font-size="9">aws_iam_role.overpermissi...</text>
+<text x="274" y="1032" fill="#1e293b" font-size="9">IAM role with overly broad assume role policy</text>
+<text x="554" y="1032" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="1032" fill="#94a3b8" font-size="9">rule</text>
+<title>IAM role with overly broad assume role policy: The IAM role&#x27;s trust policy allows assumption by overly broad principals (e.g., all accounts, all services). This could allow unintended entities to assume the role.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1038" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1050" r="3" fill="#f97316"/>
+<text x="36" y="1052" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1052" fill="#475569" font-size="9">aws_instance.public_web</text>
+<text x="274" y="1052" fill="#1e293b" font-size="9">EC2 instance with public IP address</text>
+<text x="554" y="1052" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1052" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance with public IP address: The EC2 instance is configured with a public IP address, directly exposing it to internet traffic. This increases the attack surface significantly.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1058" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1070" r="3" fill="#f97316"/>
+<text x="36" y="1072" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1072" fill="#475569" font-size="9">aws_instance.unmonitored</text>
+<text x="274" y="1072" fill="#1e293b" font-size="9">EC2 instance with public IP address</text>
+<text x="554" y="1072" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1072" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance with public IP address: The EC2 instance is configured with a public IP address, directly exposing it to internet traffic. This increases the attack surface significantly.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1078" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1090" r="3" fill="#f97316"/>
+<text x="36" y="1092" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1092" fill="#475569" font-size="9">aws_security_group.wide_open</text>
+<text x="274" y="1092" fill="#1e293b" font-size="9">Security group allows unrestricted ingress</text>
+<text x="554" y="1092" fill="#64748b" font-size="9">Spoofing</text>
+<text x="684" y="1092" fill="#94a3b8" font-size="9">rule</text>
+<title>Security group allows unrestricted ingress: The security group allows inbound traffic from 0.0.0.0/0 or ::/0, potentially exposing services to the entire internet.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1098" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1110" r="3" fill="#f97316"/>
+<text x="36" y="1112" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1112" fill="#475569" font-size="9">aws_security_group.ipv6_open</text>
+<text x="274" y="1112" fill="#1e293b" font-size="9">Security group allows unrestricted ingress</text>
+<text x="554" y="1112" fill="#64748b" font-size="9">Spoofing</text>
+<text x="684" y="1112" fill="#94a3b8" font-size="9">rule</text>
+<title>Security group allows unrestricted ingress: The security group allows inbound traffic from 0.0.0.0/0 or ::/0, potentially exposing services to the entire internet.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1118" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1130" r="3" fill="#f97316"/>
+<text x="36" y="1132" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1132" fill="#475569" font-size="9">aws_db_instance.public_db</text>
+<text x="274" y="1132" fill="#1e293b" font-size="9">RDS instance without encryption at rest</text>
+<text x="554" y="1132" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1132" fill="#94a3b8" font-size="9">rule</text>
+<title>RDS instance without encryption at rest: The RDS instance does not have storage encryption enabled. Data stored in the database can be read if the underlying storage is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1138" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1150" r="3" fill="#f97316"/>
+<text x="36" y="1152" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1152" fill="#475569" font-size="9">aws_db_instance.no_backup_db</text>
+<text x="274" y="1152" fill="#1e293b" font-size="9">RDS instance without encryption at rest</text>
+<text x="554" y="1152" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1152" fill="#94a3b8" font-size="9">rule</text>
+<title>RDS instance without encryption at rest: The RDS instance does not have storage encryption enabled. Data stored in the database can be read if the underlying storage is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1158" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1170" r="3" fill="#f97316"/>
+<text x="36" y="1172" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1172" fill="#475569" font-size="9">aws_lambda_function.no_vp...</text>
+<text x="274" y="1172" fill="#1e293b" font-size="9">Lambda function with broad execution role</text>
+<text x="554" y="1172" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="1172" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function with broad execution role: The Lambda function&#x27;s execution role may have overly broad permissions, allowing it to access resources beyond its intended scope.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1178" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1190" r="3" fill="#f97316"/>
+<text x="36" y="1192" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1192" fill="#475569" font-size="9">aws_lambda_function.admin...</text>
+<text x="274" y="1192" fill="#1e293b" font-size="9">Lambda function with broad execution role</text>
+<text x="554" y="1192" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="1192" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function with broad execution role: The Lambda function&#x27;s execution role may have overly broad permissions, allowing it to access resources beyond its intended scope.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1198" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1210" r="3" fill="#f97316"/>
+<text x="36" y="1212" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1212" fill="#475569" font-size="9">aws_internet_gateway.igw</text>
+<text x="274" y="1212" fill="#1e293b" font-size="9">Trust boundary crossing: internet -&gt; private</text>
+<text x="554" y="1212" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1212" fill="#94a3b8" font-size="9">boundary</text>
+<title>Trust boundary crossing: internet -&gt; private: Data flows from aws_internet_gateway.igw (internet zone) to aws_vpc.main (private zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.</title>
+</g>
+<g class="threat-row"><rect x="16" y="1218" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1230" r="3" fill="#f97316"/>
+<text x="36" y="1232" fill="#f97316" font-size="9" font-weight="600">HIGH</text>
+<text x="94" y="1232" fill="#475569" font-size="9">aws_internet_gateway.igw</text>
+<text x="274" y="1232" fill="#1e293b" font-size="9">Trust boundary crossing: internet -&gt; private</text>
+<text x="554" y="1232" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1232" fill="#94a3b8" font-size="9">boundary</text>
+<title>Trust boundary crossing: internet -&gt; private: Data flows from aws_internet_gateway.igw (internet zone) to aws_vpc.main (private zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.</title>
+</g>
+<g class="threat-row"><rect x="16" y="1238" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1250" r="3" fill="#eab308"/>
+<text x="36" y="1252" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1252" fill="#475569" font-size="9">aws_s3_bucket.unencrypted</text>
+<text x="274" y="1252" fill="#1e293b" font-size="9">S3 bucket without versioning</text>
+<text x="554" y="1252" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1252" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without versioning: The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1258" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1270" r="3" fill="#eab308"/>
+<text x="36" y="1272" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1272" fill="#475569" font-size="9">aws_s3_bucket.unencrypted</text>
+<text x="274" y="1272" fill="#1e293b" font-size="9">S3 bucket without access logging</text>
+<text x="554" y="1272" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1272" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without access logging: The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1278" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1290" r="3" fill="#eab308"/>
+<text x="36" y="1292" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1292" fill="#475569" font-size="9">aws_s3_bucket.public_bucket</text>
+<text x="274" y="1292" fill="#1e293b" font-size="9">S3 bucket without versioning</text>
+<text x="554" y="1292" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1292" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without versioning: The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1298" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1310" r="3" fill="#eab308"/>
+<text x="36" y="1312" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1312" fill="#475569" font-size="9">aws_s3_bucket.public_bucket</text>
+<text x="274" y="1312" fill="#1e293b" font-size="9">S3 bucket without access logging</text>
+<text x="554" y="1312" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1312" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without access logging: The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1318" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1330" r="3" fill="#eab308"/>
+<text x="36" y="1332" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1332" fill="#475569" font-size="9">aws_s3_bucket.no_versioning</text>
+<text x="274" y="1332" fill="#1e293b" font-size="9">S3 bucket without versioning</text>
+<text x="554" y="1332" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1332" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without versioning: The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1338" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1350" r="3" fill="#eab308"/>
+<text x="36" y="1352" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1352" fill="#475569" font-size="9">aws_s3_bucket.no_versioning</text>
+<text x="274" y="1352" fill="#1e293b" font-size="9">S3 bucket without access logging</text>
+<text x="554" y="1352" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1352" fill="#94a3b8" font-size="9">rule</text>
+<title>S3 bucket without access logging: The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1358" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1370" r="3" fill="#eab308"/>
+<text x="36" y="1372" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1372" fill="#475569" font-size="9">aws_instance.public_web</text>
+<text x="274" y="1372" fill="#1e293b" font-size="9">EC2 instance with unencrypted root volume</text>
+<text x="554" y="1372" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1372" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance with unencrypted root volume: The EC2 instance root block device is not encrypted. Data on the volume can be accessed if the underlying storage media is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1378" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1390" r="3" fill="#eab308"/>
+<text x="36" y="1392" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1392" fill="#475569" font-size="9">aws_instance.unmonitored</text>
+<text x="274" y="1392" fill="#1e293b" font-size="9">EC2 instance with unencrypted root volume</text>
+<text x="554" y="1392" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1392" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance with unencrypted root volume: The EC2 instance root block device is not encrypted. Data on the volume can be accessed if the underlying storage media is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1398" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1410" r="3" fill="#eab308"/>
+<text x="36" y="1412" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1412" fill="#475569" font-size="9">aws_instance.unencrypted_ebs</text>
+<text x="274" y="1412" fill="#1e293b" font-size="9">EC2 instance with unencrypted root volume</text>
+<text x="554" y="1412" fill="#64748b" font-size="9">Info Disclosure</text>
+<text x="684" y="1412" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance with unencrypted root volume: The EC2 instance root block device is not encrypted. Data on the volume can be accessed if the underlying storage media is compromised.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1418" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1430" r="3" fill="#eab308"/>
+<text x="36" y="1432" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1432" fill="#475569" font-size="9">aws_vpc.main</text>
+<text x="274" y="1432" fill="#1e293b" font-size="9">VPC without flow logs enabled</text>
+<text x="554" y="1432" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1432" fill="#94a3b8" font-size="9">rule</text>
+<title>VPC without flow logs enabled: The VPC does not have flow logs configured. Without flow logs, network traffic patterns cannot be analyzed for security incidents or anomalies.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1438" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1450" r="3" fill="#eab308"/>
+<text x="36" y="1452" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1452" fill="#475569" font-size="9">aws_vpc.secondary</text>
+<text x="274" y="1452" fill="#1e293b" font-size="9">VPC without flow logs enabled</text>
+<text x="554" y="1452" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1452" fill="#94a3b8" font-size="9">rule</text>
+<title>VPC without flow logs enabled: The VPC does not have flow logs configured. Without flow logs, network traffic patterns cannot be analyzed for security incidents or anomalies.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1458" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1470" r="3" fill="#eab308"/>
+<text x="36" y="1472" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1472" fill="#475569" font-size="9">aws_default_security_grou...</text>
+<text x="274" y="1472" fill="#1e293b" font-size="9">Default security group allows traffic</text>
+<text x="554" y="1472" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="1472" fill="#94a3b8" font-size="9">rule</text>
+<title>Default security group allows traffic: The default security group has not been locked down. Any resource inadvertently placed in the default SG may have unintended network access.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1478" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1490" r="3" fill="#eab308"/>
+<text x="36" y="1492" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1492" fill="#475569" font-size="9">aws_db_instance.public_db</text>
+<text x="274" y="1492" fill="#1e293b" font-size="9">RDS instance without automated backups</text>
+<text x="554" y="1492" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1492" fill="#94a3b8" font-size="9">rule</text>
+<title>RDS instance without automated backups: The RDS instance has backup retention set to 0 or not configured. Without backups, data loss from deletion or corruption cannot be recovered.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1498" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1510" r="3" fill="#eab308"/>
+<text x="36" y="1512" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1512" fill="#475569" font-size="9">aws_db_instance.no_backup_db</text>
+<text x="274" y="1512" fill="#1e293b" font-size="9">RDS instance without automated backups</text>
+<text x="554" y="1512" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1512" fill="#94a3b8" font-size="9">rule</text>
+<title>RDS instance without automated backups: The RDS instance has backup retention set to 0 or not configured. Without backups, data loss from deletion or corruption cannot be recovered.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1518" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1530" r="3" fill="#eab308"/>
+<text x="36" y="1532" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1532" fill="#475569" font-size="9">aws_lambda_function.no_vp...</text>
+<text x="274" y="1532" fill="#1e293b" font-size="9">Lambda function not attached to VPC</text>
+<text x="554" y="1532" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="1532" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function not attached to VPC: The Lambda function runs outside a VPC, meaning it has direct internet access and cannot leverage VPC security controls like security groups and NACLs.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1538" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1550" r="3" fill="#eab308"/>
+<text x="36" y="1552" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1552" fill="#475569" font-size="9">aws_lambda_function.admin...</text>
+<text x="274" y="1552" fill="#1e293b" font-size="9">Lambda function not attached to VPC</text>
+<text x="554" y="1552" fill="#64748b" font-size="9">Elevation of Privilege</text>
+<text x="684" y="1552" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function not attached to VPC: The Lambda function runs outside a VPC, meaning it has direct internet access and cannot leverage VPC security controls like security groups and NACLs.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1558" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1570" r="3" fill="#eab308"/>
+<text x="36" y="1572" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1572" fill="#475569" font-size="9">aws_db_instance.public_db</text>
+<text x="274" y="1572" fill="#1e293b" font-size="9">Trust boundary crossing: dmz -&gt; private</text>
+<text x="554" y="1572" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1572" fill="#94a3b8" font-size="9">boundary</text>
+<title>Trust boundary crossing: dmz -&gt; private: Data flows from aws_db_instance.public_db (dmz zone) to aws_vpc.main (private zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.</title>
+</g>
+<g class="threat-row"><rect x="16" y="1578" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1590" r="3" fill="#eab308"/>
+<text x="36" y="1592" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1592" fill="#475569" font-size="9">aws_subnet.public</text>
+<text x="274" y="1592" fill="#1e293b" font-size="9">Trust boundary crossing: dmz -&gt; private</text>
+<text x="554" y="1592" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1592" fill="#94a3b8" font-size="9">boundary</text>
+<title>Trust boundary crossing: dmz -&gt; private: Data flows from aws_subnet.public (dmz zone) to aws_vpc.main (private zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.</title>
+</g>
+<g class="threat-row"><rect x="16" y="1598" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1610" r="3" fill="#eab308"/>
+<text x="36" y="1612" fill="#eab308" font-size="9" font-weight="600">MEDI</text>
+<text x="94" y="1612" fill="#475569" font-size="9">aws_subnet.public</text>
+<text x="274" y="1612" fill="#1e293b" font-size="9">Trust boundary crossing: dmz -&gt; private</text>
+<text x="554" y="1612" fill="#64748b" font-size="9">Tampering</text>
+<text x="684" y="1612" fill="#94a3b8" font-size="9">boundary</text>
+<title>Trust boundary crossing: dmz -&gt; private: Data flows from aws_subnet.public (dmz zone) to aws_vpc.main (private zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.</title>
+</g>
+<g class="threat-row"><rect x="16" y="1618" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1630" r="3" fill="#3b82f6"/>
+<text x="36" y="1632" fill="#3b82f6" font-size="9" font-weight="600">LOW</text>
+<text x="94" y="1632" fill="#475569" font-size="9">aws_instance.public_web</text>
+<text x="274" y="1632" fill="#1e293b" font-size="9">EC2 instance without detailed monitoring</text>
+<text x="554" y="1632" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1632" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance without detailed monitoring: The EC2 instance does not have detailed monitoring enabled. Without monitoring, unauthorized access or resource abuse may go undetected and actions cannot be attributed.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1638" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1650" r="3" fill="#3b82f6"/>
+<text x="36" y="1652" fill="#3b82f6" font-size="9" font-weight="600">LOW</text>
+<text x="94" y="1652" fill="#475569" font-size="9">aws_instance.unmonitored</text>
+<text x="274" y="1652" fill="#1e293b" font-size="9">EC2 instance without detailed monitoring</text>
+<text x="554" y="1652" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1652" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance without detailed monitoring: The EC2 instance does not have detailed monitoring enabled. Without monitoring, unauthorized access or resource abuse may go undetected and actions cannot be attributed.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1658" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1670" r="3" fill="#3b82f6"/>
+<text x="36" y="1672" fill="#3b82f6" font-size="9" font-weight="600">LOW</text>
+<text x="94" y="1672" fill="#475569" font-size="9">aws_instance.unencrypted_ebs</text>
+<text x="274" y="1672" fill="#1e293b" font-size="9">EC2 instance without detailed monitoring</text>
+<text x="554" y="1672" fill="#64748b" font-size="9">Repudiation</text>
+<text x="684" y="1672" fill="#94a3b8" font-size="9">rule</text>
+<title>EC2 instance without detailed monitoring: The EC2 instance does not have detailed monitoring enabled. Without monitoring, unauthorized access or resource abuse may go undetected and actions cannot be attributed.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1678" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1690" r="3" fill="#3b82f6"/>
+<text x="36" y="1692" fill="#3b82f6" font-size="9" font-weight="600">LOW</text>
+<text x="94" y="1692" fill="#475569" font-size="9">aws_lambda_function.no_vp...</text>
+<text x="274" y="1692" fill="#1e293b" font-size="9">Lambda function without dead letter queue</text>
+<text x="554" y="1692" fill="#64748b" font-size="9">Denial of Service</text>
+<text x="684" y="1692" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function without dead letter queue: The Lambda function does not have a dead letter queue configured. Failed invocations may be silently lost, affecting reliability and making it difficult to diagnose processing failures.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1698" width="1104" height="20" fill="#ffffff"/>
+<circle cx="28" cy="1710" r="3" fill="#3b82f6"/>
+<text x="36" y="1712" fill="#3b82f6" font-size="9" font-weight="600">LOW</text>
+<text x="94" y="1712" fill="#475569" font-size="9">aws_lambda_function.admin...</text>
+<text x="274" y="1712" fill="#1e293b" font-size="9">Lambda function without dead letter queue</text>
+<text x="554" y="1712" fill="#64748b" font-size="9">Denial of Service</text>
+<text x="684" y="1712" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function without dead letter queue: The Lambda function does not have a dead letter queue configured. Failed invocations may be silently lost, affecting reliability and making it difficult to diagnose processing failures.
+</title>
+</g>
+<g class="threat-row"><rect x="16" y="1718" width="1104" height="20" fill="#f8fafc"/>
+<circle cx="28" cy="1730" r="3" fill="#3b82f6"/>
+<text x="36" y="1732" fill="#3b82f6" font-size="9" font-weight="600">LOW</text>
+<text x="94" y="1732" fill="#475569" font-size="9">aws_lambda_function.no_dl...</text>
+<text x="274" y="1732" fill="#1e293b" font-size="9">Lambda function without dead letter queue</text>
+<text x="554" y="1732" fill="#64748b" font-size="9">Denial of Service</text>
+<text x="684" y="1732" fill="#94a3b8" font-size="9">rule</text>
+<title>Lambda function without dead letter queue: The Lambda function does not have a dead letter queue configured. Failed invocations may be silently lost, affecting reliability and making it difficult to diagnose processing failures.
+</title>
+</g>
+</g>
+<g class="legend">
+<rect x="0" y="1750" width="1136" height="140" fill="#f8fafc"/>
+<line x1="0" y1="1750" x2="1136" y2="1750" stroke="#e2e8f0" stroke-width="1"/>
+<text x="24" y="1770" fill="#1e293b" font-size="10" font-weight="600">Node Shapes</text>
+<rect x="24" y="1781" width="18" height="12" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="48" y="1791" fill="#64748b" font-size="9">Process (compute, serverless, container)</text>
+<rect x="24" y="1804" width="18" height="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<ellipse cx="33" cy="1804" rx="9" ry="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<ellipse cx="33" cy="1812" rx="9" ry="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="48" y="1811" fill="#64748b" font-size="9">Data Store (storage, database)</text>
+<polygon points="33.0,1822 42.0,1828 33.0,1834 24.0,1828" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="48" y="1831" fill="#64748b" font-size="9">Data Flow (network, cdn, messaging)</text>
+<rect x="24" y="1841" width="18" height="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="26" y="1843" width="14" height="8" fill="none" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="48" y="1851" fill="#64748b" font-size="9">External Entity (IAM)</text>
+<text x="244" y="1770" fill="#1e293b" font-size="10" font-weight="600">Edge Types</text>
+<line x1="244" y1="1788" x2="274" y2="1788" stroke="#94a3b8" stroke-width="1"/>
+<polygon points="274,1785 280,1788 274,1791" fill="#94a3b8"/>
+<text x="286" y="1791" fill="#64748b" font-size="9">Dependency</text>
+<line x1="244" y1="1804" x2="274" y2="1804" stroke="#64748b" stroke-width="1.5"/>
+<polygon points="274,1801 280,1804 274,1807" fill="#64748b"/>
+<text x="286" y="1807" fill="#64748b" font-size="9">Containment</text>
+<line x1="244" y1="1820" x2="274" y2="1820" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3"/>
+<polygon points="274,1817 280,1820 274,1823" fill="#3b82f6"/>
+<text x="286" y="1823" fill="#64748b" font-size="9">Network Flow</text>
+<line x1="244" y1="1836" x2="274" y2="1836" stroke="#f97316" stroke-width="1" stroke-dasharray="2,2"/>
+<polygon points="274,1833 280,1836 274,1839" fill="#f97316"/>
+<text x="286" y="1839" fill="#64748b" font-size="9">IAM Binding</text>
+<line x1="244" y1="1852" x2="274" y2="1852" stroke="#22c55e" stroke-width="1.5"/>
+<polygon points="274,1849 280,1852 274,1855" fill="#22c55e"/>
+<text x="286" y="1855" fill="#64748b" font-size="9">Data Flow</text>
+<line x1="244" y1="1868" x2="274" y2="1868" stroke="#ef4444" stroke-width="2" filter="url(#glow)"/>
+<polygon points="274,1865 280,1868 274,1871" fill="#ef4444"/>
+<text x="286" y="1871" fill="#ef4444" font-size="9" font-weight="600">Trust Boundary Crossing</text>
+<text x="464" y="1770" fill="#1e293b" font-size="10" font-weight="600">Severity Badges</text>
+<circle cx="470" cy="1788" r="5" fill="#ef4444"/>
+<text x="480" y="1791" fill="#64748b" font-size="9">Critical</text>
+<circle cx="470" cy="1804" r="5" fill="#f97316"/>
+<text x="480" y="1807" fill="#64748b" font-size="9">High</text>
+<circle cx="470" cy="1820" r="5" fill="#eab308"/>
+<text x="480" y="1823" fill="#64748b" font-size="9">Medium</text>
+<circle cx="470" cy="1836" r="5" fill="#3b82f6"/>
+<text x="480" y="1839" fill="#64748b" font-size="9">Low</text>
+<text x="464" y="1858" fill="#94a3b8" font-size="8">Badge number = threat count on resource</text>
+<text x="1120" y="1882" fill="#cbd5e1" font-size="9" text-anchor="end">Generated by ThreatCode</text>
+</g>
+</svg>

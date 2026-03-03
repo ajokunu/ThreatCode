@@ -1,0 +1,939 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  MedVault HIPAA-compliant healthcare records platform — patient records storage,
+  HL7 FHIR message processing, audit logging, and compliance reporting.
+  Owner: Healthcare Platform Team (healthplat@medvault.io)
+  Compliance: HIPAA BAA executed with AWS. SOC 2 Type II in progress.
+  Last reviewed: 2026-01-15 by @security-team
+  Architecture doc: https://confluence.medvault.io/display/HP/MedVault+Architecture
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging, dr-recovery]
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.r6g.xlarge
+    AllowedValues: [db.r6g.large, db.r6g.xlarge, db.r6g.2xlarge]
+  BackupRetentionPeriod:
+    Type: Number
+    Default: 35
+    MinValue: 30
+    MaxValue: 90
+    Description: Backup retention in days. HIPAA requires minimum 6 years for records, but DB backups cover operational recovery. Long-term archival handled by S3 lifecycle + Glacier.
+  KMSKeyAdminArn:
+    Type: String
+    Default: arn:aws:iam::443218790612:role/medvault-kms-admin
+    Description: IAM ARN allowed to administer KMS keys
+  AlertEmail:
+    Type: String
+    Default: hipaa-alerts@medvault.io
+
+Mappings:
+  EnvironmentConfig:
+    production:
+      MultiAZ: true
+      DeletionProtection: true
+      LogRetention: 365
+    staging:
+      MultiAZ: false
+      DeletionProtection: false
+      LogRetention: 30
+
+Resources:
+  # ==========================================================================
+  # NETWORKING — Private-only VPC, no public subnets, no IGW
+  # All internet access goes through NAT Gateway for Lambda outbound calls
+  # ==========================================================================
+  MedVaultVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.100.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: medvault-hipaa-vpc
+        - Key: Environment
+          Value: {"Ref": "Environment"}
+        - Key: Compliance
+          Value: HIPAA
+        - Key: Team
+          Value: healthcare-platform
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {"Ref": "MedVaultVPC"}
+      CidrBlock: 10.100.1.0/24
+      AvailabilityZone: {"Fn::Select": [0, {"Fn::GetAZs": ""}]}
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: medvault-private-a
+        - Key: Tier
+          Value: private
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {"Ref": "MedVaultVPC"}
+      CidrBlock: 10.100.2.0/24
+      AvailabilityZone: {"Fn::Select": [1, {"Fn::GetAZs": ""}]}
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: medvault-private-b
+        - Key: Tier
+          Value: private
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {"Ref": "MedVaultVPC"}
+      CidrBlock: 10.100.3.0/24
+      AvailabilityZone: {"Fn::Select": [2, {"Fn::GetAZs": ""}]}
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: medvault-private-c
+        - Key: Tier
+          Value: private
+
+  # Database subnet group — spans all 3 AZs for Aurora multi-AZ
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: MedVault Aurora PostgreSQL subnet group - private subnets only
+      SubnetIds:
+        - {"Ref": "PrivateSubnetA"}
+        - {"Ref": "PrivateSubnetB"}
+        - {"Ref": "PrivateSubnetC"}
+      Tags:
+        - Key: Name
+          Value: medvault-db-subnet-group
+
+  # ==========================================================================
+  # SECURITY GROUPS — Strict ingress, principle of least privilege
+  # ==========================================================================
+  DatabaseSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Aurora PostgreSQL access — Lambda functions only
+      VpcId: {"Ref": "MedVaultVPC"}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: {"Ref": "LambdaSG"}
+          Description: PostgreSQL from Lambda functions
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: medvault-database-sg
+        - Key: Compliance
+          Value: HIPAA
+
+  LambdaSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda functions — outbound to database and AWS services only
+      VpcId: {"Ref": "MedVaultVPC"}
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: {"Ref": "DatabaseSG"}
+          Description: PostgreSQL access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS for AWS API calls (S3, KMS, SQS, etc.)
+      Tags:
+        - Key: Name
+          Value: medvault-lambda-sg
+
+  CacheSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ElastiCache Redis — Lambda access only
+      VpcId: {"Ref": "MedVaultVPC"}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: {"Ref": "LambdaSG"}
+          Description: Redis from Lambda functions
+      Tags:
+        - Key: Name
+          Value: medvault-cache-sg
+
+  # ==========================================================================
+  # KMS — Customer-managed keys for all PHI encryption
+  # ==========================================================================
+  MedVaultKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: MedVault master encryption key for all PHI data at rest
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: KeyAdministration
+            Effect: Allow
+            Principal:
+              AWS: {"Ref": "KMSKeyAdminArn"}
+            Action:
+              - kms:Create*
+              - kms:Describe*
+              - kms:Enable*
+              - kms:List*
+              - kms:Put*
+              - kms:Update*
+              - kms:Revoke*
+              - kms:Disable*
+              - kms:Get*
+              - kms:Delete*
+              - kms:TagResource
+              - kms:UntagResource
+              - kms:ScheduleKeyDeletion
+              - kms:CancelKeyDeletion
+            Resource: '*'
+          - Sid: KeyUsage
+            Effect: Allow
+            Principal:
+              AWS:
+                - {"Fn::GetAtt": ["RecordsApiRole", "Arn"]}
+                - {"Fn::GetAtt": ["HL7ProcessorRole", "Arn"]}
+                - {"Fn::GetAtt": ["ReportGeneratorRole", "Arn"]}
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+              - kms:ReEncryptFrom
+              - kms:ReEncryptTo
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: medvault-phi-encryption-key
+        - Key: Compliance
+          Value: HIPAA
+
+  MedVaultKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/medvault-phi-key
+      TargetKeyId: {"Ref": "MedVaultKMSKey"}
+
+  # ==========================================================================
+  # DATABASE — Aurora PostgreSQL, encrypted, multi-AZ, HIPAA-grade backups
+  # ==========================================================================
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Retain
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: '15.4'
+      DatabaseName: medvault_records
+      MasterUsername: medvault_admin
+      ManageMasterUserPassword: true
+      MasterUserSecret:
+        KmsKeyId: {"Ref": "MedVaultKMSKey"}
+      DBSubnetGroupName: {"Ref": "DatabaseSubnetGroup"}
+      VpcSecurityGroupIds:
+        - {"Ref": "DatabaseSG"}
+      StorageEncrypted: true
+      KmsKeyId: {"Ref": "MedVaultKMSKey"}
+      BackupRetentionPeriod: {"Ref": "BackupRetentionPeriod"}
+      PreferredBackupWindow: 03:00-04:00
+      PreferredMaintenanceWindow: sun:05:00-sun:06:00
+      DeletionProtection: {"Fn::FindInMap": ["EnvironmentConfig", {"Ref": "Environment"}, "DeletionProtection"]}
+      EnableCloudwatchLogsExports:
+        - postgresql
+        - audit
+      CopyTagsToSnapshot: true
+      EnableIAMDatabaseAuthentication: true
+      Tags:
+        - Key: Name
+          Value: medvault-aurora-cluster
+        - Key: Compliance
+          Value: HIPAA
+        - Key: DataClassification
+          Value: PHI
+        - Key: BackupPolicy
+          Value: 35-day-retention
+
+  AuroraInstanceA:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: {"Ref": "AuroraCluster"}
+      DBInstanceClass: {"Ref": "DatabaseInstanceClass"}
+      PubliclyAccessible: false
+      MonitoringInterval: 60
+      MonitoringRoleArn: {"Fn::GetAtt": ["RDSMonitoringRole", "Arn"]}
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: {"Ref": "MedVaultKMSKey"}
+      AutoMinorVersionUpgrade: true
+      Tags:
+        - Key: Name
+          Value: medvault-aurora-instance-a
+
+  AuroraInstanceB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: {"Ref": "AuroraCluster"}
+      DBInstanceClass: {"Ref": "DatabaseInstanceClass"}
+      PubliclyAccessible: false
+      MonitoringInterval: 60
+      MonitoringRoleArn: {"Fn::GetAtt": ["RDSMonitoringRole", "Arn"]}
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: {"Ref": "MedVaultKMSKey"}
+      AutoMinorVersionUpgrade: true
+      Tags:
+        - Key: Name
+          Value: medvault-aurora-instance-b
+
+  # ==========================================================================
+  # S3 BUCKETS — PHI storage with full encryption, versioning, logging
+  # ==========================================================================
+  PatientRecordsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: {"Fn::Sub": "medvault-patient-records-${AWS::AccountId}-${AWS::Region}"}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: {"Ref": "MedVaultKMSKey"}
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: {"Ref": "AuditLogsBucket"}
+        LogFilePrefix: patient-records-access/
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveOldRecords
+            Status: Enabled
+            Transitions:
+              - StorageClass: GLACIER
+                TransitionInDays: 365
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 2555
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      ObjectLockEnabled: true
+      Tags:
+        - Key: Name
+          Value: medvault-patient-records
+        - Key: Compliance
+          Value: HIPAA
+        - Key: DataClassification
+          Value: PHI
+        - Key: RetentionPolicy
+          Value: 7-years-minimum
+
+  AuditLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: {"Fn::Sub": "medvault-audit-logs-${AWS::AccountId}-${AWS::Region}"}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: {"Ref": "MedVaultKMSKey"}
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveAuditLogs
+            Status: Enabled
+            Transitions:
+              - StorageClass: GLACIER
+                TransitionInDays: 90
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: medvault-audit-logs
+        - Key: Compliance
+          Value: HIPAA
+        - Key: Purpose
+          Value: S3 access logging and CloudTrail audit
+
+  # NOTE: @dthompson 2025-12-03 — Quick bucket for the HL7 batch import feature.
+  # Data lands here temporarily before being validated and moved to patient-records.
+  # TODO: Add KMS encryption before GA. Ticket: HIPAA-1247
+  # "It's fine for now, files are deleted within 5 minutes" — @dthompson
+  TempUploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: {"Fn::Sub": "medvault-temp-uploads-${AWS::AccountId}-${AWS::Region}"}
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDeleteTempFiles
+            Status: Enabled
+            ExpirationInDays: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: medvault-temp-uploads
+        - Key: Purpose
+          Value: Temporary HL7 batch import staging
+        - Key: TODO
+          Value: Add KMS encryption - HIPAA-1247
+
+  # ==========================================================================
+  # LAMBDA FUNCTIONS — HIPAA workloads in VPC with DLQ
+  # ==========================================================================
+
+  # Dead letter queues for failed Lambda invocations
+  RecordsApiDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: medvault-records-api-dlq
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: {"Ref": "MedVaultKMSKey"}
+      Tags:
+        - Key: Name
+          Value: medvault-records-api-dlq
+
+  HL7ProcessorDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: medvault-hl7-processor-dlq
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: {"Ref": "MedVaultKMSKey"}
+      Tags:
+        - Key: Name
+          Value: medvault-hl7-processor-dlq
+
+  RecordsApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: medvault-records-api
+      Description: FHIR-compliant REST API for patient record CRUD operations
+      Runtime: python3.12
+      Handler: records_api.handler
+      Role: {"Fn::GetAtt": ["RecordsApiRole", "Arn"]}
+      MemorySize: 1024
+      Timeout: 30
+      Code:
+        S3Bucket: medvault-lambda-artifacts
+        S3Key: records-api/v4.2.1/records_api.zip
+      VpcConfig:
+        SubnetIds:
+          - {"Ref": "PrivateSubnetA"}
+          - {"Ref": "PrivateSubnetB"}
+        SecurityGroupIds:
+          - {"Ref": "LambdaSG"}
+      DeadLetterConfig:
+        TargetArn: {"Fn::GetAtt": ["RecordsApiDLQ", "Arn"]}
+      KmsKeyArn: {"Ref": "MedVaultKMSKey"}
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          DB_SECRET_ARN: {"Fn::GetAtt": ["AuroraCluster", "MasterUserSecret.SecretArn"]}
+          DB_CLUSTER_ENDPOINT: {"Fn::GetAtt": ["AuroraCluster", "Endpoint.Address"]}
+          PATIENT_RECORDS_BUCKET: {"Ref": "PatientRecordsBucket"}
+          KMS_KEY_ID: {"Ref": "MedVaultKMSKey"}
+          ENVIRONMENT: {"Ref": "Environment"}
+          FHIR_VERSION: R4
+      Tags:
+        - Key: Name
+          Value: medvault-records-api
+        - Key: Compliance
+          Value: HIPAA
+        - Key: Version
+          Value: 4.2.1
+
+  HL7ProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: medvault-hl7-processor
+      Description: Processes incoming HL7 v2 and FHIR messages from hospital interfaces
+      Runtime: python3.12
+      Handler: hl7_processor.handler
+      Role: {"Fn::GetAtt": ["HL7ProcessorRole", "Arn"]}
+      MemorySize: 2048
+      Timeout: 120
+      Code:
+        S3Bucket: medvault-lambda-artifacts
+        S3Key: hl7-processor/v3.0.7/hl7_processor.zip
+      VpcConfig:
+        SubnetIds:
+          - {"Ref": "PrivateSubnetA"}
+          - {"Ref": "PrivateSubnetB"}
+        SecurityGroupIds:
+          - {"Ref": "LambdaSG"}
+      DeadLetterConfig:
+        TargetArn: {"Fn::GetAtt": ["HL7ProcessorDLQ", "Arn"]}
+      KmsKeyArn: {"Ref": "MedVaultKMSKey"}
+      TracingConfig:
+        Mode: Active
+      ReservedConcurrentExecutions: 50
+      Environment:
+        Variables:
+          DB_SECRET_ARN: {"Fn::GetAtt": ["AuroraCluster", "MasterUserSecret.SecretArn"]}
+          DB_CLUSTER_ENDPOINT: {"Fn::GetAtt": ["AuroraCluster", "Endpoint.Address"]}
+          TEMP_BUCKET: {"Ref": "TempUploadsBucket"}
+          PATIENT_RECORDS_BUCKET: {"Ref": "PatientRecordsBucket"}
+          KMS_KEY_ID: {"Ref": "MedVaultKMSKey"}
+          SUPPORTED_HL7_VERSIONS: "2.3,2.5,2.5.1"
+          FHIR_VERSION: R4
+      Tags:
+        - Key: Name
+          Value: medvault-hl7-processor
+        - Key: Compliance
+          Value: HIPAA
+        - Key: Version
+          Value: 3.0.7
+
+  # Report generator — runs monthly compliance and usage reports
+  # @lmarquez 2025-11-20: Moved this out of VPC because it kept timing out
+  # trying to reach the SES endpoint through NAT. Reports don't touch PHI directly,
+  # they only query pre-aggregated views. Security team approved in HIPAA-1189.
+  # TODO: Re-evaluate VPC placement after VPC endpoint for SES is available
+  ReportGeneratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: medvault-report-generator
+      Description: Generates monthly compliance and operational reports, sends via SES
+      Runtime: python3.12
+      Handler: report_generator.handler
+      Role: {"Fn::GetAtt": ["ReportGeneratorRole", "Arn"]}
+      MemorySize: 512
+      Timeout: 300
+      Code:
+        S3Bucket: medvault-lambda-artifacts
+        S3Key: report-generator/v2.1.0/report_generator.zip
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          DB_SECRET_ARN: {"Fn::GetAtt": ["AuroraCluster", "MasterUserSecret.SecretArn"]}
+          DB_READER_ENDPOINT: {"Fn::GetAtt": ["AuroraCluster", "ReadEndpoint.Address"]}
+          REPORT_BUCKET: {"Ref": "AuditLogsBucket"}
+          ALERT_EMAIL: {"Ref": "AlertEmail"}
+          ENVIRONMENT: {"Ref": "Environment"}
+      Tags:
+        - Key: Name
+          Value: medvault-report-generator
+        - Key: Version
+          Value: 2.1.0
+        - Key: Note
+          Value: Not in VPC - approved HIPAA-1189
+
+  # ==========================================================================
+  # IAM ROLES — Least privilege per function
+  # ==========================================================================
+  RecordsApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: medvault-records-api-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: RecordsApiPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: S3PatientRecords
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - {"Fn::GetAtt": ["PatientRecordsBucket", "Arn"]}
+                  - {"Fn::Sub": "${PatientRecordsBucket.Arn}/*"}
+              - Sid: KMSDecrypt
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                Resource: {"Fn::GetAtt": ["MedVaultKMSKey", "Arn"]}
+              - Sid: SecretsManager
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: {"Fn::GetAtt": ["AuroraCluster", "MasterUserSecret.SecretArn"]}
+              - Sid: DLQAccess
+                Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: {"Fn::GetAtt": ["RecordsApiDLQ", "Arn"]}
+      Tags:
+        - Key: Name
+          Value: medvault-records-api-role
+        - Key: Compliance
+          Value: HIPAA
+
+  HL7ProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: medvault-hl7-processor-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: HL7ProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: S3Access
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - {"Fn::GetAtt": ["PatientRecordsBucket", "Arn"]}
+                  - {"Fn::Sub": "${PatientRecordsBucket.Arn}/*"}
+                  - {"Fn::GetAtt": ["TempUploadsBucket", "Arn"]}
+                  - {"Fn::Sub": "${TempUploadsBucket.Arn}/*"}
+              - Sid: KMSAccess
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                Resource: {"Fn::GetAtt": ["MedVaultKMSKey", "Arn"]}
+              - Sid: SecretsManager
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: {"Fn::GetAtt": ["AuroraCluster", "MasterUserSecret.SecretArn"]}
+              - Sid: DLQAccess
+                Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: {"Fn::GetAtt": ["HL7ProcessorDLQ", "Arn"]}
+      Tags:
+        - Key: Name
+          Value: medvault-hl7-processor-role
+
+  ReportGeneratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: medvault-report-generator-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReportGeneratorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: S3ReportStorage
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - {"Fn::GetAtt": ["AuditLogsBucket", "Arn"]}
+                  - {"Fn::Sub": "${AuditLogsBucket.Arn}/*"}
+              - Sid: KMSAccess
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                Resource: {"Fn::GetAtt": ["MedVaultKMSKey", "Arn"]}
+              - Sid: SecretsManager
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: {"Fn::GetAtt": ["AuroraCluster", "MasterUserSecret.SecretArn"]}
+              - Sid: SESAccess
+                Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    ses:FromAddress: reports@medvault.io
+      Tags:
+        - Key: Name
+          Value: medvault-report-generator-role
+
+  RDSMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: medvault-rds-monitoring-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+
+  # EMERGENCY BREAK-GLASS ROLE
+  # @rsingh 2025-09-14: Created for on-call incident response. When pager fires
+  # at 3 AM and we need to fix corrupted records or restore from backup.
+  # Security approved in SEC-892 with condition that all usage is logged
+  # and reviewed within 24 hours.
+  # TODO: @security-team — add automatic session recording and require MFA.
+  # Currently just requires console login which isnt great. Ticket: SEC-1034
+  EmergencyAdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: medvault-emergency-admin
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: '*'
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:PrincipalOrgID: o-a1b2c3d4e5
+      Policies:
+        - PolicyName: EmergencyFullAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EmergencyAccess
+                Effect: Allow
+                Action: '*'
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: medvault-emergency-admin
+        - Key: Purpose
+          Value: Break-glass incident response
+        - Key: ApprovedBy
+          Value: SEC-892
+        - Key: ReviewRequired
+          Value: within-24-hours
+
+  # ==========================================================================
+  # DYNAMODB — Session cache for API authentication tokens
+  # ==========================================================================
+  SessionCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: medvault-session-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: expiresAt
+          AttributeType: N
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: userId-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: expiresAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: {"Ref": "MedVaultKMSKey"}
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: medvault-session-cache
+        - Key: Compliance
+          Value: HIPAA
+
+  # ==========================================================================
+  # CLOUDTRAIL — All API calls logged for HIPAA audit trail
+  # ==========================================================================
+  HIPAACloudTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: CloudTrailBucketPolicy
+    Properties:
+      TrailName: medvault-hipaa-audit-trail
+      IsLogging: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      IncludeGlobalServiceEvents: true
+      S3BucketName: {"Ref": "AuditLogsBucket"}
+      S3KeyPrefix: cloudtrail/
+      KMSKeyId: {"Ref": "MedVaultKMSKey"}
+      CloudWatchLogsLogGroupArn: {"Fn::GetAtt": ["CloudTrailLogGroup", "Arn"]}
+      CloudWatchLogsRoleArn: {"Fn::GetAtt": ["CloudTrailCWRole", "Arn"]}
+      EventSelectors:
+        - ReadWriteType: All
+          IncludeManagementEvents: true
+          DataResources:
+            - Type: AWS::S3::Object
+              Values:
+                - {"Fn::Sub": "${PatientRecordsBucket.Arn}/"}
+            - Type: AWS::Lambda::Function
+              Values:
+                - arn:aws:lambda
+      Tags:
+        - Key: Name
+          Value: medvault-hipaa-audit-trail
+        - Key: Compliance
+          Value: HIPAA
+
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /medvault/cloudtrail
+      RetentionInDays: {"Fn::FindInMap": ["EnvironmentConfig", {"Ref": "Environment"}, "LogRetention"]}
+      KmsKeyId: {"Fn::GetAtt": ["MedVaultKMSKey", "Arn"]}
+
+  CloudTrailCWRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: medvault-cloudtrail-cw-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudTrailToCloudWatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: {"Fn::GetAtt": ["CloudTrailLogGroup", "Arn"]}
+
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: {"Ref": "AuditLogsBucket"}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: {"Fn::GetAtt": ["AuditLogsBucket", "Arn"]}
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: {"Fn::Sub": "${AuditLogsBucket.Arn}/cloudtrail/*"}
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+
+  # ==========================================================================
+  # SNS — HIPAA compliance alerts
+  # ==========================================================================
+  HIPAAAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: medvault-hipaa-alerts
+      KmsMasterKeyId: {"Ref": "MedVaultKMSKey"}
+      Tags:
+        - Key: Name
+          Value: medvault-hipaa-alerts
+
+  HIPAAAlertsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: {"Ref": "HIPAAAlertsTopic"}
+      Protocol: email
+      Endpoint: {"Ref": "AlertEmail"}
+
+  # CloudWatch alarm for unauthorized API calls
+  UnauthorizedAPICallsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: medvault-unauthorized-api-calls
+      AlarmDescription: Triggers when unauthorized API calls are detected — potential breach indicator
+      MetricName: UnauthorizedAttemptCount
+      Namespace: MedVault/Security
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - {"Ref": "HIPAAAlertsTopic"}
+      TreatMissingData: notBreaching
+
+Outputs:
+  VPCId:
+    Value: {"Ref": "MedVaultVPC"}
+    Description: MedVault VPC ID
+  AuroraClusterEndpoint:
+    Value: {"Fn::GetAtt": ["AuroraCluster", "Endpoint.Address"]}
+    Description: Aurora cluster writer endpoint
+  AuroraReaderEndpoint:
+    Value: {"Fn::GetAtt": ["AuroraCluster", "ReadEndpoint.Address"]}
+    Description: Aurora cluster reader endpoint
+  PatientRecordsBucketArn:
+    Value: {"Fn::GetAtt": ["PatientRecordsBucket", "Arn"]}
+    Description: Patient records S3 bucket ARN
+  KMSKeyArn:
+    Value: {"Fn::GetAtt": ["MedVaultKMSKey", "Arn"]}
+    Description: PHI encryption KMS key ARN
+  RecordsApiFunctionArn:
+    Value: {"Fn::GetAtt": ["RecordsApiFunction", "Arn"]}
+    Description: Records API Lambda function ARN

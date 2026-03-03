@@ -1,0 +1,763 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.4",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.microservices_vpc",
+          "type": "aws_vpc",
+          "name": "microservices_vpc",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.40.0.0/16",
+            "enable_dns_support": true,
+            "enable_dns_hostnames": true,
+            "tags": {
+              "Name": "prod-microservices-vpc",
+              "Environment": "production",
+              "Team": "platform-engineering",
+              "CostCenter": "CC-4401"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.private_app_a",
+          "type": "aws_subnet",
+          "name": "private_app_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "${aws_vpc.microservices_vpc.id}",
+            "cidr_block": "10.40.10.0/24",
+            "availability_zone": "us-east-1a",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "prod-private-app-us-east-1a",
+              "Tier": "application"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.private_app_b",
+          "type": "aws_subnet",
+          "name": "private_app_b",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "${aws_vpc.microservices_vpc.id}",
+            "cidr_block": "10.40.11.0/24",
+            "availability_zone": "us-east-1b",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "prod-private-app-us-east-1b",
+              "Tier": "application"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.public_a",
+          "type": "aws_subnet",
+          "name": "public_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "vpc_id": "${aws_vpc.microservices_vpc.id}",
+            "cidr_block": "10.40.1.0/24",
+            "availability_zone": "us-east-1a",
+            "map_public_ip_on_launch": true,
+            "tags": {
+              "Name": "prod-public-us-east-1a",
+              "Tier": "public"
+            }
+          }
+        },
+        {
+          "address": "aws_lb.microservices_alb",
+          "type": "aws_lb",
+          "name": "microservices_alb",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-microservices-alb",
+            "internal": false,
+            "load_balancer_type": "application",
+            "security_groups": ["${aws_security_group.alb_sg.id}"],
+            "subnets": [
+              "${aws_subnet.public_a.id}",
+              "${aws_subnet.public_b.id}"
+            ],
+            "enable_deletion_protection": true,
+            "drop_invalid_header_fields": true,
+            "access_logs": {
+              "bucket": "${aws_s3_bucket.alb_logs.id}",
+              "prefix": "microservices-alb",
+              "enabled": true
+            },
+            "tags": {
+              "Name": "prod-microservices-alb",
+              "Environment": "production"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_cluster.microservices",
+          "type": "aws_ecs_cluster",
+          "name": "microservices",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-java-microservices",
+            "setting": [
+              {
+                "name": "containerInsights",
+                "value": "enabled"
+              }
+            ],
+            "tags": {
+              "Name": "prod-java-microservices",
+              "Environment": "production",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_service.user_service",
+          "type": "aws_ecs_service",
+          "name": "user_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "user-service",
+            "cluster": "${aws_ecs_cluster.microservices.id}",
+            "task_definition": "${aws_ecs_task_definition.user_service.arn}",
+            "desired_count": 3,
+            "launch_type": "FARGATE",
+            "health_check_grace_period_seconds": 120,
+            "network_configuration": {
+              "subnets": [
+                "${aws_subnet.private_app_a.id}",
+                "${aws_subnet.private_app_b.id}"
+              ],
+              "security_groups": ["${aws_security_group.ecs_user_service.id}"],
+              "assign_public_ip": false
+            },
+            "load_balancer": [
+              {
+                "target_group_arn": "${aws_lb_target_group.user_service.arn}",
+                "container_name": "user-service",
+                "container_port": 8080
+              }
+            ],
+            "tags": {
+              "Name": "user-service",
+              "Service": "user-service",
+              "Version": "2.14.3"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_task_definition.user_service",
+          "type": "aws_ecs_task_definition",
+          "name": "user_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "family": "user-service",
+            "requires_compatibilities": ["FARGATE"],
+            "network_mode": "awsvpc",
+            "cpu": "512",
+            "memory": "1024",
+            "execution_role_arn": "${aws_iam_role.ecs_execution_role.arn}",
+            "task_role_arn": "${aws_iam_role.user_service_task_role.arn}",
+            "container_definitions": "[{\"name\":\"user-service\",\"image\":\"${aws_ecr_repository.user_service.repository_url}:2.14.3\",\"essential\":true,\"portMappings\":[{\"containerPort\":8080,\"protocol\":\"tcp\"}],\"environment\":[{\"name\":\"SPRING_PROFILES_ACTIVE\",\"value\":\"prod\"},{\"name\":\"JAVA_OPTS\",\"value\":\"-Xms256m -Xmx768m -XX:+UseG1GC\"},{\"name\":\"SERVER_PORT\",\"value\":\"8080\"}],\"secrets\":[{\"name\":\"SPRING_DATASOURCE_URL\",\"valueFrom\":\"arn:aws:ssm:us-east-1:441234567890:parameter/prod/user-service/db-url\"},{\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"valueFrom\":\"arn:aws:secretsmanager:us-east-1:441234567890:secret:prod/user-service/db-password\"}],\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"/ecs/prod/user-service\",\"awslogs-region\":\"us-east-1\",\"awslogs-stream-prefix\":\"user-service\"}},\"healthCheck\":{\"command\":[\"CMD-SHELL\",\"curl -f http://localhost:8080/actuator/health || exit 1\"],\"interval\":30,\"timeout\":5,\"retries\":3,\"startPeriod\":90}}]",
+            "tags": {
+              "Service": "user-service"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_service.payment_service",
+          "type": "aws_ecs_service",
+          "name": "payment_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "payment-service",
+            "cluster": "${aws_ecs_cluster.microservices.id}",
+            "task_definition": "${aws_ecs_task_definition.payment_service.arn}",
+            "desired_count": 2,
+            "launch_type": "FARGATE",
+            "health_check_grace_period_seconds": 180,
+            "network_configuration": {
+              "subnets": [
+                "${aws_subnet.private_app_a.id}",
+                "${aws_subnet.private_app_b.id}"
+              ],
+              "security_groups": ["${aws_security_group.ecs_payment_service.id}"],
+              "assign_public_ip": false
+            },
+            "load_balancer": [
+              {
+                "target_group_arn": "${aws_lb_target_group.payment_service.arn}",
+                "container_name": "payment-service",
+                "container_port": 8080
+              }
+            ],
+            "tags": {
+              "Name": "payment-service",
+              "Service": "payment-service",
+              "Version": "1.8.0",
+              "PCI": "in-scope"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_task_definition.payment_service",
+          "type": "aws_ecs_task_definition",
+          "name": "payment_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "family": "payment-service",
+            "requires_compatibilities": ["FARGATE"],
+            "network_mode": "awsvpc",
+            "cpu": "1024",
+            "memory": "2048",
+            "execution_role_arn": "${aws_iam_role.ecs_execution_role.arn}",
+            "task_role_arn": "${aws_iam_role.payment_service_task_role.arn}",
+            "container_definitions": "[{\"name\":\"payment-service\",\"image\":\"${aws_ecr_repository.payment_service.repository_url}:1.8.0\",\"essential\":true,\"portMappings\":[{\"containerPort\":8080,\"protocol\":\"tcp\"}],\"environment\":[{\"name\":\"SPRING_PROFILES_ACTIVE\",\"value\":\"prod\"},{\"name\":\"JAVA_OPTS\",\"value\":\"-Xms512m -Xmx1536m -XX:+UseG1GC -XX:MaxGCPauseMillis=200\"},{\"name\":\"PAYMENT_GATEWAY_URL\",\"value\":\"https://api.stripe.com/v1\"},{\"name\":\"PAYMENT_RETRY_MAX_ATTEMPTS\",\"value\":\"3\"}],\"secrets\":[{\"name\":\"SPRING_DATASOURCE_URL\",\"valueFrom\":\"arn:aws:ssm:us-east-1:441234567890:parameter/prod/payment-service/db-url\"},{\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"valueFrom\":\"arn:aws:secretsmanager:us-east-1:441234567890:secret:prod/payment-service/db-password\"},{\"name\":\"STRIPE_SECRET_KEY\",\"valueFrom\":\"arn:aws:secretsmanager:us-east-1:441234567890:secret:prod/payment-service/stripe-key\"}],\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"/ecs/prod/payment-service\",\"awslogs-region\":\"us-east-1\",\"awslogs-stream-prefix\":\"payment-service\"}}}]",
+            "tags": {
+              "Service": "payment-service",
+              "PCI": "in-scope"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_service.notification_service",
+          "type": "aws_ecs_service",
+          "name": "notification_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "notification-service",
+            "cluster": "${aws_ecs_cluster.microservices.id}",
+            "task_definition": "${aws_ecs_task_definition.notification_service.arn}",
+            "desired_count": 2,
+            "launch_type": "FARGATE",
+            "network_configuration": {
+              "subnets": [
+                "${aws_subnet.private_app_a.id}"
+              ],
+              "security_groups": ["${aws_security_group.ecs_notification_service.id}"],
+              "assign_public_ip": false
+            },
+            "tags": {
+              "Name": "notification-service",
+              "Service": "notification-service",
+              "Version": "1.2.7"
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_task_definition.notification_service",
+          "type": "aws_ecs_task_definition",
+          "name": "notification_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "family": "notification-service",
+            "requires_compatibilities": ["FARGATE"],
+            "network_mode": "awsvpc",
+            "cpu": "256",
+            "memory": "512",
+            "execution_role_arn": "${aws_iam_role.ecs_execution_role.arn}",
+            "task_role_arn": "${aws_iam_role.notification_service_task_role.arn}",
+            "container_definitions": "[{\"name\":\"notification-service\",\"image\":\"${aws_ecr_repository.notification_service.repository_url}:1.2.7\",\"essential\":true,\"portMappings\":[{\"containerPort\":8080,\"protocol\":\"tcp\"}],\"environment\":[{\"name\":\"SPRING_PROFILES_ACTIVE\",\"value\":\"prod\"},{\"name\":\"JAVA_OPTS\",\"value\":\"-Xms128m -Xmx384m\"},{\"name\":\"SES_REGION\",\"value\":\"us-east-1\"},{\"name\":\"SNS_TOPIC_ARN\",\"value\":\"arn:aws:sns:us-east-1:441234567890:prod-notifications\"}]}]",
+            "tags": {
+              "Service": "notification-service"
+            }
+          }
+        },
+        {
+          "address": "aws_db_instance.user_service_db",
+          "type": "aws_db_instance",
+          "name": "user_service_db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "identifier": "prod-user-service-db",
+            "engine": "postgres",
+            "engine_version": "15.4",
+            "instance_class": "db.r6g.large",
+            "allocated_storage": 100,
+            "max_allocated_storage": 500,
+            "storage_type": "gp3",
+            "storage_encrypted": true,
+            "kms_key_id": "arn:aws:kms:us-east-1:441234567890:key/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "db_name": "userservice",
+            "username": "usersvc_admin",
+            "multi_az": true,
+            "backup_retention_period": 14,
+            "backup_window": "03:00-04:00",
+            "maintenance_window": "sun:04:30-sun:05:30",
+            "deletion_protection": true,
+            "skip_final_snapshot": false,
+            "final_snapshot_identifier": "prod-user-service-db-final",
+            "vpc_security_group_ids": ["${aws_security_group.rds_user_service.id}"],
+            "db_subnet_group_name": "${aws_db_subnet_group.private_data.name}",
+            "performance_insights_enabled": true,
+            "monitoring_interval": 60,
+            "monitoring_role_arn": "${aws_iam_role.rds_monitoring.arn}",
+            "enabled_cloudwatch_logs_exports": ["postgresql", "upgrade"],
+            "tags": {
+              "Name": "prod-user-service-db",
+              "Service": "user-service",
+              "BackupPolicy": "daily-14d"
+            }
+          }
+        },
+        {
+          "address": "aws_db_instance.payment_service_db",
+          "type": "aws_db_instance",
+          "name": "payment_service_db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "identifier": "prod-payment-service-db",
+            "engine": "postgres",
+            "engine_version": "15.4",
+            "instance_class": "db.r6g.xlarge",
+            "allocated_storage": 200,
+            "max_allocated_storage": 1000,
+            "storage_type": "gp3",
+            "storage_encrypted": false,
+            "db_name": "paymentservice",
+            "username": "payment_admin",
+            "multi_az": true,
+            "backup_retention_period": 0,
+            "deletion_protection": false,
+            "skip_final_snapshot": true,
+            "vpc_security_group_ids": ["${aws_security_group.rds_payment_service.id}"],
+            "db_subnet_group_name": "${aws_db_subnet_group.private_data.name}",
+            "performance_insights_enabled": false,
+            "monitoring_interval": 0,
+            "tags": {
+              "Name": "prod-payment-service-db",
+              "Service": "payment-service",
+              "PCI": "in-scope",
+              "TODO": "Jake - enable encryption before Q3 audit, ticket INFRA-2847"
+            }
+          }
+        },
+        {
+          "address": "aws_elasticache_replication_group.session_cache",
+          "type": "aws_elasticache_replication_group",
+          "name": "session_cache",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "replication_group_id": "prod-session-cache",
+            "description": "Redis cluster for Spring Session and distributed caching",
+            "node_type": "cache.r6g.large",
+            "num_cache_clusters": 3,
+            "engine": "redis",
+            "engine_version": "7.0",
+            "port": 6379,
+            "parameter_group_name": "default.redis7",
+            "subnet_group_name": "${aws_elasticache_subnet_group.private_data.name}",
+            "security_group_ids": ["${aws_security_group.redis_sg.id}"],
+            "at_rest_encryption_enabled": true,
+            "transit_encryption_enabled": true,
+            "automatic_failover_enabled": true,
+            "multi_az_enabled": true,
+            "snapshot_retention_limit": 7,
+            "snapshot_window": "02:00-03:00",
+            "maintenance_window": "sun:03:30-sun:04:30",
+            "tags": {
+              "Name": "prod-session-cache",
+              "Environment": "production"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.artifact_store",
+          "type": "aws_s3_bucket",
+          "name": "artifact_store",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "acmecorp-prod-java-artifacts-us-east-1",
+            "force_destroy": false,
+            "tags": {
+              "Name": "acmecorp-prod-java-artifacts-us-east-1",
+              "Purpose": "JAR artifact storage for ECS deployments",
+              "Environment": "production"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_versioning.artifact_store",
+          "type": "aws_s3_bucket_versioning",
+          "name": "artifact_store",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "${aws_s3_bucket.artifact_store.id}",
+            "versioning_configuration": {
+              "status": "Enabled"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_server_side_encryption_configuration.artifact_store",
+          "type": "aws_s3_bucket_server_side_encryption_configuration",
+          "name": "artifact_store",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "${aws_s3_bucket.artifact_store.id}",
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "aws:kms",
+                  "kms_master_key_id": "arn:aws:kms:us-east-1:441234567890:key/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_s3_bucket_public_access_block.artifact_store",
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "artifact_store",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "${aws_s3_bucket.artifact_store.id}",
+            "block_public_acls": true,
+            "block_public_policy": true,
+            "ignore_public_acls": true,
+            "restrict_public_buckets": true
+          }
+        },
+        {
+          "address": "aws_ecr_repository.user_service",
+          "type": "aws_ecr_repository",
+          "name": "user_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod/user-service",
+            "image_tag_mutability": "IMMUTABLE",
+            "image_scanning_configuration": {
+              "scan_on_push": true
+            },
+            "encryption_configuration": {
+              "encryption_type": "AES256"
+            },
+            "tags": {
+              "Service": "user-service"
+            }
+          }
+        },
+        {
+          "address": "aws_ecr_repository.payment_service",
+          "type": "aws_ecr_repository",
+          "name": "payment_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod/payment-service",
+            "image_tag_mutability": "IMMUTABLE",
+            "image_scanning_configuration": {
+              "scan_on_push": true
+            },
+            "encryption_configuration": {
+              "encryption_type": "KMS",
+              "kms_key": "arn:aws:kms:us-east-1:441234567890:key/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+            },
+            "tags": {
+              "Service": "payment-service",
+              "PCI": "in-scope"
+            }
+          }
+        },
+        {
+          "address": "aws_ecr_repository.notification_service",
+          "type": "aws_ecr_repository",
+          "name": "notification_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod/notification-service",
+            "image_tag_mutability": "MUTABLE",
+            "image_scanning_configuration": {
+              "scan_on_push": false
+            },
+            "encryption_configuration": {
+              "encryption_type": "AES256"
+            },
+            "tags": {
+              "Service": "notification-service"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.ecs_execution_role",
+          "type": "aws_iam_role",
+          "name": "ecs_execution_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-ecs-execution-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "managed_policy_arns": [
+              "arn:aws:iam::policy/service-role/AmazonECSTaskExecutionRolePolicy"
+            ],
+            "tags": {
+              "Name": "prod-ecs-execution-role"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.user_service_task_role",
+          "type": "aws_iam_role",
+          "name": "user_service_task_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-user-service-task-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "inline_policy": [
+              {
+                "name": "user-service-permissions",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\"],\"Resource\":\"arn:aws:s3:::acmecorp-prod-user-uploads/*\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:SendMessage\",\"sqs:ReceiveMessage\"],\"Resource\":\"arn:aws:sqs:us-east-1:441234567890:prod-user-events\"},{\"Effect\":\"Allow\",\"Action\":[\"ssm:GetParameter\",\"ssm:GetParameters\"],\"Resource\":\"arn:aws:ssm:us-east-1:441234567890:parameter/prod/user-service/*\"}]}"
+              }
+            ],
+            "tags": {
+              "Service": "user-service"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.payment_service_task_role",
+          "type": "aws_iam_role",
+          "name": "payment_service_task_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-payment-service-task-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "inline_policy": [
+              {
+                "name": "payment-service-permissions",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+              }
+            ],
+            "tags": {
+              "Service": "payment-service",
+              "TODO": "Raghav - scope this down, copied from dev for launch. INFRA-2201"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.notification_service_task_role",
+          "type": "aws_iam_role",
+          "name": "notification_service_task_role",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-notification-service-task-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "inline_policy": [
+              {
+                "name": "notification-service-permissions",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"ses:SendEmail\",\"ses:SendRawEmail\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"sns:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:441234567890:prod-notifications\"},{\"Effect\":\"Allow\",\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\",\"sqs:GetQueueAttributes\"],\"Resource\":\"arn:aws:sqs:us-east-1:441234567890:prod-notification-queue\"}]}"
+              }
+            ],
+            "tags": {
+              "Service": "notification-service"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.alb_sg",
+          "type": "aws_security_group",
+          "name": "alb_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-microservices-alb-sg",
+            "description": "Security group for the microservices ALB - allows HTTPS from internet",
+            "vpc_id": "${aws_vpc.microservices_vpc.id}",
+            "ingress": [
+              {
+                "description": "HTTPS from internet",
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"]
+              },
+              {
+                "description": "HTTP redirect",
+                "from_port": 80,
+                "to_port": 80,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound to VPC",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["10.40.0.0/16"]
+              }
+            ],
+            "tags": {
+              "Name": "prod-microservices-alb-sg"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.ecs_user_service",
+          "type": "aws_security_group",
+          "name": "ecs_user_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-ecs-user-service-sg",
+            "description": "SG for user-service ECS tasks",
+            "vpc_id": "${aws_vpc.microservices_vpc.id}",
+            "ingress": [
+              {
+                "description": "From ALB on app port",
+                "from_port": 8080,
+                "to_port": 8080,
+                "protocol": "tcp",
+                "security_groups": ["${aws_security_group.alb_sg.id}"]
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "prod-ecs-user-service-sg",
+              "Service": "user-service"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.bastion_sg",
+          "type": "aws_security_group",
+          "name": "bastion_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "prod-bastion-sg",
+            "description": "Bastion host security group - SSH access",
+            "vpc_id": "${aws_vpc.microservices_vpc.id}",
+            "ingress": [
+              {
+                "description": "SSH from anywhere - TODO: restrict to VPN CIDR after migration (INFRA-3102)",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "egress": [
+              {
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "prod-bastion-sg",
+              "TODO": "Restrict SSH to VPN CIDR 10.200.0.0/16 once GlobalProtect migration completes"
+            }
+          }
+        },
+        {
+          "address": "aws_instance.bastion",
+          "type": "aws_instance",
+          "name": "bastion",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "ami": "ami-0c7217cdde317cfec",
+            "instance_type": "t3.micro",
+            "subnet_id": "${aws_subnet.public_a.id}",
+            "vpc_security_group_ids": ["${aws_security_group.bastion_sg.id}"],
+            "key_name": "prod-bastion-key",
+            "associate_public_ip_address": true,
+            "monitoring": false,
+            "ebs_optimized": false,
+            "root_block_device": {
+              "volume_type": "gp3",
+              "volume_size": 20,
+              "encrypted": false
+            },
+            "metadata_options": {
+              "http_endpoint": "enabled",
+              "http_tokens": "optional"
+            },
+            "tags": {
+              "Name": "prod-bastion-host",
+              "Purpose": "SSH jump box for RDS and ECS debugging",
+              "OnCall": "platform-team@acmecorp.com"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_log_group.user_service",
+          "type": "aws_cloudwatch_log_group",
+          "name": "user_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "/ecs/prod/user-service",
+            "retention_in_days": 90,
+            "tags": {
+              "Service": "user-service",
+              "Environment": "production"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_log_group.payment_service",
+          "type": "aws_cloudwatch_log_group",
+          "name": "payment_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "/ecs/prod/payment-service",
+            "retention_in_days": 365,
+            "tags": {
+              "Service": "payment-service",
+              "Environment": "production",
+              "PCI": "in-scope"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_log_group.notification_service",
+          "type": "aws_cloudwatch_log_group",
+          "name": "notification_service",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "/ecs/prod/notification-service",
+            "retention_in_days": 30,
+            "tags": {
+              "Service": "notification-service",
+              "Environment": "production"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_metric_alarm.user_service_cpu",
+          "type": "aws_cloudwatch_metric_alarm",
+          "name": "user_service_cpu",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "alarm_name": "prod-user-service-high-cpu",
+            "comparison_operator": "GreaterThanThreshold",
+            "evaluation_periods": 3,
+            "metric_name": "CPUUtilization",
+            "namespace": "AWS/ECS",
+            "period": 300,
+            "statistic": "Average",
+            "threshold": 80,
+            "alarm_actions": ["arn:aws:sns:us-east-1:441234567890:prod-platform-alerts"],
+            "dimensions": {
+              "ClusterName": "prod-java-microservices",
+              "ServiceName": "user-service"
+            },
+            "tags": {
+              "Service": "user-service"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

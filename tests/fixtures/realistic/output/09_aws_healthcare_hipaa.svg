@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 986 884" width="986" height="884" font-family="&quot;Inter&quot;, &quot;Segoe UI&quot;, system-ui, sans-serif">
+<defs><filter id="shadow" x="-4%" y="-4%" width="108%" height="116%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/></filter><filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="arrow-dependency" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/></marker><marker id="arrow-containment" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker><marker id="arrow-network_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/></marker><marker id="arrow-iam_binding" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#f97316"/></marker><marker id="arrow-data_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/></marker><marker id="arrow-boundary" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/></marker></defs>
+<rect x="0" y="0" width="986" height="44" fill="#1e293b" rx="0"/><text x="16" y="27" fill="#ffffff" font-size="14" font-weight="600">ThreatCode Threat Model</text><text x="970" y="27" fill="#94a3b8" font-size="11" text-anchor="end">34 resources · 24 threats  2026-03-02T20:19:49</text>
+<g class="zone-private"><rect x="0" y="64" width="986" height="352" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/><text x="12" y="88" fill="#93c5fd" font-size="10" font-weight="600" letter-spacing="0.5">PRIVATE</text></g>
+<g class="zone-data"><rect x="0" y="416" width="986" height="196" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/><text x="12" y="440" fill="#86efac" font-size="10" font-weight="600" letter-spacing="0.5">DATA</text></g>
+<g class="zone-management"><rect x="0" y="612" width="986" height="196" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/><text x="12" y="636" fill="#c4b5fd" font-size="10" font-weight="600" letter-spacing="0.5">MANAGEMENT</text></g>
+<path d="M347.0,372.0 C347.0,428.8 347.0,457.2 347.0,514.0" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-boundary)" filter="url(#glow)" class="edge" data-type="dependency" data-boundary="true"/>
+<g class="node" data-id="MedVaultVPC" filter="url(#shadow)">
+<polygon points="181.0,84.0 246.0,111.0 181.0,138.0 116.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="181" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">MedVaultVPC</text>
+<circle cx="236" cy="80" r="7" fill="#eab308"/><text x="236" y="84" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="PrivateSubnetA" filter="url(#shadow)">
+<polygon points="347.0,84.0 412.0,111.0 347.0,138.0 282.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="347" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">PrivateSubnetA</text>
+</g>
+<g class="node" data-id="PrivateSubnetB" filter="url(#shadow)">
+<polygon points="513.0,84.0 578.0,111.0 513.0,138.0 448.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="513" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">PrivateSubnetB</text>
+</g>
+<g class="node" data-id="PrivateSubnetC" filter="url(#shadow)">
+<polygon points="679.0,84.0 744.0,111.0 679.0,138.0 614.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="679" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">PrivateSubnetC</text>
+</g>
+<g class="node" data-id="DatabaseSG" filter="url(#shadow)">
+<polygon points="845.0,84.0 910.0,111.0 845.0,138.0 780.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="845" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">DatabaseSG</text>
+</g>
+<g class="node" data-id="LambdaSG" filter="url(#shadow)">
+<polygon points="181.0,162.0 246.0,189.0 181.0,216.0 116.0,189.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="176" fill="#94a3b8" font-size="8">network</text>
+<text x="181" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">LambdaSG</text>
+</g>
+<g class="node" data-id="CacheSG" filter="url(#shadow)">
+<polygon points="347.0,162.0 412.0,189.0 347.0,216.0 282.0,189.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="176" fill="#94a3b8" font-size="8">network</text>
+<text x="347" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">CacheSG</text>
+</g>
+<g class="node" data-id="MedVaultKMSKey" filter="url(#shadow)">
+<rect x="448" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="176" fill="#94a3b8" font-size="8">unknown</text>
+<text x="513" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">MedVaultKMSKey</text>
+</g>
+<g class="node" data-id="MedVaultKMSKeyAlias" filter="url(#shadow)">
+<rect x="614" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="176" fill="#94a3b8" font-size="8">unknown</text>
+<text x="679" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">MedVaultKMSKeyAlias</text>
+</g>
+<g class="node" data-id="AuroraInstanceA" filter="url(#shadow)">
+<rect x="780" y="168" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="168" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="210" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="176" fill="#94a3b8" font-size="8">database</text>
+<text x="845" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuroraInstanceA</text>
+<circle cx="900" cy="158" r="7" fill="#f97316"/><text x="900" y="162" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="AuroraInstanceB" filter="url(#shadow)">
+<rect x="116" y="246" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="246" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="288" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="254" fill="#94a3b8" font-size="8">database</text>
+<text x="181" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuroraInstanceB</text>
+<circle cx="236" cy="236" r="7" fill="#f97316"/><text x="236" y="240" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="RecordsApiDLQ" filter="url(#shadow)">
+<polygon points="347.0,240.0 412.0,267.0 347.0,294.0 282.0,267.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="254" fill="#94a3b8" font-size="8">messaging</text>
+<text x="347" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">RecordsApiDLQ</text>
+</g>
+<g class="node" data-id="HL7ProcessorDLQ" filter="url(#shadow)">
+<polygon points="513.0,240.0 578.0,267.0 513.0,294.0 448.0,267.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="254" fill="#94a3b8" font-size="8">messaging</text>
+<text x="513" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">HL7ProcessorDLQ</text>
+</g>
+<g class="node" data-id="RecordsApiFunction" filter="url(#shadow)">
+<rect x="614" y="240" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="254" fill="#94a3b8" font-size="8">serverless</text>
+<text x="679" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">RecordsApiFunction</text>
+<circle cx="734" cy="236" r="7" fill="#eab308"/><text x="734" y="240" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="HL7ProcessorFunction" filter="url(#shadow)">
+<rect x="780" y="240" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="254" fill="#94a3b8" font-size="8">serverless</text>
+<text x="845" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">HL7ProcessorFunction</text>
+<circle cx="900" cy="236" r="7" fill="#eab308"/><text x="900" y="240" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="ReportGeneratorFunction" filter="url(#shadow)">
+<rect x="116" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="332" fill="#94a3b8" font-size="8">serverless</text>
+<text x="181" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">ReportGeneratorFunction</text>
+<circle cx="236" cy="314" r="7" fill="#eab308"/><text x="236" y="318" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="HIPAACloudTrail" filter="url(#shadow)">
+<rect x="282" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="347" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">HIPAACloudTrail</text>
+<circle cx="402" cy="314" r="7" fill="#eab308"/><text x="402" y="318" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">1</text>
+</g>
+<g class="node" data-id="CloudTrailLogGroup" filter="url(#shadow)">
+<rect x="448" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="513" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">CloudTrailLogGroup</text>
+</g>
+<g class="node" data-id="HIPAAAlertsTopic" filter="url(#shadow)">
+<polygon points="679.0,318.0 744.0,345.0 679.0,372.0 614.0,345.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="332" fill="#94a3b8" font-size="8">messaging</text>
+<text x="679" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">HIPAAAlertsTopic</text>
+</g>
+<g class="node" data-id="HIPAAAlertsSubscription" filter="url(#shadow)">
+<polygon points="845.0,318.0 910.0,345.0 845.0,372.0 780.0,345.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="332" fill="#94a3b8" font-size="8">messaging</text>
+<text x="845" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">HIPAAAlertsSubscription</text>
+</g>
+<g class="node" data-id="DatabaseSubnetGroup" filter="url(#shadow)">
+<rect x="116" y="442" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="442" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="484" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="450" fill="#94a3b8" font-size="8">database</text>
+<text x="181" y="468" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">DatabaseSubnetGroup</text>
+</g>
+<g class="node" data-id="AuroraCluster" filter="url(#shadow)">
+<rect x="282" y="442" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="347" cy="442" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="347" cy="484" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="450" fill="#94a3b8" font-size="8">database</text>
+<text x="347" y="468" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuroraCluster</text>
+</g>
+<g class="node" data-id="PatientRecordsBucket" filter="url(#shadow)">
+<rect x="448" y="442" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="513" cy="442" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="513" cy="484" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="450" fill="#94a3b8" font-size="8">storage</text>
+<text x="513" y="468" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">PatientRecordsBucket</text>
+<circle cx="568" cy="432" r="7" fill="#f97316"/><text x="568" y="436" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="AuditLogsBucket" filter="url(#shadow)">
+<rect x="614" y="442" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="679" cy="442" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="679" cy="484" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="450" fill="#94a3b8" font-size="8">storage</text>
+<text x="679" y="468" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuditLogsBucket</text>
+<circle cx="734" cy="432" r="7" fill="#f97316"/><text x="734" y="436" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="TempUploadsBucket" filter="url(#shadow)">
+<rect x="780" y="442" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="442" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="484" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="450" fill="#94a3b8" font-size="8">storage</text>
+<text x="845" y="468" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TempUploadsBucket</text>
+<circle cx="900" cy="432" r="7" fill="#f97316"/><text x="900" y="436" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="SessionCacheTable" filter="url(#shadow)">
+<rect x="116" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="528" fill="#94a3b8" font-size="8">database</text>
+<text x="181" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">SessionCacheTable</text>
+</g>
+<g class="node" data-id="CloudTrailBucketPolicy" filter="url(#shadow)">
+<rect x="282" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="347" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="347" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="528" fill="#94a3b8" font-size="8">storage</text>
+<text x="347" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">CloudTrailBucketPolicy</text>
+<circle cx="402" cy="510" r="7" fill="#f97316"/><text x="402" y="514" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="RecordsApiRole" filter="url(#shadow)">
+<rect x="116" y="632" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="119" y="635" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="124" y="646" fill="#94a3b8" font-size="8">iam</text>
+<text x="181" y="664" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">RecordsApiRole</text>
+</g>
+<g class="node" data-id="HL7ProcessorRole" filter="url(#shadow)">
+<rect x="282" y="632" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="285" y="635" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="290" y="646" fill="#94a3b8" font-size="8">iam</text>
+<text x="347" y="664" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">HL7ProcessorRole</text>
+</g>
+<g class="node" data-id="ReportGeneratorRole" filter="url(#shadow)">
+<rect x="448" y="632" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="451" y="635" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="456" y="646" fill="#94a3b8" font-size="8">iam</text>
+<text x="513" y="664" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">ReportGeneratorRole</text>
+</g>
+<g class="node" data-id="RDSMonitoringRole" filter="url(#shadow)">
+<rect x="614" y="632" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="617" y="635" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="622" y="646" fill="#94a3b8" font-size="8">iam</text>
+<text x="679" y="664" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">RDSMonitoringRole</text>
+</g>
+<g class="node" data-id="EmergencyAdminRole" filter="url(#shadow)">
+<rect x="780" y="632" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="783" y="635" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="788" y="646" fill="#94a3b8" font-size="8">iam</text>
+<text x="845" y="664" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">EmergencyAdminRole</text>
+</g>
+<g class="node" data-id="CloudTrailCWRole" filter="url(#shadow)">
+<rect x="116" y="710" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="119" y="713" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="124" y="724" fill="#94a3b8" font-size="8">iam</text>
+<text x="181" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">CloudTrailCWRole</text>
+</g>
+<g class="node" data-id="UnauthorizedAPICallsAlarm" filter="url(#shadow)">
+<rect x="282" y="710" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="724" fill="#94a3b8" font-size="8">monitoring</text>
+<text x="347" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">UnauthorizedAPICallsAlarm</text>
+</g>
+<g class="legend"><rect x="0" y="828" width="986" height="56" fill="#f8fafc"/><line x1="0" y1="828" x2="986" y2="828" stroke="#e2e8f0" stroke-width="1"/><text x="16" y="848" fill="#3b82f6" font-size="9" font-weight="500">◇ data_flow</text><text x="106" y="848" fill="#64748b" font-size="9" font-weight="500">╭╮ process</text><text x="196" y="848" fill="#22c55e" font-size="9" font-weight="500">┃┃ data_store</text><text x="286" y="848" fill="#f97316" font-size="9" font-weight="500">┌┐ entity</text><circle cx="20" cy="865" r="4" fill="#ef4444"/><text x="28" y="868" fill="#64748b" font-size="9">critical</text><circle cx="92" cy="865" r="4" fill="#f97316"/><text x="100" y="868" fill="#64748b" font-size="9">high</text><circle cx="164" cy="865" r="4" fill="#eab308"/><text x="172" y="868" fill="#64748b" font-size="9">medium</text><circle cx="236" cy="865" r="4" fill="#3b82f6"/><text x="244" y="868" fill="#64748b" font-size="9">low</text><text x="970" y="848" fill="#cbd5e1" font-size="9" text-anchor="end">Generated by ThreatCode</text></g>
+</svg>

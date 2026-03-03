@@ -1,0 +1,914 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  SecureBank Mobile Banking API — Serverless backend for the SecureBank iOS/Android app.
+  Handles authentication, account management, fund transfers, notifications, and audit logging.
+  Owner: backend-team@securebank.com | Jira Epic: BANK-1200
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+      - development
+
+  LogRetentionDays:
+    Type: Number
+    Default: 365
+    Description: CloudWatch log retention in days (PCI DSS requires 1yr minimum)
+
+  TransactionDLQMaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: Number of times a transaction message is retried before going to DLQ
+
+  CognitoDomainPrefix:
+    Type: String
+    Default: securebank-prod
+    Description: Cognito hosted UI domain prefix
+
+Resources:
+
+  # ===========================================================================
+  # API Gateway
+  # ===========================================================================
+
+  BankingApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: {"Fn::Sub": "${Environment}-securebank-api"}
+      Description: SecureBank mobile banking REST API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      MinimumCompressionSize: 1024
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: execute-api:Invoke
+            Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: {"Ref": "Environment"}
+        - Key: Service
+          Value: securebank-api
+
+  BankingApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - AuthFunction
+      - AccountsFunction
+    Properties:
+      RestApiId: {"Ref": "BankingApi"}
+
+  BankingApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: {"Ref": "Environment"}
+      RestApiId: {"Ref": "BankingApi"}
+      DeploymentId: {"Ref": "BankingApiDeployment"}
+      TracingEnabled: true
+      MethodSettings:
+        - DataTraceEnabled: false
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          ResourcePath: '/*'
+          MetricsEnabled: true
+          ThrottlingBurstLimit: 500
+          ThrottlingRateLimit: 1000
+      AccessLogSetting:
+        DestinationArn: {"Fn::GetAtt": ["ApiAccessLogGroup", "Arn"]}
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+      Tags:
+        - Key: Environment
+          Value: {"Ref": "Environment"}
+
+  # ===========================================================================
+  # Cognito User Pool — Customer Authentication
+  # ===========================================================================
+
+  CustomerUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: {"Fn::Sub": "${Environment}-securebank-customers"}
+      AutoVerifiedAttributes:
+        - email
+        - phone_number
+      MfaConfiguration: 'ON'
+      EnabledMfas:
+        - SMS_MFA
+        - SOFTWARE_TOKEN_MFA
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 1
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+          - Name: verified_phone_number
+            Priority: 2
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: custom:account_id
+          AttributeDataType: String
+          Mutable: false
+      UserPoolTags:
+        Environment: {"Ref": "Environment"}
+        Service: authentication
+
+  CustomerUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: {"Fn::Sub": "${Environment}-securebank-mobile-app"}
+      UserPoolId: {"Ref": "CustomerUserPool"}
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  # ===========================================================================
+  # Lambda Functions
+  # ===========================================================================
+
+  # --- Auth Function — handles login, token refresh, MFA verification ---
+
+  AuthFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: {"Fn::Sub": "${Environment}-securebank-auth"}
+      Runtime: python3.12
+      Handler: auth.handler
+      Code:
+        S3Bucket: {"Fn::Sub": "securebank-${Environment}-deploy-artifacts"}
+        S3Key: lambdas/auth/v2.8.1.zip
+      MemorySize: 256
+      Timeout: 10
+      Role: {"Fn::GetAtt": ["AuthFunctionRole", "Arn"]}
+      Environment:
+        Variables:
+          USER_POOL_ID: {"Ref": "CustomerUserPool"}
+          USER_POOL_CLIENT_ID: {"Ref": "CustomerUserPoolClient"}
+          USERS_TABLE: {"Ref": "UsersTable"}
+          ENVIRONMENT: {"Ref": "Environment"}
+          LOG_LEVEL: INFO
+      VpcConfig:
+        SecurityGroupIds:
+          - {"Ref": "LambdaSecurityGroup"}
+        SubnetIds:
+          - subnet-0a1b2c3d4e5f60001
+          - subnet-0a1b2c3d4e5f60002
+      DeadLetterConfig:
+        TargetArn: {"Fn::GetAtt": ["AuthDLQ", "Arn"]}
+      TracingConfig:
+        Mode: Active
+      ReservedConcurrentExecutions: 100
+      Tags:
+        - Key: Service
+          Value: auth
+        - Key: Version
+          Value: '2.8.1'
+
+  AuthDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: {"Fn::Sub": "${Environment}-securebank-auth-dlq"}
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Service
+          Value: auth
+
+  AuthFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: {"Fn::Sub": "${Environment}-securebank-auth-role"}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: auth-permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - {"Fn::GetAtt": ["UsersTable", "Arn"]}
+                  - {"Fn::Sub": "${UsersTable.Arn}/index/*"}
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:AdminRespondToAuthChallenge
+                Resource: {"Fn::GetAtt": ["CustomerUserPool", "Arn"]}
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: {"Fn::GetAtt": ["AuthDLQ", "Arn"]}
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource: 'arn:aws:kms:us-east-1:551234567890:key/auth-encryption-key'
+
+  # --- Accounts Function — balance inquiries, account details, statements ---
+
+  AccountsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: {"Fn::Sub": "${Environment}-securebank-accounts"}
+      Runtime: python3.12
+      Handler: accounts.handler
+      Code:
+        S3Bucket: {"Fn::Sub": "securebank-${Environment}-deploy-artifacts"}
+        S3Key: lambdas/accounts/v3.1.0.zip
+      MemorySize: 512
+      Timeout: 15
+      Role: {"Fn::GetAtt": ["AccountsFunctionRole", "Arn"]}
+      Environment:
+        Variables:
+          USERS_TABLE: {"Ref": "UsersTable"}
+          TRANSACTIONS_TABLE: {"Ref": "TransactionsTable"}
+          STATEMENTS_BUCKET: {"Ref": "StatementsBucket"}
+          ENVIRONMENT: {"Ref": "Environment"}
+      VpcConfig:
+        SecurityGroupIds:
+          - {"Ref": "LambdaSecurityGroup"}
+        SubnetIds:
+          - subnet-0a1b2c3d4e5f60001
+          - subnet-0a1b2c3d4e5f60002
+      TracingConfig:
+        Mode: Active
+      Tags:
+        - Key: Service
+          Value: accounts
+        - Key: Version
+          Value: '3.1.0'
+
+  AccountsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: {"Fn::Sub": "${Environment}-securebank-accounts-role"}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: accounts-permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - {"Fn::GetAtt": ["UsersTable", "Arn"]}
+                  - {"Fn::Sub": "${UsersTable.Arn}/index/*"}
+                  - {"Fn::GetAtt": ["TransactionsTable", "Arn"]}
+                  - {"Fn::Sub": "${TransactionsTable.Arn}/index/*"}
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: {"Fn::Sub": "${StatementsBucket.Arn}/*"}
+
+  # --- Transfers Function — initiate and process fund transfers ---
+
+  TransfersFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: {"Fn::Sub": "${Environment}-securebank-transfers"}
+      Runtime: python3.12
+      Handler: transfers.handler
+      Code:
+        S3Bucket: {"Fn::Sub": "securebank-${Environment}-deploy-artifacts"}
+        S3Key: lambdas/transfers/v2.4.0.zip
+      MemorySize: 1024
+      Timeout: 30
+      Role: {"Fn::GetAtt": ["TransfersFunctionRole", "Arn"]}
+      Environment:
+        Variables:
+          TRANSACTIONS_TABLE: {"Ref": "TransactionsTable"}
+          TRANSACTION_QUEUE_URL: {"Ref": "TransactionQueue"}
+          NOTIFICATION_QUEUE_URL: {"Ref": "NotificationQueue"}
+          AUDIT_LOG_TABLE: {"Ref": "AuditLogTable"}
+          ENVIRONMENT: {"Ref": "Environment"}
+          DAILY_TRANSFER_LIMIT: '50000'
+          INSTANT_TRANSFER_LIMIT: '5000'
+      # NOTE: no VPC config — needs internet access to call partner bank APIs
+      # TODO: migrate to VPC with NAT gateway (ticket BANK-1892)
+      TracingConfig:
+        Mode: Active
+      ReservedConcurrentExecutions: 50
+      Tags:
+        - Key: Service
+          Value: transfers
+        - Key: Version
+          Value: '2.4.0'
+        - Key: PCI
+          Value: in-scope
+
+  TransfersFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: {"Fn::Sub": "${Environment}-securebank-transfers-role"}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: transfers-permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:TransactWriteItems
+                Resource:
+                  - {"Fn::GetAtt": ["TransactionsTable", "Arn"]}
+                  - {"Fn::Sub": "${TransactionsTable.Arn}/index/*"}
+                  - {"Fn::GetAtt": ["AuditLogTable", "Arn"]}
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - {"Fn::GetAtt": ["TransactionQueue", "Arn"]}
+                  - {"Fn::GetAtt": ["NotificationQueue", "Arn"]}
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource: 'arn:aws:kms:us-east-1:551234567890:key/transfers-encryption-key'
+
+  # --- Notifications Function — push notifications, email, SMS ---
+
+  NotificationsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: {"Fn::Sub": "${Environment}-securebank-notifications"}
+      Runtime: python3.12
+      Handler: notifications.handler
+      Code:
+        S3Bucket: {"Fn::Sub": "securebank-${Environment}-deploy-artifacts"}
+        S3Key: lambdas/notifications/v1.6.2.zip
+      MemorySize: 256
+      Timeout: 15
+      Role: {"Fn::GetAtt": ["NotificationsFunctionRole", "Arn"]}
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: {"Ref": "AlertsTopic"}
+          USERS_TABLE: {"Ref": "UsersTable"}
+          ENVIRONMENT: {"Ref": "Environment"}
+      # No VPC config, no DLQ, no tracing — deployed quickly during launch week
+      # TODO: add DLQ and X-Ray tracing (BANK-2003)
+      Tags:
+        - Key: Service
+          Value: notifications
+        - Key: Version
+          Value: '1.6.2'
+
+  NotificationsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: {"Fn::Sub": "${Environment}-securebank-notifications-role"}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: notifications-permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: {"Ref": "AlertsTopic"}
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - {"Fn::GetAtt": ["UsersTable", "Arn"]}
+                  - {"Fn::Sub": "${UsersTable.Arn}/index/*"}
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: {"Fn::GetAtt": ["NotificationQueue", "Arn"]}
+
+  # --- Audit Log Function — compliance logging for all financial transactions ---
+
+  AuditLogFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: {"Fn::Sub": "${Environment}-securebank-audit-log"}
+      Runtime: python3.12
+      Handler: audit_log.handler
+      Code:
+        S3Bucket: {"Fn::Sub": "securebank-${Environment}-deploy-artifacts"}
+        S3Key: lambdas/audit-log/v1.2.0.zip
+      MemorySize: 512
+      Timeout: 30
+      # SECURITY ISSUE: This role has admin access — was a copy-paste from the
+      # prototype. Marcus said he'd fix it but went on paternity leave.
+      # Ticket BANK-1456 is assigned but unresolved.
+      Role: {"Fn::GetAtt": ["AuditLogAdminRole", "Arn"]}
+      Environment:
+        Variables:
+          AUDIT_LOG_TABLE: {"Ref": "AuditLogTable"}
+          ENVIRONMENT: {"Ref": "Environment"}
+          RETENTION_DAYS: '2555'
+      VpcConfig:
+        SecurityGroupIds:
+          - {"Ref": "LambdaSecurityGroup"}
+        SubnetIds:
+          - subnet-0a1b2c3d4e5f60001
+          - subnet-0a1b2c3d4e5f60002
+      DeadLetterConfig:
+        TargetArn: {"Fn::GetAtt": ["AuditDLQ", "Arn"]}
+      TracingConfig:
+        Mode: Active
+      Tags:
+        - Key: Service
+          Value: audit-log
+        - Key: Version
+          Value: '1.2.0'
+        - Key: Compliance
+          Value: PCI-SOX
+
+  AuditDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: {"Fn::Sub": "${Environment}-securebank-audit-dlq"}
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Service
+          Value: audit-log
+
+  # This role has wildcard admin permissions — needs to be scoped down ASAP
+  AuditLogAdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: {"Fn::Sub": "${Environment}-securebank-audit-admin-role"}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: audit-admin-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+
+  # ===========================================================================
+  # Lambda Security Group
+  # ===========================================================================
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions in VPC
+      VpcId: vpc-0a1b2c3d4e5f67890
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS outbound for AWS API calls
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 10.50.20.0/24
+          Description: PostgreSQL in data subnet
+      Tags:
+        - Key: Name
+          Value: {"Fn::Sub": "${Environment}-lambda-sg"}
+
+  # ===========================================================================
+  # DynamoDB Tables
+  # ===========================================================================
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: {"Fn::Sub": "${Environment}-securebank-users"}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: accountId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: account-index
+          KeySchema:
+            - AttributeName: accountId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 'arn:aws:kms:us-east-1:551234567890:key/dynamodb-encryption-key'
+      Tags:
+        - Key: Service
+          Value: users
+        - Key: DataClassification
+          Value: PII
+
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: {"Fn::Sub": "${Environment}-securebank-transactions"}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: transactionId
+          AttributeType: S
+        - AttributeName: accountId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: transactionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: account-transactions-index
+          KeySchema:
+            - AttributeName: accountId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 'arn:aws:kms:us-east-1:551234567890:key/dynamodb-encryption-key'
+      Tags:
+        - Key: Service
+          Value: transactions
+        - Key: DataClassification
+          Value: financial
+        - Key: PCI
+          Value: in-scope
+
+  AuditLogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: {"Fn::Sub": "${Environment}-securebank-audit-log"}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: auditId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: auditId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: user-audit-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: false
+      Tags:
+        - Key: Service
+          Value: audit-log
+        - Key: Compliance
+          Value: PCI-SOX
+        - Key: Retention
+          Value: 7-years
+
+  # ===========================================================================
+  # SQS Queues
+  # ===========================================================================
+
+  TransactionDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: {"Fn::Sub": "${Environment}-securebank-transaction-dlq"}
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: 'arn:aws:kms:us-east-1:551234567890:key/sqs-encryption-key'
+      Tags:
+        - Key: Service
+          Value: transactions
+
+  TransactionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: {"Fn::Sub": "${Environment}-securebank-transaction-queue"}
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 345600
+      KmsMasterKeyId: 'arn:aws:kms:us-east-1:551234567890:key/sqs-encryption-key'
+      RedrivePolicy:
+        deadLetterTargetArn: {"Fn::GetAtt": ["TransactionDeadLetterQueue", "Arn"]}
+        maxReceiveCount: {"Ref": "TransactionDLQMaxReceiveCount"}
+      Tags:
+        - Key: Service
+          Value: transactions
+        - Key: PCI
+          Value: in-scope
+
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: {"Fn::Sub": "${Environment}-securebank-notification-queue"}
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 86400
+      # No encryption, no DLQ — shipped fast during launch crunch
+      # TODO: add KMS encryption and DLQ (BANK-2010)
+      Tags:
+        - Key: Service
+          Value: notifications
+
+  # ===========================================================================
+  # SNS Topic
+  # ===========================================================================
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: {"Fn::Sub": "${Environment}-securebank-alerts"}
+      KmsMasterKeyId: 'arn:aws:kms:us-east-1:551234567890:key/sns-encryption-key'
+      Tags:
+        - Key: Service
+          Value: alerts
+
+  # ===========================================================================
+  # S3 Buckets
+  # ===========================================================================
+
+  StatementsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: {"Fn::Sub": "securebank-${Environment}-statements"}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: 'arn:aws:kms:us-east-1:551234567890:key/s3-encryption-key'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: archive-old-statements
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 365
+                StorageClass: GLACIER
+            ExpirationInDays: 2555
+      Tags:
+        - Key: Service
+          Value: statements
+        - Key: DataClassification
+          Value: financial-PII
+
+  # Partner API documentation bucket — intentionally public for external partners
+  # Approved by CISO in email thread 2025-08-14 (saved in Confluence SEC-DOC-110)
+  PartnerDocsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: {"Fn::Sub": "securebank-${Environment}-partner-docs"}
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      Tags:
+        - Key: Service
+          Value: partner-api-docs
+        - Key: PublicAccess
+          Value: approved-by-ciso
+
+  PartnerDocsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: {"Ref": "PartnerDocsBucket"}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: {"Fn::Sub": "${PartnerDocsBucket.Arn}/*"}
+
+  # ===========================================================================
+  # CloudWatch
+  # ===========================================================================
+
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: {"Fn::Sub": "/aws/apigateway/${Environment}-securebank-api"}
+      RetentionInDays: {"Ref": "LogRetentionDays"}
+
+  AuthFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: {"Fn::Sub": "/aws/lambda/${Environment}-securebank-auth"}
+      RetentionInDays: {"Ref": "LogRetentionDays"}
+
+  TransfersFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: {"Fn::Sub": "/aws/lambda/${Environment}-securebank-transfers"}
+      RetentionInDays: {"Ref": "LogRetentionDays"}
+
+  # --- Alarms ---
+
+  TransactionDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: {"Fn::Sub": "${Environment}-transaction-dlq-messages"}
+      AlarmDescription: Fires when messages appear in the transaction dead letter queue
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: {"Fn::GetAtt": ["TransactionDeadLetterQueue", "QueueName"]}
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - {"Ref": "AlertsTopic"}
+      TreatMissingData: notBreaching
+
+  AuthErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: {"Fn::Sub": "${Environment}-auth-error-rate"}
+      AlarmDescription: Fires when auth function error rate exceeds 5%
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: {"Ref": "AuthFunction"}
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - {"Ref": "AlertsTopic"}
+
+  TransfersLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: {"Fn::Sub": "${Environment}-transfers-high-latency"}
+      AlarmDescription: Fires when transfer function p99 latency exceeds 5 seconds
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: {"Ref": "TransfersFunction"}
+      ExtendedStatistic: p99
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - {"Ref": "AlertsTopic"}
+
+  # ===========================================================================
+  # Event Source Mappings — connect SQS to Lambda
+  # ===========================================================================
+
+  TransactionQueueMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: {"Fn::GetAtt": ["TransactionQueue", "Arn"]}
+      FunctionName: {"Ref": "TransfersFunction"}
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 5
+      Enabled: true
+
+  NotificationQueueMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: {"Fn::GetAtt": ["NotificationQueue", "Arn"]}
+      FunctionName: {"Ref": "NotificationsFunction"}
+      BatchSize: 10
+      Enabled: true
+
+Outputs:
+  ApiEndpoint:
+    Description: Banking API endpoint URL
+    Value: {"Fn::Sub": "https://${BankingApi}.execute-api.us-east-1.amazonaws.com/${Environment}"}
+    Export:
+      Name: {"Fn::Sub": "${Environment}-securebank-api-url"}
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: {"Ref": "CustomerUserPool"}
+
+  TransactionQueueUrl:
+    Description: SQS URL for transaction processing
+    Value: {"Ref": "TransactionQueue"}
+
+  StatementsBucketArn:
+    Description: S3 bucket ARN for customer statements
+    Value: {"Fn::GetAtt": ["StatementsBucket", "Arn"]}

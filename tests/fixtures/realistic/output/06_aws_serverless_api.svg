@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 986 962" width="986" height="962" font-family="&quot;Inter&quot;, &quot;Segoe UI&quot;, system-ui, sans-serif">
+<defs><filter id="shadow" x="-4%" y="-4%" width="108%" height="116%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/></filter><filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="arrow-dependency" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/></marker><marker id="arrow-containment" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker><marker id="arrow-network_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/></marker><marker id="arrow-iam_binding" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#f97316"/></marker><marker id="arrow-data_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/></marker><marker id="arrow-boundary" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/></marker></defs>
+<rect x="0" y="0" width="986" height="44" fill="#1e293b" rx="0"/><text x="16" y="27" fill="#ffffff" font-size="14" font-weight="600">ThreatCode Threat Model</text><text x="970" y="27" fill="#94a3b8" font-size="11" text-anchor="end">36 resources · 19 threats  2026-03-02T20:19:40</text>
+<g class="zone-private"><rect x="0" y="64" width="986" height="430" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/><text x="12" y="88" fill="#93c5fd" font-size="10" font-weight="600" letter-spacing="0.5">PRIVATE</text></g>
+<g class="zone-data"><rect x="0" y="494" width="986" height="196" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/><text x="12" y="518" fill="#86efac" font-size="10" font-weight="600" letter-spacing="0.5">DATA</text></g>
+<g class="zone-management"><rect x="0" y="690" width="986" height="196" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/><text x="12" y="714" fill="#c4b5fd" font-size="10" font-weight="600" letter-spacing="0.5">MANAGEMENT</text></g>
+<path d="M347.0,138.0 C347.0,147.6 181.0,152.4 181.0,162.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<path d="M347.0,138.0 C347.0,147.6 513.0,152.4 513.0,162.0" fill="none" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-dependency)" class="edge" data-type="dependency" data-boundary="false"/>
+<g class="node" data-id="BankingApi" filter="url(#shadow)">
+<rect x="116" y="84" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="98" fill="#94a3b8" font-size="8">unknown</text>
+<text x="181" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">BankingApi</text>
+</g>
+<g class="node" data-id="BankingApiDeployment" filter="url(#shadow)">
+<rect x="282" y="84" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="98" fill="#94a3b8" font-size="8">unknown</text>
+<text x="347" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">BankingApiDeployment</text>
+</g>
+<g class="node" data-id="BankingApiStage" filter="url(#shadow)">
+<rect x="448" y="84" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="98" fill="#94a3b8" font-size="8">unknown</text>
+<text x="513" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">BankingApiStage</text>
+</g>
+<g class="node" data-id="CustomerUserPool" filter="url(#shadow)">
+<rect x="614" y="84" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="98" fill="#94a3b8" font-size="8">unknown</text>
+<text x="679" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">CustomerUserPool</text>
+</g>
+<g class="node" data-id="CustomerUserPoolClient" filter="url(#shadow)">
+<rect x="780" y="84" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="98" fill="#94a3b8" font-size="8">unknown</text>
+<text x="845" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">CustomerUserPoolClient</text>
+</g>
+<g class="node" data-id="AuthFunction" filter="url(#shadow)">
+<rect x="116" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="176" fill="#94a3b8" font-size="8">serverless</text>
+<text x="181" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuthFunction</text>
+<circle cx="236" cy="158" r="7" fill="#eab308"/><text x="236" y="162" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="AuthDLQ" filter="url(#shadow)">
+<polygon points="347.0,162.0 412.0,189.0 347.0,216.0 282.0,189.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="176" fill="#94a3b8" font-size="8">messaging</text>
+<text x="347" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuthDLQ</text>
+</g>
+<g class="node" data-id="AccountsFunction" filter="url(#shadow)">
+<rect x="448" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="176" fill="#94a3b8" font-size="8">serverless</text>
+<text x="513" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AccountsFunction</text>
+<circle cx="568" cy="158" r="7" fill="#eab308"/><text x="568" y="162" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="TransfersFunction" filter="url(#shadow)">
+<rect x="614" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="176" fill="#94a3b8" font-size="8">serverless</text>
+<text x="679" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransfersFunction</text>
+<circle cx="734" cy="158" r="7" fill="#eab308"/><text x="734" y="162" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="NotificationsFunction" filter="url(#shadow)">
+<rect x="780" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="176" fill="#94a3b8" font-size="8">serverless</text>
+<text x="845" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">NotificationsFunction</text>
+<circle cx="900" cy="158" r="7" fill="#eab308"/><text x="900" y="162" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="AuditLogFunction" filter="url(#shadow)">
+<rect x="116" y="240" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="254" fill="#94a3b8" font-size="8">serverless</text>
+<text x="181" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuditLogFunction</text>
+<circle cx="236" cy="236" r="7" fill="#eab308"/><text x="236" y="240" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">2</text>
+</g>
+<g class="node" data-id="AuditDLQ" filter="url(#shadow)">
+<polygon points="347.0,240.0 412.0,267.0 347.0,294.0 282.0,267.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="254" fill="#94a3b8" font-size="8">messaging</text>
+<text x="347" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuditDLQ</text>
+</g>
+<g class="node" data-id="LambdaSecurityGroup" filter="url(#shadow)">
+<polygon points="513.0,240.0 578.0,267.0 513.0,294.0 448.0,267.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="254" fill="#94a3b8" font-size="8">network</text>
+<text x="513" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">LambdaSecurityGroup</text>
+</g>
+<g class="node" data-id="TransactionDeadLetterQueue" filter="url(#shadow)">
+<polygon points="679.0,240.0 744.0,267.0 679.0,294.0 614.0,267.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="254" fill="#94a3b8" font-size="8">messaging</text>
+<text x="679" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransactionDeadLetterQueue</text>
+</g>
+<g class="node" data-id="TransactionQueue" filter="url(#shadow)">
+<polygon points="845.0,240.0 910.0,267.0 845.0,294.0 780.0,267.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="254" fill="#94a3b8" font-size="8">messaging</text>
+<text x="845" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransactionQueue</text>
+</g>
+<g class="node" data-id="NotificationQueue" filter="url(#shadow)">
+<polygon points="181.0,318.0 246.0,345.0 181.0,372.0 116.0,345.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="332" fill="#94a3b8" font-size="8">messaging</text>
+<text x="181" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">NotificationQueue</text>
+</g>
+<g class="node" data-id="AlertsTopic" filter="url(#shadow)">
+<polygon points="347.0,318.0 412.0,345.0 347.0,372.0 282.0,345.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="332" fill="#94a3b8" font-size="8">messaging</text>
+<text x="347" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AlertsTopic</text>
+</g>
+<g class="node" data-id="ApiAccessLogGroup" filter="url(#shadow)">
+<rect x="448" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="513" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">ApiAccessLogGroup</text>
+</g>
+<g class="node" data-id="AuthFunctionLogGroup" filter="url(#shadow)">
+<rect x="614" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="679" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuthFunctionLogGroup</text>
+</g>
+<g class="node" data-id="TransfersFunctionLogGroup" filter="url(#shadow)">
+<rect x="780" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="845" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransfersFunctionLogGroup</text>
+</g>
+<g class="node" data-id="TransactionQueueMapping" filter="url(#shadow)">
+<rect x="116" y="396" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="410" fill="#94a3b8" font-size="8">serverless</text>
+<text x="181" y="428" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransactionQueueMapping</text>
+</g>
+<g class="node" data-id="NotificationQueueMapping" filter="url(#shadow)">
+<rect x="282" y="396" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="410" fill="#94a3b8" font-size="8">serverless</text>
+<text x="347" y="428" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">NotificationQueueMapping</text>
+</g>
+<g class="node" data-id="UsersTable" filter="url(#shadow)">
+<rect x="116" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="528" fill="#94a3b8" font-size="8">database</text>
+<text x="181" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">UsersTable</text>
+</g>
+<g class="node" data-id="TransactionsTable" filter="url(#shadow)">
+<rect x="282" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="347" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="347" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="528" fill="#94a3b8" font-size="8">database</text>
+<text x="347" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransactionsTable</text>
+</g>
+<g class="node" data-id="AuditLogTable" filter="url(#shadow)">
+<rect x="448" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="513" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="513" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="528" fill="#94a3b8" font-size="8">database</text>
+<text x="513" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuditLogTable</text>
+</g>
+<g class="node" data-id="StatementsBucket" filter="url(#shadow)">
+<rect x="614" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="679" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="679" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="528" fill="#94a3b8" font-size="8">storage</text>
+<text x="679" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">StatementsBucket</text>
+<circle cx="734" cy="510" r="7" fill="#f97316"/><text x="734" y="514" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="PartnerDocsBucket" filter="url(#shadow)">
+<rect x="780" y="520" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="520" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="562" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="528" fill="#94a3b8" font-size="8">storage</text>
+<text x="845" y="546" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">PartnerDocsBucket</text>
+<circle cx="900" cy="510" r="7" fill="#f97316"/><text x="900" y="514" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="PartnerDocsBucketPolicy" filter="url(#shadow)">
+<rect x="116" y="598" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="598" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="181" cy="640" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="606" fill="#94a3b8" font-size="8">storage</text>
+<text x="181" y="624" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">PartnerDocsBucketPolicy</text>
+<circle cx="236" cy="588" r="7" fill="#f97316"/><text x="236" y="592" fill="#ffffff" font-size="9" font-weight="600" text-anchor="middle">3</text>
+</g>
+<g class="node" data-id="AuthFunctionRole" filter="url(#shadow)">
+<rect x="116" y="710" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="119" y="713" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="124" y="724" fill="#94a3b8" font-size="8">iam</text>
+<text x="181" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuthFunctionRole</text>
+</g>
+<g class="node" data-id="AccountsFunctionRole" filter="url(#shadow)">
+<rect x="282" y="710" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="285" y="713" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="290" y="724" fill="#94a3b8" font-size="8">iam</text>
+<text x="347" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AccountsFunctionRole</text>
+</g>
+<g class="node" data-id="TransfersFunctionRole" filter="url(#shadow)">
+<rect x="448" y="710" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="451" y="713" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="456" y="724" fill="#94a3b8" font-size="8">iam</text>
+<text x="513" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransfersFunctionRole</text>
+</g>
+<g class="node" data-id="NotificationsFunctionRole" filter="url(#shadow)">
+<rect x="614" y="710" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="617" y="713" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="622" y="724" fill="#94a3b8" font-size="8">iam</text>
+<text x="679" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">NotificationsFunctionRole</text>
+</g>
+<g class="node" data-id="AuditLogAdminRole" filter="url(#shadow)">
+<rect x="780" y="710" width="130" height="54" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><rect x="783" y="713" width="124" height="48" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="788" y="724" fill="#94a3b8" font-size="8">iam</text>
+<text x="845" y="742" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuditLogAdminRole</text>
+</g>
+<g class="node" data-id="TransactionDLQAlarm" filter="url(#shadow)">
+<rect x="116" y="788" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="802" fill="#94a3b8" font-size="8">monitoring</text>
+<text x="181" y="820" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransactionDLQAlarm</text>
+</g>
+<g class="node" data-id="AuthErrorRateAlarm" filter="url(#shadow)">
+<rect x="282" y="788" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="802" fill="#94a3b8" font-size="8">monitoring</text>
+<text x="347" y="820" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">AuthErrorRateAlarm</text>
+</g>
+<g class="node" data-id="TransfersLatencyAlarm" filter="url(#shadow)">
+<rect x="448" y="788" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="802" fill="#94a3b8" font-size="8">monitoring</text>
+<text x="513" y="820" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">TransfersLatencyAlarm</text>
+</g>
+<g class="legend"><rect x="0" y="906" width="986" height="56" fill="#f8fafc"/><line x1="0" y1="906" x2="986" y2="906" stroke="#e2e8f0" stroke-width="1"/><text x="16" y="926" fill="#3b82f6" font-size="9" font-weight="500">◇ data_flow</text><text x="106" y="926" fill="#64748b" font-size="9" font-weight="500">╭╮ process</text><text x="196" y="926" fill="#22c55e" font-size="9" font-weight="500">┃┃ data_store</text><text x="286" y="926" fill="#f97316" font-size="9" font-weight="500">┌┐ entity</text><circle cx="20" cy="943" r="4" fill="#ef4444"/><text x="28" y="946" fill="#64748b" font-size="9">critical</text><circle cx="92" cy="943" r="4" fill="#f97316"/><text x="100" y="946" fill="#64748b" font-size="9">high</text><circle cx="164" cy="943" r="4" fill="#eab308"/><text x="172" y="946" fill="#64748b" font-size="9">medium</text><circle cx="236" cy="943" r="4" fill="#3b82f6"/><text x="244" y="946" fill="#64748b" font-size="9">low</text><text x="970" y="926" fill="#cbd5e1" font-size="9" text-anchor="end">Generated by ThreatCode</text></g>
+</svg>

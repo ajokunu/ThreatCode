@@ -1,0 +1,9 @@
+{
+  "version": "0.4.3",
+  "timestamp": "2026-03-02T18:41:56.022782+00:00",
+  "input_file": "tests/fixtures/realistic/07_azure_webapp_java.tf",
+  "scanned_resources": 22,
+  "summary": {},
+  "total_threats": 0,
+  "threats": []
+}

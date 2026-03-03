@@ -1,0 +1,338 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Real-time clickstream analytics pipeline — ingests events from web/mobile
+  via Kinesis, processes with Lambda, stores in S3 data lake, queries via Redshift.
+  Owner: Data Engineering (data-eng@company.com)
+  Last deploy: 2026-02-28
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging, development]
+  RetentionDays:
+    Type: Number
+    Default: 90
+
+Mappings:
+  EnvironmentConfig:
+    production:
+      ShardCount: 8
+      RedshiftNodeType: dc2.large
+      RedshiftNodes: 4
+    staging:
+      ShardCount: 2
+      RedshiftNodeType: dc2.large
+      RedshiftNodes: 2
+
+Resources:
+  ClickstreamVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: clickstream-analytics-vpc
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {"Ref": "ClickstreamVPC"}
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: {"Fn::Select": [0, {"Fn::GetAZs": ""}]}
+      Tags:
+        - Key: Name
+          Value: clickstream-private-a
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {"Ref": "ClickstreamVPC"}
+      CidrBlock: 10.20.2.0/24
+      AvailabilityZone: {"Fn::Select": [1, {"Fn::GetAZs": ""}]}
+      Tags:
+        - Key: Name
+          Value: clickstream-private-b
+
+  AnalyticsSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for analytics pipeline components
+      VpcId: {"Ref": "ClickstreamVPC"}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5439
+          ToPort: 5439
+          CidrIp: 10.20.0.0/16
+      Tags:
+        - Key: Name
+          Value: analytics-sg
+
+  # --- Ingestion Layer ---
+
+  ClickstreamStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: clickstream-events-prod
+      ShardCount: 8
+      RetentionPeriodHours: 168
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: alias/clickstream-key
+      Tags:
+        - Key: Pipeline
+          Value: clickstream
+
+  ClickstreamFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn: ClickstreamStream
+    Properties:
+      DeliveryStreamName: clickstream-to-s3
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: {"Fn::GetAtt": ["ClickstreamStream", "Arn"]}
+        RoleARN: {"Fn::GetAtt": ["FirehoseRole", "Arn"]}
+      S3DestinationConfiguration:
+        BucketARN: {"Fn::GetAtt": ["RawDataBucket", "Arn"]}
+        Prefix: "raw/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
+        ErrorOutputPrefix: "errors/"
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 64
+        CompressionFormat: GZIP
+        RoleARN: {"Fn::GetAtt": ["FirehoseRole", "Arn"]}
+
+  # --- Storage Layer ---
+
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: clickstream-raw-data-prod
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/clickstream-key
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+      Tags:
+        - Key: DataClassification
+          Value: confidential
+
+  ProcessedDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: clickstream-processed-prod
+      # NOTE: encryption not configured — data team says it's "just aggregates"
+      # Security review ticket: SEC-2341
+      Tags:
+        - Key: DataClassification
+          Value: internal
+
+  AthenaResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: clickstream-athena-results
+      # Publicly readable for dashboarding tool integration
+      AccessControl: PublicRead
+      Tags:
+        - Key: DataClassification
+          Value: internal
+
+  # --- Processing Layer ---
+
+  EventProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: clickstream-event-processor
+      Runtime: python3.12
+      Handler: processor.handler
+      MemorySize: 1024
+      Timeout: 300
+      Role: {"Fn::GetAtt": ["LambdaProcessorRole", "Arn"]}
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: {"Ref": "ProcessedDataBucket"}
+          REDSHIFT_CLUSTER: {"Ref": "RedshiftCluster"}
+          DB_PASSWORD: "RedshiftProd2026!"
+      VpcConfig:
+        SubnetIds:
+          - {"Ref": "PrivateSubnetA"}
+          - {"Ref": "PrivateSubnetB"}
+        SecurityGroupIds:
+          - {"Ref": "AnalyticsSG"}
+      Tags:
+        - Key: Pipeline
+          Value: clickstream
+
+  SessionAggregator:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: clickstream-session-aggregator
+      Runtime: python3.12
+      Handler: aggregator.handler
+      MemorySize: 2048
+      Timeout: 900
+      Role: {"Fn::GetAtt": ["LambdaProcessorRole", "Arn"]}
+      Tags:
+        - Key: Pipeline
+          Value: clickstream
+      # No VPC config — runs in default Lambda networking
+      # No DLQ configured
+
+  # --- Analytics Layer ---
+
+  RedshiftCluster:
+    Type: AWS::Redshift::Cluster
+    Properties:
+      ClusterIdentifier: clickstream-warehouse-prod
+      DBName: analytics
+      MasterUsername: analytics_admin
+      MasterUserPassword: "WarehouseP@ss2026"
+      NodeType: dc2.large
+      NumberOfNodes: 4
+      ClusterType: multi-node
+      VpcSecurityGroupIds:
+        - {"Ref": "AnalyticsSG"}
+      ClusterSubnetGroupName: {"Ref": "RedshiftSubnetGroup"}
+      PubliclyAccessible: false
+      Encrypted: true
+      KmsKeyId: alias/clickstream-key
+      AutomatedSnapshotRetentionPeriod: 7
+      Tags:
+        - Key: DataClassification
+          Value: confidential
+
+  RedshiftSubnetGroup:
+    Type: AWS::Redshift::ClusterSubnetGroup
+    Properties:
+      Description: Subnet group for Redshift analytics cluster
+      SubnetIds:
+        - {"Ref": "PrivateSubnetA"}
+        - {"Ref": "PrivateSubnetB"}
+
+  # --- Glue Catalog ---
+
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: {"Ref": "AWS::AccountId"}
+      DatabaseInput:
+        Name: clickstream_db
+        Description: Clickstream analytics data catalog
+
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: clickstream-raw-crawler
+      Role: {"Fn::GetAtt": ["GlueCrawlerRole", "Arn"]}
+      DatabaseName: {"Ref": "GlueDatabase"}
+      Targets:
+        S3Targets:
+          - Path: {"Fn::Sub": "s3://${RawDataBucket}/raw/"}
+      Schedule:
+        ScheduleExpression: cron(0 */6 * * ? *)
+
+  # --- IAM Roles ---
+
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: clickstream-firehose-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehoseS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                Resource:
+                  - {"Fn::GetAtt": ["RawDataBucket", "Arn"]}
+                  - {"Fn::Sub": "${RawDataBucket.Arn}/*"}
+
+  LambdaProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: clickstream-lambda-processor-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaFullAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "*"
+                Resource: "*"
+
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: clickstream-glue-crawler-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+
+  # --- Monitoring ---
+
+  ProcessingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: clickstream-processing-errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: {"Ref": "EventProcessorFunction"}
+      AlarmActions:
+        - {"Ref": "AlertTopic"}
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: clickstream-alerts-prod
+      Subscription:
+        - Protocol: email
+          Endpoint: data-eng-oncall@company.com
+
+Outputs:
+  KinesisStreamArn:
+    Value: {"Fn::GetAtt": ["ClickstreamStream", "Arn"]}
+  RawBucketName:
+    Value: {"Ref": "RawDataBucket"}
+  RedshiftEndpoint:
+    Value: {"Fn::GetAtt": ["RedshiftCluster", "Endpoint.Address"]}

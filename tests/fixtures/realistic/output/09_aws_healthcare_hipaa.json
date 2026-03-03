@@ -1,0 +1,703 @@
+{
+  "version": "0.4.3",
+  "timestamp": "2026-03-02T20:19:43.270049+00:00",
+  "input_file": "tests/fixtures/realistic/09_aws_healthcare_hipaa.yaml",
+  "scanned_resources": 34,
+  "summary": {
+    "medium": 15,
+    "high": 6,
+    "low": 3
+  },
+  "total_threats": 24,
+  "threats": [
+    {
+      "id": "3f545f41aba5",
+      "title": "VPC without flow logs enabled",
+      "description": "The VPC does not have flow logs configured. Without flow logs, network traffic patterns cannot be analyzed for security incidents or anomalies.\n",
+      "stride_category": "repudiation",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_vpc",
+      "resource_address": "MedVaultVPC",
+      "mitigation": "Enable VPC flow logs and direct them to CloudWatch Logs or S3 for analysis. Consider using a REJECT-only filter to reduce log volume while capturing blocked traffic.\n",
+      "rule_id": "VPC_NO_FLOW_LOGS",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1562.008"
+          ],
+          "tactics": [
+            "TA0005"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1562.008"
+      ],
+      "mitre_tactics": [
+        "TA0005"
+      ]
+    },
+    {
+      "id": "3c0bbc89ba2e",
+      "title": "RDS instance without encryption at rest",
+      "description": "The RDS instance does not have storage encryption enabled. Data stored in the database can be read if the underlying storage is compromised.\n",
+      "stride_category": "information_disclosure",
+      "severity": "high",
+      "source": "rule",
+      "resource_type": "aws_db_instance",
+      "resource_address": "AuroraInstanceA",
+      "mitigation": "Enable storage encryption using AWS KMS. Note: encryption must be enabled at creation time and cannot be added to existing instances without migration.\n",
+      "rule_id": "RDS_NO_ENCRYPTION",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1530"
+          ],
+          "tactics": [
+            "TA0009"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1530"
+      ],
+      "mitre_tactics": [
+        "TA0009"
+      ]
+    },
+    {
+      "id": "e9639dbc7691",
+      "title": "RDS instance without automated backups",
+      "description": "The RDS instance has backup retention set to 0 or not configured. Without backups, data loss from deletion or corruption cannot be recovered.\n",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_db_instance",
+      "resource_address": "AuroraInstanceA",
+      "mitigation": "Set backup_retention_period to at least 7 days. Enable automated backups and consider cross-region backup replication.\n",
+      "rule_id": "RDS_NO_BACKUP",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1485"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1485"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "b30b6877fac5",
+      "title": "RDS instance without encryption at rest",
+      "description": "The RDS instance does not have storage encryption enabled. Data stored in the database can be read if the underlying storage is compromised.\n",
+      "stride_category": "information_disclosure",
+      "severity": "high",
+      "source": "rule",
+      "resource_type": "aws_db_instance",
+      "resource_address": "AuroraInstanceB",
+      "mitigation": "Enable storage encryption using AWS KMS. Note: encryption must be enabled at creation time and cannot be added to existing instances without migration.\n",
+      "rule_id": "RDS_NO_ENCRYPTION",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1530"
+          ],
+          "tactics": [
+            "TA0009"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1530"
+      ],
+      "mitre_tactics": [
+        "TA0009"
+      ]
+    },
+    {
+      "id": "88ccb9bbc95a",
+      "title": "RDS instance without automated backups",
+      "description": "The RDS instance has backup retention set to 0 or not configured. Without backups, data loss from deletion or corruption cannot be recovered.\n",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_db_instance",
+      "resource_address": "AuroraInstanceB",
+      "mitigation": "Set backup_retention_period to at least 7 days. Enable automated backups and consider cross-region backup replication.\n",
+      "rule_id": "RDS_NO_BACKUP",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1485"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1485"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "8c3d99495d15",
+      "title": "S3 bucket without server-side encryption",
+      "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+      "stride_category": "information_disclosure",
+      "severity": "high",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "PatientRecordsBucket",
+      "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+      "rule_id": "S3_NO_ENCRYPTION",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1530"
+          ],
+          "tactics": [
+            "TA0009"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1530"
+      ],
+      "mitre_tactics": [
+        "TA0009"
+      ]
+    },
+    {
+      "id": "e76400a2f058",
+      "title": "S3 bucket without versioning",
+      "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "PatientRecordsBucket",
+      "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+      "rule_id": "S3_NO_VERSIONING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1485"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1485"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "07038573aa54",
+      "title": "S3 bucket without access logging",
+      "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+      "stride_category": "repudiation",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "PatientRecordsBucket",
+      "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+      "rule_id": "S3_NO_LOGGING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1562.008"
+          ],
+          "tactics": [
+            "TA0005"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1562.008"
+      ],
+      "mitre_tactics": [
+        "TA0005"
+      ]
+    },
+    {
+      "id": "762c83223913",
+      "title": "S3 bucket without server-side encryption",
+      "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+      "stride_category": "information_disclosure",
+      "severity": "high",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "AuditLogsBucket",
+      "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+      "rule_id": "S3_NO_ENCRYPTION",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1530"
+          ],
+          "tactics": [
+            "TA0009"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1530"
+      ],
+      "mitre_tactics": [
+        "TA0009"
+      ]
+    },
+    {
+      "id": "f097bac0337e",
+      "title": "S3 bucket without versioning",
+      "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "AuditLogsBucket",
+      "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+      "rule_id": "S3_NO_VERSIONING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1485"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1485"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "b3fd84170f8b",
+      "title": "S3 bucket without access logging",
+      "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+      "stride_category": "repudiation",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "AuditLogsBucket",
+      "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+      "rule_id": "S3_NO_LOGGING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1562.008"
+          ],
+          "tactics": [
+            "TA0005"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1562.008"
+      ],
+      "mitre_tactics": [
+        "TA0005"
+      ]
+    },
+    {
+      "id": "62f72c0eaa57",
+      "title": "S3 bucket without server-side encryption",
+      "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+      "stride_category": "information_disclosure",
+      "severity": "high",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "TempUploadsBucket",
+      "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+      "rule_id": "S3_NO_ENCRYPTION",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1530"
+          ],
+          "tactics": [
+            "TA0009"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1530"
+      ],
+      "mitre_tactics": [
+        "TA0009"
+      ]
+    },
+    {
+      "id": "560966926d2f",
+      "title": "S3 bucket without versioning",
+      "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "TempUploadsBucket",
+      "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+      "rule_id": "S3_NO_VERSIONING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1485"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1485"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "4abcf6f488f7",
+      "title": "S3 bucket without access logging",
+      "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+      "stride_category": "repudiation",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket",
+      "resource_address": "TempUploadsBucket",
+      "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+      "rule_id": "S3_NO_LOGGING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1562.008"
+          ],
+          "tactics": [
+            "TA0005"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1562.008"
+      ],
+      "mitre_tactics": [
+        "TA0005"
+      ]
+    },
+    {
+      "id": "59558094a56b",
+      "title": "Lambda function not attached to VPC",
+      "description": "The Lambda function runs outside a VPC, meaning it has direct internet access and cannot leverage VPC security controls like security groups and NACLs.\n",
+      "stride_category": "elevation_of_privilege",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_lambda_function",
+      "resource_address": "RecordsApiFunction",
+      "mitigation": "Attach the Lambda function to a VPC with appropriate security groups. Use VPC endpoints for AWS service access.\n",
+      "rule_id": "LAMBDA_NO_VPC",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1190"
+          ],
+          "tactics": [
+            "TA0001"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1190"
+      ],
+      "mitre_tactics": [
+        "TA0001"
+      ]
+    },
+    {
+      "id": "1d89ec83d130",
+      "title": "Lambda function without dead letter queue",
+      "description": "The Lambda function does not have a dead letter queue configured. Failed invocations may be silently lost, affecting reliability and making it difficult to diagnose processing failures.\n",
+      "stride_category": "denial_of_service",
+      "severity": "low",
+      "source": "rule",
+      "resource_type": "aws_lambda_function",
+      "resource_address": "RecordsApiFunction",
+      "mitigation": "Configure a dead letter queue (SQS or SNS) to capture failed invocations for retry or investigation.\n",
+      "rule_id": "LAMBDA_NO_DLQ",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1499"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1499"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "ad093ffc21a2",
+      "title": "Lambda function not attached to VPC",
+      "description": "The Lambda function runs outside a VPC, meaning it has direct internet access and cannot leverage VPC security controls like security groups and NACLs.\n",
+      "stride_category": "elevation_of_privilege",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_lambda_function",
+      "resource_address": "HL7ProcessorFunction",
+      "mitigation": "Attach the Lambda function to a VPC with appropriate security groups. Use VPC endpoints for AWS service access.\n",
+      "rule_id": "LAMBDA_NO_VPC",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1190"
+          ],
+          "tactics": [
+            "TA0001"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1190"
+      ],
+      "mitre_tactics": [
+        "TA0001"
+      ]
+    },
+    {
+      "id": "c52381586b01",
+      "title": "Lambda function without dead letter queue",
+      "description": "The Lambda function does not have a dead letter queue configured. Failed invocations may be silently lost, affecting reliability and making it difficult to diagnose processing failures.\n",
+      "stride_category": "denial_of_service",
+      "severity": "low",
+      "source": "rule",
+      "resource_type": "aws_lambda_function",
+      "resource_address": "HL7ProcessorFunction",
+      "mitigation": "Configure a dead letter queue (SQS or SNS) to capture failed invocations for retry or investigation.\n",
+      "rule_id": "LAMBDA_NO_DLQ",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1499"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1499"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "ed0f786ed4e5",
+      "title": "Lambda function not attached to VPC",
+      "description": "The Lambda function runs outside a VPC, meaning it has direct internet access and cannot leverage VPC security controls like security groups and NACLs.\n",
+      "stride_category": "elevation_of_privilege",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_lambda_function",
+      "resource_address": "ReportGeneratorFunction",
+      "mitigation": "Attach the Lambda function to a VPC with appropriate security groups. Use VPC endpoints for AWS service access.\n",
+      "rule_id": "LAMBDA_NO_VPC",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1190"
+          ],
+          "tactics": [
+            "TA0001"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1190"
+      ],
+      "mitre_tactics": [
+        "TA0001"
+      ]
+    },
+    {
+      "id": "9bce4e6ca8c6",
+      "title": "Lambda function without dead letter queue",
+      "description": "The Lambda function does not have a dead letter queue configured. Failed invocations may be silently lost, affecting reliability and making it difficult to diagnose processing failures.\n",
+      "stride_category": "denial_of_service",
+      "severity": "low",
+      "source": "rule",
+      "resource_type": "aws_lambda_function",
+      "resource_address": "ReportGeneratorFunction",
+      "mitigation": "Configure a dead letter queue (SQS or SNS) to capture failed invocations for retry or investigation.\n",
+      "rule_id": "LAMBDA_NO_DLQ",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1499"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1499"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "577579f0e638",
+      "title": "S3 bucket without server-side encryption",
+      "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+      "stride_category": "information_disclosure",
+      "severity": "high",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket_policy",
+      "resource_address": "CloudTrailBucketPolicy",
+      "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+      "rule_id": "S3_NO_ENCRYPTION",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1530"
+          ],
+          "tactics": [
+            "TA0009"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1530"
+      ],
+      "mitre_tactics": [
+        "TA0009"
+      ]
+    },
+    {
+      "id": "d3dd730c37c5",
+      "title": "S3 bucket without versioning",
+      "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket_policy",
+      "resource_address": "CloudTrailBucketPolicy",
+      "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+      "rule_id": "S3_NO_VERSIONING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1485"
+          ],
+          "tactics": [
+            "TA0040"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1485"
+      ],
+      "mitre_tactics": [
+        "TA0040"
+      ]
+    },
+    {
+      "id": "4d321b6ab042",
+      "title": "S3 bucket without access logging",
+      "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+      "stride_category": "repudiation",
+      "severity": "medium",
+      "source": "rule",
+      "resource_type": "aws_s3_bucket_policy",
+      "resource_address": "CloudTrailBucketPolicy",
+      "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+      "rule_id": "S3_NO_LOGGING",
+      "confidence": 1.0,
+      "metadata": {
+        "mitre": {
+          "techniques": [
+            "T1562.008"
+          ],
+          "tactics": [
+            "TA0005"
+          ]
+        }
+      },
+      "mitre_techniques": [
+        "T1562.008"
+      ],
+      "mitre_tactics": [
+        "TA0005"
+      ]
+    },
+    {
+      "id": "e7c0af9bc881",
+      "title": "Trust boundary crossing: private -> data",
+      "description": "Data flows from HIPAACloudTrail (private zone) to CloudTrailBucketPolicy (data zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "boundary",
+      "resource_type": "aws_cloudtrail_trail",
+      "resource_address": "HIPAACloudTrail",
+      "mitigation": "Ensure all data crossing trust boundaries is encrypted in transit (TLS/mTLS), authenticated, and validated at the receiving end.",
+      "rule_id": "",
+      "confidence": 1.0,
+      "metadata": {},
+      "mitre_techniques": [
+        "T1040",
+        "T1557"
+      ],
+      "mitre_tactics": [
+        "TA0006",
+        "TA0009"
+      ]
+    }
+  ]
+}

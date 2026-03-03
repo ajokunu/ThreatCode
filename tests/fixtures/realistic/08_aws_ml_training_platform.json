@@ -1,0 +1,656 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.ml_platform",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "ml_platform",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "cidr_block": "10.50.0.0/16",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "tags": {
+              "Name": "ml-training-platform-vpc",
+              "Environment": "production",
+              "Team": "ml-engineering",
+              "CostCenter": "CC-7891",
+              "Project": "atlas-ml-v2",
+              "ManagedBy": "terraform"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.ml_private_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "ml_private_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.ml_platform",
+            "cidr_block": "10.50.1.0/24",
+            "availability_zone": "us-west-2a",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "ml-platform-private-a",
+              "Tier": "private",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.ml_private_b",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "ml_private_b",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.ml_platform",
+            "cidr_block": "10.50.2.0/24",
+            "availability_zone": "us-west-2b",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "ml-platform-private-b",
+              "Tier": "private",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.ml_private_c",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "ml_private_c",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "vpc_id": "aws_vpc.ml_platform",
+            "cidr_block": "10.50.3.0/24",
+            "availability_zone": "us-west-2c",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "ml-platform-private-c",
+              "Tier": "private",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.training_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "training_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-training-data-prod-us-west-2",
+            "force_destroy": false,
+            "tags": {
+              "Name": "atlas-ml-training-data",
+              "Environment": "production",
+              "Team": "ml-engineering",
+              "DataClassification": "confidential",
+              "Project": "atlas-ml-v2",
+              "CostCenter": "CC-7891"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_server_side_encryption_configuration.training_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket_server_side_encryption_configuration",
+          "name": "training_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-training-data-prod-us-west-2",
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "aws:kms",
+                  "kms_master_key_id": "aws_kms_key.ml_data_key"
+                },
+                "bucket_key_enabled": true
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_s3_bucket_versioning.training_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket_versioning",
+          "name": "training_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-training-data-prod-us-west-2",
+            "versioning_configuration": {
+              "status": "Enabled"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_public_access_block.training_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "training_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-training-data-prod-us-west-2",
+            "block_public_acls": true,
+            "block_public_policy": true,
+            "ignore_public_acls": true,
+            "restrict_public_buckets": true
+          }
+        },
+        {
+          "address": "aws_s3_bucket.model_artifacts",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "model_artifacts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-model-artifacts-prod-us-west-2",
+            "force_destroy": false,
+            "tags": {
+              "Name": "atlas-ml-model-artifacts",
+              "Environment": "production",
+              "Team": "ml-engineering",
+              "Project": "atlas-ml-v2"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.notebook_outputs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "notebook_outputs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-notebook-outputs-prod-us-west-2",
+            "force_destroy": true,
+            "tags": {
+              "Name": "atlas-ml-notebook-outputs",
+              "Environment": "production",
+              "Team": "ml-engineering",
+              "Project": "atlas-ml-v2",
+              "Note": "Shared bucket for experiment notebooks - researchers need quick access"
+            }
+          }
+        },
+        {
+          "address": "aws_s3_bucket_acl.notebook_outputs",
+          "mode": "managed",
+          "type": "aws_s3_bucket_acl",
+          "name": "notebook_outputs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-notebook-outputs-prod-us-west-2",
+            "acl": "public-read"
+          }
+        },
+        {
+          "address": "aws_ecr_repository.training_images",
+          "mode": "managed",
+          "type": "aws_ecr_repository",
+          "name": "training_images",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml/training-images",
+            "image_tag_mutability": "MUTABLE",
+            "image_scanning_configuration": {
+              "scan_on_push": true
+            },
+            "encryption_configuration": {
+              "encryption_type": "AES256"
+            },
+            "tags": {
+              "Name": "atlas-ml-training-images",
+              "Team": "ml-engineering",
+              "Purpose": "Custom SageMaker training containers"
+            }
+          }
+        },
+        {
+          "address": "aws_ecr_repository.inference_images",
+          "mode": "managed",
+          "type": "aws_ecr_repository",
+          "name": "inference_images",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml/inference-images",
+            "image_tag_mutability": "MUTABLE",
+            "image_scanning_configuration": {
+              "scan_on_push": true
+            },
+            "encryption_configuration": {
+              "encryption_type": "AES256"
+            },
+            "tags": {
+              "Name": "atlas-ml-inference-images",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.sagemaker_execution",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "sagemaker_execution",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml-sagemaker-execution-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sagemaker.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "max_session_duration": 43200,
+            "tags": {
+              "Name": "atlas-ml-sagemaker-execution-role",
+              "Team": "ml-engineering",
+              "Purpose": "SageMaker training and inference execution",
+              "Note": "TODO: @jpark - scope this down after we finalize which services training jobs actually need. Leaving broad for now so experiments dont break during the Q1 deadline."
+            }
+          }
+        },
+        {
+          "address": "aws_iam_policy.sagemaker_execution",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "sagemaker_execution",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml-sagemaker-execution-policy",
+            "description": "Broad permissions for SageMaker execution role - needs scoping",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"FullAccessForTraining\",\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}",
+            "tags": {
+              "Name": "atlas-ml-sagemaker-execution-policy",
+              "Team": "ml-engineering",
+              "JIRA": "MLPLAT-2847",
+              "TODO": "Scope down to least privilege - blocked on finalizing pipeline architecture"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role_policy_attachment.sagemaker_execution",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "sagemaker_execution",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "role": "atlas-ml-sagemaker-execution-role",
+            "policy_arn": "aws_iam_policy.sagemaker_execution"
+          }
+        },
+        {
+          "address": "aws_iam_role.lambda_model_deploy",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_model_deploy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml-lambda-model-deploy-role",
+            "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}",
+            "tags": {
+              "Name": "atlas-ml-lambda-model-deploy-role",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_policy.lambda_model_deploy",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "lambda_model_deploy",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml-lambda-model-deploy-policy",
+            "description": "Permissions for model deployment Lambda",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"SageMakerEndpoint\",\"Effect\":\"Allow\",\"Action\":[\"sagemaker:CreateEndpoint\",\"sagemaker:CreateEndpointConfig\",\"sagemaker:DescribeEndpoint\",\"sagemaker:UpdateEndpoint\",\"sagemaker:DeleteEndpoint\",\"sagemaker:DeleteEndpointConfig\"],\"Resource\":\"arn:aws:sagemaker:us-west-2:891377225064:*\"},{\"Sid\":\"S3ModelAccess\",\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::atlas-ml-model-artifacts-prod-us-west-2\",\"arn:aws:s3:::atlas-ml-model-artifacts-prod-us-west-2/*\"]},{\"Sid\":\"CloudWatchLogs\",\"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"arn:aws:logs:us-west-2:891377225064:*\"},{\"Sid\":\"ECRAccess\",\"Effect\":\"Allow\",\"Action\":[\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Sid\":\"IAMPassRole\",\"Effect\":\"Allow\",\"Action\":\"iam:PassRole\",\"Resource\":\"arn:aws:iam::891377225064:role/atlas-ml-sagemaker-execution-role\"}]}"
+          }
+        },
+        {
+          "address": "aws_security_group.sagemaker_notebook",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "sagemaker_notebook",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "atlas-ml-sagemaker-notebook-sg",
+            "description": "Security group for SageMaker notebook instances",
+            "vpc_id": "aws_vpc.ml_platform",
+            "ingress": [
+              {
+                "description": "HTTPS from VPC",
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "cidr_blocks": ["10.50.0.0/16"]
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound for pip/conda installs and model downloads",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "atlas-ml-sagemaker-notebook-sg",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.notebook_debug",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "notebook_debug",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "atlas-ml-notebook-debug-sg",
+            "description": "Wide open SG for notebook debugging - @mchen added this 2025-11-03 to unblock distributed training issue. TODO: remove after MLPLAT-3102 is resolved",
+            "vpc_id": "aws_vpc.ml_platform",
+            "ingress": [
+              {
+                "description": "All traffic - debugging distributed training connectivity",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "atlas-ml-notebook-debug-DO-NOT-USE-IN-PROD",
+              "Team": "ml-engineering",
+              "Temporary": "true",
+              "JIRA": "MLPLAT-3102",
+              "CreatedBy": "mchen"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.training_jobs",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "training_jobs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "name": "atlas-ml-training-jobs-sg",
+            "description": "Security group for SageMaker training jobs - inter-node communication",
+            "vpc_id": "aws_vpc.ml_platform",
+            "ingress": [
+              {
+                "description": "Inter-node training communication",
+                "from_port": 0,
+                "to_port": 65535,
+                "protocol": "tcp",
+                "self": true
+              }
+            ],
+            "egress": [
+              {
+                "description": "All outbound for S3 and ECR access",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": ["0.0.0.0/0"]
+              }
+            ],
+            "tags": {
+              "Name": "atlas-ml-training-jobs-sg",
+              "Team": "ml-engineering"
+            }
+          }
+        },
+        {
+          "address": "aws_instance.gpu_experiment_box",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "gpu_experiment_box",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "ami": "ami-0c94855ba95c71c99",
+            "instance_type": "g4dn.xlarge",
+            "subnet_id": "aws_subnet.ml_private_a",
+            "associate_public_ip_address": true,
+            "key_name": "ml-team-dev-key",
+            "monitoring": false,
+            "vpc_security_group_ids": ["aws_security_group.notebook_debug"],
+            "root_block_device": {
+              "volume_type": "gp3",
+              "volume_size": 200,
+              "encrypted": false,
+              "delete_on_termination": true
+            },
+            "ebs_block_device": [
+              {
+                "device_name": "/dev/sdf",
+                "volume_type": "gp3",
+                "volume_size": 500,
+                "encrypted": false,
+                "delete_on_termination": true
+              }
+            ],
+            "metadata_options": {
+              "http_endpoint": "enabled",
+              "http_tokens": "optional"
+            },
+            "tags": {
+              "Name": "atlas-ml-gpu-experiment-box",
+              "Team": "ml-engineering",
+              "Purpose": "Quick experiment access for researchers - @jpark needs this for the GAN experiments. Will move to SageMaker managed instances after Q1 review.",
+              "Owner": "jpark",
+              "CostCenter": "CC-7891",
+              "AutoStop": "false"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.model_deployer",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "model_deployer",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "atlas-ml-model-deployer",
+            "description": "Deploys trained models to SageMaker endpoints. Triggered by S3 event when new model artifact lands.",
+            "runtime": "python3.11",
+            "handler": "deploy_handler.lambda_handler",
+            "role": "aws_iam_role.lambda_model_deploy",
+            "memory_size": 512,
+            "timeout": 300,
+            "s3_bucket": "atlas-ml-lambda-deployments-us-west-2",
+            "s3_key": "model-deployer/v2.4.1/deploy_handler.zip",
+            "environment": {
+              "variables": {
+                "MODEL_BUCKET": "atlas-ml-model-artifacts-prod-us-west-2",
+                "SAGEMAKER_ROLE_ARN": "arn:aws:iam::891377225064:role/atlas-ml-sagemaker-execution-role",
+                "ENDPOINT_PREFIX": "atlas-ml-prod",
+                "LOG_LEVEL": "INFO",
+                "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/T0XXXXXXX/B0XXXXXXX/xxxxxxxxxxxxxxxxxxx",
+                "DEPLOY_NOTIFICATION_CHANNEL": "#ml-deployments"
+              }
+            },
+            "dead_letter_config": null,
+            "vpc_config": null,
+            "tracing_config": {
+              "mode": "PassThrough"
+            },
+            "tags": {
+              "Name": "atlas-ml-model-deployer",
+              "Team": "ml-engineering",
+              "Version": "2.4.1",
+              "TODO": "Add VPC config and DLQ - deprioritized for Q1 launch"
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.experiment_tracker",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "experiment_tracker",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "atlas-ml-experiment-tracker",
+            "description": "Tracks experiment metadata and metrics, writes to DynamoDB",
+            "runtime": "python3.11",
+            "handler": "tracker.lambda_handler",
+            "role": "aws_iam_role.lambda_model_deploy",
+            "memory_size": 256,
+            "timeout": 60,
+            "s3_bucket": "atlas-ml-lambda-deployments-us-west-2",
+            "s3_key": "experiment-tracker/v1.8.0/tracker.zip",
+            "environment": {
+              "variables": {
+                "EXPERIMENTS_TABLE": "atlas-ml-experiments",
+                "METRICS_TABLE": "atlas-ml-metrics",
+                "LOG_LEVEL": "DEBUG"
+              }
+            },
+            "vpc_config": {
+              "subnet_ids": ["aws_subnet.ml_private_a", "aws_subnet.ml_private_b"],
+              "security_group_ids": ["aws_security_group.sagemaker_notebook"]
+            },
+            "dead_letter_config": {
+              "target_arn": "arn:aws:sqs:us-west-2:891377225064:atlas-ml-experiment-tracker-dlq"
+            },
+            "tracing_config": {
+              "mode": "Active"
+            },
+            "tags": {
+              "Name": "atlas-ml-experiment-tracker",
+              "Team": "ml-engineering",
+              "Version": "1.8.0"
+            }
+          }
+        },
+        {
+          "address": "aws_kms_key.ml_data_key",
+          "mode": "managed",
+          "type": "aws_kms_key",
+          "name": "ml_data_key",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "description": "KMS key for encrypting ML training data and model artifacts",
+            "deletion_window_in_days": 30,
+            "enable_key_rotation": true,
+            "is_enabled": true,
+            "tags": {
+              "Name": "atlas-ml-data-kms-key",
+              "Team": "ml-engineering",
+              "Purpose": "Encryption for training data S3 bucket"
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_dashboard.ml_platform",
+          "mode": "managed",
+          "type": "aws_cloudwatch_dashboard",
+          "name": "ml_platform",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "dashboard_name": "atlas-ml-training-platform",
+            "dashboard_body": "{\"widgets\":[{\"type\":\"metric\",\"x\":0,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/SageMaker\",\"TrainingJobsRunning\"],[\"AWS/SageMaker\",\"TrainingJobsFailed\"]],\"period\":300,\"stat\":\"Average\",\"region\":\"us-west-2\",\"title\":\"Training Jobs\"}},{\"type\":\"metric\",\"x\":12,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/EC2\",\"GPUUtilization\",\"InstanceId\",\"i-0a1b2c3d4e5f67890\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-west-2\",\"title\":\"GPU Experiment Box Utilization\"}},{\"type\":\"metric\",\"x\":0,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/S3\",\"BucketSizeBytes\",\"BucketName\",\"atlas-ml-training-data-prod-us-west-2\",\"StorageType\",\"StandardStorage\"],[\"AWS/S3\",\"BucketSizeBytes\",\"BucketName\",\"atlas-ml-model-artifacts-prod-us-west-2\",\"StorageType\",\"StandardStorage\"]],\"period\":86400,\"stat\":\"Average\",\"region\":\"us-west-2\",\"title\":\"Storage Usage\"}},{\"type\":\"metric\",\"x\":12,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/Lambda\",\"Invocations\",\"FunctionName\",\"atlas-ml-model-deployer\"],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"atlas-ml-model-deployer\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"atlas-ml-model-deployer\"]],\"period\":300,\"stat\":\"Sum\",\"region\":\"us-west-2\",\"title\":\"Model Deployer Lambda\"}}]}"
+          }
+        },
+        {
+          "address": "aws_s3_bucket_logging.training_data",
+          "mode": "managed",
+          "type": "aws_s3_bucket_logging",
+          "name": "training_data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "atlas-ml-training-data-prod-us-west-2",
+            "target_bucket": "atlas-ml-access-logs-us-west-2",
+            "target_prefix": "training-data-logs/"
+          }
+        },
+        {
+          "address": "aws_sagemaker_notebook_instance.research",
+          "mode": "managed",
+          "type": "aws_sagemaker_notebook_instance",
+          "name": "research",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "atlas-ml-research-notebook",
+            "instance_type": "ml.g4dn.xlarge",
+            "role_arn": "aws_iam_role.sagemaker_execution",
+            "subnet_id": "aws_subnet.ml_private_a",
+            "security_groups": ["aws_security_group.sagemaker_notebook"],
+            "direct_internet_access": "Enabled",
+            "root_access": "Enabled",
+            "volume_size": 100,
+            "lifecycle_config_name": "atlas-ml-notebook-lifecycle",
+            "kms_key_id": "aws_kms_key.ml_data_key",
+            "tags": {
+              "Name": "atlas-ml-research-notebook",
+              "Team": "ml-engineering",
+              "Owner": "research-team",
+              "Environment": "production"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "version_constraint": "~> 5.31",
+        "expressions": {
+          "region": {
+            "constant_value": "us-west-2"
+          },
+          "default_tags": {
+            "constant_value": {
+              "tags": {
+                "ManagedBy": "terraform",
+                "Repository": "github.com/atlas-ai/ml-platform-infra",
+                "Environment": "production"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

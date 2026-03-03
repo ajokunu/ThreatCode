@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 986 570" width="986" height="570" font-family="&quot;Inter&quot;, &quot;Segoe UI&quot;, system-ui, sans-serif">
+<defs><filter id="shadow" x="-4%" y="-4%" width="108%" height="116%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/></filter><filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="arrow-dependency" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/></marker><marker id="arrow-containment" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker><marker id="arrow-network_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/></marker><marker id="arrow-iam_binding" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#f97316"/></marker><marker id="arrow-data_flow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/></marker><marker id="arrow-boundary" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/></marker></defs>
+<rect x="0" y="0" width="986" height="44" fill="#1e293b" rx="0"/><text x="16" y="27" fill="#ffffff" font-size="14" font-weight="600">ThreatCode Threat Model</text><text x="970" y="27" fill="#94a3b8" font-size="11" text-anchor="end">22 resources · 0 threats  2026-03-02T18:41:59</text>
+<g class="zone-private"><rect x="0" y="64" width="986" height="430" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/><text x="12" y="88" fill="#93c5fd" font-size="10" font-weight="600" letter-spacing="0.5">PRIVATE</text></g>
+<g class="node" data-id="azurerm_resource_group.main" filter="url(#shadow)">
+<rect x="116" y="84" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="98" fill="#94a3b8" font-size="8">unknown</text>
+<text x="181" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_virtual_network.main" filter="url(#shadow)">
+<polygon points="347.0,84.0 412.0,111.0 347.0,138.0 282.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="347" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_subnet.app_service" filter="url(#shadow)">
+<polygon points="513.0,84.0 578.0,111.0 513.0,138.0 448.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="513" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">app_service</text>
+</g>
+<g class="node" data-id="azurerm_subnet.private_endpoints" filter="url(#shadow)">
+<polygon points="679.0,84.0 744.0,111.0 679.0,138.0 614.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="679" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">private_endpoints</text>
+</g>
+<g class="node" data-id="azurerm_subnet.management" filter="url(#shadow)">
+<polygon points="845.0,84.0 910.0,111.0 845.0,138.0 780.0,111.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="98" fill="#94a3b8" font-size="8">network</text>
+<text x="845" y="116" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">management</text>
+</g>
+<g class="node" data-id="azurerm_network_security_group.app" filter="url(#shadow)">
+<polygon points="181.0,162.0 246.0,189.0 181.0,216.0 116.0,189.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="176" fill="#94a3b8" font-size="8">network</text>
+<text x="181" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">app</text>
+</g>
+<g class="node" data-id="azurerm_subnet_network_security_group_association.app_service" filter="url(#shadow)">
+<polygon points="347.0,162.0 412.0,189.0 347.0,216.0 282.0,189.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="176" fill="#94a3b8" font-size="8">network</text>
+<text x="347" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">app_service</text>
+</g>
+<g class="node" data-id="azurerm_service_plan.main" filter="url(#shadow)">
+<rect x="448" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="176" fill="#94a3b8" font-size="8">unknown</text>
+<text x="513" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_linux_web_app.main" filter="url(#shadow)">
+<rect x="614" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="176" fill="#94a3b8" font-size="8">unknown</text>
+<text x="679" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_mssql_server.main" filter="url(#shadow)">
+<rect x="780" y="162" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="176" fill="#94a3b8" font-size="8">unknown</text>
+<text x="845" y="194" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_mssql_database.hr_portal" filter="url(#shadow)">
+<rect x="116" y="240" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="254" fill="#94a3b8" font-size="8">unknown</text>
+<text x="181" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">hr_portal</text>
+</g>
+<g class="node" data-id="azurerm_mssql_database.reporting" filter="url(#shadow)">
+<rect x="282" y="240" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="254" fill="#94a3b8" font-size="8">unknown</text>
+<text x="347" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">reporting</text>
+</g>
+<g class="node" data-id="azurerm_storage_account.main" filter="url(#shadow)">
+<rect x="448" y="246" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="513" cy="246" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="513" cy="288" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="254" fill="#94a3b8" font-size="8">storage</text>
+<text x="513" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_storage_container.documents" filter="url(#shadow)">
+<rect x="614" y="246" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="679" cy="246" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="679" cy="288" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="254" fill="#94a3b8" font-size="8">storage</text>
+<text x="679" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">documents</text>
+</g>
+<g class="node" data-id="azurerm_storage_container.payslips" filter="url(#shadow)">
+<rect x="780" y="246" width="130" height="42" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="246" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/><ellipse cx="845" cy="288" rx="65.0" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="254" fill="#94a3b8" font-size="8">storage</text>
+<text x="845" y="272" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">payslips</text>
+</g>
+<g class="node" data-id="azurerm_log_analytics_workspace.main" filter="url(#shadow)">
+<rect x="116" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="181" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_application_insights.main" filter="url(#shadow)">
+<rect x="282" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="347" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_redis_cache.main" filter="url(#shadow)">
+<rect x="448" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="513" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_key_vault.main" filter="url(#shadow)">
+<rect x="614" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="622" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="679" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">main</text>
+</g>
+<g class="node" data-id="azurerm_key_vault_access_policy.app_service" filter="url(#shadow)">
+<rect x="780" y="318" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="788" y="332" fill="#94a3b8" font-size="8">unknown</text>
+<text x="845" y="350" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">app_service</text>
+</g>
+<g class="node" data-id="azurerm_key_vault_access_policy.dba_team" filter="url(#shadow)">
+<rect x="116" y="396" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="124" y="410" fill="#94a3b8" font-size="8">unknown</text>
+<text x="181" y="428" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">dba_team</text>
+</g>
+<g class="node" data-id="azurerm_key_vault_access_policy.terraform" filter="url(#shadow)">
+<rect x="282" y="396" width="130" height="54" rx="6" ry="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="290" y="410" fill="#94a3b8" font-size="8">unknown</text>
+<text x="347" y="428" fill="#1e293b" font-size="11" font-weight="500" text-anchor="middle">terraform</text>
+</g>
+<g class="legend"><rect x="0" y="514" width="986" height="56" fill="#f8fafc"/><line x1="0" y1="514" x2="986" y2="514" stroke="#e2e8f0" stroke-width="1"/><text x="16" y="534" fill="#3b82f6" font-size="9" font-weight="500">◇ data_flow</text><text x="106" y="534" fill="#64748b" font-size="9" font-weight="500">╭╮ process</text><text x="196" y="534" fill="#22c55e" font-size="9" font-weight="500">┃┃ data_store</text><text x="286" y="534" fill="#f97316" font-size="9" font-weight="500">┌┐ entity</text><circle cx="20" cy="551" r="4" fill="#ef4444"/><text x="28" y="554" fill="#64748b" font-size="9">critical</text><circle cx="92" cy="551" r="4" fill="#f97316"/><text x="100" y="554" fill="#64748b" font-size="9">high</text><circle cx="164" cy="551" r="4" fill="#eab308"/><text x="172" y="554" fill="#64748b" font-size="9">medium</text><circle cx="236" cy="551" r="4" fill="#3b82f6"/><text x="244" y="554" fill="#64748b" font-size="9">low</text><text x="970" y="534" fill="#cbd5e1" font-size="9" text-anchor="end">Generated by ThreatCode</text></g>
+</svg>

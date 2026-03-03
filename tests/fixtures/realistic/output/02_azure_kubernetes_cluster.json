@@ -1,0 +1,9 @@
+{
+  "version": "0.4.3",
+  "timestamp": "2026-03-02T18:39:54.294894+00:00",
+  "input_file": "tests/fixtures/realistic/02_azure_kubernetes_cluster.tf",
+  "scanned_resources": 15,
+  "summary": {},
+  "total_threats": 0,
+  "threats": []
+}
