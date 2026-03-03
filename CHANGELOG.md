@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.1] - 2026-03-03
+
+### Added
+- **Attack path visualization**: New "Attack Paths" section between the diagram and threat table traces exploitable routes from internet-facing entry points (INTERNET/DMZ zones) through to critical backend assets (DATA/MANAGEMENT zones), showing step-by-step how compromise propagates
+- **Attack path edge overlays**: Numbered dark-red circle markers on graph edges that are part of attack paths, linking the diagram to the attack path chains below
+- **Expanded threat table**: Two new columns — "Description" (truncated to 60 chars, full in tooltip) and "ATT&CK Technique" (MITRE technique ID + name from `TECHNIQUE_DB`)
+- **Mitigation in tooltips**: Threat table row tooltips now include `Mitigation:` text when present on the threat
+- **Attack path arrow marker**: New `arrow-attack-path` SVG marker definition and `.attack-path-marker` CSS rule
+- 14 new diagram tests: `TestAttackPaths` (7 tests covering section presence/absence, node names, max limit, min 2 threatened nodes, edge markers, valid XML) and `TestExpandedThreatTable` (6 tests covering description column, truncation, ATT&CK technique with name, unknown ID fallback, empty techniques dash, mitigation in tooltip) plus 1 CSS test
+
+### Changed
+- **Threat table columns**: Widened from 5 to 7 columns (added Description, ATT&CK Technique); adjusted proportional widths to fit expanded layout
+- **Canvas minimum width**: Increased `min_legend_w` from 700 to 900 to accommodate wider threat table
+- **Layout computation**: Attack path section height and width factored into canvas sizing; `_attack_paths_y` cursor inserted between zone lanes and threat table
+- 53 diagram tests total (up from 39)
+
 ## [0.5.0] - 2026-03-02
 
 ### Added

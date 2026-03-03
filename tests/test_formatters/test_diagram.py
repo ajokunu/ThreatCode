@@ -8,6 +8,7 @@ import pytest
 
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.formatters.diagram import (
+    ATTACK_PATH_MAX_PATHS,
     LEGEND_H,
     NODE_W,
     SUMMARY_BAR_H,
@@ -443,6 +444,8 @@ class TestThreatTable:
         svg = format_diagram(report, graph)
         assert "Severity" in svg
         assert "Resource" in svg
+        assert "Description" in svg
+        assert "CK Technique" in svg  # ATT&CK rendered as ATT&amp;CK
         assert "STRIDE Category" in svg
         assert "Source" in svg
 
@@ -540,3 +543,189 @@ class TestCSSStyles:
         assert ".edge:hover" in svg
         assert ".threat-row:hover" in svg
         assert "cursor: pointer" in svg
+
+    def test_attack_path_marker_css(self) -> None:
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        report = _make_report()
+        svg = format_diagram(report, graph)
+        assert ".attack-path-marker" in svg
+
+
+# -- Attack path fixtures -----------------------------------------------------
+
+# Threats on entry (DMZ) and target (DATA) nodes so a path can form
+_ATTACK_PATH_THREATS = [
+    _make_threat("aws_lb.alb", "high", "No WAF protection"),
+    _make_threat("aws_s3_bucket.data", "critical", "Public S3 access"),
+]
+
+# Add a threat on the intermediate PRIVATE node for richer paths
+_ATTACK_PATH_THREATS_3NODE = [
+    *_ATTACK_PATH_THREATS,
+    _make_threat("aws_lambda_function.api", "medium", "Overpermissive role"),
+]
+
+
+def _attack_path_svg(
+    threats: list[Threat] | None = None,
+    nodes: list[InfraNode] | None = None,
+    edges: list[InfraEdge] | None = None,
+) -> str:
+    """Helper to render SVG with attack paths enabled."""
+    graph = _make_graph_with_nodes(nodes or SAMPLE_NODES, edges or SAMPLE_EDGES)
+    report = _make_report(threats=threats or _ATTACK_PATH_THREATS, n_resources=5)
+    return format_diagram(report, graph)
+
+
+class TestAttackPaths:
+    def test_attack_paths_section_present(self) -> None:
+        """Attack Paths section appears when entry->target chains with threats exist."""
+        svg = _attack_path_svg()
+        assert 'class="attack-paths"' in svg
+        assert "Attack Paths" in svg
+
+    def test_attack_paths_absent_without_threats(self) -> None:
+        """No attack paths section when there are no threats."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES, SAMPLE_EDGES)
+        report = _make_report()
+        svg = format_diagram(report, graph)
+        assert 'class="attack-paths"' not in svg
+
+    def test_attack_path_node_names_shown(self) -> None:
+        """Node short names appear in the attack path chain."""
+        svg = _attack_path_svg()
+        # The path should include alb (DMZ entry) and data (DATA target)
+        assert "alb" in svg
+        assert "data" in svg
+
+    def test_attack_path_max_limit(self) -> None:
+        """At most ATTACK_PATH_MAX_PATHS paths are rendered."""
+        assert ATTACK_PATH_MAX_PATHS == 5
+        # With our sample data, we only have 1-2 paths, so just confirm the constant
+        svg = _attack_path_svg()
+        root = ElementTree.fromstring(svg)
+        attack_groups = [g for g in root.iter(f"{NS}g") if g.get("class") == "attack-paths"]
+        assert len(attack_groups) <= 1  # one container group
+
+    def test_min_two_threatened_nodes_required(self) -> None:
+        """Paths require >= 2 nodes with threats; a single threatened node yields no paths."""
+        # Only threat on DATA target, no entry node threats
+        threats = [_make_threat("aws_s3_bucket.data", "critical", "Public S3")]
+        svg = _attack_path_svg(threats=threats)
+        assert 'class="attack-paths"' not in svg
+
+    def test_edge_markers_on_attack_path(self) -> None:
+        """Edges in attack paths get numbered circle markers."""
+        svg = _attack_path_svg()
+        assert 'class="attack-path-marker"' in svg
+
+    def test_attack_paths_valid_xml(self) -> None:
+        """SVG with attack paths is still valid XML."""
+        svg = _attack_path_svg(threats=_ATTACK_PATH_THREATS_3NODE)
+        root = ElementTree.fromstring(svg)
+        assert root.tag == f"{NS}svg"
+
+
+class TestExpandedThreatTable:
+    def test_description_column_present(self) -> None:
+        """Threat table includes the Description column."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        threats = [_make_threat("aws_s3_bucket.data", "critical", "Public access")]
+        report = _make_report(threats=threats, n_resources=5)
+        svg = format_diagram(report, graph)
+        assert "Description" in svg
+        assert 'class="threat-desc"' in svg
+
+    def test_description_truncation(self) -> None:
+        """Long descriptions are truncated to 60 chars with ellipsis in the desc cell."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        long_desc = "A" * 100
+        threat = Threat(
+            id="T-long",
+            title="Long desc threat",
+            description=long_desc,
+            stride_category="spoofing",
+            severity=Severity("high"),
+            source=ThreatSource.RULE,
+            resource_type="aws_s3_bucket",
+            resource_address="aws_s3_bucket.data",
+        )
+        report = _make_report(threats=[threat], n_resources=5)
+        svg = format_diagram(report, graph)
+        import re
+
+        # The threat-desc cell should contain the truncated version (57 A's + ...)
+        desc_cells = re.findall(r'class="threat-desc">(.*?)</text>', svg)
+        assert len(desc_cells) == 1
+        assert desc_cells[0].endswith("...")
+        assert len(desc_cells[0]) <= 60
+
+    def test_mitre_technique_with_name(self) -> None:
+        """ATT&CK column shows technique ID and name for known techniques."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        threat = Threat(
+            id="T-mitre",
+            title="S3 data exposure",
+            description="Data exposed",
+            stride_category="information_disclosure",
+            severity=Severity("critical"),
+            source=ThreatSource.RULE,
+            resource_type="aws_s3_bucket",
+            resource_address="aws_s3_bucket.data",
+            mitre_techniques=["T1530"],
+        )
+        report = _make_report(threats=[threat], n_resources=5)
+        svg = format_diagram(report, graph)
+        assert "T1530" in svg
+        # Name is truncated at 28 chars: "T1530: Data from Cloud St..."
+        assert "Data from Cloud St" in svg
+
+    def test_unknown_mitre_id_fallback(self) -> None:
+        """Unknown technique IDs are shown as-is without a name."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        threat = Threat(
+            id="T-unknown-mitre",
+            title="Unknown technique",
+            description="desc",
+            stride_category="spoofing",
+            severity=Severity("high"),
+            source=ThreatSource.RULE,
+            resource_type="aws_s3_bucket",
+            resource_address="aws_s3_bucket.data",
+            mitre_techniques=["T9999"],
+        )
+        report = _make_report(threats=[threat], n_resources=5)
+        svg = format_diagram(report, graph)
+        assert "T9999" in svg
+
+    def test_empty_techniques_dash(self) -> None:
+        """Threats with no MITRE techniques show a dash."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        threat = _make_threat("aws_s3_bucket.data", "high", "No MITRE")
+        report = _make_report(threats=[threat], n_resources=5)
+        svg = format_diagram(report, graph)
+        # The threat-mitre cell should contain "-"
+        assert 'class="threat-mitre"' in svg
+        # Find the mitre cell content — it should be just "-"
+        import re
+
+        mitre_cells = re.findall(r'class="threat-mitre">(.*?)</text>', svg)
+        assert any(cell == "-" for cell in mitre_cells)
+
+    def test_mitigation_in_tooltip(self) -> None:
+        """Row tooltip includes mitigation text when present."""
+        graph = _make_graph_with_nodes(SAMPLE_NODES)
+        threat = Threat(
+            id="T-mit",
+            title="Vuln",
+            description="Vulnerable config",
+            stride_category="tampering",
+            severity=Severity("high"),
+            source=ThreatSource.RULE,
+            resource_type="aws_s3_bucket",
+            resource_address="aws_s3_bucket.data",
+            mitigation="Enable encryption at rest",
+        )
+        report = _make_report(threats=[threat], n_resources=5)
+        svg = format_diagram(report, graph)
+        assert "Mitigation: Enable encryption at rest" in svg

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from html import escape
 from typing import TYPE_CHECKING, Any
 
+import networkx as nx
+
+from threatcode.engine.mitre import TECHNIQUE_DB
 from threatcode.ir.edges import EdgeType
 from threatcode.ir.nodes import NodeCategory, TrustZone
 
@@ -13,6 +17,8 @@ if TYPE_CHECKING:
     from threatcode.ir.graph import InfraGraph
     from threatcode.models.report import ThreatReport
     from threatcode.models.threat import Threat
+
+logger = logging.getLogger(__name__)
 
 # Layout constants
 NODE_W = 160
@@ -81,6 +87,20 @@ SEVERITY_COLORS: dict[str, str] = {
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 
+# Attack path visualization constants
+ATTACK_PATH_SECTION_TITLE_H = 28
+ATTACK_PATH_ROW_H = 56
+ATTACK_PATH_NODE_W = 120
+ATTACK_PATH_NODE_H = 28
+ATTACK_PATH_ARROW_W = 60
+ATTACK_PATH_PAD = 16
+ATTACK_PATH_MAX_PATHS = 5
+ATTACK_PATH_CIRCLE_R = 9
+
+# Entry/target zones for attack path computation
+_ENTRY_ZONES = {TrustZone.INTERNET, TrustZone.DMZ}
+_TARGET_ZONES = {TrustZone.DATA, TrustZone.MANAGEMENT}
+
 STRIDE_DISPLAY: dict[str, str] = {
     "spoofing": "Spoofing",
     "tampering": "Tampering",
@@ -128,6 +148,10 @@ class DiagramRenderer:
         self._zone_lanes: list[tuple[TrustZone, float, float, list[Any]]] = []
         self._canvas_w = 0.0
         self._canvas_h = 0.0
+        # Attack path state -- populated by _compute_attack_paths
+        self._attack_paths: list[tuple[int, str, list[str]]] = []  # (num, severity, node_ids)
+        self._edge_attack_path_map: dict[tuple[str, str], list[int]] = {}
+        self._attack_paths_y = 0.0
 
     def render(self) -> str:
         self._compute_layout()
@@ -146,6 +170,7 @@ class DiagramRenderer:
             node = self.graph.get_node(node_id)
             if node:
                 parts.append(self._svg_node(node, x, y))
+        parts.append(self._svg_attack_paths())
         parts.append(self._svg_threat_table())
         parts.append(self._svg_legend())
         parts.append("</svg>")
@@ -183,6 +208,26 @@ class DiagramRenderer:
         if not self._zone_lanes:
             max_lane_w = 400
 
+        # Compute attack paths before sizing
+        self._compute_attack_paths()
+        self._build_edge_attack_path_map()
+
+        # Attack path section height
+        attack_path_h = 0.0
+        if self._attack_paths:
+            attack_path_h = (
+                ATTACK_PATH_SECTION_TITLE_H
+                + len(self._attack_paths) * ATTACK_PATH_ROW_H
+                + ATTACK_PATH_PAD * 2
+            )
+
+        # Compute attack path section width requirement
+        attack_path_w = 0.0
+        for _, _, path_nodes in self._attack_paths:
+            n = len(path_nodes)
+            pw = ATTACK_PATH_PAD * 2 + n * ATTACK_PATH_NODE_W + (n - 1) * ATTACK_PATH_ARROW_W
+            attack_path_w = max(attack_path_w, pw)
+
         # Threat table height
         n_threats = len(self.report.threats)
         threat_table_h = 0.0
@@ -193,14 +238,17 @@ class DiagramRenderer:
                 + 40  # section title + padding
             )
 
-        # Ensure canvas is wide enough for 3-column legend
-        min_legend_w = 700
-        self._canvas_w = max(max_lane_w + CANVAS_PAD * 2, 400, min_legend_w)
-        self._canvas_h = y_cursor + threat_table_h + LEGEND_H + CANVAS_PAD
-
-        # Store for render()
+        # Ensure canvas is wide enough for legend, attack paths, and expanded table
+        min_legend_w = 900
+        self._canvas_w = max(
+            max_lane_w + CANVAS_PAD * 2, 400, min_legend_w, attack_path_w + CANVAS_PAD * 2
+        )
+        self._attack_paths_y = y_cursor
+        y_cursor += attack_path_h
         self._threat_table_y = y_cursor
-        self._legend_y = y_cursor + threat_table_h
+        y_cursor += threat_table_h
+        self._legend_y = y_cursor
+        self._canvas_h = y_cursor + LEGEND_H + CANVAS_PAD
 
     def _threats_for_node(self, node_id: str) -> list[Threat]:
         return [t for t in self.report.threats if t.resource_address == node_id]
@@ -209,6 +257,92 @@ class DiagramRenderer:
         """Return all threats sorted by severity (critical first)."""
         rank = {s: i for i, s in enumerate(SEVERITY_ORDER)}
         return sorted(self.report.threats, key=lambda t: rank.get(t.severity.value, 99))
+
+    # -- Attack path computation -----------------------------------------------
+
+    def _compute_attack_paths(self) -> None:
+        """Find exploitable routes from entry points to critical targets."""
+        nodes = self.graph.nodes
+        if not nodes:
+            return
+
+        # Identify entry and target nodes that have threats
+        threat_nodes = {t.resource_address for t in self.report.threats}
+        entries = [
+            nid for nid, n in nodes.items() if n.trust_zone in _ENTRY_ZONES and nid in threat_nodes
+        ]
+        targets = [
+            nid for nid, n in nodes.items() if n.trust_zone in _TARGET_ZONES and nid in threat_nodes
+        ]
+
+        if not entries or not targets:
+            return
+
+        # Use undirected view for pathfinding (attacks can traverse edges either way)
+        undirected = self.graph._graph.to_undirected()
+
+        raw_paths: list[tuple[str, list[str]]] = []
+        seen: set[tuple[str, ...]] = set()
+        severity_rank = {s: i for i, s in enumerate(SEVERITY_ORDER)}
+
+        for entry in entries:
+            for target in targets:
+                if entry == target:
+                    continue
+                try:
+                    path = nx.shortest_path(undirected, entry, target)
+                except nx.NetworkXNoPath:
+                    continue
+
+                path_key = tuple(path)
+                if path_key in seen:
+                    continue
+                seen.add(path_key)
+
+                # Only keep paths where >= 2 nodes have threats
+                threatened_in_path = [nid for nid in path if nid in threat_nodes]
+                if len(threatened_in_path) < 2:
+                    continue
+
+                # Determine worst severity across threats on path nodes
+                worst_sev = "info"
+                for nid in path:
+                    for t in self._threats_for_node(nid):
+                        if severity_rank.get(t.severity.value, 99) < severity_rank.get(
+                            worst_sev, 99
+                        ):
+                            worst_sev = t.severity.value
+
+                raw_paths.append((worst_sev, list(path)))
+
+        # Sort by worst severity (critical first), limit
+        raw_paths.sort(key=lambda p: severity_rank.get(p[0], 99))
+        self._attack_paths = [
+            (i + 1, sev, path) for i, (sev, path) in enumerate(raw_paths[:ATTACK_PATH_MAX_PATHS])
+        ]
+
+    def _build_edge_attack_path_map(self) -> None:
+        """Map (source, target) edge pairs to attack path numbers."""
+        self._edge_attack_path_map = {}
+        for path_num, _, path_nodes in self._attack_paths:
+            for i in range(len(path_nodes) - 1):
+                a, b = path_nodes[i], path_nodes[i + 1]
+                # Check both directions since undirected pathfinding may reverse edges
+                for key in [(a, b), (b, a)]:
+                    self._edge_attack_path_map.setdefault(key, []).append(path_num)
+
+    def _format_mitre_techniques(self, threat: Threat) -> str:
+        """Format MITRE ATT&CK technique IDs with names."""
+        if not threat.mitre_techniques:
+            return "-"
+        parts: list[str] = []
+        for tid in threat.mitre_techniques:
+            tech = TECHNIQUE_DB.get(tid)
+            if tech:
+                parts.append(f"{tid}: {tech['name']}")
+            else:
+                parts.append(tid)
+        return ", ".join(parts)
 
     # -- SVG building blocks --------------------------------------------------
 
@@ -246,6 +380,7 @@ class DiagramRenderer:
             ".threat-row:hover rect { opacity: 0.8; }"
             ".tooltip { display: none; }"
             ".node:hover .tooltip, .edge:hover .tooltip { display: block; }"
+            ".attack-path-marker { pointer-events: none; }"
             "</style>"
         )
 
@@ -263,6 +398,12 @@ class DiagramRenderer:
             '<marker id="arrow-boundary" viewBox="0 0 10 7" refX="10" refY="3.5" '
             'markerWidth="8" markerHeight="6" orient="auto-start-reverse">'
             '<polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/>'
+            "</marker>"
+        )
+        markers.append(
+            '<marker id="arrow-attack-path" viewBox="0 0 10 7" refX="10" refY="3.5" '
+            'markerWidth="8" markerHeight="6" orient="auto-start-reverse">'
+            '<polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>'
             "</marker>"
         )
         return "".join(markers)
@@ -502,6 +643,24 @@ class DiagramRenderer:
                 my = (y1 + y2) / 2
                 parts.append(self._svg_edge_label(mx, my, label))
 
+        # Attack path overlay markers
+        path_nums = self._edge_attack_path_map.get((edge.source, edge.target), [])
+        if not path_nums:
+            path_nums = self._edge_attack_path_map.get((edge.target, edge.source), [])
+        if path_nums:
+            mx = (x1 + x2) / 2
+            my = (y1 + y2) / 2
+            for j, pnum in enumerate(path_nums):
+                offset_x = j * (ATTACK_PATH_CIRCLE_R * 2 + 2)
+                parts.append(
+                    f'<g class="attack-path-marker">'
+                    f'<circle cx="{mx + offset_x:.0f}" cy="{my + 12:.0f}" '
+                    f'r="{ATTACK_PATH_CIRCLE_R}" fill="#dc2626"/>'
+                    f'<text x="{mx + offset_x:.0f}" y="{my + 16:.0f}" fill="#ffffff" '
+                    f'font-size="9" font-weight="700" text-anchor="middle">{pnum}</text>'
+                    f"</g>"
+                )
+
         parts.append("</g>")
         return "\n".join(parts)
 
@@ -537,6 +696,101 @@ class DiagramRenderer:
             f'class="edge-label">{_esc(text)}</text>'
         )
 
+    def _svg_attack_paths(self) -> str:
+        """Render attack path chains between diagram and threat table."""
+        if not self._attack_paths:
+            return ""
+
+        y = self._attack_paths_y
+        parts: list[str] = ['<g class="attack-paths">']
+
+        # Section title
+        parts.append(
+            f'<text x="16" y="{y + 18:.0f}" fill="#1e293b" '
+            f'font-size="12" font-weight="600">Attack Paths</text>'
+        )
+        y += ATTACK_PATH_SECTION_TITLE_H
+
+        for path_num, worst_sev, path_nodes in self._attack_paths:
+            sev_color = SEVERITY_COLORS.get(worst_sev, "#94a3b8")
+            sev_label = worst_sev.capitalize()
+
+            # Path header line
+            parts.append(
+                f'<text x="{ATTACK_PATH_PAD + 4:.0f}" y="{y + 14:.0f}" fill="{sev_color}" '
+                f'font-size="10" font-weight="600">'
+                f"Attack Path {path_num} ({_esc(sev_label)})</text>"
+            )
+            y += 18
+
+            # Draw chain of nodes with arrows
+            cx = float(ATTACK_PATH_PAD)
+            node_cy = y + ATTACK_PATH_NODE_H / 2
+
+            for i, nid in enumerate(path_nodes):
+                short_name = nid.rsplit(".", 1)[-1] if "." in nid else nid
+                short_name = _truncate(short_name, 14)
+
+                # Node box
+                parts.append(
+                    f'<rect x="{cx:.0f}" y="{y:.0f}" '
+                    f'width="{ATTACK_PATH_NODE_W}" height="{ATTACK_PATH_NODE_H}" '
+                    f'rx="4" fill="#ffffff" stroke="{sev_color}" stroke-width="1.5"/>'
+                )
+                # Node label
+                parts.append(
+                    f'<text x="{cx + ATTACK_PATH_NODE_W / 2:.0f}" '
+                    f'y="{node_cy + 4:.0f}" fill="#1e293b" '
+                    f'font-size="9" font-weight="600" text-anchor="middle">'
+                    f"{_esc(short_name)}</text>"
+                )
+
+                # Annotation below: worst threat title for this node
+                node_threats = self._threats_for_node(nid)
+                if node_threats:
+                    worst_t = max(node_threats, key=lambda t: t.severity.rank)
+                    ann = _truncate(worst_t.title, 18)
+                    parts.append(
+                        f'<text x="{cx + ATTACK_PATH_NODE_W / 2:.0f}" '
+                        f'y="{y + ATTACK_PATH_NODE_H + 12:.0f}" fill="#64748b" '
+                        f'font-size="7" text-anchor="middle">{_esc(ann)}</text>'
+                    )
+
+                cx += ATTACK_PATH_NODE_W
+
+                # Arrow to next node
+                if i < len(path_nodes) - 1:
+                    # Find edge type between this pair
+                    edge_label = self._find_edge_type_label(nid, path_nodes[i + 1])
+                    arrow_y = node_cy
+                    parts.append(
+                        f'<line x1="{cx:.0f}" y1="{arrow_y:.0f}" '
+                        f'x2="{cx + ATTACK_PATH_ARROW_W - 8:.0f}" y2="{arrow_y:.0f}" '
+                        f'stroke="{sev_color}" stroke-width="1.5" '
+                        f'marker-end="url(#arrow-attack-path)"/>'
+                    )
+                    if edge_label:
+                        parts.append(
+                            f'<text x="{cx + ATTACK_PATH_ARROW_W / 2:.0f}" '
+                            f'y="{arrow_y - 5:.0f}" fill="#94a3b8" '
+                            f'font-size="7" text-anchor="middle">{_esc(edge_label)}</text>'
+                        )
+                    cx += ATTACK_PATH_ARROW_W
+
+            y += ATTACK_PATH_ROW_H - 18  # remaining row height
+
+        parts.append("</g>")
+        return "\n".join(parts)
+
+    def _find_edge_type_label(self, source: str, target: str) -> str:
+        """Find the edge type label between two nodes (either direction)."""
+        for edge in self.graph.edges:
+            if (edge.source == source and edge.target == target) or (
+                edge.source == target and edge.target == source
+            ):
+                return EDGE_LABELS.get(edge.edge_type, edge.edge_type.value)
+        return ""
+
     def _svg_threat_table(self) -> str:
         """Render a full threat listing table below the diagram."""
         threats = self._sorted_threats()
@@ -555,11 +809,13 @@ class DiagramRenderer:
         y += 28
 
         # Column widths (proportional to canvas)
-        col_sev_w = 70
-        col_res_w = min(180, w * 0.22)
-        col_threat_w = min(280, w * 0.35)
-        col_stride_w = min(130, w * 0.16)
-        col_source_w = 60
+        col_sev_w = 56
+        col_res_w = min(150, w * 0.15)
+        col_threat_w = min(160, w * 0.17)
+        col_desc_w = min(170, w * 0.18)
+        col_attack_w = min(160, w * 0.17)
+        col_stride_w = min(110, w * 0.12)
+        col_source_w = 50
 
         # Header row
         parts.append(
@@ -572,13 +828,15 @@ class DiagramRenderer:
             ("Severity", col_sev_w),
             ("Resource", col_res_w),
             ("Threat", col_threat_w),
+            ("Description", col_desc_w),
+            ("ATT&amp;CK Technique", col_attack_w),
             ("STRIDE Category", col_stride_w),
             ("Source", col_source_w),
         ]
         for label, col_w in headers:
             parts.append(
                 f'<text x="{hx:.0f}" y="{hy:.0f}" fill="#ffffff" '
-                f'font-size="9" font-weight="600">{_esc(label)}</text>'
+                f'font-size="9" font-weight="600">{label}</text>'
             )
             hx += col_w
 
@@ -608,7 +866,7 @@ class DiagramRenderer:
             rx += col_sev_w
 
             # Resource
-            res_display = _truncate(threat.resource_address, 28)
+            res_display = _truncate(threat.resource_address, 22)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#475569" '
                 f'font-size="9">{_esc(res_display)}</text>'
@@ -616,12 +874,28 @@ class DiagramRenderer:
             rx += col_res_w
 
             # Threat title
-            title_display = _truncate(threat.title, 45)
+            title_display = _truncate(threat.title, 28)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#1e293b" '
                 f'font-size="9">{_esc(title_display)}</text>'
             )
             rx += col_threat_w
+
+            # Description (truncated, full in tooltip)
+            desc_display = _truncate(threat.description, 60)
+            parts.append(
+                f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#64748b" '
+                f'font-size="8" class="threat-desc">{_esc(desc_display)}</text>'
+            )
+            rx += col_desc_w
+
+            # ATT&CK Technique
+            mitre_display = _truncate(self._format_mitre_techniques(threat), 28)
+            parts.append(
+                f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#7c3aed" '
+                f'font-size="8" class="threat-mitre">{_esc(mitre_display)}</text>'
+            )
+            rx += col_attack_w
 
             # STRIDE category
             stride = STRIDE_DISPLAY.get(threat.stride_category, threat.stride_category)
@@ -637,8 +911,11 @@ class DiagramRenderer:
                 f'font-size="9">{_esc(threat.source.value)}</text>'
             )
 
-            # Row tooltip
-            parts.append(f"<title>{_esc(threat.title)}: {_esc(threat.description)}</title>")
+            # Row tooltip — includes mitigation
+            tooltip_lines = [f"{threat.title}: {threat.description}"]
+            if threat.mitigation:
+                tooltip_lines.append(f"Mitigation: {threat.mitigation}")
+            parts.append(f"<title>{_esc(chr(10).join(tooltip_lines))}</title>")
             parts.append("</g>")
             y += THREAT_TABLE_ROW_H
 
