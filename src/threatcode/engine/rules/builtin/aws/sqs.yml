@@ -1,0 +1,52 @@
+rules:
+  - id: SQS_NO_ENCRYPTION
+    title: SQS queue without encryption
+    description: >
+      The SQS queue is not encrypted with KMS.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_sqs_queue
+    condition:
+      kms_master_key_id:
+        not_exists: true
+    mitigation: >
+      Enable KMS encryption for the SQS queue.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: SQS_WILDCARD_POLICY
+    title: SQS queue with wildcard principal
+    description: >
+      The SQS queue policy grants access to all principals.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: aws_sqs_queue_policy
+    condition:
+      policy:
+        contains: '"Principal":"*"'
+    mitigation: >
+      Restrict the SQS queue policy to specific principals.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: SQS_NO_DLQ
+    title: SQS queue without dead-letter queue
+    description: >
+      The SQS queue does not have a dead-letter queue configured.
+      Failed messages will be lost.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: aws_sqs_queue
+    condition:
+      redrive_policy:
+        not_exists: true
+    mitigation: >
+      Configure a dead-letter queue for failed message handling.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

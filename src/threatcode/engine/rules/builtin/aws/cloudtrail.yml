@@ -1,0 +1,90 @@
+rules:
+  - id: CLOUDTRAIL_NOT_ENABLED
+    title: CloudTrail logging not enabled
+    description: >
+      CloudTrail is not enabled or configured. Without CloudTrail,
+      API activity in the AWS account is not recorded.
+    stride_category: repudiation
+    severity: high
+    resource_type: aws_cloudtrail
+    condition:
+      is_multi_region_trail:
+        equals: false
+    mitigation: >
+      Enable CloudTrail with multi-region logging.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CLOUDTRAIL_NO_LOG_VALIDATION
+    title: CloudTrail log file validation disabled
+    description: >
+      Log file validation is not enabled. Without validation,
+      log tampering cannot be detected.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_cloudtrail
+    condition:
+      enable_log_file_validation:
+        equals: false
+    mitigation: >
+      Enable log file validation on the CloudTrail trail.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CLOUDTRAIL_NO_ENCRYPTION
+    title: CloudTrail logs not encrypted
+    description: >
+      CloudTrail logs are not encrypted with KMS.
+      Unencrypted logs can be read by anyone with S3 access.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_cloudtrail
+    condition:
+      kms_key_id:
+        not_exists: true
+    mitigation: >
+      Configure KMS encryption for CloudTrail logs.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: CLOUDTRAIL_NOT_MULTI_REGION
+    title: CloudTrail not configured for all regions
+    description: >
+      CloudTrail is not set to multi-region. Activity in other
+      regions will not be logged.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_cloudtrail
+    condition:
+      is_multi_region_trail:
+        equals: false
+    mitigation: >
+      Set is_multi_region_trail to true.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CLOUDTRAIL_NO_S3_ACCESS_LOGGING
+    title: CloudTrail S3 bucket without access logging
+    description: >
+      The S3 bucket storing CloudTrail logs does not have
+      access logging enabled.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_cloudtrail
+    condition:
+      s3_bucket_name:
+        not_exists: true
+    mitigation: >
+      Enable access logging on the CloudTrail S3 bucket.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

@@ -1,0 +1,87 @@
+rules:
+  - id: ECS_PRIVILEGED_CONTAINER
+    title: ECS task with privileged container
+    description: >
+      An ECS task definition runs a container in privileged mode.
+    stride_category: elevation_of_privilege
+    severity: critical
+    resource_type: aws_ecs_task_definition
+    condition:
+      container_definitions:
+        contains: '"privileged":true'
+    mitigation: >
+      Remove privileged mode from the container definition.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: ECS_NO_READONLY_FS
+    title: ECS container without read-only filesystem
+    description: >
+      The ECS container does not use a read-only root filesystem.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_ecs_task_definition
+    condition:
+      container_definitions:
+        contains: '"readonlyRootFilesystem":false'
+    mitigation: >
+      Set readonlyRootFilesystem to true.
+    metadata:
+      mitre:
+        techniques: ["T1565.001"]
+        tactics: ["TA0040"]
+
+  - id: ECS_EXEC_ENABLED
+    title: ECS service with execute command enabled
+    description: >
+      ECS execute command is enabled, allowing interactive
+      access to running containers.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: aws_ecs_service
+    condition:
+      enable_execute_command:
+        equals: true
+    mitigation: >
+      Disable execute command unless required for debugging.
+    metadata:
+      mitre:
+        techniques: ["T1609"]
+        tactics: ["TA0002"]
+
+  - id: ECS_NO_LOGGING
+    title: ECS task without logging configuration
+    description: >
+      The ECS task does not have log configuration.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_ecs_task_definition
+    condition:
+      container_definitions:
+        contains: '"logConfiguration":null'
+    mitigation: >
+      Configure CloudWatch or another log driver.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: ECS_HOST_NETWORKING
+    title: ECS task using host network mode
+    description: >
+      The ECS task uses host network mode, sharing the host's
+      network namespace.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_ecs_task_definition
+    condition:
+      network_mode:
+        equals: "host"
+    mitigation: >
+      Use awsvpc or bridge network mode instead.
+    metadata:
+      mitre:
+        techniques: ["T1040"]
+        tactics: ["TA0007"]

@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.0] - 2026-03-04
+
+### Added
+
+#### Multi-Scanner Architecture
+- **Unified finding model**: New `FindingType` enum and `SecretFinding`, `VulnerabilityFinding`, `LicenseFinding` dataclasses in `models/finding.py` — extensible foundation for non-STRIDE findings alongside existing threat model
+- **`ScanReport`** wrapper: Aggregates `ThreatReport` + secret/vuln/license findings into a single report with unified `to_dict()` and `summary`
+- **`--scanners` CLI flag**: `threatcode scan <path> --scanners misconfig,secret,vuln,license` runs multiple scanners in one pass; default `misconfig` preserves backward compatibility
+- **Public API**: New `scan_secrets()`, `scan_vulnerabilities()`, and `scan_all()` functions in the top-level `threatcode` module
+
+#### Dockerfile Scanning
+- **Dockerfile parser**: Parses `FROM`, `RUN`, `COPY`, `ADD`, `EXPOSE`, `USER`, `ENV`, `ARG`, `HEALTHCHECK`, `WORKDIR`, `ENTRYPOINT` instructions with multi-stage build and line continuation support; creates synthetic `dockerfile_image` summary resource with security properties
+- **16 Docker security rules**: `DOCKER_NO_USER`, `DOCKER_LATEST_TAG`, `DOCKER_EXPOSED_SSH`, `DOCKER_ADD_INSTEAD_OF_COPY`, `DOCKER_SENSITIVE_FILE_COPY`, `DOCKER_NO_HEALTHCHECK`, `DOCKER_ENV_SECRET`, `DOCKER_APT_NO_RECOMMENDS`, `DOCKER_RUN_SUDO`, `DOCKER_RUN_CURL_PIPE`, `DOCKER_MULTIPLE_ENTRYPOINTS`, `DOCKER_MISSING_WORKDIR`, `DOCKER_ROOT_USER`, `DOCKER_EXPOSED_PRIVILEGED_PORT`, `DOCKER_NO_COPY_CHOWN`, `DOCKER_MISSING_LABEL`
+
+#### Kubernetes Scanning
+- **Kubernetes parser**: Multi-document YAML support with `apiVersion`+`kind` detection; flattens PodTemplateSpec security context from Deployments, StatefulSets, DaemonSets, Jobs, CronJobs; 19 resource types including RBAC roles and network policies
+- **22 Kubernetes security rules**: `K8S_PRIVILEGED_CONTAINER`, `K8S_NO_RESOURCE_LIMITS`, `K8S_RUN_AS_ROOT`, `K8S_WRITABLE_ROOT_FS`, `K8S_HOST_NETWORK`, `K8S_HOST_PID`, `K8S_AUTOMOUNT_SA_TOKEN`, `K8S_LATEST_TAG`, `K8S_CAPABILITIES_NOT_DROPPED`, `K8S_DANGEROUS_CAPABILITIES`, `K8S_NO_SECURITY_CONTEXT`, `K8S_ALLOW_PRIVILEGE_ESCALATION`, `K8S_NO_NETWORK_POLICY`, `K8S_HOSTPORT_USED`, `K8S_CLUSTER_ADMIN_BINDING`, `K8S_WILDCARD_RBAC`, `K8S_SECRET_ENV_VAR`, `K8S_NO_LIVENESS_PROBE`, `K8S_NO_READINESS_PROBE`, `K8S_HOST_PATH_VOLUME`, `K8S_PROC_MOUNT`, `K8S_NO_SECCOMP`
+
+#### Secret Scanning
+- **Secret scanner engine**: Regex + keyword pre-filter pipeline with binary file detection, allow-list filtering, and automatic redaction; supports recursive directory scanning
+- **24 built-in secret patterns**: AWS access keys, AWS secret keys, GitHub PATs, GitLab PATs, Slack tokens, private keys (RSA/EC/DSA/OPENSSH), JWT tokens, database connection strings (postgres/mysql/mongodb), Azure client secrets, GCP service account keys, Stripe keys, Twilio tokens, SendGrid keys, NPM tokens, generic API keys and passwords
+- **`threatcode secret` CLI command**: Recursive file scanning with `--format` and `--output` options
+
+#### Vulnerability Scanning
+- **Lockfile parser**: 10 lockfile formats — `package-lock.json` (v1/v2/v3), `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.sum`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`
+- **Vulnerability scanner**: SQLite-backed offline database with version comparison (semver, PEP 440, generic) and range-based matching
+- **`threatcode vuln` CLI command**: Scan lockfiles with `--ignore-unfixed` flag
+- **`threatcode db` CLI command group**: `db status` for database info, `db update` to download OSV bulk data for npm, PyPI, Go, crates.io, RubyGems, and Packagist
+
+#### SBOM & License Scanning
+- **CycloneDX 1.5 SBOM formatter**: Standards-compliant JSON with Package URL (PURL) identifiers, dependency relationships, optional vulnerability embedding
+- **License compliance scanner**: SPDX classification into permissive, weakly copyleft, copyleft, restrictive, and unknown; configurable alerting
+- **`threatcode sbom` CLI command**: Generate SBOM from lockfiles with `--format cyclonedx`
+- **`threatcode license` CLI command**: Scan dependencies for license compliance issues
+
+#### Expanded Rule Coverage (76 new rules)
+- **AWS** (41 rules across 11 files): CloudTrail (5), KMS (4), SNS (3), SQS (3), ECS (5), EKS (5), CloudFront (4), ElastiCache (3), Elasticsearch (3), ELB (3), DynamoDB (3)
+- **Azure** (20 rules across 5 files): Compute (5), Storage (4), Network (4), Database (4), AKS (3)
+- **GCP** (15 rules across 5 files): Compute (4), Storage (3), Network (3), GKE (3), IAM (2)
+
+#### MITRE ATT&CK Expansion
+- 15 new techniques for container and cloud coverage: T1611 (Escape to Host), T1610 (Deploy Container), T1552.001 (Credentials in Files), T1195.002 (Compromise Software Supply Chain), T1021 (Remote Services), T1528 (Steal Application Access Token), T1565.001 (Stored Data Manipulation), T1613 (Container and Resource Discovery), T1609 (Container Administration Command), T1548 (Abuse Elevation Control), T1053 (Scheduled Task/Job), T1068 (Exploitation for Privilege Escalation)
+
+### Changed
+- **Rule loader**: `glob("*.yml")` → `rglob("*.yml")` for subdirectory support; `MAX_TOTAL_RULES` increased from 500 to 1000
+- **Rule directory**: Built-in AWS rules reorganized into `builtin/aws/` subdirectory (rule IDs unchanged)
+- **IR node mappings**: 47 new entries in `CATEGORY_MAP` and 20 new entries in `TRUST_ZONE_MAP` for Docker, Kubernetes, Azure, GCP, and dependency resource types
+- **Rule matcher**: New `evaluate_rule()` convenience function for programmatic rule evaluation
+- **Dependencies**: Added `httpx>=0.27`, `packaging>=23.0`, `tomli>=2.0;python_version<"3.11"`
+
 ## [0.5.1] - 2026-03-03
 
 ### Added

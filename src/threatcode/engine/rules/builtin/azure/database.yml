@@ -1,0 +1,71 @@
+rules:
+  - id: AZURE_SQL_NO_AUDIT
+    title: Azure SQL Server without auditing
+    description: >
+      The SQL server does not have auditing enabled.
+    stride_category: repudiation
+    severity: high
+    resource_type: azurerm_sql_server
+    condition:
+      any_of:
+        - extended_auditing_policy:
+            not_exists: true
+        - extended_auditing_policy:
+            is_empty: true
+    mitigation: >
+      Enable auditing on the SQL server.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: AZURE_SQL_NO_THREAT_DETECTION
+    title: Azure SQL without threat detection
+    description: >
+      Advanced threat protection is not enabled.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_sql_server
+    condition:
+      threat_detection_policy:
+        not_exists: true
+    mitigation: >
+      Enable Advanced Threat Protection.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: AZURE_SQL_NO_ENCRYPTION
+    title: Azure SQL without TDE
+    description: >
+      Transparent Data Encryption is not enabled.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_sql_database
+    condition:
+      transparent_data_encryption_enabled:
+        equals: false
+    mitigation: >
+      Enable Transparent Data Encryption.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: AZURE_SQL_PUBLIC_ACCESS
+    title: Azure SQL allows public network access
+    description: >
+      The SQL server allows public network access.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_sql_server
+    condition:
+      public_network_access_enabled:
+        equals: true
+    mitigation: >
+      Disable public network access and use private endpoints.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

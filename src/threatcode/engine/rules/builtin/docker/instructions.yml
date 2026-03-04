@@ -1,0 +1,147 @@
+rules:
+  - id: DOCKER_ENV_SECRET
+    title: Secret-looking ENV or ARG variable
+    description: >
+      An ENV or ARG instruction contains a key that looks like it holds
+      a secret (password, token, key, etc.). Secrets in ENV/ARG
+      are visible in image history and container inspection.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: dockerfile_env
+    condition:
+      has_secret_pattern:
+        equals: true
+    mitigation: >
+      Use Docker BuildKit secrets (--mount=type=secret) or runtime
+      secret management instead of ENV/ARG for sensitive values.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: DOCKER_ARG_SECRET
+    title: Secret-looking ARG variable
+    description: >
+      An ARG instruction contains a key that looks like it holds
+      a secret. Build args are visible in image history.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: dockerfile_arg
+    condition:
+      has_secret_pattern:
+        equals: true
+    mitigation: >
+      Use Docker BuildKit secrets (--mount=type=secret) instead of ARG.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: DOCKER_ADD_INSTEAD_OF_COPY
+    title: ADD used for local files instead of COPY
+    description: >
+      The ADD instruction is used for local file copying.
+      ADD has unexpected behaviors like auto-extracting archives.
+      COPY is more transparent and predictable.
+    stride_category: tampering
+    severity: low
+    resource_type: dockerfile_add
+    condition:
+      is_local_add:
+        equals: true
+    mitigation: >
+      Use COPY instead of ADD for local files. Use ADD only for URLs or auto-extraction.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: DOCKER_SENSITIVE_FILE_COPY
+    title: Sensitive file copied into image
+    description: >
+      A private key, certificate, or environment file is being copied into the image.
+      These secrets will persist in the image layers.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: dockerfile_copy
+    condition:
+      has_sensitive_file:
+        equals: true
+    mitigation: >
+      Use Docker BuildKit secrets or multi-stage builds to avoid
+      embedding sensitive files in the final image.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: DOCKER_SENSITIVE_FILE_ADD
+    title: Sensitive file added to image
+    description: >
+      A private key or certificate file is added via ADD instruction.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: dockerfile_add
+    condition:
+      has_sensitive_file:
+        equals: true
+    mitigation: >
+      Use Docker BuildKit secrets or multi-stage builds.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: DOCKER_RUN_SUDO
+    title: sudo used in RUN instruction
+    description: >
+      The RUN instruction uses sudo, which is unnecessary in Docker
+      (commands already run as root by default during build).
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: dockerfile_run
+    condition:
+      has_sudo:
+        equals: true
+    mitigation: >
+      Remove sudo from RUN instructions. Docker builds run as root by default.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: DOCKER_RUN_CURL_PIPE
+    title: curl piped to shell in RUN instruction
+    description: >
+      A RUN instruction pipes curl or wget output to a shell.
+      This pattern executes remote code without verification.
+    stride_category: tampering
+    severity: high
+    resource_type: dockerfile_run
+    condition:
+      has_curl_pipe:
+        equals: true
+    mitigation: >
+      Download files first, verify checksums, then execute.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: DOCKER_APT_NO_RECOMMENDS
+    title: apt-get install without --no-install-recommends
+    description: >
+      apt-get install is used without --no-install-recommends,
+      pulling unnecessary packages that increase image size and attack surface.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: dockerfile_run
+    condition:
+      has_apt_no_recommends:
+        equals: true
+    mitigation: >
+      Add --no-install-recommends to apt-get install commands.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]

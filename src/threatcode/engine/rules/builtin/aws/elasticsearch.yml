@@ -1,0 +1,52 @@
+rules:
+  - id: ES_NO_ENCRYPTION
+    title: Elasticsearch domain without encryption
+    description: >
+      The Elasticsearch domain does not encrypt data at rest.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_elasticsearch_domain
+    condition:
+      encrypt_at_rest:
+        not_exists: true
+    mitigation: >
+      Enable encryption at rest.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: ES_PUBLIC_DOMAIN
+    title: Elasticsearch domain publicly accessible
+    description: >
+      The Elasticsearch domain does not have a VPC configuration
+      and may be publicly accessible.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: aws_elasticsearch_domain
+    condition:
+      vpc_options:
+        not_exists: true
+    mitigation: >
+      Deploy the domain inside a VPC.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: ES_NO_NODE_TO_NODE_ENCRYPTION
+    title: Elasticsearch without node-to-node encryption
+    description: >
+      Node-to-node encryption is not enabled.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_elasticsearch_domain
+    condition:
+      node_to_node_encryption:
+        not_exists: true
+    mitigation: >
+      Enable node-to-node encryption.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]

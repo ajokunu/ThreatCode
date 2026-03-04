@@ -1,0 +1,68 @@
+rules:
+  - id: GCP_VM_PUBLIC_IP
+    title: GCP instance with public IP
+    description: >
+      The Compute Engine instance has an external IP address.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_compute_instance
+    condition:
+      network_interface.0.access_config:
+        exists: true
+    mitigation: >
+      Remove access_config to use internal IP only.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: GCP_VM_DEFAULT_SA
+    title: GCP instance using default service account
+    description: >
+      The instance uses the default compute service account.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: google_compute_instance
+    condition:
+      service_account:
+        not_exists: true
+    mitigation: >
+      Create and assign a custom service account.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+        tactics: ["TA0001"]
+
+  - id: GCP_VM_SERIAL_PORT
+    title: GCP instance with serial port enabled
+    description: >
+      The serial port is enabled, providing console access.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_compute_instance
+    condition:
+      metadata.serial-port-enable:
+        equals: "true"
+    mitigation: >
+      Disable serial port access.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]
+
+  - id: GCP_VM_NO_SHIELDED
+    title: GCP instance without shielded VM
+    description: >
+      The instance does not have Shielded VM features enabled.
+    stride_category: tampering
+    severity: low
+    resource_type: google_compute_instance
+    condition:
+      shielded_instance_config:
+        not_exists: true
+    mitigation: >
+      Enable Shielded VM features.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]

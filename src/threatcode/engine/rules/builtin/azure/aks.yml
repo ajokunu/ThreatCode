@@ -1,0 +1,51 @@
+rules:
+  - id: AKS_NO_RBAC
+    title: AKS cluster without RBAC
+    description: >
+      The AKS cluster does not have RBAC enabled.
+    stride_category: elevation_of_privilege
+    severity: critical
+    resource_type: azurerm_kubernetes_cluster
+    condition:
+      role_based_access_control_enabled:
+        equals: false
+    mitigation: >
+      Enable RBAC on the AKS cluster.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: AKS_NO_NETWORK_POLICY
+    title: AKS without network policy
+    description: >
+      The AKS cluster does not have a network policy configured.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_kubernetes_cluster
+    condition:
+      network_profile.0.network_policy:
+        not_exists: true
+    mitigation: >
+      Configure a network policy (calico or azure).
+    metadata:
+      mitre:
+        techniques: ["T1040"]
+        tactics: ["TA0007"]
+
+  - id: AKS_NO_PRIVATE_CLUSTER
+    title: AKS cluster is not private
+    description: >
+      The AKS cluster API server is publicly accessible.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_kubernetes_cluster
+    condition:
+      private_cluster_enabled:
+        equals: false
+    mitigation: >
+      Enable private cluster mode.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

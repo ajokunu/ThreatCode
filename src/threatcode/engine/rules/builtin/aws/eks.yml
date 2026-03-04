@@ -1,0 +1,88 @@
+rules:
+  - id: EKS_PUBLIC_ENDPOINT
+    title: EKS cluster with public API endpoint
+    description: >
+      The EKS cluster API server endpoint is publicly accessible.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_eks_cluster
+    condition:
+      any_of:
+        - vpc_config.0.endpoint_public_access:
+            equals: true
+        - vpc_config:
+            not_exists: true
+    mitigation: >
+      Disable public endpoint access or restrict with CIDR blocks.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: EKS_NO_ENCRYPTION
+    title: EKS cluster secrets not encrypted
+    description: >
+      EKS cluster does not encrypt Kubernetes secrets at rest.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_eks_cluster
+    condition:
+      encryption_config:
+        not_exists: true
+    mitigation: >
+      Enable envelope encryption for Kubernetes secrets.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: EKS_NO_LOGGING
+    title: EKS cluster logging disabled
+    description: >
+      EKS control plane logging is not enabled.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_eks_cluster
+    condition:
+      enabled_cluster_log_types:
+        not_exists: true
+    mitigation: >
+      Enable API server, audit, and authenticator logging.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: EKS_OUTDATED_VERSION
+    title: EKS cluster running outdated Kubernetes version
+    description: >
+      The EKS cluster may be running an outdated Kubernetes version.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_eks_cluster
+    condition:
+      version:
+        not_exists: true
+    mitigation: >
+      Specify and maintain a supported Kubernetes version.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: EKS_NO_IRSA
+    title: EKS without IAM roles for service accounts
+    description: >
+      The EKS cluster does not have OIDC provider for IRSA.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: aws_eks_cluster
+    condition:
+      identity:
+        not_exists: true
+    mitigation: >
+      Configure an OIDC provider for IAM roles for service accounts.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]

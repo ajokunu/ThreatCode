@@ -1,0 +1,51 @@
+rules:
+  - id: GKE_NO_PRIVATE_CLUSTER
+    title: GKE cluster is not private
+    description: >
+      The GKE cluster does not use private nodes.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: google_container_cluster
+    condition:
+      private_cluster_config:
+        not_exists: true
+    mitigation: >
+      Enable private cluster configuration.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: GKE_LEGACY_ABAC
+    title: GKE cluster with legacy ABAC enabled
+    description: >
+      Legacy ABAC authorization is enabled.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: google_container_cluster
+    condition:
+      enable_legacy_abac:
+        equals: true
+    mitigation: >
+      Disable legacy ABAC and use RBAC.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: GKE_NO_NETWORK_POLICY
+    title: GKE cluster without network policy
+    description: >
+      Network policy enforcement is not enabled.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_container_cluster
+    condition:
+      network_policy:
+        not_exists: true
+    mitigation: >
+      Enable network policy.
+    metadata:
+      mitre:
+        techniques: ["T1040"]
+        tactics: ["TA0007"]

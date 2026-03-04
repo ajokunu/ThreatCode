@@ -1,0 +1,52 @@
+rules:
+  - id: K8S_CLUSTER_ADMIN_BINDING
+    title: ClusterRoleBinding to cluster-admin
+    description: >
+      A ClusterRoleBinding grants cluster-admin privileges.
+      This gives full control over all resources in the cluster.
+    stride_category: elevation_of_privilege
+    severity: critical
+    resource_type: kubernetes_cluster_role_binding
+    condition:
+      role_ref_name:
+        equals: "cluster-admin"
+    mitigation: >
+      Use more restrictive roles with least-privilege principles.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: K8S_WILDCARD_RBAC_VERBS
+    title: RBAC role with wildcard verbs
+    description: >
+      An RBAC role grants wildcard (*) verbs, allowing all actions.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: kubernetes_cluster_role
+    condition:
+      has_wildcard_verbs:
+        equals: true
+    mitigation: >
+      Specify explicit verbs instead of wildcards.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: K8S_WILDCARD_RBAC_RESOURCES
+    title: RBAC role with wildcard resources
+    description: >
+      An RBAC role grants access to wildcard (*) resources.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: kubernetes_cluster_role
+    condition:
+      has_wildcard_resources:
+        equals: true
+    mitigation: >
+      Specify explicit resources instead of wildcards.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]

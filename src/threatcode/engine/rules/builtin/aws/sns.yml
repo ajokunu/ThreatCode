@@ -1,0 +1,54 @@
+rules:
+  - id: SNS_NO_ENCRYPTION
+    title: SNS topic without encryption
+    description: >
+      The SNS topic is not encrypted with KMS.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_sns_topic
+    condition:
+      kms_master_key_id:
+        not_exists: true
+    mitigation: >
+      Enable KMS encryption for the SNS topic.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: SNS_WORLD_SUBSCRIBABLE
+    title: SNS topic allows public subscription
+    description: >
+      The SNS topic policy allows anyone to subscribe.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_sns_topic_policy
+    condition:
+      policy:
+        contains: '"Principal":"*"'
+    mitigation: >
+      Restrict the SNS topic policy to specific principals.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: SNS_NO_HTTPS
+    title: SNS topic subscription without HTTPS
+    description: >
+      SNS subscriptions should enforce HTTPS for delivery.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_sns_topic
+    condition:
+      any_of:
+        - policy:
+            not_exists: true
+        - delivery_policy:
+            not_exists: true
+    mitigation: >
+      Configure SNS to require HTTPS delivery.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]

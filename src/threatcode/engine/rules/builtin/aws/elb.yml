@@ -1,0 +1,51 @@
+rules:
+  - id: ELB_NO_HTTPS
+    title: Load balancer listener without HTTPS
+    description: >
+      The load balancer listener uses HTTP instead of HTTPS.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_lb_listener
+    condition:
+      protocol:
+        equals: "HTTP"
+    mitigation: >
+      Use HTTPS protocol with a valid TLS certificate.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: ELB_NO_ACCESS_LOGS
+    title: Load balancer without access logs
+    description: >
+      Access logging is not enabled for the load balancer.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_lb
+    condition:
+      access_logs:
+        not_exists: true
+    mitigation: >
+      Enable access logging.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: ELB_OUTDATED_TLS
+    title: Load balancer with outdated TLS policy
+    description: >
+      The load balancer uses an outdated SSL/TLS policy.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_lb_listener
+    condition:
+      ssl_policy:
+        matches_any: ["ELBSecurityPolicy-2016-08", "ELBSecurityPolicy-TLS-1-0-2015-04"]
+    mitigation: >
+      Use a modern TLS policy (TLS 1.2+).
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]

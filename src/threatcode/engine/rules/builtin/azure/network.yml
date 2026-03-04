@@ -1,0 +1,83 @@
+rules:
+  - id: AZURE_NSG_ALLOW_ALL_INBOUND
+    title: NSG allows all inbound traffic
+    description: >
+      A network security group rule allows all inbound traffic.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: azurerm_network_security_rule
+    condition:
+      all_of:
+        - direction:
+            equals: "Inbound"
+        - access:
+            equals: "Allow"
+        - source_address_prefix:
+            equals: "*"
+    mitigation: >
+      Restrict inbound rules to specific IP ranges and ports.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: AZURE_NSG_SSH_OPEN
+    title: NSG allows SSH from any source
+    description: >
+      SSH port 22 is open to all IP addresses.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_network_security_rule
+    condition:
+      all_of:
+        - direction:
+            equals: "Inbound"
+        - access:
+            equals: "Allow"
+        - destination_port_range:
+            equals: "22"
+    mitigation: >
+      Restrict SSH access to specific IP addresses.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]
+
+  - id: AZURE_NSG_RDP_OPEN
+    title: NSG allows RDP from any source
+    description: >
+      RDP port 3389 is open.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_network_security_rule
+    condition:
+      all_of:
+        - direction:
+            equals: "Inbound"
+        - access:
+            equals: "Allow"
+        - destination_port_range:
+            equals: "3389"
+    mitigation: >
+      Restrict RDP access to specific IP addresses or use Azure Bastion.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]
+
+  - id: AZURE_VNET_NO_DDOS
+    title: Azure virtual network without DDoS protection
+    description: >
+      The virtual network does not have DDoS protection enabled.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: azurerm_virtual_network
+    condition:
+      ddos_protection_plan:
+        not_exists: true
+    mitigation: >
+      Enable Azure DDoS Protection.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

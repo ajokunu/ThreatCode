@@ -1,0 +1,85 @@
+rules:
+  - id: AZURE_VM_NO_DISK_ENCRYPTION
+    title: Azure VM without disk encryption
+    description: >
+      The virtual machine does not have disk encryption enabled.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_virtual_machine
+    condition:
+      storage_os_disk.0.managed_disk_type:
+        not_exists: true
+    mitigation: >
+      Enable Azure Disk Encryption or use managed disks with encryption.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: AZURE_VM_PASSWORD_AUTH
+    title: Azure VM using password authentication
+    description: >
+      The VM uses password authentication instead of SSH keys.
+    stride_category: spoofing
+    severity: high
+    resource_type: azurerm_linux_virtual_machine
+    condition:
+      disable_password_authentication:
+        equals: false
+    mitigation: >
+      Disable password authentication and use SSH keys.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]
+
+  - id: AZURE_VM_NO_MANAGED_IDENTITY
+    title: Azure VM without managed identity
+    description: >
+      The VM does not use a managed identity for Azure service access.
+    stride_category: spoofing
+    severity: medium
+    resource_type: azurerm_linux_virtual_machine
+    condition:
+      identity:
+        not_exists: true
+    mitigation: >
+      Assign a managed identity to the VM.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+        tactics: ["TA0001"]
+
+  - id: AZURE_VM_PUBLIC_IP
+    title: Azure VM with public IP
+    description: >
+      The VM has a public IP address directly assigned.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_linux_virtual_machine
+    condition:
+      public_ip_address:
+        exists: true
+    mitigation: >
+      Remove the public IP and use a load balancer or bastion host.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: AZURE_VM_NO_EXTENSIONS
+    title: Azure VM without monitoring extensions
+    description: >
+      The VM does not have monitoring extensions installed.
+    stride_category: repudiation
+    severity: low
+    resource_type: azurerm_virtual_machine
+    condition:
+      os_profile:
+        not_exists: true
+    mitigation: >
+      Install Azure Monitor agent for visibility.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

@@ -1,0 +1,51 @@
+rules:
+  - id: DYNAMODB_NO_ENCRYPTION
+    title: DynamoDB table without encryption
+    description: >
+      The DynamoDB table does not use KMS encryption.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_dynamodb_table
+    condition:
+      server_side_encryption:
+        not_exists: true
+    mitigation: >
+      Enable server-side encryption with KMS.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: DYNAMODB_NO_PITR
+    title: DynamoDB without point-in-time recovery
+    description: >
+      Point-in-time recovery is not enabled for the DynamoDB table.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: aws_dynamodb_table
+    condition:
+      point_in_time_recovery:
+        not_exists: true
+    mitigation: >
+      Enable point-in-time recovery.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
+
+  - id: DYNAMODB_NO_AUTOSCALING
+    title: DynamoDB without auto scaling
+    description: >
+      The DynamoDB table does not have auto scaling configured.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: aws_dynamodb_table
+    condition:
+      billing_mode:
+        not_exists: true
+    mitigation: >
+      Configure auto scaling or use PAY_PER_REQUEST billing.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

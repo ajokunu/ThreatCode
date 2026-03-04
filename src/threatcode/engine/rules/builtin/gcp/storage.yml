@@ -1,0 +1,51 @@
+rules:
+  - id: GCP_BUCKET_PUBLIC
+    title: GCP storage bucket publicly accessible
+    description: >
+      The Cloud Storage bucket allows public access via allUsers or allAuthenticatedUsers.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: google_storage_bucket_iam_member
+    condition:
+      member:
+        matches_any: ["allUsers", "allAuthenticatedUsers"]
+    mitigation: >
+      Remove public access and use IAM policies.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: GCP_BUCKET_NO_VERSIONING
+    title: GCP storage bucket without versioning
+    description: >
+      Object versioning is not enabled.
+    stride_category: tampering
+    severity: medium
+    resource_type: google_storage_bucket
+    condition:
+      versioning:
+        not_exists: true
+    mitigation: >
+      Enable object versioning.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
+
+  - id: GCP_BUCKET_NO_LOGGING
+    title: GCP storage bucket without logging
+    description: >
+      Access logging is not enabled for the bucket.
+    stride_category: repudiation
+    severity: medium
+    resource_type: google_storage_bucket
+    condition:
+      logging:
+        not_exists: true
+    mitigation: >
+      Enable access logging.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
