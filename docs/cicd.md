@@ -1,40 +1,39 @@
 # CI/CD Integration
 
-ThreatCode is designed for CI/CD pipelines. It exits with code `1` when threats are found and code `0` when none are found, making it a natural quality gate.
+ThreatCode exits with code `1` when findings exist (above the severity threshold) and `0` when the scan is clean, making it a natural quality gate in any CI pipeline.
+
+---
 
 ## GitHub Actions
 
-### Full Workflow with SARIF Upload
+### Using the composite action
 
 ```yaml
-name: Threat Model
-
-on:
-  pull_request:
-    paths:
-      - '**.tf'
-      - '**.json'
-
-permissions:
-  security-events: write
-  contents: read
+name: Security Scan
+on: [push, pull_request]
 
 jobs:
   threatcode:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write    # Required for SARIF upload
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init & Plan
-        run: |
-          terraform init
-          terraform plan -out=tfplan
-          terraform show -json tfplan > tfplan.json
+      - name: Terraform Init
+        run: terraform init
 
-      - name: ThreatCode Scan
+      - name: Generate plan
+        run: terraform show -json > tfplan.json
+        env:
+          TF_VAR_environment: staging
+
+      - name: ThreatCode scan
         uses: ./.github/actions/threatcode
         with:
           input-file: tfplan.json
@@ -43,52 +42,124 @@ jobs:
           min-severity: medium
 ```
 
-The bundled composite action installs ThreatCode, runs the scan, and uploads the SARIF file to GitHub Code Scanning automatically. Threats appear as security alerts on the pull request.
+### Composite action inputs
 
-### Manual Workflow (Without Composite Action)
+| Input | Default | Description |
+|-------|---------|-------------|
+| `input-file` | required | Path to the IaC file to scan |
+| `format` | `sarif` | Output format: `sarif`, `json`, `markdown` |
+| `min-severity` | `info` | Minimum severity to report |
+| `no-llm` | `true` | Disable LLM analysis |
+| `config-file` | — | Path to `.threatcode.yml` |
+| `extra-rules` | — | Comma-separated additional rule file paths |
+| `python-version` | `3.11` | Python version to use |
+
+### Composite action outputs
+
+| Output | Description |
+|--------|-------------|
+| `sarif-file` | Path to the generated SARIF file |
+| `threat-count` | Total number of threats found |
+
+### Manual workflow (full pipeline)
 
 ```yaml
-name: Threat Model
-
-on: [pull_request]
-
-permissions:
-  security-events: write
+name: Full Security Pipeline
+on: [push, pull_request]
 
 jobs:
-  threatcode:
+  security:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install ThreatCode
         run: pip install threatcode
 
-      - name: Run scan
-        run: threatcode scan tfplan.json --no-llm --format sarif -o results.sarif || true
+      # --- Threat modeling ---
+      - name: Generate Terraform plan
+        run: terraform show -json > tfplan.json
 
-      - name: Upload SARIF
+      - name: IaC threat model
+        run: threatcode scan tfplan.json --no-llm --format sarif -o iac.sarif
+
+      - name: Upload IaC SARIF
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
-          sarif_file: results.sarif
-          category: threatcode
+          sarif_file: iac.sarif
 
-      - name: Save ATT&CK Navigator layer
-        run: threatcode scan tfplan.json --no-llm --format matrix -o threatcode-layer.json || true
+      # --- Kubernetes scan ---
+      - name: Kubernetes scan
+        run: threatcode scan k8s/ --no-llm --format sarif -o k8s.sarif
 
-      - name: Upload Navigator layer artifact
+      - name: Upload K8s SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: k8s.sarif
+
+      # --- Secret detection ---
+      - name: Secret scan
+        run: threatcode secret ./
+
+      # --- Vulnerability scan ---
+      - name: Download vulnerability DB
+        run: threatcode db update
+
+      - name: Vulnerability scan
+        run: threatcode vuln package-lock.json --ignore-unfixed
+
+      # --- ATT&CK Navigator layer ---
+      - name: ATT&CK Navigator layer
+        run: threatcode scan tfplan.json --no-llm --format matrix -o layer.json
+
+      - name: Upload Navigator layer
         uses: actions/upload-artifact@v4
         with:
           name: attack-navigator-layer
-          path: threatcode-layer.json
+          path: layer.json
 ```
 
-!!! note "Exit code handling"
-    ThreatCode exits with `1` when findings exist. Use `|| true` if you want the pipeline to continue past the scan step (e.g., to still upload SARIF results). Alternatively, use `--min-severity` to control which findings cause a non-zero exit.
+---
+
+## GitLab CI
+
+```yaml
+threatcode:
+  stage: security
+  image: python:3.12-slim
+  before_script:
+    - pip install threatcode
+  script:
+    # IaC threat model → SARIF
+    - terraform show -json > tfplan.json
+    - threatcode scan tfplan.json --no-llm --format sarif -o gl-sast-report.json
+
+    # Kubernetes
+    - threatcode scan k8s/ --no-llm --format sarif -o k8s-report.json
+
+    # Secrets (non-blocking — informational)
+    - threatcode secret ./ || true
+
+    # Vulnerabilities (fail on high+)
+    - threatcode db update
+    - threatcode vuln package-lock.json --min-severity high
+  artifacts:
+    reports:
+      sast:
+        - gl-sast-report.json
+        - k8s-report.json
+    expire_in: 1 week
+```
 
 ---
 
@@ -96,120 +167,81 @@ jobs:
 
 ```yaml
 pipelines:
-  pull-requests:
-    '**':
-      - step:
-          name: Threat Model
-          image: python:3.11
-          script:
-            - pip install threatcode
-            - terraform init
-            - terraform plan -out=tfplan
-            - terraform show -json tfplan > tfplan.json
-            - threatcode scan tfplan.json --format bitbucket --no-llm -o threatcode-report.json || true
-            - |
-              # Upload to Bitbucket Code Insights
-              REPORT=$(cat threatcode-report.json | python -c "import sys,json; print(json.dumps(json.load(sys.stdin)['report']))")
-              ANNOTATIONS=$(cat threatcode-report.json | python -c "import sys,json; print(json.dumps(json.load(sys.stdin)['annotations']))")
-              COMMIT=${BITBUCKET_COMMIT}
-              REPO=${BITBUCKET_REPO_FULL_NAME}
-
-              # Create report
-              curl -X PUT \
-                "https://api.bitbucket.org/2.0/repositories/${REPO}/commit/${COMMIT}/reports/threatcode" \
-                -H "Content-Type: application/json" \
-                -H "Authorization: Bearer ${BB_AUTH_TOKEN}" \
-                -d "${REPORT}"
-
-              # Create annotations
-              for row in $(echo "${ANNOTATIONS}" | python -c "import sys,json; [print(json.dumps(a)) for a in json.load(sys.stdin)]"); do
-                curl -X POST \
-                  "https://api.bitbucket.org/2.0/repositories/${REPO}/commit/${COMMIT}/reports/threatcode/annotations" \
-                  -H "Content-Type: application/json" \
-                  -H "Authorization: Bearer ${BB_AUTH_TOKEN}" \
-                  -d "${row}"
-              done
+  default:
+    - step:
+        name: Security Scan
+        image: python:3.12
+        script:
+          - pip install threatcode
+          - terraform show -json > tfplan.json
+          - threatcode scan tfplan.json --no-llm --format bitbucket -o report.json
+          # Bitbucket Code Insights upload
+          - |
+            curl -X POST \
+              "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_WORKSPACE/$BITBUCKET_REPO_SLUG/commit/$BITBUCKET_COMMIT/reports/threatcode" \
+              -H "Authorization: Bearer $BITBUCKET_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d @report.json
 ```
-
-The `--format bitbucket` output is structured for the Bitbucket Code Insights API, with a `report` object and `annotations` array ready for upload.
 
 ---
 
-## Generic CI
-
-For any CI system, ThreatCode works as a standard CLI tool:
+## Generic CI / Shell
 
 ```bash
 pip install threatcode
 
-# Run scan, exit 1 on findings
-threatcode scan tfplan.json --no-llm --format json -o results.json
-
-# Use as quality gate with severity threshold
-threatcode scan tfplan.json --no-llm --min-severity high
-```
-
-The exit code behavior:
-
-| Exit Code | Meaning |
-|-----------|---------|
-| `0` | No threats found (at or above the minimum severity) |
-| `1` | One or more threats found |
-
----
-
-## ATT&CK Navigator Layer as Build Artifact
-
-Save the Navigator layer alongside your scan results for security review:
-
-```bash
-# Generate the layer
-threatcode scan tfplan.json --no-llm --format matrix -o threatcode-layer.json
-
-# In GitHub Actions, upload as artifact
-# In other CI, archive the file with your build outputs
-```
-
-Security teams can load the layer into [ATT&CK Navigator](https://mitre-attack.github.io/attack-navigator/) to visualize which ATT&CK techniques are covered by your infrastructure's threat model.
-
----
-
-## Using `--min-severity` as Quality Gate
-
-Control which findings block the pipeline:
-
-```bash
-# Block on critical and high only
-threatcode scan tfplan.json --no-llm --min-severity high
-
-# Block on medium and above
+# Quality gate — fail on medium+ threats
 threatcode scan tfplan.json --no-llm --min-severity medium
+# Exit code 1 if findings >= medium
 
-# Report everything but never block
-threatcode scan tfplan.json --no-llm --min-severity info || true
+# Non-blocking scan (informational only)
+threatcode scan tfplan.json --no-llm || true
+
+# Secret scan (fail on any secrets found)
+threatcode secret ./src/
+
+# Vulnerability gate (only unfixed high+ vulns)
+threatcode db update
+threatcode vuln package-lock.json --min-severity high --ignore-unfixed
+
+# Container image (fail on critical vulns)
+threatcode db update --os
+threatcode image myapp:$TAG --severity critical
 ```
-
-!!! tip "Recommended approach"
-    Start with `--min-severity high` to avoid alert fatigue, then progressively lower the threshold as your team addresses findings. Use `--min-severity medium` once the high-severity backlog is clear.
 
 ---
 
-## LLM Mode in CI
+## PR Diff Workflow
 
-LLM augmentation can be enabled in CI by providing an API key and omitting the `--no-llm` flag:
+Track new threats introduced in each PR:
 
-```yaml
-- name: ThreatCode Scan (with LLM)
-  env:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  run: |
-    threatcode scan tfplan.json --format sarif -o results.sarif || true
+```bash
+# Save baseline from main branch
+git checkout main
+threatcode scan tfplan.json --no-llm -o baseline.json
+
+# Check PR branch
+git checkout feature-branch
+threatcode scan tfplan.json --no-llm -o current.json
+
+# Compare
+threatcode diff baseline.json current.json --format markdown > diff.md
 ```
 
-!!! warning "Cost considerations"
-    Each LLM-augmented scan sends the infrastructure graph to the configured LLM provider. For large plans, this can consume significant tokens. Consider:
+---
 
-    - Using `--no-llm` for PR-level scans and LLM mode only for release branches
-    - Using a local LLM (Ollama) in CI for cost-free analysis
-    - Setting `max_tokens` in `.threatcode.yml` to limit response size
-    - Using `--dry-run` to preview token usage before enabling LLM in production pipelines
+## Cost Management (LLM mode)
+
+When running with LLM analysis enabled:
+
+- **Use `--no-llm` in CI** unless you specifically need architectural threat detection
+- Rule-based scanning is free and covers 131 built-in patterns
+- LLM analysis adds architectural threat discovery (cross-resource attack paths, implicit trust assumptions)
+- Use `--dry-run` to preview what would be sent to the LLM before paying for API calls
+- Token budget is configurable: `llm.max_tokens: 4096` (default)
+
+```bash
+# Preview LLM call without executing
+threatcode scan tfplan.json --dry-run 2>&1 | head -50
+```

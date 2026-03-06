@@ -1,0 +1,51 @@
+rules:
+  - id: ELASTICACHE_NO_ENCRYPTION_REST
+    title: ElastiCache without encryption at rest
+    description: >
+      ElastiCache replication group does not have encryption at rest.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_elasticache_replication_group
+    condition:
+      at_rest_encryption_enabled:
+        equals: false
+    mitigation: >
+      Enable at-rest encryption.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: ELASTICACHE_NO_ENCRYPTION_TRANSIT
+    title: ElastiCache without encryption in transit
+    description: >
+      ElastiCache does not encrypt data in transit.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_elasticache_replication_group
+    condition:
+      transit_encryption_enabled:
+        equals: false
+    mitigation: >
+      Enable in-transit encryption.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: ELASTICACHE_NO_AUTH
+    title: ElastiCache without authentication
+    description: >
+      ElastiCache does not require authentication.
+    stride_category: spoofing
+    severity: high
+    resource_type: aws_elasticache_replication_group
+    condition:
+      auth_token:
+        not_exists: true
+    mitigation: >
+      Configure an auth token for Redis AUTH.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]

@@ -18,18 +18,6 @@ class ParsedResource:
     module: str = ""
     source_location: str = ""
 
-    @property
-    def provider_short(self) -> str:
-        """Extract short provider name (e.g., 'aws' from 'registry.terraform.io/hashicorp/aws')."""
-        if "/" in self.provider:
-            return self.provider.rsplit("/", 1)[-1]
-        return self.provider
-
-    @property
-    def service(self) -> str:
-        """Extract service from resource type (e.g., 's3' from 'aws_s3_bucket')."""
-        parts = self.resource_type.split("_", 2)
-        return parts[1] if len(parts) >= 2 else self.resource_type
 
 
 @dataclass

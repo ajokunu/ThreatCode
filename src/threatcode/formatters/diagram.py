@@ -180,7 +180,7 @@ class DiagramRenderer:
 
     def _compute_layout(self) -> None:
         zones_map = self.graph.nodes_by_zone()
-        y_cursor = HEADER_H + SUMMARY_BAR_H + CANVAS_PAD
+        y_cursor: float = HEADER_H + SUMMARY_BAR_H + CANVAS_PAD
         max_lane_w = 0.0
 
         for zone in ZONE_ORDER:

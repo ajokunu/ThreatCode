@@ -1,0 +1,17 @@
+rules:
+  - id: K8S_NO_NETWORK_POLICY
+    title: No NetworkPolicy defined
+    description: >
+      No NetworkPolicy is present. All pod-to-pod traffic is allowed by default.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: kubernetes_network_policy
+    condition:
+      has_ingress_rules:
+        equals: false
+    mitigation: >
+      Define NetworkPolicies to restrict pod-to-pod traffic.
+    metadata:
+      mitre:
+        techniques: ["T1040"]
+        tactics: ["TA0007"]

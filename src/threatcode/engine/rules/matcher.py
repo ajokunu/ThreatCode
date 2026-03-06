@@ -7,10 +7,11 @@ Security: recursion depth is capped to prevent stack overflow from malicious rul
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from threatcode.engine.rules.loader import Rule
-from threatcode.ir.nodes import InfraNode
+from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,23 @@ def evaluate_condition(condition: dict[str, Any], node: InfraNode, _depth: int =
     if op:
         return bool(_OPERATORS[op](condition[op], node, _depth + 1))
     return _evaluate_property_conditions(condition, node)
+
+
+def evaluate_rule(condition: dict[str, Any], properties: dict[str, Any]) -> bool:
+    """Evaluate a rule condition against a flat properties dict.
+
+    Convenience wrapper that creates a minimal InfraNode for the matcher.
+    Used by tests and simple rule evaluation without full graph context.
+    """
+    node = InfraNode(
+        id="__eval__",
+        resource_type="__eval__",
+        name="__eval__",
+        category=NodeCategory.UNKNOWN,
+        trust_zone=TrustZone.PRIVATE,
+        properties=properties,
+    )
+    return evaluate_condition(condition, node)
 
 
 def matches_rule(rule: Rule, node: InfraNode) -> bool:
@@ -162,7 +180,7 @@ def _op_not(condition: dict[str, Any], node: InfraNode, depth: int) -> bool:
     return not evaluate_condition(condition, node, depth)
 
 
-_OPERATORS: dict[str, Any] = {
+_OPERATORS: dict[str, Callable[..., bool]] = {
     "all_of": _op_all_of,
     "any_of": _op_any_of,
     "none_of": _op_none_of,

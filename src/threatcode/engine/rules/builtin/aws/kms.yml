@@ -1,0 +1,70 @@
+rules:
+  - id: KMS_KEY_ROTATION_DISABLED
+    title: KMS key rotation disabled
+    description: >
+      Automatic key rotation is not enabled for the KMS key.
+      This increases the risk of key compromise over time.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_kms_key
+    condition:
+      enable_key_rotation:
+        equals: false
+    mitigation: >
+      Enable automatic key rotation.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: KMS_WILDCARD_POLICY
+    title: KMS key with wildcard principal
+    description: >
+      The KMS key policy grants access to all principals.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: aws_kms_key
+    condition:
+      policy:
+        contains: '"Principal":"*"'
+    mitigation: >
+      Restrict KMS key policy to specific IAM principals.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: KMS_NO_DELETION_PROTECTION
+    title: KMS key without deletion protection
+    description: >
+      The KMS key does not have deletion window configured
+      to prevent accidental deletion.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: aws_kms_key
+    condition:
+      deletion_window_in_days:
+        not_exists: true
+    mitigation: >
+      Set deletion_window_in_days to at least 7 days.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
+
+  - id: KMS_KEY_EXPOSED
+    title: KMS key publicly accessible
+    description: >
+      The KMS key policy may allow public access.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: aws_kms_key
+    condition:
+      policy:
+        contains: '"Effect":"Allow","Principal":"*"'
+    mitigation: >
+      Remove wildcard principals from the KMS key policy.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]

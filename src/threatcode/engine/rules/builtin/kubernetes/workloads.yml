@@ -1,0 +1,304 @@
+rules:
+  - id: K8S_PRIVILEGED_CONTAINER
+    title: Container running in privileged mode
+    description: >
+      A container is configured with privileged: true, giving it full
+      access to the host. This effectively disables all container isolation.
+    stride_category: elevation_of_privilege
+    severity: critical
+    resource_type: kubernetes_deployment
+    condition:
+      privileged:
+        equals: true
+    mitigation: >
+      Remove privileged: true from the container securityContext.
+      Use specific capabilities instead.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_NO_RESOURCE_LIMITS
+    title: Container without resource limits
+    description: >
+      No CPU or memory limits are set on the container.
+      This can lead to resource exhaustion and denial of service.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      has_resource_limits:
+        equals: false
+    mitigation: >
+      Set resource limits (cpu, memory) for all containers.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: K8S_RUN_AS_ROOT
+    title: Container may run as root
+    description: >
+      runAsNonRoot is not set to true, allowing the container to run as root.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: kubernetes_deployment
+    condition:
+      run_as_root:
+        equals: true
+    mitigation: >
+      Set runAsNonRoot: true in the pod or container securityContext.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_WRITABLE_ROOT_FS
+    title: Container root filesystem is writable
+    description: >
+      readOnlyRootFilesystem is not set to true, allowing writes to the
+      container filesystem. This increases the attack surface.
+    stride_category: tampering
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      writable_root_fs:
+        equals: true
+    mitigation: >
+      Set readOnlyRootFilesystem: true in securityContext.
+      Use emptyDir volumes for writable paths.
+    metadata:
+      mitre:
+        techniques: ["T1565.001"]
+        tactics: ["TA0040"]
+
+  - id: K8S_HOST_NETWORK
+    title: Pod uses host network namespace
+    description: >
+      hostNetwork: true gives the pod access to the host's network
+      interfaces and can bypass network policies.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: kubernetes_deployment
+    condition:
+      host_network:
+        equals: true
+    mitigation: >
+      Remove hostNetwork: true unless absolutely required.
+    metadata:
+      mitre:
+        techniques: ["T1040"]
+        tactics: ["TA0007"]
+
+  - id: K8S_HOST_PID
+    title: Pod uses host PID namespace
+    description: >
+      hostPID: true lets the pod see and potentially interact with
+      all processes on the host.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: kubernetes_deployment
+    condition:
+      host_pid:
+        equals: true
+    mitigation: >
+      Remove hostPID: true.
+    metadata:
+      mitre:
+        techniques: ["T1613"]
+        tactics: ["TA0007"]
+
+  - id: K8S_AUTOMOUNT_SA_TOKEN
+    title: Service account token auto-mounted
+    description: >
+      automountServiceAccountToken is not disabled.
+      Compromised pods can use the token to access the Kubernetes API.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      automount_sa_token:
+        equals: true
+    mitigation: >
+      Set automountServiceAccountToken: false unless API access is needed.
+    metadata:
+      mitre:
+        techniques: ["T1528"]
+        tactics: ["TA0006"]
+
+  - id: K8S_LATEST_TAG
+    title: Container image uses latest tag
+    description: >
+      A container image uses the 'latest' tag or no tag.
+      This makes deployments non-reproducible.
+    stride_category: tampering
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      uses_latest_tag:
+        equals: true
+    mitigation: >
+      Pin container images to specific version tags or SHA digests.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: K8S_CAPABILITIES_NOT_DROPPED
+    title: Container capabilities not dropped
+    description: >
+      The container does not drop ALL Linux capabilities.
+      Unnecessary capabilities increase the attack surface.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      capabilities_dropped:
+        equals: false
+    mitigation: >
+      Add 'drop: ["ALL"]' to securityContext.capabilities and
+      only add back specific required capabilities.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_DANGEROUS_CAPABILITIES
+    title: Dangerous Linux capabilities added
+    description: >
+      The container adds dangerous capabilities like NET_ADMIN or SYS_ADMIN.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: kubernetes_deployment
+    condition:
+      dangerous_capabilities:
+        is_empty: false
+    mitigation: >
+      Remove dangerous capabilities. Use more specific alternatives.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_NO_SECURITY_CONTEXT
+    title: Container missing securityContext
+    description: >
+      No securityContext is configured for the container.
+      Security defaults may be too permissive.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      has_security_context:
+        equals: false
+    mitigation: >
+      Add a securityContext with restrictive settings.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_ALLOW_PRIVILEGE_ESCALATION
+    title: Container allows privilege escalation
+    description: >
+      allowPrivilegeEscalation is not set to false.
+      This allows processes to gain more privileges than the parent.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: kubernetes_deployment
+    condition:
+      allow_privilege_escalation:
+        equals: true
+    mitigation: >
+      Set allowPrivilegeEscalation: false in securityContext.
+    metadata:
+      mitre:
+        techniques: ["T1068"]
+        tactics: ["TA0004"]
+
+  - id: K8S_HOSTPORT_USED
+    title: Container uses hostPort
+    description: >
+      A container port is bound to a host port, exposing it directly on the node.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      has_host_port:
+        equals: true
+    mitigation: >
+      Use Services instead of hostPort for network access.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: K8S_SECRET_ENV_VAR
+    title: Secret referenced via environment variable
+    description: >
+      Secrets are referenced via env instead of mounted volumes.
+      Env vars are less secure as they may appear in logs and crash dumps.
+    stride_category: information_disclosure
+    severity: low
+    resource_type: kubernetes_deployment
+    condition:
+      secret_env_vars:
+        is_empty: false
+    mitigation: >
+      Mount secrets as files instead of environment variables.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: K8S_NO_LIVENESS_PROBE
+    title: Container missing liveness probe
+    description: >
+      No livenessProbe configured. Kubernetes cannot detect deadlocked containers.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: kubernetes_deployment
+    condition:
+      has_liveness_probe:
+        equals: false
+    mitigation: >
+      Add a livenessProbe to detect and restart unhealthy containers.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: K8S_NO_READINESS_PROBE
+    title: Container missing readiness probe
+    description: >
+      No readinessProbe configured. Traffic may be sent to containers that are not ready.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: kubernetes_deployment
+    condition:
+      has_readiness_probe:
+        equals: false
+    mitigation: >
+      Add a readinessProbe to prevent traffic to unready containers.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: K8S_HOST_PATH_VOLUME
+    title: hostPath volume mount detected
+    description: >
+      A hostPath volume gives the pod access to host filesystem paths,
+      which can lead to host compromise.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: kubernetes_deployment
+    condition:
+      has_host_path_volume:
+        equals: true
+    mitigation: >
+      Use PersistentVolumeClaims instead of hostPath volumes.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]

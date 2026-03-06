@@ -49,11 +49,6 @@ class TestTerraformPlanParser:
     def test_provider_name(self, simple_s3_parsed: ParsedOutput) -> None:
         bucket = next(r for r in simple_s3_parsed.resources if r.address == "aws_s3_bucket.data")
         assert "aws" in bucket.provider
-        assert bucket.provider_short == "aws"
-
-    def test_service_extraction(self, simple_s3_parsed: ParsedOutput) -> None:
-        bucket = next(r for r in simple_s3_parsed.resources if r.address == "aws_s3_bucket.data")
-        assert bucket.service == "s3"
 
     def test_parse_invalid_data_raises(self) -> None:
         parser = TerraformPlanParser()

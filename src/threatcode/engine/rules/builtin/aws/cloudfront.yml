@@ -1,0 +1,71 @@
+rules:
+  - id: CLOUDFRONT_NO_HTTPS
+    title: CloudFront distribution without HTTPS
+    description: >
+      The CloudFront distribution does not enforce HTTPS.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_cloudfront_distribution
+    condition:
+      any_of:
+        - default_cache_behavior.0.viewer_protocol_policy:
+            equals: "allow-all"
+        - default_cache_behavior:
+            not_exists: true
+    mitigation: >
+      Set viewer_protocol_policy to redirect-to-https or https-only.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: CLOUDFRONT_NO_WAF
+    title: CloudFront without WAF
+    description: >
+      No WAF web ACL is associated with the CloudFront distribution.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_cloudfront_distribution
+    condition:
+      web_acl_id:
+        not_exists: true
+    mitigation: >
+      Associate a WAF web ACL with the distribution.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: CLOUDFRONT_NO_LOGGING
+    title: CloudFront without access logging
+    description: >
+      Access logging is not enabled for the CloudFront distribution.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_cloudfront_distribution
+    condition:
+      logging_config:
+        not_exists: true
+    mitigation: >
+      Enable access logging.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CLOUDFRONT_NO_GEO_RESTRICTION
+    title: CloudFront without geo restriction
+    description: >
+      No geographic restrictions are configured.
+    stride_category: information_disclosure
+    severity: low
+    resource_type: aws_cloudfront_distribution
+    condition:
+      restrictions:
+        not_exists: true
+    mitigation: >
+      Configure geo restrictions as appropriate.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

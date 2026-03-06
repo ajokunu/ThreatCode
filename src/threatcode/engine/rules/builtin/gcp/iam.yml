@@ -1,0 +1,35 @@
+rules:
+  - id: GCP_IAM_ADMIN_SA
+    title: GCP service account with admin role
+    description: >
+      A service account has an admin-level IAM role.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: google_project_iam_member
+    condition:
+      role:
+        matches_any: ["roles/owner", "roles/editor"]
+    mitigation: >
+      Use the principle of least privilege.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+        tactics: ["TA0004"]
+
+  - id: GCP_IAM_SA_KEY
+    title: GCP service account with user-managed key
+    description: >
+      A user-managed key exists for a service account.
+      Prefer workload identity federation.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_service_account_key
+    condition:
+      service_account_id:
+        exists: true
+    mitigation: >
+      Use workload identity federation instead of service account keys.
+    metadata:
+      mitre:
+        techniques: ["T1528"]
+        tactics: ["TA0006"]

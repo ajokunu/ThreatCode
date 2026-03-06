@@ -30,42 +30,46 @@ class TestValidateBaseUrl:
         with patch(_PATCH_GAI, return_value=_mock_resolve("104.18.6.192")):
             _validate_base_url("https://api.openai.com")
 
-    def test_valid_http_url(self) -> None:
+    def test_valid_http_url_with_allow(self) -> None:
         rv = _mock_resolve("93.184.216.34", port=11434)
         with patch(_PATCH_GAI, return_value=rv):
+            _validate_base_url("http://my-ollama.example.com:11434", allow_http=True)
+
+    def test_http_blocked_by_default(self) -> None:
+        with pytest.raises(LLMError, match="Unsafe URL scheme"):
             _validate_base_url("http://my-ollama.example.com:11434")
 
     def test_blocks_localhost(self) -> None:
         with pytest.raises(LLMError, match="loopback"):
-            _validate_base_url("http://127.0.0.1:11434")
+            _validate_base_url("http://127.0.0.1:11434", allow_http=True)
 
     def test_blocks_127_0_0_1(self) -> None:
         with pytest.raises(LLMError, match="loopback"):
-            _validate_base_url("http://127.0.0.1:11434")
+            _validate_base_url("http://127.0.0.1:11434", allow_http=True)
 
     def test_blocks_metadata_endpoint(self) -> None:
         with pytest.raises(LLMError, match="link-local|private"):
-            _validate_base_url("http://169.254.169.254/latest/meta-data/")
+            _validate_base_url("http://169.254.169.254/latest/meta-data/", allow_http=True)
 
     def test_blocks_10_x_private_range(self) -> None:
         with pytest.raises(LLMError, match="private"):
-            _validate_base_url("http://10.0.0.1/v1")
+            _validate_base_url("http://10.0.0.1/v1", allow_http=True)
 
     def test_blocks_172_16_private_range(self) -> None:
         with pytest.raises(LLMError, match="private"):
-            _validate_base_url("http://172.16.0.1/v1")
+            _validate_base_url("http://172.16.0.1/v1", allow_http=True)
 
     def test_allows_172_outside_private(self) -> None:
         rv1 = _mock_resolve("172.15.0.1", port=80)
         with patch(_PATCH_GAI, return_value=rv1):
-            _validate_base_url("http://172.15.0.1/v1")
+            _validate_base_url("http://172.15.0.1/v1", allow_http=True)
         rv2 = _mock_resolve("172.32.0.1", port=80)
         with patch(_PATCH_GAI, return_value=rv2):
-            _validate_base_url("http://172.32.0.1/v1")
+            _validate_base_url("http://172.32.0.1/v1", allow_http=True)
 
     def test_blocks_192_168_private_range(self) -> None:
         with pytest.raises(LLMError, match="private"):
-            _validate_base_url("http://192.168.1.1/v1")
+            _validate_base_url("http://192.168.1.1/v1", allow_http=True)
 
     def test_blocks_ftp_scheme(self) -> None:
         with pytest.raises(LLMError, match="Unsafe URL scheme"):
@@ -73,21 +77,21 @@ class TestValidateBaseUrl:
 
     def test_blocks_empty_hostname(self) -> None:
         with pytest.raises(LLMError, match="hostname"):
-            _validate_base_url("http:///v1")
+            _validate_base_url("http:///v1", allow_http=True)
 
     def test_blocks_ipv6_loopback(self) -> None:
         with pytest.raises(LLMError, match="loopback"):
-            _validate_base_url("http://[::1]:11434")
+            _validate_base_url("http://[::1]:11434", allow_http=True)
 
     def test_blocks_zero_address(self) -> None:
         with pytest.raises(LLMError):
-            _validate_base_url("http://0.0.0.0:11434")
+            _validate_base_url("http://0.0.0.0:11434", allow_http=True)
 
     def test_blocks_metadata_google(self) -> None:
         rv = _mock_resolve("169.254.169.254", port=80)
         with patch(_PATCH_GAI, return_value=rv):
             with pytest.raises(LLMError, match="link-local|private"):
-                _validate_base_url("http://metadata.google.internal/v1")
+                _validate_base_url("http://metadata.google.internal/v1", allow_http=True)
 
     def test_blocks_dns_rebinding_to_private(self) -> None:
         """DNS rebinding: hostname resolves to private IP."""
@@ -100,7 +104,7 @@ class TestValidateBaseUrl:
 class TestOpenAICompatibleClient:
     def test_constructor_validates_url(self) -> None:
         with pytest.raises(LLMError):
-            OpenAICompatibleLLMClient(base_url="http://127.0.0.1:11434")
+            OpenAICompatibleLLMClient(base_url="https://127.0.0.1:11434")
 
     def test_constructor_accepts_valid_url(self) -> None:
         rv = _mock_resolve("93.184.216.34")

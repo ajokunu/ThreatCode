@@ -1,0 +1,125 @@
+rules:
+  - id: DOCKER_NO_USER
+    title: No non-root USER instruction
+    description: >
+      The Dockerfile does not contain a USER instruction to switch from root.
+      Containers will run as root by default, increasing attack surface.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: dockerfile_image
+    condition:
+      has_user:
+        equals: false
+    mitigation: >
+      Add a USER instruction to run the container as a non-root user.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: DOCKER_LATEST_TAG
+    title: Base image uses latest or unspecified tag
+    description: >
+      The base image uses the 'latest' tag or no tag at all.
+      This makes builds non-reproducible and may pull vulnerable versions.
+    stride_category: tampering
+    severity: medium
+    resource_type: dockerfile_image
+    condition:
+      uses_latest_tag:
+        equals: true
+    mitigation: >
+      Pin the base image to a specific version tag or SHA256 digest.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: DOCKER_EXPOSED_SSH
+    title: SSH port 22 exposed
+    description: >
+      Port 22 (SSH) is exposed in the Dockerfile.
+      SSH in containers is an anti-pattern and increases attack surface.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: dockerfile_image
+    condition:
+      has_ssh_exposed:
+        equals: true
+    mitigation: >
+      Remove port 22 exposure. Use docker exec or kubectl exec instead of SSH.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]
+
+  - id: DOCKER_NO_HEALTHCHECK
+    title: Missing HEALTHCHECK instruction
+    description: >
+      The Dockerfile does not include a HEALTHCHECK instruction.
+      Without health checks, container orchestrators cannot detect unhealthy containers.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: dockerfile_image
+    condition:
+      has_healthcheck:
+        equals: false
+    mitigation: >
+      Add a HEALTHCHECK instruction to enable container health monitoring.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: DOCKER_MISSING_WORKDIR
+    title: No WORKDIR set
+    description: >
+      The Dockerfile does not set a WORKDIR instruction.
+      Commands will execute in the root directory, which may cause unexpected behavior.
+    stride_category: tampering
+    severity: low
+    resource_type: dockerfile_image
+    condition:
+      has_workdir:
+        equals: false
+    mitigation: >
+      Add a WORKDIR instruction to set an explicit working directory.
+    metadata:
+      mitre:
+        techniques: ["T1565.001"]
+        tactics: ["TA0040"]
+
+  - id: DOCKER_ROOT_USER
+    title: USER set to root
+    description: >
+      The Dockerfile explicitly sets USER to root.
+      Running as root increases the container's attack surface.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: dockerfile_image
+    condition:
+      is_root_user:
+        equals: true
+    mitigation: >
+      Change the USER instruction to a non-root user.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: DOCKER_EXPOSED_PRIVILEGED_PORT
+    title: Privileged port exposed
+    description: >
+      A port below 1024 is exposed, requiring elevated privileges.
+    stride_category: elevation_of_privilege
+    severity: low
+    resource_type: dockerfile_image
+    condition:
+      has_privileged_port:
+        equals: true
+    mitigation: >
+      Use non-privileged ports (>= 1024) when possible.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]

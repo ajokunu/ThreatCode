@@ -61,6 +61,14 @@ class TestRedactor:
         data = {"arn": "arn:aws:s3:::bucket1"}
         result = redactor.redact(data)
         assert "REDACTED_arn_" in result["arn"]
+        # Hash strategy should produce a hex digest suffix, not a numeric counter
+        placeholder_redactor = Redactor(strategy="placeholder")
+        placeholder_result = placeholder_redactor.redact(data)
+        assert result["arn"] != placeholder_result["arn"]
+        # Hash suffix should be 8-char hex
+        suffix = result["arn"].split("REDACTED_arn_")[1]
+        assert len(suffix) == 8
+        assert all(c in "0123456789abcdef" for c in suffix)
 
     def test_non_sensitive_fields_untouched(self) -> None:
         redactor = Redactor()

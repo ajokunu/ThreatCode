@@ -1,48 +1,60 @@
 # Configuration
 
-ThreatCode is configured via a `.threatcode.yml` file and environment variables.
+ThreatCode is configured via a `.threatcode.yml` file and/or environment variables.
 
-## `.threatcode.yml` Schema
+---
+
+## Config File Location
+
+ThreatCode searches for config in this order:
+
+1. `--config / -c` flag (explicit path — all fields allowed)
+2. `.threatcode.yml` or `.threatcode.yaml` in the current working directory
+3. `~/.threatcode.yml` in the home directory (skipped in CI when `CI=true`)
+4. Built-in defaults
+
+**Security note:** Auto-discovered configs (2 and 3) are restricted to safe fields only: `min_severity`, `output_format`, `no_llm`, `dry_run`, `redaction`. Security-sensitive fields (`llm.api_key`, `llm.base_url`, `extra_rule_paths`) are stripped with a warning when loaded from auto-discovered locations. Use `--config` for full control.
+
+---
+
+## Full Schema
 
 ```yaml
+# .threatcode.yml
+
 # LLM configuration
 llm:
-  provider: anthropic          # "anthropic", "openai", "ollama", "local"
+  provider: anthropic              # anthropic | openai | ollama | local
   model: claude-sonnet-4-20250514  # Model identifier
-  api_key: ""                  # API key (prefer env var instead)
-  base_url: ""                 # Required for local/ollama providers
-  max_tokens: 4096             # Maximum response tokens
-  temperature: 0.2             # LLM temperature (0.0-1.0)
+  api_key: ""                      # Prefer ANTHROPIC_API_KEY env var
+  base_url: ""                     # Required for ollama/local endpoints
+  max_tokens: 4096                 # Token budget for LLM response
+  temperature: 0.2                 # LLM sampling temperature
 
-# Data redaction before LLM calls
+# Data redaction (applied before any LLM call)
 redaction:
-  enabled: true                # Enable/disable redaction
-  strategy: placeholder        # "placeholder" or "hash"
-  fields:                      # Fields to redact by key name
+  strategy: placeholder            # placeholder | hash
+  fields:
     - arn
     - account_id
     - tags
     - ip_address
 
 # Analysis settings
-min_severity: info             # Minimum severity: critical, high, medium, low, info
-no_llm: false                  # Disable LLM analysis globally
-dry_run: false                 # Print LLM payload without calling API
+min_severity: info                 # critical | high | medium | low | info
+no_llm: false                      # true = rules-only, no LLM call
+dry_run: false                     # true = show LLM prompt, don't call API
 
-# Additional rule files
-extra_rule_paths:
-  - /path/to/org_rules.yml
-  - /path/to/team_rules.yml
+# Rule loading
+extra_rule_paths: []               # Additional YAML rule files
 
-# Output format
-output_format: json            # json, sarif, markdown, bitbucket, matrix
+# Output
+output_format: json                # Default CLI output format
 ```
-
-All fields are optional. Omitted fields use the defaults shown above.
 
 ---
 
-## LLM Configuration
+## LLM Providers
 
 ### Anthropic (Claude)
 
@@ -50,101 +62,138 @@ All fields are optional. Omitted fields use the defaults shown above.
 llm:
   provider: anthropic
   model: claude-sonnet-4-20250514
-  max_tokens: 4096
-  temperature: 0.2
 ```
 
-The API key is read from the `ANTHROPIC_API_KEY` environment variable. You can also set it directly in the config file via `api_key`, but environment variables are preferred to avoid committing secrets.
+Set the API key via environment variable:
 
-### OpenAI-Compatible (Ollama, vLLM, llama.cpp)
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Or in the config file (not recommended — prefer env var):
+
+```yaml
+llm:
+  provider: anthropic
+  api_key: sk-ant-...
+```
+
+### OpenAI-compatible
+
+```yaml
+llm:
+  provider: openai
+  model: gpt-4o
+  base_url: https://api.openai.com/v1
+  api_key: sk-...
+```
+
+### Ollama (local, air-gapped)
 
 ```yaml
 llm:
   provider: ollama
-  model: llama3
   base_url: http://localhost:11434
-  api_key: not-needed
-  max_tokens: 4096
+  model: llama3.2
 ```
 
-Any OpenAI-compatible API endpoint works. Set `base_url` to point at your local server. The client calls `{base_url}/v1/chat/completions`.
+### Other OpenAI-compatible endpoints
 
-### Dry Run
+vLLM, llama.cpp, Together AI, Groq, etc.:
 
 ```yaml
-dry_run: true
+llm:
+  provider: local
+  base_url: http://localhost:8080
+  model: my-model
+  api_key: ""
 ```
-
-Or use the CLI flag:
-
-```bash
-threatcode scan tfplan.json --dry-run
-```
-
-Dry run prints the system prompt and analysis prompt to stderr without making any API calls. This is useful for previewing token usage and debugging prompt construction.
 
 ---
 
-## Redaction Configuration
+## Redaction
 
-Redaction runs automatically before any data is sent to an LLM. It protects sensitive infrastructure details.
+Before any data is sent to an external LLM, ThreatCode replaces sensitive values with placeholder tokens like `__REDACTED_ARN_1__`. The original values are stored in a reversible mapping and substituted back into the LLM's output, so all threat findings still reference real resource addresses.
 
-### Strategies
+**Redaction strategies:**
 
-| Strategy | Behavior | Example |
-|----------|----------|---------|
-| `placeholder` | Replaces values with sequential placeholders | `arn:aws:s3:::my-bucket` becomes `REDACTED_aws_arn_1` |
-| `hash` | Replaces values with truncated SHA-256 hashes | `arn:aws:s3:::my-bucket` becomes `REDACTED_aws_arn_a1b2c3d4` |
+| Strategy | Placeholder format | Notes |
+|----------|--------------------|-------|
+| `placeholder` (default) | `__REDACTED_ARN_1__` | Human-readable, reversible |
+| `hash` | `__HASH_a1b2c3d4__` | Consistent per value, reversible |
 
-### What Gets Redacted
+**Fields always redacted** (hardcoded):
+- AWS account IDs (12-digit sequences with `aws` context)
+- ARNs (`arn:aws:...`)
+- IPv4 and IPv6 addresses
+- Email addresses
+- Any field named: `secret`, `password`, `token`, `api_key`, `access_key`, `secret_key`, `connection_string`, `credentials`, `private_key`, `certificate`, `name`, `module`, `provider`, `source_location`
 
-By regex pattern (always applied to all string values):
+**Configurable additional fields** (via `redaction.fields`):
 
-| Pattern | Matches |
-|---------|---------|
-| AWS account IDs | 12-digit numbers |
-| AWS ARNs | `arn:aws*:...` |
-| IPv4 addresses | `x.x.x.x` |
-| IPv6 addresses | `xxxx:xxxx:...` |
-| Email addresses | `user@domain.tld` |
-
-By field name (configurable via `redaction.fields`):
-
-| Field Name | Default |
-|------------|---------|
-| `arn` | Redacted |
-| `account_id` | Redacted |
-| `tags` | Redacted |
-| `ip_address` | Redacted |
-| `private_ip` | Redacted (always) |
-| `public_ip` | Redacted (always) |
-| `owner_id` | Redacted (always) |
-
-After the LLM responds, redacted resource addresses in the output are automatically unredacted back to their original values.
-
-!!! note "Redaction and rules"
-    Redaction only applies to data sent to the LLM. Rule-based analysis always operates on the original, unredacted infrastructure data.
+```yaml
+redaction:
+  fields: [arn, account_id, tags, ip_address]
+```
 
 ---
 
 ## Environment Variables
 
-| Variable | Purpose | Used When |
-|----------|---------|-----------|
-| `ANTHROPIC_API_KEY` | Anthropic Claude API key | `llm.provider` is `anthropic` and `llm.api_key` is empty |
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key (recommended over config file) |
+| `CI` | If set to `true`, disables home directory config discovery |
 
 ---
 
-## Config File Search Order
+## CLI Flags
 
-ThreatCode searches for a config file in this order:
+All config settings can be overridden per-command:
 
-1. **Explicit path** -- `--config path/to/.threatcode.yml` (CLI) or `config_path=` (Python API)
-2. **Current directory** -- `.threatcode.yml` or `.threatcode.yaml` in the working directory
-3. **Home directory** -- `~/.threatcode.yml`
-4. **Defaults** -- If no config file is found, all settings use their default values
+```bash
+# Override config file
+threatcode scan tfplan.json --config /etc/threatcode.yml
 
-The first file found is used. Config files are not merged.
+# Disable LLM
+threatcode scan tfplan.json --no-llm
 
-!!! warning "Do not commit API keys"
-    Never put your `api_key` in a config file that is committed to version control. Use environment variables or a `.threatcode.yml` file listed in `.gitignore`.
+# Dry run (show LLM prompt, no API call)
+threatcode scan tfplan.json --dry-run
+
+# Minimum severity threshold
+threatcode scan tfplan.json --min-severity high
+
+# Extra custom rules
+threatcode scan tfplan.json --rules my_org_rules.yml --rules compliance.yml
+```
+
+---
+
+## Minimal Configurations
+
+### Rules-only (no LLM)
+
+```yaml
+no_llm: true
+min_severity: medium
+```
+
+### CI quality gate
+
+```yaml
+no_llm: true
+min_severity: high
+output_format: sarif
+```
+
+### Air-gapped with local LLM
+
+```yaml
+llm:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: llama3.2
+  max_tokens: 2048
+no_llm: false
+```

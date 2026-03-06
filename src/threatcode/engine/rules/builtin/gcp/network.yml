@@ -1,0 +1,54 @@
+rules:
+  - id: GCP_FW_ALLOW_ALL
+    title: GCP firewall allows all ingress
+    description: >
+      The firewall rule allows all incoming traffic.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: google_compute_firewall
+    condition:
+      all_of:
+        - direction:
+            equals: "INGRESS"
+        - source_ranges:
+            contains: "0.0.0.0/0"
+    mitigation: >
+      Restrict source ranges to specific IP ranges.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: GCP_FW_SSH_OPEN
+    title: GCP firewall allows SSH from any source
+    description: >
+      SSH is open from any IP address.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: google_compute_firewall
+    condition:
+      source_ranges:
+        contains: "0.0.0.0/0"
+    mitigation: >
+      Restrict SSH to specific source ranges.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]
+
+  - id: GCP_FW_RDP_OPEN
+    title: GCP firewall allows RDP from any source
+    description: >
+      RDP is open from any IP address.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: google_compute_firewall
+    condition:
+      source_ranges:
+        contains: "0.0.0.0/0"
+    mitigation: >
+      Restrict RDP to specific source ranges or use IAP.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]

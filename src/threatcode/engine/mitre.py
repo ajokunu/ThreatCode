@@ -85,16 +85,81 @@ TECHNIQUE_DB: dict[str, dict[str, str | list[str]]] = {
         "tactic_ids": ["TA0007"],
         "url": "https://attack.mitre.org/techniques/T1580/",
     },
-}
-
-# STRIDE category -> default ATT&CK tactic IDs
-STRIDE_TO_TACTICS: dict[str, list[str]] = {
-    "spoofing": ["TA0001", "TA0006"],
-    "tampering": ["TA0040"],
-    "repudiation": ["TA0005"],
-    "information_disclosure": ["TA0009", "TA0010"],
-    "denial_of_service": ["TA0040"],
-    "elevation_of_privilege": ["TA0004"],
+    "T1611": {
+        "name": "Escape to Host",
+        "tactic_ids": ["TA0004"],
+        "url": "https://attack.mitre.org/techniques/T1611/",
+    },
+    "T1610": {
+        "name": "Deploy Container",
+        "tactic_ids": ["TA0002", "TA0005"],
+        "url": "https://attack.mitre.org/techniques/T1610/",
+    },
+    "T1552.001": {
+        "name": "Unsecured Credentials: Credentials In Files",
+        "tactic_ids": ["TA0006"],
+        "url": "https://attack.mitre.org/techniques/T1552/001/",
+    },
+    "T1195.002": {
+        "name": "Supply Chain Compromise: Compromise Software Supply Chain",
+        "tactic_ids": ["TA0001"],
+        "url": "https://attack.mitre.org/techniques/T1195/002/",
+    },
+    "T1021": {
+        "name": "Remote Services",
+        "tactic_ids": ["TA0008"],
+        "url": "https://attack.mitre.org/techniques/T1021/",
+    },
+    "T1528": {
+        "name": "Steal Application Access Token",
+        "tactic_ids": ["TA0006"],
+        "url": "https://attack.mitre.org/techniques/T1528/",
+    },
+    "T1565.001": {
+        "name": "Data Manipulation: Stored Data Manipulation",
+        "tactic_ids": ["TA0040"],
+        "url": "https://attack.mitre.org/techniques/T1565/001/",
+    },
+    "T1613": {
+        "name": "Container and Resource Discovery",
+        "tactic_ids": ["TA0007"],
+        "url": "https://attack.mitre.org/techniques/T1613/",
+    },
+    "T1609": {
+        "name": "Container Administration Command",
+        "tactic_ids": ["TA0002"],
+        "url": "https://attack.mitre.org/techniques/T1609/",
+    },
+    "T1552": {
+        "name": "Unsecured Credentials",
+        "tactic_ids": ["TA0006"],
+        "url": "https://attack.mitre.org/techniques/T1552/",
+    },
+    "T1195": {
+        "name": "Supply Chain Compromise",
+        "tactic_ids": ["TA0001"],
+        "url": "https://attack.mitre.org/techniques/T1195/",
+    },
+    "T1565": {
+        "name": "Data Manipulation",
+        "tactic_ids": ["TA0040"],
+        "url": "https://attack.mitre.org/techniques/T1565/",
+    },
+    "T1548": {
+        "name": "Abuse Elevation Control Mechanism",
+        "tactic_ids": ["TA0004", "TA0005"],
+        "url": "https://attack.mitre.org/techniques/T1548/",
+    },
+    "T1053": {
+        "name": "Scheduled Task/Job",
+        "tactic_ids": ["TA0002", "TA0003", "TA0004"],
+        "url": "https://attack.mitre.org/techniques/T1053/",
+    },
+    "T1068": {
+        "name": "Exploitation for Privilege Escalation",
+        "tactic_ids": ["TA0004"],
+        "url": "https://attack.mitre.org/techniques/T1068/",
+    },
 }
 
 # Default MITRE techniques for trust boundary crossings

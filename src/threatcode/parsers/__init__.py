@@ -113,7 +113,8 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
 
     raise UnsupportedFormatError(
         f"Cannot detect format for {path.name}. "
-        "Supported: terraform plan JSON, .tf files, CloudFormation YAML/JSON"
+        "Supported: terraform plan JSON, .tf files, CloudFormation YAML/JSON, "
+        "Dockerfile, Kubernetes YAML, lockfiles (package-lock.json, requirements.txt, etc.)"
     )
 
 
@@ -185,4 +186,70 @@ register_parser(
     factory=_factory_terraform_hcl,
     extensions=frozenset({".tf"}),
     priority=30,
+)
+
+
+def _detect_dockerfile(path: Path, content: str, data: Any) -> bool:
+    name = path.name.lower()
+    return name == "dockerfile" or name.startswith("dockerfile.") or name.endswith(".dockerfile")
+
+
+def _factory_dockerfile() -> BaseParser:
+    from threatcode.parsers.dockerfile import DockerfileParser
+
+    return DockerfileParser()
+
+
+register_parser(
+    name="dockerfile",
+    detector=_detect_dockerfile,
+    factory=_factory_dockerfile,
+    extensions=frozenset(),  # No extension filter — uses filename detection
+    priority=25,
+)
+
+
+def _detect_kubernetes(path: Path, content: str, data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+    # Must have apiVersion and kind, and NOT be a CloudFormation template
+    if "apiVersion" in data and "kind" in data:
+        if "AWSTemplateFormatVersion" not in data and "Resources" not in data:
+            return True
+    return False
+
+
+def _factory_kubernetes() -> BaseParser:
+    from threatcode.parsers.kubernetes import KubernetesParser
+
+    return KubernetesParser()
+
+
+register_parser(
+    name="kubernetes",
+    detector=_detect_kubernetes,
+    factory=_factory_kubernetes,
+    extensions=frozenset({".yml", ".yaml"}),
+    priority=22,
+)
+
+
+def _detect_lockfile(path: Path, content: str, data: Any) -> bool:
+    from threatcode.constants import LOCKFILE_NAMES
+
+    return path.name in LOCKFILE_NAMES
+
+
+def _factory_lockfile() -> BaseParser:
+    from threatcode.parsers.lockfile import LockfileParser
+
+    return LockfileParser()
+
+
+register_parser(
+    name="lockfile",
+    detector=_detect_lockfile,
+    factory=_factory_lockfile,
+    extensions=frozenset(),
+    priority=5,
 )

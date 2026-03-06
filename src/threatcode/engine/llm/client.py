@@ -33,12 +33,12 @@ MAX_PROMPT_LENGTH = 256 * 1024  # 256K chars
 # Security: API timeout in seconds
 API_TIMEOUT_SECONDS = 120
 
-_ALLOWED_SCHEMES = frozenset({"http", "https"})
+_ALLOWED_SCHEMES = frozenset({"https"})
 # Security: max response body size to prevent memory abuse
 MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-def _validate_base_url(url: str) -> None:
+def _validate_base_url(url: str, *, allow_http: bool = False) -> None:
     """Validate that a base_url is safe (not SSRF-exploitable).
 
     Resolves hostname via DNS and checks ALL resolved IPs against the
@@ -46,7 +46,8 @@ def _validate_base_url(url: str) -> None:
     and IPv4-mapped IPv6 addresses.
     """
     parsed = urlparse(url)
-    if parsed.scheme not in _ALLOWED_SCHEMES:
+    allowed = _ALLOWED_SCHEMES | ({"http"} if allow_http else set())
+    if parsed.scheme not in allowed:
         raise LLMError(f"Unsafe URL scheme '{parsed.scheme}' — only http/https allowed")
 
     hostname = (parsed.hostname or "").lower()
@@ -192,8 +193,9 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         max_tokens: int = 4096,
         timeout: int = API_TIMEOUT_SECONDS,
         temperature: float = 0.2,
+        allow_insecure: bool = False,
     ) -> None:
-        _validate_base_url(base_url)
+        _validate_base_url(base_url, allow_http=allow_insecure)
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model

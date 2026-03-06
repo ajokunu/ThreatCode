@@ -23,7 +23,7 @@ _TACTIC_ID_RE = re.compile(r"^TA\d{4}$")
 
 # Security limits
 MAX_RULES_PER_FILE = 100
-MAX_TOTAL_RULES = 500
+MAX_TOTAL_RULES = 1000
 MAX_RULE_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
 
 
@@ -110,6 +110,12 @@ def load_rules_from_file(path: Path) -> list[Rule]:
 
         # Validate MITRE metadata format and existence in TECHNIQUE_DB
         mitre = rule.metadata.get("mitre", {})
+        if mitre and not isinstance(mitre, dict):
+            logger.warning(
+                "Rule %s: metadata.mitre must be a dict, got %s",
+                rule.id, type(mitre).__name__,
+            )
+            mitre = {}
         if mitre:
             for tid in mitre.get("techniques", []):
                 if not _TECHNIQUE_ID_RE.match(tid):
@@ -142,7 +148,7 @@ def load_builtin_rules() -> list[Rule]:
     builtin_dir = Path(__file__).parent / "builtin"
     rules: list[Rule] = []
     if builtin_dir.exists():
-        for path in sorted(builtin_dir.glob("*.yml")):
+        for path in sorted(builtin_dir.rglob("*.yml")):
             # Log SHA-256 checksums for integrity verification (uses stat, not full read)
             file_size = path.stat().st_size
             logger.debug("Loading built-in rules: %s (%d bytes)", path.name, file_size)

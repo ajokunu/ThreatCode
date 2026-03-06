@@ -34,6 +34,17 @@ Thumbs.db
 *.sarif
 results/
 
+# Secrets and keys
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# Caches
+.mypy_cache/
+.ruff_cache/
+
 # Local tool configs
 .claude/
 .leann/

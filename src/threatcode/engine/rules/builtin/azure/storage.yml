@@ -1,0 +1,68 @@
+rules:
+  - id: AZURE_STORAGE_NO_HTTPS
+    title: Azure storage account allows HTTP
+    description: >
+      The storage account allows non-HTTPS traffic.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_storage_account
+    condition:
+      enable_https_traffic_only:
+        equals: false
+    mitigation: >
+      Set enable_https_traffic_only to true.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: AZURE_STORAGE_PUBLIC_ACCESS
+    title: Azure storage with public blob access
+    description: >
+      The storage account allows public blob access.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_storage_account
+    condition:
+      allow_blob_public_access:
+        equals: true
+    mitigation: >
+      Disable public blob access.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: AZURE_STORAGE_NO_NETWORK_RULES
+    title: Azure storage without network rules
+    description: >
+      The storage account has no network access restrictions.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_storage_account
+    condition:
+      network_rules:
+        not_exists: true
+    mitigation: >
+      Configure network rules to restrict access.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: AZURE_STORAGE_NO_SOFT_DELETE
+    title: Azure storage without soft delete
+    description: >
+      Blob soft delete is not enabled.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: azurerm_storage_account
+    condition:
+      blob_properties:
+        not_exists: true
+    mitigation: >
+      Enable blob soft delete.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]

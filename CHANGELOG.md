@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.7.2] - 2026-03-06
+
+### Security
+- **SSRF in registry auth**: Token realm URLs now validated (HTTPS-only, no private/loopback IPs)
+- **Credential helper injection**: Helper names validated against `^[a-zA-Z0-9_-]+$` regex
+- **Symlink traversal in layer extraction**: Absolute symlinks rejected; relative symlinks validated to stay inside extraction directory
+- **ReDoS in secret scanner**: Max pattern length enforced (500 chars); `re.compile` errors caught; skip path patterns use `fnmatch.translate()` instead of naive `*` replacement
+- **RPM DB size limit**: SQLite RPM databases over 500 MB skipped to prevent resource exhaustion
+- **LLM client HTTPS-only**: Default scheme restriction changed to HTTPS-only; `allow_insecure` param for local Ollama
+- **ENV value redaction**: Sensitive environment variables (PASSWORD, SECRET, TOKEN, etc.) redacted in image scan metadata
+- **Test fixture secrets removed**: Hardcoded passwords replaced with placeholder references
+- **Gitignore hardened**: Added `.env`, `*.pem`, `*.key`, `*.p12`, `.mypy_cache/`, `.ruff_cache/`
+
+### Fixed
+- **Resource leak**: `RegistryClient` now used as context manager in CLI and public API
+- **Resource leak**: `tarfile.open()` in layer extraction now uses `with` statement
+- **Unbounded downloads**: OSV zip downloads enforce 500 MB size limit with chunked reads
+- **Unbounded responses**: OS advisory fetcher limits response reads to 100 MB
+- **npm recursion bomb**: `_parse_npm_deps` depth limited to 50 levels
+- **Silent exceptions**: Alpine community fetch, dependency parse failures, and `scan_all()` scanner errors now logged
+- **Severity filter performance**: `sev_order.index()` replaced with O(1) dict lookup
+- **VulnDB null safety**: `cursor.fetchone()` result checked before indexing
+- **CVSS parse safety**: `float()` conversion wrapped in try/except for malformed scores
+- **Registry digest safety**: `entry.get("digest", "")` with validation replaces bare `entry["digest"]`
+- **Containment hints immutability**: Built-in hints stored as tuple; custom hints in separate list
+- **Hardcoded User-Agent**: OS advisory downloader now uses `threatcode.__version__`
+- **RedactionConfig.strategy**: Now wired into `Redactor` constructor in `HybridEngine`
+
+### Changed
+- **Centralized constants**: `SEVERITY_MAP`, `cvss_to_severity()`, and `LOCKFILE_NAMES` consolidated into `threatcode.constants`
+- **Dead code removed**: `STRIDE_TO_TACTICS`, `STRIDE_ELEMENT_MAP`, `RedactionError`, `ParsedResource.provider_short`/`.service`, `SecretScanConfig.custom_rules_path`, dead URL constants, `RegistryClient.insecure` field
+- **Type safety**: `LLMConfig.provider`, `RedactionConfig.strategy`, `ThreatCodeConfig.min_severity`/`.output_format` use `Literal` types; `ScanReport.threat_report` properly typed; `_OPERATORS` dict typed with `Callable`; `ImageScanner.scan_extracted` and `OSDetector.detect` use typed protocols
+- **Identical branches collapsed**: `secret` CLI command's identical if/else removed
+- **Narrowed exceptions**: TOML fallback, auth decode, and other broad `except` clauses narrowed
+- **MITRE metadata validation**: Rule loader validates `metadata.mitre` is a dict before accessing keys
+- **Diff formatter**: Uses `.get()` with defaults; skips entries missing required keys
+- **Secret rule severity**: Uses `Literal["critical", "high", "medium", "low"]`
+- Version bumped to 0.7.2
+
+## [0.7.1] - 2026-03-05
+
+### Changed
+- Complete README overhaul: covers all v0.7.0 features including container image scanning, all 8 CLI commands, full Python API, 131 built-in rules, secret detection patterns, SBOM, license compliance, MITRE ATT&CK integration, LLM setup, and architecture diagram
+- Rewrote all docs pages (getting-started, api-reference, architecture, configuration, writing-rules, cicd, mitre-attack, security) to reflect v0.7.0 capabilities
+- Updated package description to reflect full multi-scanner scope
+
+## [0.7.0] - 2026-03-05
+
+### Added
+- **Container image scanning**: `threatcode image <ref>` pulls OCI images from any registry and scans for OS package vulnerabilities, application dependency vulnerabilities, secrets, and configuration misconfigurations
+- **Image reference parser**: Full Docker reference grammar — bare names, user/repo, custom registries, digest pins, multi-component paths (e.g. `gcr.io/project/repo/img:tag`)
+- **Registry client**: Docker Registry HTTP API V2 with bearer token auth, credential store (`~/.docker/config.json`), manifest list platform selection, SHA-256 digest verification; supports Docker Hub, GHCR, GCR, ECR, ACR, and any OCI-compliant registry
+- **Layer extractor**: Downloads and merges OCI image layers with correct whiteout semantics (`.wh.` regular and `.wh..wh..opq` opaque whiteouts); path traversal protection; 2 GB/layer and 10 GB/image size limits
+- **OS detection**: Reads `/etc/os-release`, `/etc/alpine-release`, `/etc/debian_version`, `/etc/redhat-release`, `/etc/lsb-release` — detects Alpine, Debian, Ubuntu, RHEL, CentOS, Rocky, AlmaLinux, Amazon Linux, Fedora, SUSE, Arch, Wolfi, Chainguard, and more
+- **OS package parsers**: APK (`/lib/apk/db/installed`), DPKG (`/var/lib/dpkg/status` + `/var/lib/dpkg/status.d/*` for distroless), RPM (SQLite `rpmdb.sqlite` + BerkeleyDB Hash `Packages` with full binary header parser)
+- **OS vulnerability database**: Extended `VulnDB` with `os_vulnerabilities` table; `OSAdvisoryDownloader` fetches Alpine SecDB and Debian Security Tracker data; `threatcode db update --os` downloads OS advisory data
+- **Application dependency detection in images**: Finds and parses lockfiles inside images (all 10 formats); also scans Python `site-packages` METADATA for pip-installed packages
+- **Image configuration checks**: `IMG_ROOT_USER`, `IMG_NO_HEALTHCHECK`, `IMG_SECRET_IN_ENV`, `IMG_PRIVILEGED_PORT`, `IMG_NO_MAINTAINER` — checks OCI image config for security best-practice violations
+- **`threatcode image` CLI command**: `--format` (json/sarif/table), `--severity`, `--ignore-unfixed`, `--platform`, `--scanners vuln,secret,misconfig`, `--insecure`; table output matches standard security scanner format
+- **`scan_image()` public API**: Pull and scan any image reference, returns structured dict with OS info, vulnerabilities, secrets, misconfigs
+
+### Changed
+- `VulnDB` schema extended with `os_vulnerabilities` table (backward-compatible; existing databases auto-migrate on next `init_db()`)
+- `threatcode db update` gains `--os` flag to also download OS advisory data
+- Version bumped to 0.7.0
+
+## [0.6.0] - 2026-03-04
+
+### Added
+
+#### Multi-Scanner Architecture
+- **Unified finding model**: New `FindingType` enum and `SecretFinding`, `VulnerabilityFinding`, `LicenseFinding` dataclasses in `models/finding.py` — extensible foundation for non-STRIDE findings alongside existing threat model
+- **`ScanReport`** wrapper: Aggregates `ThreatReport` + secret/vuln/license findings into a single report with unified `to_dict()` and `summary`
+- **`--scanners` CLI flag**: `threatcode scan <path> --scanners misconfig,secret,vuln,license` runs multiple scanners in one pass; default `misconfig` preserves backward compatibility
+- **Public API**: New `scan_secrets()`, `scan_vulnerabilities()`, and `scan_all()` functions in the top-level `threatcode` module
+
+#### Dockerfile Scanning
+- **Dockerfile parser**: Parses `FROM`, `RUN`, `COPY`, `ADD`, `EXPOSE`, `USER`, `ENV`, `ARG`, `HEALTHCHECK`, `WORKDIR`, `ENTRYPOINT` instructions with multi-stage build and line continuation support; creates synthetic `dockerfile_image` summary resource with security properties
+- **16 Docker security rules**: `DOCKER_NO_USER`, `DOCKER_LATEST_TAG`, `DOCKER_EXPOSED_SSH`, `DOCKER_ADD_INSTEAD_OF_COPY`, `DOCKER_SENSITIVE_FILE_COPY`, `DOCKER_NO_HEALTHCHECK`, `DOCKER_ENV_SECRET`, `DOCKER_APT_NO_RECOMMENDS`, `DOCKER_RUN_SUDO`, `DOCKER_RUN_CURL_PIPE`, `DOCKER_MULTIPLE_ENTRYPOINTS`, `DOCKER_MISSING_WORKDIR`, `DOCKER_ROOT_USER`, `DOCKER_EXPOSED_PRIVILEGED_PORT`, `DOCKER_NO_COPY_CHOWN`, `DOCKER_MISSING_LABEL`
+
+#### Kubernetes Scanning
+- **Kubernetes parser**: Multi-document YAML support with `apiVersion`+`kind` detection; flattens PodTemplateSpec security context from Deployments, StatefulSets, DaemonSets, Jobs, CronJobs; 19 resource types including RBAC roles and network policies
+- **22 Kubernetes security rules**: `K8S_PRIVILEGED_CONTAINER`, `K8S_NO_RESOURCE_LIMITS`, `K8S_RUN_AS_ROOT`, `K8S_WRITABLE_ROOT_FS`, `K8S_HOST_NETWORK`, `K8S_HOST_PID`, `K8S_AUTOMOUNT_SA_TOKEN`, `K8S_LATEST_TAG`, `K8S_CAPABILITIES_NOT_DROPPED`, `K8S_DANGEROUS_CAPABILITIES`, `K8S_NO_SECURITY_CONTEXT`, `K8S_ALLOW_PRIVILEGE_ESCALATION`, `K8S_NO_NETWORK_POLICY`, `K8S_HOSTPORT_USED`, `K8S_CLUSTER_ADMIN_BINDING`, `K8S_WILDCARD_RBAC`, `K8S_SECRET_ENV_VAR`, `K8S_NO_LIVENESS_PROBE`, `K8S_NO_READINESS_PROBE`, `K8S_HOST_PATH_VOLUME`, `K8S_PROC_MOUNT`, `K8S_NO_SECCOMP`
+
+#### Secret Scanning
+- **Secret scanner engine**: Regex + keyword pre-filter pipeline with binary file detection, allow-list filtering, and automatic redaction; supports recursive directory scanning
+- **24 built-in secret patterns**: AWS access keys, AWS secret keys, GitHub PATs, GitLab PATs, Slack tokens, private keys (RSA/EC/DSA/OPENSSH), JWT tokens, database connection strings (postgres/mysql/mongodb), Azure client secrets, GCP service account keys, Stripe keys, Twilio tokens, SendGrid keys, NPM tokens, generic API keys and passwords
+- **`threatcode secret` CLI command**: Recursive file scanning with `--format` and `--output` options
+
+#### Vulnerability Scanning
+- **Lockfile parser**: 10 lockfile formats — `package-lock.json` (v1/v2/v3), `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.sum`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`
+- **Vulnerability scanner**: SQLite-backed offline database with version comparison (semver, PEP 440, generic) and range-based matching
+- **`threatcode vuln` CLI command**: Scan lockfiles with `--ignore-unfixed` flag
+- **`threatcode db` CLI command group**: `db status` for database info, `db update` to download OSV bulk data for npm, PyPI, Go, crates.io, RubyGems, and Packagist
+
+#### SBOM & License Scanning
+- **CycloneDX 1.5 SBOM formatter**: Standards-compliant JSON with Package URL (PURL) identifiers, dependency relationships, optional vulnerability embedding
+- **License compliance scanner**: SPDX classification into permissive, weakly copyleft, copyleft, restrictive, and unknown; configurable alerting
+- **`threatcode sbom` CLI command**: Generate SBOM from lockfiles with `--format cyclonedx`
+- **`threatcode license` CLI command**: Scan dependencies for license compliance issues
+
+#### Expanded Rule Coverage (76 new rules)
+- **AWS** (41 rules across 11 files): CloudTrail (5), KMS (4), SNS (3), SQS (3), ECS (5), EKS (5), CloudFront (4), ElastiCache (3), Elasticsearch (3), ELB (3), DynamoDB (3)
+- **Azure** (20 rules across 5 files): Compute (5), Storage (4), Network (4), Database (4), AKS (3)
+- **GCP** (15 rules across 5 files): Compute (4), Storage (3), Network (3), GKE (3), IAM (2)
+
+#### MITRE ATT&CK Expansion
+- 15 new techniques for container and cloud coverage: T1611 (Escape to Host), T1610 (Deploy Container), T1552.001 (Credentials in Files), T1195.002 (Compromise Software Supply Chain), T1021 (Remote Services), T1528 (Steal Application Access Token), T1565.001 (Stored Data Manipulation), T1613 (Container and Resource Discovery), T1609 (Container Administration Command), T1548 (Abuse Elevation Control), T1053 (Scheduled Task/Job), T1068 (Exploitation for Privilege Escalation)
+
+### Changed
+- **Rule loader**: `glob("*.yml")` → `rglob("*.yml")` for subdirectory support; `MAX_TOTAL_RULES` increased from 500 to 1000
+- **Rule directory**: Built-in AWS rules reorganized into `builtin/aws/` subdirectory (rule IDs unchanged)
+- **IR node mappings**: 47 new entries in `CATEGORY_MAP` and 20 new entries in `TRUST_ZONE_MAP` for Docker, Kubernetes, Azure, GCP, and dependency resource types
+- **Rule matcher**: New `evaluate_rule()` convenience function for programmatic rule evaluation
+- **Dependencies**: Added `httpx>=0.27`, `packaging>=23.0`, `tomli>=2.0;python_version<"3.11"`
+
 ## [0.5.1] - 2026-03-03
 
 ### Added

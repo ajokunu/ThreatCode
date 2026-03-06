@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -36,7 +36,7 @@ _SAFE_AUTO_FIELDS = frozenset(
 
 
 class LLMConfig(BaseModel):
-    provider: str = "anthropic"
+    provider: Literal["anthropic", "openai", "ollama", "local"] = "anthropic"
     model: str = "claude-sonnet-4-20250514"
     api_key: str = ""
     base_url: str = ""
@@ -45,16 +45,18 @@ class LLMConfig(BaseModel):
 
 
 class RedactionConfig(BaseModel):
-    strategy: str = "placeholder"  # "placeholder" or "hash"
+    strategy: Literal["placeholder", "hash"] = "placeholder"
     fields: list[str] = Field(default_factory=lambda: ["arn", "account_id", "tags", "ip_address"])
 
 
 class ThreatCodeConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     redaction: RedactionConfig = Field(default_factory=RedactionConfig)
-    min_severity: str = "info"
+    min_severity: Literal["critical", "high", "medium", "low", "info"] = "info"
     extra_rule_paths: list[str] = Field(default_factory=list)
-    output_format: str = "json"
+    output_format: Literal[
+        "json", "sarif", "markdown", "bitbucket", "matrix", "diagram", "cyclonedx"
+    ] = "json"
     no_llm: bool = False
     dry_run: bool = False
 

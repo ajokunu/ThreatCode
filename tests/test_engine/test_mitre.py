@@ -5,7 +5,6 @@ from __future__ import annotations
 from threatcode.engine.mitre import (
     BOUNDARY_TACTICS,
     BOUNDARY_TECHNIQUES,
-    STRIDE_TO_TACTICS,
     TACTIC_DB,
     TECHNIQUE_DB,
     lookup_tactic,
@@ -96,24 +95,6 @@ class TestTacticsForTechniques:
     def test_result_sorted(self) -> None:
         tactics = tactics_for_techniques(["T1530", "T1190", "T1078.004"])
         assert tactics == sorted(tactics)
-
-
-class TestStrideToTactics:
-    def test_all_stride_categories_mapped(self) -> None:
-        expected = {
-            "spoofing",
-            "tampering",
-            "repudiation",
-            "information_disclosure",
-            "denial_of_service",
-            "elevation_of_privilege",
-        }
-        assert set(STRIDE_TO_TACTICS.keys()) == expected
-
-    def test_tactics_are_valid(self) -> None:
-        for stride, tactics in STRIDE_TO_TACTICS.items():
-            for ta in tactics:
-                assert ta in TACTIC_DB, f"STRIDE {stride} maps to unknown tactic {ta}"
 
 
 class TestBoundaryDefaults:

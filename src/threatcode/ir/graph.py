@@ -25,11 +25,12 @@ MAX_EDGES = 50_000
 
 # Containment hint registry: (property_name, target_resource_type)
 # When a resource has property_name set, look for nodes of target_resource_type.
-_CONTAINMENT_HINTS: list[tuple[str, str]] = [
+_BUILTIN_CONTAINMENT_HINTS: tuple[tuple[str, str], ...] = (
     ("vpc_id", "aws_vpc"),
     ("vnet_id", "azurerm_virtual_network"),
     ("network_id", "google_compute_network"),
-]
+)
+_custom_containment_hints: list[tuple[str, str]] = []
 
 
 def register_containment_hint(property_name: str, target_type: str) -> None:
@@ -38,7 +39,11 @@ def register_containment_hint(property_name: str, target_type: str) -> None:
     When a resource has `property_name` in its properties, an edge is inferred
     to nodes matching `target_type`.
     """
-    _CONTAINMENT_HINTS.append((property_name, target_type))
+    _custom_containment_hints.append((property_name, target_type))
+
+
+def _all_containment_hints() -> list[tuple[str, str]]:
+    return list(_BUILTIN_CONTAINMENT_HINTS) + _custom_containment_hints
 
 
 class InfraGraph:
@@ -158,7 +163,7 @@ class InfraGraph:
         props = resource.properties
 
         # Registry-driven containment hints
-        for prop_name, target_type in _CONTAINMENT_HINTS:
+        for prop_name, target_type in _all_containment_hints():
             value = props.get(prop_name)
             if value and isinstance(value, str):
                 for nid in self._type_index.get(target_type, []):
