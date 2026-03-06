@@ -572,7 +572,10 @@ def db_status() -> None:
 
 
 @db.command("update")
-def db_update() -> None:
+@click.option(
+    "--os", "include_os", is_flag=True, default=False, help="Also download OS advisory data."
+)
+def db_update(include_os: bool) -> None:
     """Download/refresh the vulnerability database from OSV."""
     import io
     import json as json_mod
@@ -677,8 +680,232 @@ def db_update() -> None:
             click.echo(f"  {osv_eco}: Failed - {e}", err=True)
 
     click.echo(f"\nTotal: {total} vulnerability entries loaded.")
+    if include_os:
+        from threatcode.engine.vulns.os_advisories import OSAdvisoryDownloader
+
+        click.echo("\nDownloading OS advisory data...")
+        downloader = OSAdvisoryDownloader(db_instance)
+        os_counts = downloader.update_all()
+        for os_name, count in os_counts.items():
+            click.echo(f"  {os_name}: {count} advisories")
+        click.echo(f"OS advisories total: {sum(os_counts.values())}")
+
     info = db_instance.status()
     click.echo(f"Database size: {info['size_mb']} MB")
+
+
+@cli.command()
+@click.argument("image_ref")
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    default="json",
+    type=click.Choice(["json", "sarif", "table"]),
+    help="Output format.",
+)
+@click.option("--output", "-o", "output_path", type=click.Path(), default=None)
+@click.option(
+    "--severity",
+    default="info",
+    type=click.Choice(["critical", "high", "medium", "low", "info"]),
+    help="Minimum severity to report.",
+)
+@click.option("--ignore-unfixed", is_flag=True, default=False, help="Skip unfixed vulnerabilities.")
+@click.option(
+    "--platform",
+    default="linux/amd64",
+    help="Target platform for multi-arch images (e.g. linux/arm64).",
+)
+@click.option(
+    "--scanners",
+    "-s",
+    "image_scanners",
+    default="vuln",
+    help="Comma-separated: vuln,secret,misconfig. Default: vuln.",
+)
+@click.option("--insecure", is_flag=True, default=False, help="Allow HTTP registries.")
+def image(
+    image_ref: str,
+    output_format: str,
+    output_path: str | None,
+    severity: str,
+    ignore_unfixed: bool,
+    platform: str,
+    image_scanners: str,
+    insecure: bool,
+) -> None:
+    """Scan a container image for vulnerabilities, secrets, and misconfigurations."""
+    import json as json_mod
+
+    from threatcode.engine.vulns.db import VulnDB
+    from threatcode.image.auth import CredentialStore
+    from threatcode.image.layer import LayerExtractor
+    from threatcode.image.reference import ImageReference
+    from threatcode.image.registry import RegistryClient
+    from threatcode.image.scanner import ImageScanner
+
+    scanner_set = {s.strip() for s in image_scanners.split(",") if s.strip()}
+
+    # Parse platform
+    platform_parts = platform.split("/")
+    platform_os = platform_parts[0] if platform_parts else "linux"
+    platform_arch = platform_parts[1] if len(platform_parts) > 1 else "amd64"
+
+    # Parse image reference
+    try:
+        ref = ImageReference.parse(image_ref)
+    except Exception as e:
+        click.echo(f"Invalid image reference: {e}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Pulling {ref.full_name} ...", err=True)
+
+    # Pull and extract image
+    try:
+        cred_store = CredentialStore()
+        client = RegistryClient(
+            cred_store,
+            insecure=insecure,
+            platform_os=platform_os,
+            platform_arch=platform_arch,
+        )
+        manifest, _ = client.pull_manifest(ref)
+        config = client.pull_config(ref, manifest)
+
+        layers_descriptors = manifest.get("layers", [])
+        click.echo(f"Pulling {len(layers_descriptors)} layer(s)...", err=True)
+
+        layer_blobs: list[bytes] = []
+        for desc in layers_descriptors:
+            digest = desc.get("digest", "")
+            if digest:
+                blob = client.pull_blob(ref, digest)
+                layer_blobs.append(blob)
+        client.close()
+    except Exception as e:
+        click.echo(f"Error pulling image: {type(e).__name__}: {e}", err=True)
+        sys.exit(1)
+
+    click.echo("Extracting layers...", err=True)
+    extractor = LayerExtractor()
+    try:
+        extracted = extractor.extract_from_blobs(layer_blobs, config)
+    except Exception as e:
+        click.echo(f"Error extracting image: {type(e).__name__}: {e}", err=True)
+        sys.exit(1)
+
+    try:
+        db = VulnDB()
+        scanner = ImageScanner(
+            db=db,
+            ignore_unfixed=ignore_unfixed,
+            scan_secrets="secret" in scanner_set,
+            scan_misconfig="misconfig" in scanner_set,
+        )
+        result = scanner.scan_extracted(image_ref, extracted)
+    finally:
+        extracted.cleanup()
+
+    # Apply severity filter
+    sev_order = ["critical", "high", "medium", "low", "info"]
+    min_idx = sev_order.index(severity)
+
+    def _passes(sev: str) -> bool:
+        try:
+            return sev_order.index(sev.lower()) <= min_idx
+        except ValueError:
+            return True
+
+    result.os_vulnerabilities = [v for v in result.os_vulnerabilities if _passes(v.severity.value)]
+    result.app_vulnerabilities = [
+        v for v in result.app_vulnerabilities if _passes(v.severity.value)
+    ]
+
+    if output_format == "table":
+        output = _format_image_table(result)
+    else:
+        output = json_mod.dumps(result.to_dict(), indent=2)
+
+    if output_path:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(output, encoding="utf-8")
+        click.echo(f"Output written to {out.name}")
+    else:
+        click.echo(output)
+
+    total = result.total_vulnerabilities
+    click.echo(
+        f"\nScanned {len(result.os_packages)} OS packages, "
+        f"{len(result.app_dependencies)} app dependencies. "
+        f"Found {total} vulnerabilities.",
+        err=True,
+    )
+    if total > 0 or result.secrets or result.misconfigs:
+        sys.exit(1)
+
+
+def _format_image_table(result: Any) -> str:
+    """Format image scan results as a text table."""
+    lines: list[str] = []
+    os_str = ""
+    if result.os_info:
+        os_str = f" ({result.os_info.name} {result.os_info.version})"
+    lines.append(f"\n{result.image_ref}{os_str}")
+    lines.append("")
+
+    all_vulns = result.os_vulnerabilities + result.app_vulnerabilities
+    if not all_vulns:
+        lines.append("No vulnerabilities found.")
+        return "\n".join(lines)
+
+    sev_counts: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+    for v in all_vulns:
+        key = v.severity.value.upper()
+        sev_counts[key] = sev_counts.get(key, 0) + 1
+
+    total = len(all_vulns)
+    lines.append(f"Total: {total} (" + ", ".join(f"{k}: {v}" for k, v in sev_counts.items()) + ")")
+    lines.append("")
+
+    col_widths = {
+        "Library": 20,
+        "Vulnerability": 18,
+        "Severity": 10,
+        "Version": 14,
+        "Fixed": 16,
+        "Title": 36,
+    }
+    header = (
+        f"{'Library':<{col_widths['Library']}}  "
+        f"{'Vulnerability':<{col_widths['Vulnerability']}}  "
+        f"{'Severity':<{col_widths['Severity']}}  "
+        f"{'Version':<{col_widths['Version']}}  "
+        f"{'Fixed':<{col_widths['Fixed']}}  "
+        f"{'Title':<{col_widths['Title']}}"
+    )
+    sep = "-" * len(header)
+    lines.extend([sep, header, sep])
+
+    sev_order = ["critical", "high", "medium", "low", "info"]
+    sorted_vulns = sorted(all_vulns, key=lambda v: sev_order.index(v.severity.value))
+    for v in sorted_vulns:
+        title = (v.title or "")[: col_widths["Title"]]
+        fixed = (v.fixed_version or "")[: col_widths["Fixed"]]
+        ver = (v.package_version or "")[: col_widths["Version"]]
+        cve = (v.cve_id or "")[: col_widths["Vulnerability"]]
+        name = (v.package_name or "")[: col_widths["Library"]]
+        lines.append(
+            f"{name:<{col_widths['Library']}}  "
+            f"{cve:<{col_widths['Vulnerability']}}  "
+            f"{v.severity.value.upper():<{col_widths['Severity']}}  "
+            f"{ver:<{col_widths['Version']}}  "
+            f"{fixed:<{col_widths['Fixed']}}  "
+            f"{title:<{col_widths['Title']}}"
+        )
+    lines.append(sep)
+    return "\n".join(lines)
 
 
 def _build_llm_client(config: ThreatCodeConfig, dry_run: bool) -> BaseLLMClient | None:

@@ -32,6 +32,21 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
 
 CREATE INDEX IF NOT EXISTS idx_vuln_ecosystem_package
     ON vulnerabilities(ecosystem, package);
+
+CREATE TABLE IF NOT EXISTS os_vulnerabilities (
+    id TEXT NOT NULL,
+    os_family TEXT NOT NULL,
+    os_version TEXT NOT NULL,
+    package TEXT NOT NULL,
+    version_fixed TEXT DEFAULT '',
+    severity TEXT DEFAULT 'medium',
+    cvss_score REAL DEFAULT 0.0,
+    summary TEXT DEFAULT '',
+    PRIMARY KEY (id, os_family, os_version, package)
+);
+
+CREATE INDEX IF NOT EXISTS idx_os_vuln_lookup
+    ON os_vulnerabilities(os_family, os_version, package);
 """
 
 
@@ -136,6 +151,53 @@ class VulnDB:
                 (ecosystem, package),
             )
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def query_os(self, os_family: str, os_version: str, package: str) -> list[dict[str, Any]]:
+        """Query OS-specific vulnerabilities for a package."""
+        if not self.exists():
+            return []
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute(
+                """SELECT * FROM os_vulnerabilities
+                   WHERE os_family = ? AND os_version = ? AND package = ?""",
+                (os_family, os_version, package),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def bulk_insert_os(self, records: list[dict[str, Any]]) -> int:
+        """Bulk insert OS advisory records. Returns count inserted."""
+        if not records:
+            return 0
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.executescript(_SCHEMA)
+            count = 0
+            for rec in records:
+                conn.execute(
+                    """INSERT OR REPLACE INTO os_vulnerabilities
+                       (id, os_family, os_version, package, version_fixed,
+                        severity, cvss_score, summary)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        rec.get("id", ""),
+                        rec.get("os_family", ""),
+                        rec.get("os_version", ""),
+                        rec.get("package", ""),
+                        rec.get("version_fixed", ""),
+                        rec.get("severity", "medium"),
+                        rec.get("cvss_score", 0.0),
+                        rec.get("summary", ""),
+                    ),
+                )
+                count += 1
+            conn.commit()
+            return count
         finally:
             conn.close()
 

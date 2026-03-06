@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from threatcode.models.finding import ScanReport as ScanReport
     from threatcode.models.report import ThreatReport
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 
 def _run_pipeline(
@@ -277,3 +277,75 @@ def scan_all(
             result["license"] = {"error": str(e)}
 
     return result
+
+
+def scan_image(
+    image_ref: str,
+    *,
+    platform: str = "linux/amd64",
+    ignore_unfixed: bool = False,
+    scan_secrets: bool = False,
+    scan_misconfig: bool = True,
+) -> dict[str, Any]:
+    """Public API: scan a container image for vulnerabilities.
+
+    Pulls the image from its registry, extracts all layers, detects the OS,
+    parses installed packages, and matches them against the vulnerability
+    database. Also scans application lockfiles found inside the image.
+
+    Args:
+        image_ref: Image reference (e.g. ``"nginx:latest"``, ``"ghcr.io/owner/repo:tag"``).
+        platform: Target platform for multi-arch images (e.g. ``"linux/arm64"``).
+        ignore_unfixed: If True, skip vulnerabilities without a fixed version.
+        scan_secrets: If True, scan the image filesystem for hardcoded secrets.
+        scan_misconfig: If True, check image config for security misconfigurations.
+
+    Returns:
+        Dict with image metadata, OS info, vulnerability findings, and
+        optional secret/misconfig findings.
+
+    Raises:
+        ThreatCodeError: On registry errors, extraction failures, or invalid references.
+    """
+    from threatcode.engine.vulns.db import VulnDB
+    from threatcode.image.auth import CredentialStore
+    from threatcode.image.layer import LayerExtractor
+    from threatcode.image.reference import ImageReference
+    from threatcode.image.registry import RegistryClient
+    from threatcode.image.scanner import ImageScanner
+
+    platform_parts = platform.split("/")
+    platform_os = platform_parts[0] if platform_parts else "linux"
+    platform_arch = platform_parts[1] if len(platform_parts) > 1 else "amd64"
+
+    ref = ImageReference.parse(image_ref)
+    client = RegistryClient(
+        CredentialStore(),
+        platform_os=platform_os,
+        platform_arch=platform_arch,
+    )
+    try:
+        manifest, _ = client.pull_manifest(ref)
+        config = client.pull_config(ref, manifest)
+        layer_blobs = [
+            client.pull_blob(ref, desc["digest"])
+            for desc in manifest.get("layers", [])
+            if desc.get("digest")
+        ]
+    finally:
+        client.close()
+
+    extractor = LayerExtractor()
+    extracted = extractor.extract_from_blobs(layer_blobs, config)
+    try:
+        scanner = ImageScanner(
+            db=VulnDB(),
+            ignore_unfixed=ignore_unfixed,
+            scan_secrets=scan_secrets,
+            scan_misconfig=scan_misconfig,
+        )
+        result = scanner.scan_extracted(image_ref, extracted)
+    finally:
+        extracted.cleanup()
+
+    return result.to_dict()

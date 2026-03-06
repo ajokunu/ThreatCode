@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.0] - 2026-03-05
+
+### Added
+- **Container image scanning**: `threatcode image <ref>` pulls OCI images from any registry and scans for OS package vulnerabilities, application dependency vulnerabilities, secrets, and configuration misconfigurations
+- **Image reference parser**: Full Docker reference grammar — bare names, user/repo, custom registries, digest pins, multi-component paths (e.g. `gcr.io/project/repo/img:tag`)
+- **Registry client**: Docker Registry HTTP API V2 with bearer token auth, credential store (`~/.docker/config.json`), manifest list platform selection, SHA-256 digest verification; supports Docker Hub, GHCR, GCR, ECR, ACR, and any OCI-compliant registry
+- **Layer extractor**: Downloads and merges OCI image layers with correct whiteout semantics (`.wh.` regular and `.wh..wh..opq` opaque whiteouts); path traversal protection; 2 GB/layer and 10 GB/image size limits
+- **OS detection**: Reads `/etc/os-release`, `/etc/alpine-release`, `/etc/debian_version`, `/etc/redhat-release`, `/etc/lsb-release` — detects Alpine, Debian, Ubuntu, RHEL, CentOS, Rocky, AlmaLinux, Amazon Linux, Fedora, SUSE, Arch, Wolfi, Chainguard, and more
+- **OS package parsers**: APK (`/lib/apk/db/installed`), DPKG (`/var/lib/dpkg/status` + `/var/lib/dpkg/status.d/*` for distroless), RPM (SQLite `rpmdb.sqlite` + BerkeleyDB Hash `Packages` with full binary header parser)
+- **OS vulnerability database**: Extended `VulnDB` with `os_vulnerabilities` table; `OSAdvisoryDownloader` fetches Alpine SecDB and Debian Security Tracker data; `threatcode db update --os` downloads OS advisory data
+- **Application dependency detection in images**: Finds and parses lockfiles inside images (all 10 formats); also scans Python `site-packages` METADATA for pip-installed packages
+- **Image configuration checks**: `IMG_ROOT_USER`, `IMG_NO_HEALTHCHECK`, `IMG_SECRET_IN_ENV`, `IMG_PRIVILEGED_PORT`, `IMG_NO_MAINTAINER` — checks OCI image config for security best-practice violations
+- **`threatcode image` CLI command**: `--format` (json/sarif/table), `--severity`, `--ignore-unfixed`, `--platform`, `--scanners vuln,secret,misconfig`, `--insecure`; table output matches standard security scanner format
+- **`scan_image()` public API**: Pull and scan any image reference, returns structured dict with OS info, vulnerabilities, secrets, misconfigs
+
+### Changed
+- `VulnDB` schema extended with `os_vulnerabilities` table (backward-compatible; existing databases auto-migrate on next `init_db()`)
+- `threatcode db update` gains `--os` flag to also download OS advisory data
+- Version bumped to 0.7.0
+
 ## [0.6.0] - 2026-03-04
 
 ### Added
