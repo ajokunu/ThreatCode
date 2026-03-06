@@ -234,24 +234,10 @@ register_parser(
 )
 
 
-_LOCKFILE_NAMES = frozenset(
-    {
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "requirements.txt",
-        "Pipfile.lock",
-        "poetry.lock",
-        "go.sum",
-        "Cargo.lock",
-        "Gemfile.lock",
-        "composer.lock",
-    }
-)
-
-
 def _detect_lockfile(path: Path, content: str, data: Any) -> bool:
-    return path.name in _LOCKFILE_NAMES
+    from threatcode.constants import LOCKFILE_NAMES
+
+    return path.name in LOCKFILE_NAMES
 
 
 def _factory_lockfile() -> BaseParser:

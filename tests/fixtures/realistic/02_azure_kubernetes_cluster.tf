@@ -156,7 +156,7 @@ resource "azurerm_mssql_server" "platform" {
   location                     = azurerm_resource_group.platform.location
   version                      = "12.0"
   administrator_login          = "sqladmin"
-  administrator_login_password = "P@ssw0rd2026!"  # TODO: Move to Key Vault
+  administrator_login_password = "<REPLACE_WITH_KEYVAULT_REF>"
   minimum_tls_version          = "1.2"
 }
 

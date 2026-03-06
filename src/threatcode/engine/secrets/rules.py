@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Literal
 
 
 @dataclass
@@ -13,7 +14,7 @@ class SecretRule:
     id: str
     category: str
     title: str
-    severity: str  # critical, high, medium, low
+    severity: Literal["critical", "high", "medium", "low"]
     regex: re.Pattern[str]
     keywords: list[str] = field(default_factory=list)
     path_filter: re.Pattern[str] | None = None

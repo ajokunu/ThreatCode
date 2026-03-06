@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import os
 import re
 import uuid
 from pathlib import Path
 
+from threatcode.constants import _severity_map
 from threatcode.engine.secrets.builtin import get_builtin_rules
 from threatcode.engine.secrets.config import SecretScanConfig
 from threatcode.engine.secrets.rules import SecretRule
@@ -16,16 +18,11 @@ from threatcode.models.threat import Severity
 
 logger = logging.getLogger(__name__)
 
-_SEVERITY_MAP = {
-    "critical": Severity.CRITICAL,
-    "high": Severity.HIGH,
-    "medium": Severity.MEDIUM,
-    "low": Severity.LOW,
-    "info": Severity.INFO,
-}
-
 # Binary file detection: if first 8KB contains null bytes, skip
 _BINARY_CHECK_SIZE = 8192
+
+# Max allow pattern length to prevent ReDoS
+_MAX_PATTERN_LENGTH = 500
 
 
 class SecretScanner:
@@ -41,16 +38,24 @@ class SecretScanner:
         if extra_rules:
             self.rules.extend(extra_rules)
 
-        # Compile global allow patterns
+        # Compile global allow patterns with length check
         self._global_allow: list[re.Pattern[str]] = []
         for pattern in self.config.allow_patterns:
+            if len(pattern) > _MAX_PATTERN_LENGTH:
+                logger.warning("Allow pattern too long (%d chars), skipping", len(pattern))
+                continue
             try:
                 self._global_allow.append(re.compile(pattern))
             except re.error:
                 logger.warning("Invalid allow pattern: %s", pattern)
 
-        # Pre-compile skip path patterns
-        self._skip_patterns = [p.replace("*", ".*") for p in self.config.skip_paths]
+        # Pre-compile skip path patterns using fnmatch for proper escaping
+        self._skip_patterns: list[str] = []
+        for p in self.config.skip_paths:
+            try:
+                self._skip_patterns.append(fnmatch.translate(p))
+            except re.error:
+                logger.warning("Invalid skip pattern: %s", p)
 
     def scan(self, path: str | Path) -> list[SecretFinding]:
         """Scan a file or directory for secrets."""
@@ -146,10 +151,11 @@ class SecretScanner:
                     # Redact the match for the finding
                     redacted = self._redact(matched_text)
 
+                    sev_map = _severity_map()
                     finding = SecretFinding(
                         id=f"SECRET-{uuid.uuid4().hex[:8]}",
                         title=rule.title,
-                        severity=_SEVERITY_MAP.get(rule.severity, Severity.MEDIUM),
+                        severity=sev_map.get(rule.severity, Severity.MEDIUM),
                         file_path=file_str,
                         line_number=line_num,
                         secret_type=rule.category,

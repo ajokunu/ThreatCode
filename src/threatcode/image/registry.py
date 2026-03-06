@@ -37,13 +37,11 @@ class RegistryClient:
         self,
         credential_store: CredentialStore | None = None,
         *,
-        insecure: bool = False,
         timeout: float = 120.0,
         platform_os: str = "linux",
         platform_arch: str = "amd64",
     ) -> None:
         self._creds = credential_store or CredentialStore()
-        self._insecure = insecure
         self._timeout = timeout
         self._platform_os = platform_os
         self._platform_arch = platform_arch
@@ -123,12 +121,17 @@ class RegistryClient:
                 platform.get("os") == self._platform_os
                 and platform.get("architecture") == self._platform_arch
             ):
-                return str(entry["digest"])
+                digest = entry.get("digest", "")
+                if digest:
+                    return str(digest)
 
         # Fallback: first linux entry if exact arch not found
         for entry in entries:
             platform = entry.get("platform", {})
             if platform.get("os") == self._platform_os:
+                digest = entry.get("digest", "")
+                if not digest:
+                    continue
                 logger.warning(
                     "Exact platform %s/%s not found; using %s/%s",
                     self._platform_os,
@@ -136,7 +139,7 @@ class RegistryClient:
                     platform.get("os"),
                     platform.get("architecture"),
                 )
-                return str(entry["digest"])
+                return str(digest)
 
         raise ThreatCodeError(
             f"No manifest found for platform {self._platform_os}/{self._platform_arch}"

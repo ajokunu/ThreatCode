@@ -7,6 +7,7 @@ Security: recursion depth is capped to prevent stack overflow from malicious rul
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from threatcode.engine.rules.loader import Rule
@@ -179,7 +180,7 @@ def _op_not(condition: dict[str, Any], node: InfraNode, depth: int) -> bool:
     return not evaluate_condition(condition, node, depth)
 
 
-_OPERATORS: dict[str, Any] = {
+_OPERATORS: dict[str, Callable[..., bool]] = {
     "all_of": _op_all_of,
     "any_of": _op_any_of,
     "none_of": _op_none_of,

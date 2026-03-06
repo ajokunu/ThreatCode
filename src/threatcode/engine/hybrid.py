@@ -140,7 +140,10 @@ class HybridEngine:
         from threatcode.engine.llm.prompts import build_analysis_prompt
         from threatcode.engine.llm.redactor import Redactor
 
-        redactor = Redactor()
+        strategy = "placeholder"
+        if self._config and self._config.redaction:
+            strategy = self._config.redaction.strategy
+        redactor = Redactor(strategy=strategy)
         graph_data = graph.to_dict()
         redacted_data = redactor.redact(graph_data)
         existing_ids = {t.rule_id for t in existing_threats if t.rule_id}

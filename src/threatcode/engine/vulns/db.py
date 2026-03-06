@@ -56,6 +56,10 @@ class VulnDB:
     def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or DEFAULT_DB_PATH
 
+    def _connect(self) -> sqlite3.Connection:
+        """Create a connection to the database."""
+        return sqlite3.connect(str(self.db_path))
+
     def exists(self) -> bool:
         """Check if the database file exists."""
         return self.db_path.exists()
@@ -66,10 +70,11 @@ class VulnDB:
             return {"exists": False, "path": str(self.db_path)}
 
         size = self.db_path.stat().st_size
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             cursor = conn.execute("SELECT COUNT(*) FROM vulnerabilities")
-            count = cursor.fetchone()[0]
+            row = cursor.fetchone()
+            count = row[0] if row else 0
         except sqlite3.OperationalError:
             count = 0
         finally:
@@ -91,7 +96,7 @@ class VulnDB:
     def init_db(self) -> None:
         """Initialize the database schema."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.executescript(_SCHEMA)
             conn.commit()
@@ -113,7 +118,7 @@ class VulnDB:
         references: list[str] | None = None,
     ) -> None:
         """Insert or replace a vulnerability record."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 """INSERT OR REPLACE INTO vulnerabilities
@@ -142,7 +147,7 @@ class VulnDB:
         if not self.exists():
             return []
 
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         try:
             cursor = conn.execute(
@@ -158,7 +163,7 @@ class VulnDB:
         """Query OS-specific vulnerabilities for a package."""
         if not self.exists():
             return []
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         try:
             cursor = conn.execute(
@@ -174,7 +179,7 @@ class VulnDB:
         """Bulk insert OS advisory records. Returns count inserted."""
         if not records:
             return 0
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.executescript(_SCHEMA)
             count = 0
@@ -206,7 +211,7 @@ class VulnDB:
         if not records:
             return 0
 
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.executescript(_SCHEMA)
             count = 0

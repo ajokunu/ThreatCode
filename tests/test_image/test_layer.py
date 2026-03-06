@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import tarfile
 
+import pytest
+
 from threatcode.image.layer import LayerExtractor
 
 
@@ -129,5 +131,68 @@ class TestLayerExtractor:
         result = extractor.extract_from_blobs([blob], config={})
         try:
             assert not result.file_exists("missing.txt")
+        finally:
+            result.cleanup()
+
+    def test_absolute_symlink_blocked(self) -> None:
+        """Absolute symlinks should be rejected."""
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            info = tarfile.TarInfo(name="etc/evil_link")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "/etc/passwd"
+            tar.addfile(info)
+        blob = buf.getvalue()
+        extractor = LayerExtractor()
+        result = extractor.extract_from_blobs([blob], config={})
+        try:
+            assert not result.file_exists("etc/evil_link")
+        finally:
+            result.cleanup()
+
+    def test_relative_symlink_escape_blocked(self) -> None:
+        """Relative symlinks that escape the extraction dir should be rejected."""
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            # Create a directory first
+            d = tarfile.TarInfo(name="app/")
+            d.type = tarfile.DIRTYPE
+            tar.addfile(d)
+            # Symlink that tries to go up and out
+            info = tarfile.TarInfo(name="app/escape_link")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "../../../etc/passwd"
+            tar.addfile(info)
+        blob = buf.getvalue()
+        extractor = LayerExtractor()
+        result = extractor.extract_from_blobs([blob], config={})
+        try:
+            assert not result.file_exists("app/escape_link")
+        finally:
+            result.cleanup()
+
+    @pytest.mark.skipif(
+        __import__("sys").platform == "win32",
+        reason="Symlink creation requires elevated privileges on Windows",
+    )
+    def test_valid_relative_symlink_allowed(self) -> None:
+        """Relative symlinks within the extraction dir should work."""
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            # Create target file
+            info = tarfile.TarInfo(name="app/target.txt")
+            info.size = 5
+            tar.addfile(info, io.BytesIO(b"hello"))
+            # Create symlink to sibling
+            link = tarfile.TarInfo(name="app/link.txt")
+            link.type = tarfile.SYMTYPE
+            link.linkname = "target.txt"
+            tar.addfile(link)
+        blob = buf.getvalue()
+        extractor = LayerExtractor()
+        result = extractor.extract_from_blobs([blob], config={})
+        try:
+            assert result.file_exists("app/target.txt")
+            assert result.file_exists("app/link.txt")
         finally:
             result.cleanup()

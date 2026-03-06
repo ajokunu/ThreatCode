@@ -24,45 +24,24 @@ _DEBIAN_RELEASES = {
     "trixie": "13",
 }
 
-# Ubuntu CVE tracker
-_UBUNTU_CVE_URL = "https://people.canonical.com/~ubuntu-security/cve/nvd/nvd-database.json"
-_UBUNTU_RELEASES = {
-    "focal": "20.04",
-    "jammy": "22.04",
-    "lunar": "23.04",
-    "mantic": "23.10",
-    "noble": "24.04",
-}
-
-# Amazon Linux ALAS
-_ALAS_URLS = {
-    "amzn": {
-        "2": "https://alas.aws.amazon.com/alas2.rss",
-        "2023": "https://alas.aws.amazon.com/alas2023.rss",
-    },
-}
-
-_CVSS_SEVERITY = {
-    range(90, 101): "critical",  # 9.0-10.0
-    range(70, 90): "high",  # 7.0-8.9
-    range(40, 70): "medium",  # 4.0-6.9
-    range(0, 40): "low",  # 0.0-3.9
-}
-
 
 def _cvss_to_severity(score: float) -> str:
-    scaled = int(score * 10)
-    for r, sev in _CVSS_SEVERITY.items():
-        if scaled in r:
-            return sev
-    return "medium"
+    from threatcode.constants import cvss_to_severity as _cvss_sev
+
+    return _cvss_sev(score).value
+
+
+_MAX_RESPONSE_SIZE = 100 * 1024 * 1024  # 100 MB
 
 
 def _fetch_json(url: str, timeout: int = 60) -> Any:
     """Download JSON from a URL."""
-    req = urllib.request.Request(url, headers={"User-Agent": "ThreatCode/0.7.0"})
+    from threatcode import __version__
+
+    req = urllib.request.Request(url, headers={"User-Agent": f"ThreatCode/{__version__}"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+        data = resp.read(_MAX_RESPONSE_SIZE)
+        return json.loads(data)
 
 
 class OSAdvisoryDownloader:
@@ -112,7 +91,7 @@ class OSAdvisoryDownloader:
                 count2 = self._db.bulk_insert_os(records2)
                 total += count2
             except Exception:
-                pass
+                logger.debug("Alpine community fetch failed for %s", branch, exc_info=True)
 
         return total
 
