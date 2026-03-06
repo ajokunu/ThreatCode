@@ -37,12 +37,14 @@ class ExtractedImage:
 
     def read_file(self, path: str) -> bytes | None:
         """Read a file from the merged filesystem (relative path, no leading /)."""
-        full = self.root / path.lstrip("/")
-        if not full.is_file():
-            return None
         try:
+            full = (self.root / path.lstrip("/")).resolve()
+            if not str(full).startswith(str(self.root.resolve())):
+                return None
+            if not full.is_file():
+                return None
             return full.read_bytes()
-        except OSError:
+        except (OSError, ValueError):
             return None
 
     def read_text(self, path: str, encoding: str = "utf-8") -> str | None:
@@ -53,7 +55,15 @@ class ExtractedImage:
         return data.decode(encoding, errors="replace")
 
     def file_exists(self, path: str) -> bool:
-        return (self.root / path.lstrip("/")).exists()
+        """Return True only if the path exists INSIDE the image root."""
+        try:
+            target = (self.root / path.lstrip("/")).resolve()
+            # Reject anything that resolves outside the root
+            if not str(target).startswith(str(self.root.resolve())):
+                return False
+            return target.exists()
+        except (OSError, ValueError):
+            return False
 
     def walk(self) -> Iterator[tuple[Path, list[str], list[str]]]:
         """Walk the merged filesystem like os.walk."""

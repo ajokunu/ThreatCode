@@ -87,9 +87,11 @@ class TestLayerExtractor:
         extractor = LayerExtractor()
         result = extractor.extract_from_blobs([blob], config={})
         try:
-            # The file must not appear anywhere above the root
-            assert not result.file_exists("../../etc/passwd")
+            # Traversal entry must not land as etc/passwd inside the image root
             assert not result.file_exists("etc/passwd")
+            # file_exists with a traversal path must not escape the root
+            # (on Linux /etc/passwd exists on the host — this must still return False)
+            assert not result.file_exists("../../etc/passwd")
         finally:
             result.cleanup()
 
