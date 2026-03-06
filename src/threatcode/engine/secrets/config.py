@@ -35,6 +35,3 @@ class SecretScanConfig:
 
     # Global allow-list patterns
     allow_patterns: list[str] = field(default_factory=list)
-
-    # Custom rule definitions (YAML path)
-    custom_rules_path: str = ""

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from threatcode.exceptions import ThreatCodeError as ThreatCodeError
+
+_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from threatcode.ir.graph import InfraGraph
@@ -13,7 +16,7 @@ if TYPE_CHECKING:
     from threatcode.models.finding import ScanReport as ScanReport
     from threatcode.models.report import ThreatReport
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 
 def _run_pipeline(
@@ -243,18 +246,21 @@ def scan_all(
                 extra_rule_paths=extra_rule_paths,
             )
         except Exception as e:
+            _logger.warning("Scanner misconfig failed: %s", e)
             result["misconfig"] = {"error": str(e)}
 
     if "secret" in scanners:
         try:
             result["secret"] = scan_secrets(input_path, config_path=config_path)
         except Exception as e:
+            _logger.warning("Scanner secret failed: %s", e)
             result["secret"] = {"error": str(e)}
 
     if "vuln" in scanners:
         try:
             result["vuln"] = scan_vulnerabilities(input_path, ignore_unfixed=ignore_unfixed)
         except Exception as e:
+            _logger.warning("Scanner vuln failed: %s", e)
             result["vuln"] = {"error": str(e)}
 
     if "license" in scanners:
@@ -274,6 +280,7 @@ def scan_all(
                 "findings": [f.to_dict() for f in findings],
             }
         except Exception as e:
+            _logger.warning("Scanner license failed: %s", e)
             result["license"] = {"error": str(e)}
 
     return result
@@ -319,12 +326,11 @@ def scan_image(
     platform_arch = platform_parts[1] if len(platform_parts) > 1 else "amd64"
 
     ref = ImageReference.parse(image_ref)
-    client = RegistryClient(
+    with RegistryClient(
         CredentialStore(),
         platform_os=platform_os,
         platform_arch=platform_arch,
-    )
-    try:
+    ) as client:
         manifest, _ = client.pull_manifest(ref)
         config = client.pull_config(ref, manifest)
         layer_blobs = [
@@ -332,8 +338,6 @@ def scan_image(
             for desc in manifest.get("layers", [])
             if desc.get("digest")
         ]
-    finally:
-        client.close()
 
     extractor = LayerExtractor()
     extracted = extractor.extract_from_blobs(layer_blobs, config)

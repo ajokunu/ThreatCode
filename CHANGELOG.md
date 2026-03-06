@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.7.2] - 2026-03-06
+
+### Security
+- **SSRF in registry auth**: Token realm URLs now validated (HTTPS-only, no private/loopback IPs)
+- **Credential helper injection**: Helper names validated against `^[a-zA-Z0-9_-]+$` regex
+- **Symlink traversal in layer extraction**: Absolute symlinks rejected; relative symlinks validated to stay inside extraction directory
+- **ReDoS in secret scanner**: Max pattern length enforced (500 chars); `re.compile` errors caught; skip path patterns use `fnmatch.translate()` instead of naive `*` replacement
+- **RPM DB size limit**: SQLite RPM databases over 500 MB skipped to prevent resource exhaustion
+- **LLM client HTTPS-only**: Default scheme restriction changed to HTTPS-only; `allow_insecure` param for local Ollama
+- **ENV value redaction**: Sensitive environment variables (PASSWORD, SECRET, TOKEN, etc.) redacted in image scan metadata
+- **Test fixture secrets removed**: Hardcoded passwords replaced with placeholder references
+- **Gitignore hardened**: Added `.env`, `*.pem`, `*.key`, `*.p12`, `.mypy_cache/`, `.ruff_cache/`
+
+### Fixed
+- **Resource leak**: `RegistryClient` now used as context manager in CLI and public API
+- **Resource leak**: `tarfile.open()` in layer extraction now uses `with` statement
+- **Unbounded downloads**: OSV zip downloads enforce 500 MB size limit with chunked reads
+- **Unbounded responses**: OS advisory fetcher limits response reads to 100 MB
+- **npm recursion bomb**: `_parse_npm_deps` depth limited to 50 levels
+- **Silent exceptions**: Alpine community fetch, dependency parse failures, and `scan_all()` scanner errors now logged
+- **Severity filter performance**: `sev_order.index()` replaced with O(1) dict lookup
+- **VulnDB null safety**: `cursor.fetchone()` result checked before indexing
+- **CVSS parse safety**: `float()` conversion wrapped in try/except for malformed scores
+- **Registry digest safety**: `entry.get("digest", "")` with validation replaces bare `entry["digest"]`
+- **Containment hints immutability**: Built-in hints stored as tuple; custom hints in separate list
+- **Hardcoded User-Agent**: OS advisory downloader now uses `threatcode.__version__`
+- **RedactionConfig.strategy**: Now wired into `Redactor` constructor in `HybridEngine`
+
+### Changed
+- **Centralized constants**: `SEVERITY_MAP`, `cvss_to_severity()`, and `LOCKFILE_NAMES` consolidated into `threatcode.constants`
+- **Dead code removed**: `STRIDE_TO_TACTICS`, `STRIDE_ELEMENT_MAP`, `RedactionError`, `ParsedResource.provider_short`/`.service`, `SecretScanConfig.custom_rules_path`, dead URL constants, `RegistryClient.insecure` field
+- **Type safety**: `LLMConfig.provider`, `RedactionConfig.strategy`, `ThreatCodeConfig.min_severity`/`.output_format` use `Literal` types; `ScanReport.threat_report` properly typed; `_OPERATORS` dict typed with `Callable`; `ImageScanner.scan_extracted` and `OSDetector.detect` use typed protocols
+- **Identical branches collapsed**: `secret` CLI command's identical if/else removed
+- **Narrowed exceptions**: TOML fallback, auth decode, and other broad `except` clauses narrowed
+- **MITRE metadata validation**: Rule loader validates `metadata.mitre` is a dict before accessing keys
+- **Diff formatter**: Uses `.get()` with defaults; skips entries missing required keys
+- **Secret rule severity**: Uses `Literal["critical", "high", "medium", "low"]`
+- Version bumped to 0.7.2
+
 ## [0.7.1] - 2026-03-05
 
 ### Changed

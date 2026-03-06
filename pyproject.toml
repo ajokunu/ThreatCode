@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.7.1"
+version = "0.7.2"
 description = "Automated security scanning and threat modeling from Infrastructure-as-Code and container images"
 readme = "README.md"
 license = "MIT"

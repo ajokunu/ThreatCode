@@ -3,18 +3,63 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import logging
 import re
+import socket
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
 _WWW_AUTH_RE = re.compile(r'(\w+)="([^"]*)"')
 _DOCKER_HUB_AUTH_KEY = "https://index.docker.io/v1/"
+_HELPER_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_realm_url(realm: str, registry: str) -> None:
+    """Validate that a token realm URL is safe (HTTPS, no SSRF)."""
+    parsed = urlparse(realm)
+    if parsed.scheme != "https":
+        raise ValueError(f"Token realm must use HTTPS, got {parsed.scheme!r}")
+
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise ValueError("Token realm URL must include a hostname")
+
+    # Warn if realm hostname differs from registry
+    if hostname != registry.lower() and not hostname.endswith(f".{registry.lower()}"):
+        logger.warning(
+            "Token realm hostname %r differs from registry %r", hostname, registry
+        )
+
+    # Resolve hostname and reject private/loopback/link-local IPs
+    default_port = 443
+    try:
+        addrinfo = socket.getaddrinfo(
+            hostname, parsed.port or default_port, proto=socket.IPPROTO_TCP
+        )
+    except socket.gaierror as e:
+        raise ValueError(f"Cannot resolve realm hostname {hostname!r}: {e}") from e
+
+    for _family, _type, _proto, _canonname, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+            raise ValueError(
+                f"Token realm resolves to non-public address ({ip_str})"
+            )
 
 
 @dataclass
@@ -64,6 +109,9 @@ class CredentialStore:
 
     def _from_cred_helper(self, helper_name: str, registry: str) -> RegistryCredential | None:
         """Invoke docker-credential-{helper_name} to get credentials."""
+        if not _HELPER_NAME_RE.match(helper_name):
+            logger.debug("Invalid credential helper name: %s", helper_name)
+            return None
         binary = f"docker-credential-{helper_name}"
         try:
             result = subprocess.run(
@@ -102,8 +150,8 @@ class CredentialStore:
                     username, _, password = decoded.partition(":")
                     if username:
                         return RegistryCredential(username=username, password=password)
-                except Exception:
-                    pass
+                except (ValueError, UnicodeDecodeError) as e:
+                    logger.debug("Could not decode auth for %s: %s", key, e)
 
         return None
 
@@ -113,7 +161,7 @@ class TokenProvider:
 
     def __init__(
         self,
-        http_client: Any,  # httpx.Client
+        http_client: httpx.Client,
         credential: RegistryCredential | None = None,
     ) -> None:
         self._client = http_client
@@ -154,6 +202,13 @@ class TokenProvider:
         realm = params.get("realm", "")
         if not realm:
             logger.debug("No realm in Www-Authenticate: %s", www_auth[:100])
+            return None
+
+        # Validate realm URL (SSRF protection)
+        try:
+            _validate_realm_url(realm, registry)
+        except ValueError as e:
+            logger.warning("Rejecting token realm %s: %s", realm, e)
             return None
 
         # Build token request

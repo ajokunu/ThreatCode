@@ -23,7 +23,3 @@ class ConfigError(ThreatCodeError):
 
 class LLMError(ThreatCodeError):
     """Raised when LLM communication fails."""
-
-
-class RedactionError(ThreatCodeError):
-    """Raised when redaction encounters an unrecoverable issue."""

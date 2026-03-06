@@ -11,6 +11,8 @@ from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
 
 logger = logging.getLogger(__name__)
 
+_MAX_NPM_DEPTH = 50
+
 
 class LockfileParser(BaseParser):
     """Parse various lockfile formats to extract dependencies."""
@@ -87,9 +89,14 @@ class LockfileParser(BaseParser):
 
         return resources
 
-    def _parse_npm_deps(self, deps: dict[str, Any], source_path: str) -> list[ParsedResource]:
+    def _parse_npm_deps(
+        self, deps: dict[str, Any], source_path: str, _depth: int = 0
+    ) -> list[ParsedResource]:
         resources: list[ParsedResource] = []
         if not isinstance(deps, dict):
+            return resources
+        if _depth >= _MAX_NPM_DEPTH:
+            logger.warning("npm dependency nesting depth limit (%d) reached", _MAX_NPM_DEPTH)
             return resources
         for name, info in deps.items():
             if not isinstance(info, dict):
@@ -107,7 +114,7 @@ class LockfileParser(BaseParser):
             # Recurse into nested deps
             nested = info.get("dependencies", {})
             if nested:
-                resources.extend(self._parse_npm_deps(nested, source_path))
+                resources.extend(self._parse_npm_deps(nested, source_path, _depth + 1))
         return resources
 
     def _parse_yarn(self, content: str, source_path: str) -> list[ParsedResource]:
@@ -229,7 +236,7 @@ class LockfileParser(BaseParser):
                 import tomli as tomllib  # type: ignore[no-redef,import-not-found,unused-ignore]
 
             data = tomllib.loads(content)
-        except Exception:
+        except (ValueError, KeyError, ImportError):
             # Fallback: simple regex parsing
             return self._parse_poetry_fallback(content, source_path)
 
@@ -307,7 +314,7 @@ class LockfileParser(BaseParser):
                 import tomli as tomllib  # type: ignore[no-redef,import-not-found,unused-ignore]
 
             data = tomllib.loads(content)
-        except Exception:
+        except (ValueError, KeyError, ImportError):
             return self._parse_cargo_fallback(content, source_path)
 
         for pkg in data.get("package", []):

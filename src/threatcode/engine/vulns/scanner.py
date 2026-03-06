@@ -7,33 +7,12 @@ import logging
 import uuid
 from typing import Any
 
+from threatcode.constants import _severity_map, cvss_to_severity
 from threatcode.engine.vulns.db import VulnDB
 from threatcode.engine.vulns.version import is_vulnerable
 from threatcode.models.finding import VulnerabilityFinding
-from threatcode.models.threat import Severity
 
 logger = logging.getLogger(__name__)
-
-_SEVERITY_MAP = {
-    "critical": Severity.CRITICAL,
-    "high": Severity.HIGH,
-    "medium": Severity.MEDIUM,
-    "low": Severity.LOW,
-    "info": Severity.INFO,
-}
-
-
-# CVSS score to severity mapping
-def _cvss_to_severity(score: float) -> Severity:
-    if score >= 9.0:
-        return Severity.CRITICAL
-    if score >= 7.0:
-        return Severity.HIGH
-    if score >= 4.0:
-        return Severity.MEDIUM
-    if score > 0:
-        return Severity.LOW
-    return Severity.INFO
 
 
 class VulnerabilityScanner:
@@ -65,6 +44,9 @@ class VulnerabilityScanner:
         findings: list[VulnerabilityFinding] = []
 
         for dep in dependencies:
+            if not isinstance(dep, dict):
+                logger.debug("Skipping non-dict dependency entry: %s", type(dep).__name__)
+                continue
             name = dep.get("name", "")
             version = dep.get("version", "")
             ecosystem = dep.get("ecosystem", "")
@@ -83,9 +65,9 @@ class VulnerabilityScanner:
                 if is_vulnerable(version, introduced, fixed, ecosystem):
                     cvss = vuln.get("cvss_score", 0.0)
                     severity_str = vuln.get("severity", "medium")
-                    severity = _SEVERITY_MAP.get(severity_str)
+                    severity = _severity_map().get(severity_str)
                     if severity is None:
-                        severity = _cvss_to_severity(cvss)
+                        severity = cvss_to_severity(cvss)
 
                     vuln_id = vuln.get("id", "")
                     aliases_raw = vuln.get("aliases", "[]")

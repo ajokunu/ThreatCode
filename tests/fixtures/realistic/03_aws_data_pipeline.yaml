@@ -163,7 +163,7 @@ Resources:
         Variables:
           OUTPUT_BUCKET: {"Ref": "ProcessedDataBucket"}
           REDSHIFT_CLUSTER: {"Ref": "RedshiftCluster"}
-          DB_PASSWORD: "RedshiftProd2026!"
+          DB_PASSWORD: "<REPLACE_WITH_SECRETS_MANAGER_REF>"
       VpcConfig:
         SubnetIds:
           - {"Ref": "PrivateSubnetA"}

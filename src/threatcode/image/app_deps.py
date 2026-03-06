@@ -10,23 +10,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from threatcode.image.layer import ExtractedImage
 
-logger = logging.getLogger(__name__)
+from threatcode.constants import LOCKFILE_NAMES
 
-# Lockfile filenames to look for (matched by basename)
-_LOCKFILE_NAMES = frozenset(
-    {
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "requirements.txt",
-        "Pipfile.lock",
-        "poetry.lock",
-        "go.sum",
-        "Cargo.lock",
-        "Gemfile.lock",
-        "composer.lock",
-    }
-)
+logger = logging.getLogger(__name__)
 
 # Directories to skip (no useful dependencies)
 _SKIP_DIRS = frozenset(
@@ -62,7 +48,7 @@ def find_app_dependencies(image: ExtractedImage) -> list[dict[str, Any]]:
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
 
         for fname in filenames:
-            if fname not in _LOCKFILE_NAMES:
+            if fname not in LOCKFILE_NAMES:
                 continue
 
             abs_path = os.path.join(dirpath, fname)

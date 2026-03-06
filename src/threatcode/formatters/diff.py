@@ -70,9 +70,11 @@ def _format_diff_markdown(diff: dict[str, Any]) -> str:
         lines.append(f"## New Threats (+{len(added)})")
         lines.append("")
         for t in added:
-            title = _escape_md(t["title"])
-            addr = _escape_md(t["resource_address"])
-            lines.append(f"- **{title}** ({t['severity']}) — `{addr}`")
+            if not isinstance(t, dict) or "id" not in t:
+                continue
+            title = _escape_md(t.get("title", ""))
+            addr = _escape_md(t.get("resource_address", ""))
+            lines.append(f"- **{title}** ({t.get('severity', 'unknown')}) — `{addr}`")
         lines.append("")
 
     removed = diff.get("removed", [])
@@ -80,9 +82,11 @@ def _format_diff_markdown(diff: dict[str, Any]) -> str:
         lines.append(f"## Resolved Threats (-{len(removed)})")
         lines.append("")
         for t in removed:
-            title = _escape_md(t["title"])
-            addr = _escape_md(t["resource_address"])
-            lines.append(f"- ~~{title}~~ ({t['severity']}) — `{addr}`")
+            if not isinstance(t, dict) or "id" not in t:
+                continue
+            title = _escape_md(t.get("title", ""))
+            addr = _escape_md(t.get("resource_address", ""))
+            lines.append(f"- ~~{title}~~ ({t.get('severity', 'unknown')}) — `{addr}`")
         lines.append("")
 
     if not added and not removed:

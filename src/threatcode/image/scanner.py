@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from threatcode.constants import _severity_map, cvss_to_severity
 from threatcode.engine.vulns.db import VulnDB
+from threatcode.image.layer import ExtractedImage
 from threatcode.image.misconfig import check_image_config
 from threatcode.image.os_detect import OSDetector, OSInfo
 from threatcode.image.packages import OSPackage, parse_os_packages
@@ -16,25 +19,9 @@ from threatcode.models.threat import Severity
 
 logger = logging.getLogger(__name__)
 
-_SEVERITY_MAP = {
-    "critical": Severity.CRITICAL,
-    "high": Severity.HIGH,
-    "medium": Severity.MEDIUM,
-    "low": Severity.LOW,
-    "info": Severity.INFO,
-}
-
-
-def _cvss_to_severity(score: float) -> Severity:
-    if score >= 9.0:
-        return Severity.CRITICAL
-    if score >= 7.0:
-        return Severity.HIGH
-    if score >= 4.0:
-        return Severity.MEDIUM
-    if score > 0:
-        return Severity.LOW
-    return Severity.INFO
+_SENSITIVE_ENV_PATTERNS = re.compile(
+    r"(PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY|CREDENTIAL|AUTH)", re.IGNORECASE
+)
 
 
 @dataclass
@@ -103,7 +90,7 @@ class ImageScanner:
     def scan_extracted(
         self,
         image_ref: str,
-        image: Any,  # ExtractedImage
+        image: ExtractedImage,
     ) -> ImageScanResult:
         """Scan an already-extracted image (ExtractedImage object).
 
@@ -220,10 +207,13 @@ class ImageScanner:
                         continue
 
                     severity_str = row.get("severity", "medium")
-                    severity = _SEVERITY_MAP.get(severity_str, Severity.MEDIUM)
-                    cvss = float(row.get("cvss_score", 0.0))
+                    severity = _severity_map().get(severity_str, Severity.MEDIUM)
+                    try:
+                        cvss = float(row.get("cvss_score", 0.0))
+                    except (ValueError, TypeError):
+                        cvss = 0.0
                     if severity == Severity.MEDIUM and cvss > 0:
-                        severity = _cvss_to_severity(cvss)
+                        severity = cvss_to_severity(cvss)
 
                     findings.append(
                         VulnerabilityFinding(
@@ -245,6 +235,18 @@ class ImageScanner:
     @staticmethod
     def _extract_metadata(config: dict[str, Any]) -> dict[str, Any]:
         img_config = config.get("config", {}) or {}
+        # Redact sensitive ENV values
+        raw_env = img_config.get("Env", [])
+        redacted_env: list[str] = []
+        for entry in raw_env:
+            if isinstance(entry, str) and "=" in entry:
+                key, _, value = entry.partition("=")
+                if _SENSITIVE_ENV_PATTERNS.search(key):
+                    redacted_env.append(f"{key}=[REDACTED]")
+                else:
+                    redacted_env.append(entry)
+            else:
+                redacted_env.append(str(entry) if entry else "")
         return {
             "architecture": config.get("architecture", ""),
             "os": config.get("os", ""),
@@ -252,7 +254,7 @@ class ImageScanner:
             "user": img_config.get("User", ""),
             "cmd": img_config.get("Cmd", []),
             "entrypoint": img_config.get("Entrypoint", []),
-            "env": img_config.get("Env", []),
+            "env": redacted_env,
             "labels": img_config.get("Labels", {}),
             "exposed_ports": list((img_config.get("ExposedPorts") or {}).keys()),
             "working_dir": img_config.get("WorkingDir", ""),

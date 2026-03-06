@@ -6,12 +6,17 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from threatcode.image.layer import ExtractedImage
+from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ImageLike(Protocol):
+    """Protocol for objects that can read text files from an image filesystem."""
+
+    def read_text(self, path: str) -> str | None: ...
+
 
 _RPM_FAMILIES = frozenset(
     {
@@ -81,7 +86,7 @@ def _family_to_pkg_manager(family: str, id_like: list[str]) -> str:
 class OSDetector:
     """Detect the OS family and version from an extracted image filesystem."""
 
-    def detect(self, image: ExtractedImage) -> OSInfo | None:
+    def detect(self, image: ImageLike) -> OSInfo | None:
         """Return OSInfo or None if OS cannot be determined."""
         # 1. /etc/os-release (authoritative on modern systems)
         for path in ("etc/os-release", "usr/lib/os-release"):
@@ -135,9 +140,12 @@ class OSDetector:
     def detect_from_root(self, root: Path) -> OSInfo | None:
         """Detect OS from a filesystem root path (for testing)."""
 
-        class _FakeImage:
+        class _RootImage:
+            def __init__(self, root_path: Path) -> None:
+                self._root = root_path
+
             def read_text(self, path: str) -> str | None:
-                full = root / path
+                full = self._root / path
                 if full.is_file():
                     try:
                         return full.read_text(encoding="utf-8", errors="replace")
@@ -145,7 +153,7 @@ class OSDetector:
                         return None
                 return None
 
-        return self.detect(_FakeImage())  # type: ignore[arg-type]
+        return self.detect(_RootImage(root))
 
     @staticmethod
     def _from_os_release(text: str) -> OSInfo | None:

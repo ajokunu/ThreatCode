@@ -11,6 +11,8 @@ from threatcode.image.packages import OSPackage
 
 logger = logging.getLogger(__name__)
 
+_MAX_RPM_DB_SIZE = 500 * 1024 * 1024  # 500 MB
+
 # RPM header magic bytes
 _HEADER_MAGIC = b"\x8e\xad\xe8\x01"
 
@@ -126,6 +128,13 @@ def _parse_sqlite_rpm_db(db_path: Path) -> list[OSPackage]:
     """Parse an RPM SQLite database (RHEL 9+, Fedora 33+)."""
     packages: list[OSPackage] = []
     try:
+        db_size = db_path.stat().st_size
+        if db_size > _MAX_RPM_DB_SIZE:
+            logger.warning(
+                "RPM SQLite DB at %s is %d bytes, exceeding %d limit — skipping",
+                db_path, db_size, _MAX_RPM_DB_SIZE,
+            )
+            return packages
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
             for (blob,) in conn.execute("SELECT blob FROM Packages"):

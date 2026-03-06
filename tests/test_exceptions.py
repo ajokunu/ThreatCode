@@ -6,7 +6,6 @@ from threatcode.exceptions import (
     ConfigError,
     LLMError,
     ParseError,
-    RedactionError,
     RuleLoadError,
     ThreatCodeError,
     UnsupportedFormatError,
@@ -24,6 +23,6 @@ class TestExceptionHierarchy:
         assert issubclass(UnsupportedFormatError, ParseError)
 
     def test_all_exceptions_carry_message(self) -> None:
-        for cls in (ParseError, RuleLoadError, ConfigError, LLMError, RedactionError):
+        for cls in (ParseError, RuleLoadError, ConfigError, LLMError):
             err = cls("test message")
             assert str(err) == "test message"

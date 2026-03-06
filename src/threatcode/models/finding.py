@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from threatcode.models.threat import Severity
+
+if TYPE_CHECKING:
+    from threatcode.models.report import ThreatReport
 
 
 class FindingType(str, Enum):
@@ -108,7 +111,7 @@ class LicenseFinding:
 class ScanReport:
     """Unified scan report wrapping threat report + extended findings."""
 
-    threat_report: Any = None  # ThreatReport — avoid circular import
+    threat_report: ThreatReport | None = None
     secrets: list[SecretFinding] = field(default_factory=list)
     vulnerabilities: list[VulnerabilityFinding] = field(default_factory=list)
     licenses: list[LicenseFinding] = field(default_factory=list)

@@ -110,6 +110,12 @@ def load_rules_from_file(path: Path) -> list[Rule]:
 
         # Validate MITRE metadata format and existence in TECHNIQUE_DB
         mitre = rule.metadata.get("mitre", {})
+        if mitre and not isinstance(mitre, dict):
+            logger.warning(
+                "Rule %s: metadata.mitre must be a dict, got %s",
+                rule.id, type(mitre).__name__,
+            )
+            mitre = {}
         if mitre:
             for tid in mitre.get("techniques", []):
                 if not _TECHNIQUE_ID_RE.match(tid):

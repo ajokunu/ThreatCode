@@ -162,16 +162,6 @@ TECHNIQUE_DB: dict[str, dict[str, str | list[str]]] = {
     },
 }
 
-# STRIDE category -> default ATT&CK tactic IDs
-STRIDE_TO_TACTICS: dict[str, list[str]] = {
-    "spoofing": ["TA0001", "TA0006"],
-    "tampering": ["TA0040"],
-    "repudiation": ["TA0005"],
-    "information_disclosure": ["TA0009", "TA0010"],
-    "denial_of_service": ["TA0040"],
-    "elevation_of_privilege": ["TA0004"],
-}
-
 # Default MITRE techniques for trust boundary crossings
 BOUNDARY_TECHNIQUES: list[str] = ["T1040", "T1557"]
 BOUNDARY_TACTICS: list[str] = ["TA0006", "TA0009"]

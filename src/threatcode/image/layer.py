@@ -142,6 +142,11 @@ class LayerExtractor:
             logger.warning("Could not open layer tar: %s", e)
             return 0, 0
 
+        with tf:
+            return self._process_tar(tf, dest)
+
+    def _process_tar(self, tf: tarfile.TarFile, dest: Path) -> tuple[int, int]:
+        """Process a tarfile, extracting entries into dest. Returns (bytes, files)."""
         members = tf.getmembers()
         total_bytes = 0
         total_files = 0
@@ -206,7 +211,23 @@ class LayerExtractor:
                         total_bytes += len(data)
                         total_files += 1
                 elif m.issym():
-                    # Symlink — create, but verify target is safe
+                    # Symlink — validate target stays inside extraction dir
+                    if os.path.isabs(m.linkname):
+                        logger.debug(
+                            "Skipping absolute symlink: %s -> %s", name, m.linkname
+                        )
+                        continue
+                    link_target = (target.parent / m.linkname).resolve()
+                    dest_resolved = str(dest.resolve())
+                    if (
+                        not str(link_target).startswith(dest_resolved + os.sep)
+                        and link_target != dest.resolve()
+                    ):
+                        logger.debug(
+                            "Skipping symlink escaping extraction dir: %s -> %s",
+                            name, m.linkname,
+                        )
+                        continue
                     if target.exists() or target.is_symlink():
                         target.unlink(missing_ok=True)
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -215,7 +236,6 @@ class LayerExtractor:
             except OSError as e:
                 logger.debug("Could not extract %s: %s", name, e)
 
-        tf.close()
         return total_bytes, total_files
 
     @staticmethod

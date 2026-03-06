@@ -14,7 +14,7 @@ def scanner() -> SecretScanner:
 
 class TestSecretScanner:
     def test_scan_file_with_secrets(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan("tests/fixtures/secrets/has_secrets.py")
+        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "has_secrets.py"))
         assert len(findings) > 0
         rule_ids = {f.rule_id for f in findings}
         # Should detect AWS key, GitHub token, private key, etc.
@@ -23,26 +23,26 @@ class TestSecretScanner:
         assert "SECRET_PRIVATE_KEY" in rule_ids
 
     def test_scan_clean_file(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan("tests/fixtures/secrets/clean_file.py")
+        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "clean_file.py"))
         # Clean file should have zero or very few findings
         # (allow-list should catch placeholder/example values)
         assert len(findings) == 0
 
     def test_scan_directory(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan("tests/fixtures/secrets")
+        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets"))
         # Should find secrets in has_secrets.py
         assert len(findings) > 0
         files = {f.file_path for f in findings}
         assert any("has_secrets" in f for f in files)
 
     def test_finding_has_redacted_match(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan("tests/fixtures/secrets/has_secrets.py")
+        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "has_secrets.py"))
         for f in findings:
             # Redacted match should contain asterisks
             assert "****" in f.match
 
     def test_finding_has_line_number(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan("tests/fixtures/secrets/has_secrets.py")
+        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "has_secrets.py"))
         for f in findings:
             assert f.line_number > 0
 
@@ -63,7 +63,37 @@ class TestSecretScannerConfig:
     def test_custom_skip_paths(self) -> None:
         from threatcode.engine.secrets.config import SecretScanConfig
 
-        config = SecretScanConfig(skip_paths=["has_secrets"])
+        config = SecretScanConfig(skip_paths=["*has_secrets*"])
         scanner = SecretScanner(config=config)
-        findings = scanner.scan("tests/fixtures/secrets")
+        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets"))
         assert len(findings) == 0
+
+
+class TestSecretScannerEdgeCases:
+    def test_long_allow_pattern_skipped(self) -> None:
+        """ReDoS: patterns exceeding max length are rejected."""
+        from threatcode.engine.secrets.config import SecretScanConfig
+
+        long_pattern = "a" * 600
+        config = SecretScanConfig(allow_patterns=[long_pattern])
+        scanner = SecretScanner(config=config)
+        # Should not raise and should have empty allow list
+        assert len(scanner._global_allow) == 0
+
+    def test_invalid_allow_pattern_skipped(self) -> None:
+        """Invalid regex patterns are gracefully skipped."""
+        from threatcode.engine.secrets.config import SecretScanConfig
+
+        config = SecretScanConfig(allow_patterns=["[invalid"])
+        scanner = SecretScanner(config=config)
+        assert len(scanner._global_allow) == 0
+
+    def test_glob_skip_patterns_use_fnmatch(self) -> None:
+        """Skip patterns should use fnmatch.translate, not naive replace."""
+        from threatcode.engine.secrets.config import SecretScanConfig
+
+        config = SecretScanConfig(skip_paths=["*.min.js", "vendor/*"])
+        scanner = SecretScanner(config=config)
+        assert scanner._should_skip("bundle.min.js")
+        assert scanner._should_skip("vendor/lib.py")
+        assert not scanner._should_skip("app/main.py")

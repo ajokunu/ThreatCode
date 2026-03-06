@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -9,10 +10,14 @@ from typing import TYPE_CHECKING, Any
 import click
 
 from threatcode import __version__
+from threatcode.exceptions import ThreatCodeError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from threatcode.config import ThreatCodeConfig
     from threatcode.engine.llm.client import BaseLLMClient
+    from threatcode.image.scanner import ImageScanResult
     from threatcode.ir.graph import InfraGraph
     from threatcode.models.report import ThreatReport
 
@@ -123,7 +128,7 @@ def scan(
         config = load_config(cfg_path)
         config.no_llm = no_llm or config.no_llm
         config.dry_run = dry_run or config.dry_run
-        config.output_format = output_format
+        config.output_format = output_format  # type: ignore[assignment]
 
         try:
             parsed = detect_and_parse(input_file)
@@ -215,7 +220,8 @@ def scan(
                 for r in parsed_vuln.resources
                 if r.resource_type.startswith("dependency_")
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to parse dependencies: %s", e)
             deps = []
 
         if not deps:
@@ -259,7 +265,8 @@ def scan(
                 for r in parsed_lic.resources
                 if r.resource_type.startswith("dependency_")
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to parse dependencies: %s", e)
             lic_deps = []
 
         if not lic_deps:
@@ -353,19 +360,13 @@ def secret(path: str, output_format: str, output_path: str | None) -> None:
     scanner = SecretScanner()
     findings = scanner.scan(path)
 
-    if output_format == "json":
-        output = json.dumps(
-            {
-                "total_secrets": len(findings),
-                "findings": [f.to_dict() for f in findings],
-            },
-            indent=2,
-        )
-    else:
-        output = json.dumps(
-            {"total_secrets": len(findings), "findings": [f.to_dict() for f in findings]},
-            indent=2,
-        )
+    output = json.dumps(
+        {
+            "total_secrets": len(findings),
+            "findings": [f.to_dict() for f in findings],
+        },
+        indent=2,
+    )
 
     if output_path:
         out = Path(output_path)
@@ -596,6 +597,8 @@ def db_update(include_os: bool) -> None:
         "Packagist": "packagist",
     }
 
+    max_download_size = 500 * 1024 * 1024  # 500 MB
+
     total = 0
     for osv_eco, tc_eco in ecosystems.items():
         url = f"https://osv-vulnerabilities.storage.googleapis.com/{osv_eco}/all.zip"
@@ -603,7 +606,19 @@ def db_update(include_os: bool) -> None:
 
         try:
             with urllib.request.urlopen(url, timeout=120) as resp:
-                zip_data = io.BytesIO(resp.read())
+                chunks: list[bytes] = []
+                downloaded = 0
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    downloaded += len(chunk)
+                    if downloaded > max_download_size:
+                        raise ThreatCodeError(
+                            f"Download for {osv_eco} exceeds {max_download_size} byte limit"
+                        )
+                    chunks.append(chunk)
+                zip_data = io.BytesIO(b"".join(chunks))
 
             records: list[dict[str, Any]] = []
             with zipfile.ZipFile(zip_data) as zf:
@@ -764,25 +779,23 @@ def image(
     # Pull and extract image
     try:
         cred_store = CredentialStore()
-        client = RegistryClient(
+        with RegistryClient(
             cred_store,
-            insecure=insecure,
             platform_os=platform_os,
             platform_arch=platform_arch,
-        )
-        manifest, _ = client.pull_manifest(ref)
-        config = client.pull_config(ref, manifest)
+        ) as client:
+            manifest, _ = client.pull_manifest(ref)
+            config = client.pull_config(ref, manifest)
 
-        layers_descriptors = manifest.get("layers", [])
-        click.echo(f"Pulling {len(layers_descriptors)} layer(s)...", err=True)
+            layers_descriptors = manifest.get("layers", [])
+            click.echo(f"Pulling {len(layers_descriptors)} layer(s)...", err=True)
 
-        layer_blobs: list[bytes] = []
-        for desc in layers_descriptors:
-            digest = desc.get("digest", "")
-            if digest:
-                blob = client.pull_blob(ref, digest)
-                layer_blobs.append(blob)
-        client.close()
+            layer_blobs: list[bytes] = []
+            for desc in layers_descriptors:
+                digest = desc.get("digest", "")
+                if digest:
+                    blob = client.pull_blob(ref, digest)
+                    layer_blobs.append(blob)
     except Exception as e:
         click.echo(f"Error pulling image: {type(e).__name__}: {e}", err=True)
         sys.exit(1)
@@ -808,14 +821,11 @@ def image(
         extracted.cleanup()
 
     # Apply severity filter
-    sev_order = ["critical", "high", "medium", "low", "info"]
-    min_idx = sev_order.index(severity)
+    _sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    min_idx = _sev_rank.get(severity, 4)
 
     def _passes(sev: str) -> bool:
-        try:
-            return sev_order.index(sev.lower()) <= min_idx
-        except ValueError:
-            return True
+        return _sev_rank.get(sev.lower(), 4) <= min_idx
 
     result.os_vulnerabilities = [v for v in result.os_vulnerabilities if _passes(v.severity.value)]
     result.app_vulnerabilities = [
@@ -846,7 +856,7 @@ def image(
         sys.exit(1)
 
 
-def _format_image_table(result: Any) -> str:
+def _format_image_table(result: ImageScanResult) -> str:
     """Format image scan results as a text table."""
     lines: list[str] = []
     os_str = ""
