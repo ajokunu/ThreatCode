@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1] - 2026-03-05
+
+### Changed
+- Complete README overhaul: covers all v0.7.0 features including container image scanning, all 8 CLI commands, full Python API, 131 built-in rules, secret detection patterns, SBOM, license compliance, MITRE ATT&CK integration, LLM setup, and architecture diagram
+- Rewrote all docs pages (getting-started, api-reference, architecture, configuration, writing-rules, cicd, mitre-attack, security) to reflect v0.7.0 capabilities
+- Updated package description to reflect full multi-scanner scope
+
 ## [0.7.0] - 2026-03-05
 
 ### Added

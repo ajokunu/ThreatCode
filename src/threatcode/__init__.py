@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from threatcode.models.finding import ScanReport as ScanReport
     from threatcode.models.report import ThreatReport
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 
 def _run_pipeline(

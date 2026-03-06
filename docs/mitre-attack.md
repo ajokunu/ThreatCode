@@ -1,81 +1,34 @@
 # MITRE ATT&CK Integration
 
-ThreatCode maps every threat finding to the [MITRE ATT&CK Cloud Matrix](https://attack.mitre.org/matrices/enterprise/cloud/), linking infrastructure misconfigurations and architectural weaknesses to real-world adversary techniques.
-
-## How Technique IDs Are Mapped
-
-Each built-in YAML rule includes a `metadata.mitre` block that specifies the relevant ATT&CK technique IDs and tactic IDs. When a rule matches a resource, those IDs are carried through to the output.
-
-For trust boundary crossing findings (`source: boundary`), ThreatCode assigns default techniques: **T1040** (Network Sniffing) and **T1557** (Adversary-in-the-Middle).
-
-For LLM-generated findings, the LLM is prompted to include MITRE technique and tactic IDs when applicable. If the LLM provides technique IDs but omits tactic IDs, ThreatCode automatically derives the tactics from its built-in technique database.
+ThreatCode maps every finding to the [MITRE ATT&CK Cloud Matrix](https://attack.mitre.org/matrices/enterprise/cloud/), giving every threat a globally recognized technique and tactic ID.
 
 ---
 
-## Rule-to-ATT&CK Mapping Table
+## Coverage
 
-| Rule ID | Rule Title | Techniques | Tactics |
-|---------|-----------|------------|---------|
-| `S3_NO_ENCRYPTION` | S3 bucket without server-side encryption | T1530 | TA0009 (Collection) |
-| `S3_PUBLIC_ACCESS` | S3 bucket allows public access | T1530, T1190 | TA0009 (Collection), TA0001 (Initial Access) |
-| `S3_NO_VERSIONING` | S3 bucket without versioning | T1485 | TA0040 (Impact) |
-| `S3_NO_LOGGING` | S3 bucket without access logging | T1562.008 | TA0005 (Defense Evasion) |
-| `IAM_WILDCARD_ACTION` | IAM policy with wildcard actions | T1078.004 | TA0001, TA0003, TA0004, TA0005 |
-| `IAM_NO_MFA` | IAM user without MFA requirement | T1078.004 | TA0001, TA0003, TA0004, TA0005 |
-| `IAM_OVERPERMISSIVE_ROLE` | IAM role with overly broad assume role policy | T1078.004, T1098 | TA0001, TA0003, TA0004 |
-| `EC2_PUBLIC_IP` | EC2 instance with public IP address | T1190 | TA0001 (Initial Access) |
-| `EC2_NO_MONITORING` | EC2 instance without detailed monitoring | T1562.008 | TA0005 (Defense Evasion) |
-| `EC2_UNENCRYPTED_EBS` | EC2 instance with unencrypted root volume | T1530 | TA0009 (Collection) |
-| `VPC_DEFAULT_SG_OPEN` | Default security group allows traffic | T1190 | TA0001 (Initial Access) |
-| `SG_UNRESTRICTED_INGRESS` | Security group allows unrestricted ingress | T1190, T1046 | TA0001 (Initial Access), TA0007 (Discovery) |
-| `VPC_NO_FLOW_LOGS` | VPC without flow logs enabled | T1562.008 | TA0005 (Defense Evasion) |
-| `RDS_PUBLIC_ACCESS` | RDS instance is publicly accessible | T1190 | TA0001 (Initial Access) |
-| `RDS_NO_ENCRYPTION` | RDS instance without encryption at rest | T1530 | TA0009 (Collection) |
-| `RDS_NO_BACKUP` | RDS instance without automated backups | T1485 | TA0040 (Impact) |
-| `LAMBDA_NO_VPC` | Lambda function not attached to VPC | T1190 | TA0001 (Initial Access) |
-| `LAMBDA_OVERPERMISSIVE_ROLE` | Lambda function with broad execution role | T1078.004 | TA0001, TA0003, TA0004, TA0005 |
-| `LAMBDA_NO_DLQ` | Lambda function without dead letter queue | T1499 | TA0040 (Impact) |
+ThreatCode covers **25 ATT&CK techniques** across **12 tactics**:
+
+| Tactic | ID | Techniques Covered |
+|--------|----|--------------------|
+| Initial Access | TA0001 | T1078, T1078.004, T1190, T1195, T1195.002 |
+| Execution | TA0002 | T1609, T1610 |
+| Persistence | TA0003 | T1078, T1098 |
+| Privilege Escalation | TA0004 | T1068, T1548, T1078.004, T1611 |
+| Defense Evasion | TA0005 | T1562.008 |
+| Credential Access | TA0006 | T1552, T1552.001 |
+| Discovery | TA0007 | T1046, T1580, T1613 |
+| Lateral Movement | TA0008 | T1021 |
+| Collection | TA0009 | T1530, T1528, T1565, T1565.001 |
+| Exfiltration | TA0010 | T1537 |
+| Command & Control | TA0011 | T1021 |
+| Impact | TA0040 | T1485, T1499 |
 
 ---
 
-## ATT&CK Navigator Export
+## STRIDE → ATT&CK Mapping
 
-Generate an ATT&CK Navigator layer file using the `--format matrix` flag:
-
-```bash
-threatcode scan tfplan.json --no-llm --format matrix -o threatcode-layer.json
-```
-
-This produces a JSON file compatible with [ATT&CK Navigator v5.1](https://mitre-attack.github.io/attack-navigator/).
-
-### Loading the Layer
-
-1. Open [ATT&CK Navigator](https://mitre-attack.github.io/attack-navigator/)
-2. Click **Open Existing Layer**
-3. Select **Upload from local** and choose the generated `threatcode-layer.json`
-4. The matrix will highlight techniques found in your scan, color-coded by severity:
-
-| Color | Severity |
-|-------|----------|
-| Red (`#ff0000`) | Critical |
-| Orange (`#ff6600`) | High |
-| Yellow (`#ffcc00`) | Medium |
-| Blue (`#66ccff`) | Low |
-| Gray (`#cccccc`) | Info |
-
-Each highlighted technique includes metadata showing the number of findings and their titles.
-
-!!! tip "CI/CD artifact"
-    In CI/CD pipelines, save the Navigator layer as a build artifact so security teams can review the ATT&CK coverage of each deployment. See the [CI/CD Integration](cicd.md) page for examples.
-
----
-
-## STRIDE-to-ATT&CK Tactic Mapping
-
-ThreatCode maintains a default mapping from STRIDE categories to ATT&CK tactics:
-
-| STRIDE Category | Default ATT&CK Tactics |
-|----------------|----------------------|
+| STRIDE Category | ATT&CK Tactics |
+|-----------------|---------------|
 | Spoofing | TA0001 (Initial Access), TA0006 (Credential Access) |
 | Tampering | TA0040 (Impact) |
 | Repudiation | TA0005 (Defense Evasion) |
@@ -83,12 +36,87 @@ ThreatCode maintains a default mapping from STRIDE categories to ATT&CK tactics:
 | Denial of Service | TA0040 (Impact) |
 | Elevation of Privilege | TA0004 (Privilege Escalation) |
 
-This mapping is used as a fallback when a rule or LLM finding does not specify explicit tactic IDs.
+---
+
+## How Technique IDs Are Assigned
+
+**1. Built-in rule metadata** — Every built-in rule specifies techniques and tactics directly:
+
+```yaml
+metadata:
+  mitre:
+    techniques: ["T1530"]
+    tactics: ["TA0009"]
+```
+
+**2. Trust boundary crossing detection** — Boundary crossing findings get default techniques T1040 (Network Sniffing) and T1557 (Adversary-in-the-Middle).
+
+**3. LLM-generated threats** — The LLM is prompted to return MITRE technique IDs. All IDs are validated against `TECHNIQUE_DB` and `TACTIC_DB` before being included in findings — invalid IDs are rejected.
+
+**4. STRIDE fallback** — If no explicit techniques are specified, the STRIDE-to-tactic mapping above is used to populate `mitre_tactics`.
 
 ---
 
-## LLM Responses and MITRE Fields
+## ATT&CK Navigator Export
 
-When LLM augmentation is enabled, the system prompt instructs the LLM to include MITRE ATT&CK technique IDs in its response. The LLM is asked to use ATT&CK Cloud Matrix IDs (e.g., `T1530` for Data from Cloud Storage) and to omit the fields rather than guess if unsure.
+Export a layer JSON file for visualization in the MITRE ATT&CK Navigator:
 
-LLM-generated MITRE mappings are carried through to all output formats, including SARIF (as tags) and the ATT&CK Navigator layer.
+```bash
+threatcode scan tfplan.json --no-llm --format matrix -o layer.json
+```
+
+Load `layer.json` at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/).
+
+### Layer format
+
+```json
+{
+  "name": "ThreatCode Threat Model",
+  "versions": {"attack": "16", "navigator": "5.1", "layer": "4.5"},
+  "domain": "enterprise-attack",
+  "techniques": [
+    {
+      "techniqueID": "T1530",
+      "score": 75,
+      "color": "#ff6600",
+      "comment": "3 finding(s): S3 no encryption, S3 public access, ...",
+      "metadata": [{"name": "findings", "value": "3"}]
+    }
+  ]
+}
+```
+
+### Severity → color mapping
+
+| Severity | Score | Color |
+|----------|-------|-------|
+| Critical | 100 | `#ff0000` (red) |
+| High | 75 | `#ff6600` (orange) |
+| Medium | 50 | `#ffcc00` (yellow) |
+| Low | 25 | `#66ccff` (blue) |
+| Info | 10 | `#cccccc` (gray) |
+
+When multiple findings map to the same technique, the highest severity determines the color. The score reflects the highest severity finding.
+
+---
+
+## Technique Reference
+
+Selected techniques frequently detected by ThreatCode:
+
+| ID | Name | Detected By |
+|----|------|-------------|
+| T1530 | Data from Cloud Storage | S3/Blob without encryption or public access rules |
+| T1537 | Transfer Data to Cloud Account | CloudTrail disabled, no logging |
+| T1580 | Cloud Infrastructure Discovery | Overly permissive IAM with `*:*` actions |
+| T1078.004 | Valid Accounts: Cloud Accounts | IAM without MFA, overly broad assume-role |
+| T1190 | Exploit Public-Facing Application | RDS/Elasticsearch publicly accessible |
+| T1562.008 | Disable Cloud Logs | CloudTrail/CloudWatch disabled |
+| T1611 | Escape to Host | Kubernetes privileged container |
+| T1610 | Deploy Container | Kubernetes missing securityContext |
+| T1552.001 | Credentials in Files | Secrets in ENV variables, Dockerfiles |
+| T1195.002 | Supply Chain Compromise: Software | Outdated/vulnerable dependencies |
+| T1068 | Exploitation for Privilege Escalation | Kernel-level capabilities (SYS_ADMIN, etc.) |
+| T1548 | Abuse Elevation Control | Privilege escalation allowed in containers |
+| T1040 | Network Sniffing | Trust boundary crossing (DMZ → Data) |
+| T1557 | Adversary-in-the-Middle | Trust boundary crossing (Internet → Private) |

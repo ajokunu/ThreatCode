@@ -1,178 +1,122 @@
 # Security
 
-ThreatCode is designed to be safe to run in enterprise environments with strict security requirements. This page documents the security controls built into the tool.
-
-## No `eval()` Policy
-
-The rule condition evaluator never uses `eval()`, `exec()`, `compile()`, or any form of dynamic code execution. All condition operators (`equals`, `contains`, `not_exists`, `matches_any`, etc.) are implemented as explicit, bounded Python functions.
-
-Unknown operators fail closed -- if the evaluator encounters an operator it does not recognize, the condition returns `False`. This prevents accidental matches from typos and blocks any attempt to inject executable logic through rule files.
-
-The codebase contains no usage of `pickle`, `marshal`, `exec`, or `compile`.
+ThreatCode is designed to be safe in enterprise environments with strict security requirements. This page documents the security controls built in to the tool itself.
 
 ---
 
-## YAML `safe_load` Only
+## Code Safety
 
-All YAML parsing in ThreatCode uses `yaml.safe_load()` exclusively. The unsafe `yaml.load()` function (which can execute arbitrary Python objects) is never used. This applies to:
+### No `eval()` Policy
 
-- Configuration files (`.threatcode.yml`)
-- Rule files (built-in and custom)
-- CloudFormation templates
+The rule condition evaluator uses explicit Python comparison functions for every operator (`equals`, `contains`, `matches_any`, etc.). There is no `eval()`, `exec()`, `compile()`, `pickle`, or `marshal` anywhere in the codebase. Unknown operators fail closed (return False rather than raising).
 
----
+### YAML `safe_load` Only
 
-## Data Redaction Before LLM Calls
+All YAML parsing uses `yaml.safe_load()` exclusively — no arbitrary Python object deserialization.
 
-Before any infrastructure data is sent to an external LLM, ThreatCode applies automatic redaction:
+### Rule File Sandboxing
 
-### What is redacted
+| Control | Value |
+|---------|-------|
+| Max file size | 1 MB |
+| Max rules per file | 100 |
+| Max total rules (all files) | 1000 |
+| Symlinks in extra rule paths | Blocked |
+| Rule ID uniqueness | Enforced globally |
+| MITRE ID validation | Against known TECHNIQUE_DB and TACTIC_DB |
 
-- **AWS Account IDs** -- 12-digit numbers
-- **AWS ARNs** -- `arn:aws*:...` patterns
-- **IPv4 and IPv6 addresses**
-- **Email addresses**
-- **Sensitive field names** -- `arn`, `account_id`, `tags`, `ip_address`, `private_ip`, `public_ip`, `owner_id`, `caller_reference`
+### LLM Response Handling
 
-### Redaction strategies
-
-| Strategy | Behavior |
-|----------|----------|
-| `placeholder` (default) | Sequential placeholders: `REDACTED_aws_arn_1`, `REDACTED_aws_arn_2` |
-| `hash` | Truncated SHA-256: `REDACTED_aws_arn_a1b2c3d4` |
-
-Both strategies maintain a bidirectional mapping so that resource addresses in LLM responses can be unredacted back to their original values. The mapping is held in memory only and is never persisted.
-
-### Configuration
-
-Redaction is enabled by default. It can be configured in `.threatcode.yml`:
-
-```yaml
-redaction:
-  enabled: true
-  strategy: placeholder
-  fields:
-    - arn
-    - account_id
-    - tags
-    - ip_address
-```
-
-!!! warning "Do not disable redaction for external LLMs"
-    Disabling redaction when using an external LLM provider (Anthropic, OpenAI) means your AWS account IDs, ARNs, IP addresses, and other infrastructure details will be sent to the provider. Only disable redaction when using a local LLM.
+LLM responses are parsed as JSON only — never executed or passed to `eval()`. The schema is validated before any field is used. Unknown MITRE IDs are rejected. Unknown resource addresses from LLM output are capped at 0.5 confidence.
 
 ---
 
-## Local LLM Option for Air-Gapped Environments
+## SSRF Protection
 
-For environments where no data can leave the network, ThreatCode supports local LLMs via any OpenAI-compatible API:
+All outbound HTTP calls (LLM API, registry API, vulnerability DB download) validate the resolved hostname against:
 
-- **Ollama** -- `base_url: http://localhost:11434`
-- **vLLM** -- `base_url: http://localhost:8000`
-- **llama.cpp server** -- `base_url: http://localhost:8080`
+- Loopback (`127.0.0.0/8`, `::1`)
+- Private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`)
+- Link-local (`169.254.0.0/16`, `fe80::/10`) — including AWS EC2 metadata endpoint
+- Reserved ranges
+- Unspecified address (`0.0.0.0`)
+- IPv4-mapped IPv6 addresses
 
-```yaml
-llm:
-  provider: ollama
-  model: llama3
-  base_url: http://localhost:11434
-  api_key: not-needed
-```
+Validation uses DNS resolution + Python's `ipaddress` module so no private address reachable by hostname can be called (cloud metadata endpoint: `169.254.169.254`).
 
-With a local LLM, all data stays on your network. Redaction still runs by default but can be disabled for local models if desired.
+Container registry connections additionally support `--insecure` for HTTP (opt-in only).
+
+---
+
+## Data Redaction
+
+Before any data is sent to an external LLM:
+
+1. A regex pass replaces AWS account IDs, ARNs, IPv4/IPv6 addresses, and email addresses with placeholders
+2. Fields named in the sensitive key list are redacted (`secret`, `password`, `token`, `api_key`, `access_key`, `secret_key`, `connection_string`, `credentials`, `private_key`, `certificate`, and more)
+3. A bidirectional mapping table is maintained — placeholders are reversed back into real values in the LLM's output
+
+Placeholder format: `__REDACTED_ARN_1__` (or `__HASH_a1b2c3d4__` if hash strategy is configured).
+
+**API keys should be passed via environment variable**, not stored in `.threatcode.yml`. ThreatCode warns to stderr if `api_key` is found in a config file.
+
+---
+
+## Prompt Injection Hardening
+
+- Rule IDs are sanitized before inclusion in LLM prompts
+- Graph data is wrapped in XML-style delimiters to separate it from instructions
+- Bidirectional Unicode override characters (U+200E–U+202E, U+2066–U+2069) are stripped from all prompt content
+- LLM response length is capped at 512 KB
+- Maximum 100 threats per LLM response
+
+---
+
+## OCI Layer Extraction Security
+
+When pulling container images:
+
+- **Digest verification**: Every downloaded layer blob has its SHA-256 hash verified against the manifest before extraction
+- **Path traversal protection**: Tar entries containing `..` path components are rejected before any normalization, preventing writes outside the extraction root
+- **Symlink restrictions**: Symlinks are created but their targets are not followed during extraction to prevent TOCTOU issues
+- **Size limits**: 2 GB per layer, 10 GB total extraction, 500K files maximum
+
+---
+
+## Configuration Security
+
+**Auto-discovered configs** (`.threatcode.yml` in CWD or `~/.threatcode.yml`) are restricted to safe fields only:
+- Allowed: `min_severity`, `output_format`, `no_llm`, `dry_run`, `redaction`
+- Stripped with warning: `llm.api_key`, `llm.base_url`, `extra_rule_paths`
+
+The `CI` environment variable disables home-directory config discovery in CI environments.
+
+Use explicit `--config` for full config control.
 
 ---
 
 ## Input Validation
 
-### File size
-
-The parser layer reads input files into memory. Extremely large files may cause high memory usage. Use standard IaC file sizes (Terraform plans are typically under 10MB).
-
-### Rule count
-
-Rules are loaded from YAML files and stored in memory. Each rule is validated for required fields (`id`, `title`, `description`, `stride_category`, `severity`, `resource_type`, `condition`) at load time. Missing fields raise a `RuleLoadError` and halt execution.
-
-### LLM response length
-
-The `max_tokens` configuration (default: 4096) limits the length of LLM responses. The LLM response is parsed as JSON and validated for the expected schema structure (`threats` array with required fields). Malformed responses result in zero LLM-generated threats rather than crashes.
-
-### API timeout
-
-The OpenAI-compatible client enforces a 120-second timeout on HTTP requests to prevent indefinite hangs.
+- IaC files larger than 50 MB are rejected
+- LLM prompts are capped at 256 KB
+- LLM `max_tokens` is clamped to `[1, 8192]`
+- API timeouts enforced: 120 seconds
+- Graph node limit: 10,000 (error), edge limit: 50,000 (warn and skip)
 
 ---
 
-## LLM Security Controls
+## Dependency Audit
 
-### Prompt injection detection
-
-The system prompt instructs the LLM to respond only with valid JSON in a specific format. The response parser (`parse_llm_threats`) extracts only the `threats` array from the response and validates each threat's fields. Any content outside the expected JSON structure is ignored.
-
-### Output schema validation
-
-LLM responses are parsed as JSON. Each threat object is validated for expected fields before being converted to a `Threat` dataclass. Missing fields receive safe defaults (e.g., `severity` defaults to `"medium"`, `confidence` defaults to `0.7`).
-
-### Token budgets
-
-The `max_tokens` setting (default: 4096) controls the maximum response length from the LLM. This prevents runaway token consumption.
-
-### Timeout controls
-
-HTTP requests to LLM providers enforce a 120-second timeout. The Anthropic SDK client uses its own built-in timeout mechanisms.
-
-### Model pinning
-
-The LLM model is specified in configuration (`model: claude-sonnet-4-20250514` by default). This prevents unintended model switches that might change behavior or cost.
-
----
-
-## No Pickle, Marshal, Exec, or Compile
-
-ThreatCode does not use any of the following dangerous Python functions or modules:
-
-- `pickle` / `cPickle` -- No deserialization of untrusted data
-- `marshal` -- No bytecode serialization
-- `exec()` -- No dynamic code execution
-- `compile()` -- No dynamic code compilation
-- `eval()` -- No expression evaluation
-- `__import__()` -- No dynamic imports based on user input
-
----
-
-## Dependency Audit Process
-
-ThreatCode's dependencies are auditable standard Python packages:
-
-| Package | Purpose |
-|---------|---------|
-| `click` | CLI framework |
-| `pydantic` | Configuration validation |
-| `python-hcl2` | HCL parsing |
-| `pyyaml` | YAML parsing |
-| `networkx` | Graph data structure |
-| `anthropic` | Anthropic Claude API client |
-| `jinja2` | Template rendering (Markdown formatter) |
-
-Run `pip-audit` to check for known vulnerabilities:
+Run a vulnerability scan on ThreatCode's own dependencies:
 
 ```bash
-pip install pip-audit
-pip-audit
+pip-audit --strict -r requirements.txt
 ```
+
+All CI runs include `pip-audit --strict` as a required gate.
 
 ---
 
-## OWASP Considerations
+## Reporting Security Issues
 
-### No string interpolation in shell commands
-
-ThreatCode does not construct or execute shell commands. All file I/O uses Python's `pathlib` and standard library functions.
-
-### No user input in DOM
-
-ThreatCode is a CLI/library tool with no web frontend. Output formatters produce plain text (JSON, SARIF, Markdown) with no HTML rendering or DOM manipulation.
-
-### No `innerHTML` or equivalent
-
-Not applicable -- ThreatCode has no web UI. The ATT&CK Navigator layer is a static JSON file loaded by the Navigator web application, not rendered by ThreatCode itself.
+Please report security vulnerabilities via GitHub Issues (tag: `security`). Do not include exploit code in public issues.
