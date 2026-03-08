@@ -17,12 +17,15 @@ for t in report["threats"]:
 
 ThreatCode is a Python security scanning library and CLI that works across the full DevSecOps stack:
 
+- **Filesystem scanning** — walk any directory for vulns, secrets, misconfigs, and license issues
+- **Repository scanning** — clone a Git repo and scan it automatically
 - **STRIDE threat modeling** from Terraform, CloudFormation, Dockerfile, and Kubernetes — with MITRE ATT&CK mapping
 - **Secret detection** across codebases and IaC files — 24 built-in patterns
 - **Vulnerability scanning** from lockfiles — 10 package ecosystems, offline SQLite DB from OSV
 - **Container image scanning** — pull from any OCI registry, scan OS packages and app dependencies
 - **SBOM generation** in CycloneDX 1.5 format
 - **License compliance** scanning with SPDX classification
+- **`.threatcodeignore`** — suppress findings by ID with optional expiration dates
 
 ---
 
@@ -37,6 +40,30 @@ pip install threatcode
 ---
 
 ## Quick Start
+
+### Filesystem scanning
+
+```bash
+# Scan a project directory for everything
+threatcode fs ./my-project
+
+# Scan with specific scanners
+threatcode fs ./my-project --scanners vuln,secret
+
+# Scan and suppress known findings
+echo "CVE-2023-12345" > .threatcodeignore
+threatcode fs ./my-project
+```
+
+### Repository scanning
+
+```bash
+# Scan a remote Git repo
+threatcode repo https://github.com/org/repo.git
+
+# Scan a specific branch
+threatcode repo https://github.com/org/repo.git --branch develop --scanners vuln,secret
+```
 
 ### Threat modeling (IaC)
 
@@ -112,6 +139,48 @@ Maximum input size: 50 MB.
 ---
 
 ## CLI Reference
+
+### `threatcode fs`
+
+Scan a filesystem directory for vulnerabilities, secrets, misconfigurations, and license issues.
+
+```
+threatcode fs PATH [OPTIONS]
+
+Options:
+  -f, --format      json   Default: json
+  -o, --output      Write output to file
+  -s, --scanners    Comma-separated: vuln,secret,misconfig,license
+                    Default: vuln,secret,misconfig,license
+  --severity        Minimum severity to report   Default: info
+  --ignore-unfixed  Skip unfixed vulnerabilities
+  --no-llm          Disable LLM analysis for misconfig scanner
+  -c, --config      Path to .threatcode.yml config file
+  --ignorefile      Path to .threatcodeignore file (auto-detected in target dir)
+```
+
+Discovers lockfiles, Terraform files, CloudFormation templates, Dockerfiles, and Kubernetes manifests, then runs all selected scanners against them. Skips `.git`, `node_modules`, `vendor`, `__pycache__`, `.venv`, and other common non-source directories.
+
+### `threatcode repo`
+
+Clone a Git repository and scan it.
+
+```
+threatcode repo URL [OPTIONS]
+
+Options:
+  -f, --format      json   Default: json
+  -o, --output      Write output to file
+  -b, --branch      Branch to clone (default: repo default branch)
+  -s, --scanners    Comma-separated: vuln,secret,misconfig,license
+                    Default: vuln,secret,misconfig,license
+  --severity        Minimum severity to report   Default: info
+  --ignore-unfixed  Skip unfixed vulnerabilities
+  --no-llm          Disable LLM analysis for misconfig scanner
+  -c, --config      Path to .threatcode.yml config file
+```
+
+Performs a shallow clone (depth=1) into a temporary directory, runs the filesystem scanner, then cleans up. Supports HTTPS (`https://`), SSH (`git@`), and `ssh://` URLs.
 
 ### `threatcode scan`
 
@@ -251,7 +320,76 @@ threatcode db update --os        # Also download OS advisory data (Alpine, Debia
 
 ---
 
+## `.threatcodeignore`
+
+Create a `.threatcodeignore` file in your project root to suppress known findings:
+
+```
+# Suppress a CVE that has been risk-accepted
+CVE-2023-12345
+
+# Suppress a misconfig rule
+S3_NO_ENCRYPTION
+
+# Suppress with an expiration date (re-enables after this date)
+CVE-2024-9999  exp:2026-06-01
+
+# Suppress a secret detection rule
+SECRET_AWS_ACCESS_KEY  exp:2026-12-31
+```
+
+Rules:
+- One ID per line (CVE IDs, rule IDs, or secret rule IDs)
+- Lines starting with `#` are comments
+- Optional `exp:YYYY-MM-DD` suffix sets an expiration — after that date, the finding is no longer suppressed
+- Auto-detected in the target directory for `threatcode fs`, or specify with `--ignorefile`
+
+---
+
 ## Python API
+
+### `scan_filesystem()` — Directory scanning
+
+```python
+from threatcode import scan_filesystem
+
+result = scan_filesystem(
+    "./my-project",
+    scanners=("vuln", "secret", "misconfig", "license"),
+    ignore_unfixed=True,
+    min_severity="medium",
+    ignore_path=".threatcodeignore",
+)
+
+# {
+#   "target": "/path/to/my-project",
+#   "scanners": ["vuln", "secret", "misconfig", "license"],
+#   "files_scanned": 234,
+#   "lockfiles_found": 3,
+#   "iac_files_found": 12,
+#   "vuln": { "total_vulnerabilities": 5, "findings": [...] },
+#   "secret": { "total_secrets": 1, "findings": [...] },
+#   "misconfig": { "total_threats": 18, "findings": [...] },
+#   "license": { "total_issues": 2, "findings": [...] },
+#   "has_issues": true,
+# }
+```
+
+### `scan_repository()` — Git repo scanning
+
+```python
+from threatcode import scan_repository
+
+result = scan_repository(
+    "https://github.com/org/repo.git",
+    branch="main",
+    scanners=("vuln", "secret"),
+)
+
+# Same shape as scan_filesystem(), plus:
+# "repository": "https://github.com/org/repo.git",
+# "branch": "main",
+```
 
 ### `scan()` — IaC threat modeling
 
@@ -620,7 +758,13 @@ threatcode:
 ```bash
 pip install threatcode
 
-# Fail on high+ threats
+# Scan entire project (recommended — runs all scanners)
+threatcode fs . --severity high --ignore-unfixed
+
+# Or scan a remote repo directly
+threatcode repo https://github.com/org/repo.git --scanners vuln,secret
+
+# Fail on high+ threats (IaC only)
 threatcode scan tfplan.json --no-llm --min-severity high
 # Exit code 0 = clean, 1 = findings
 
@@ -628,7 +772,7 @@ threatcode scan tfplan.json --no-llm --min-severity high
 threatcode secret ./src/
 
 # Fail on unfixed high+ vulnerabilities
-threatcode vuln package-lock.json --min-severity high --ignore-unfixed
+threatcode vuln package-lock.json --ignore-unfixed
 ```
 
 ---
@@ -704,10 +848,12 @@ IaC / Lockfile / Dockerfile / Image
 
 ---
 
-## What's in v0.7.0
+## Version History
 
 | Version | Highlights |
 |---------|-----------|
+| **0.8.0** | Filesystem scanning (`threatcode fs`), repository scanning (`threatcode repo`), `.threatcodeignore` with expiration dates |
+| **0.7.2** | Security hardening — SSRF fixes, symlink traversal, ReDoS, ENV redaction, type safety, dead code cleanup |
 | **0.7.0** | Container image scanning — OCI registry client, Alpine/Debian/RPM package DB parsers, OS advisory DB, image config checks |
 | **0.6.0** | Dockerfile scanner (16 rules), Kubernetes scanner (22 rules), secret scanning (24 patterns), vulnerability scanning (10 lockfile formats), SBOM/CycloneDX, license compliance, 76 new cloud rules |
 | **0.5.x** | SVG diagram with attack paths, interactive tooltips, threat table, MITRE technique columns |
