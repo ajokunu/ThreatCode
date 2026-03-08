@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from threatcode.image.scanner import ImageScanner, _SENSITIVE_ENV_PATTERNS
+from threatcode.image.scanner import _SENSITIVE_ENV_PATTERNS, ImageScanner
 
 
 class TestEnvRedaction:

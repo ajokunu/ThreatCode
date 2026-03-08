@@ -9,10 +9,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from threatcode.image.auth import (
-    CredentialStore,
-    RegistryCredential,
-    TokenProvider,
     _HELPER_NAME_RE,
+    CredentialStore,
+    TokenProvider,
     _validate_realm_url,
 )
 

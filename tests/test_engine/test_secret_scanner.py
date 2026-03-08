@@ -12,9 +12,12 @@ def scanner() -> SecretScanner:
     return SecretScanner()
 
 
+_FIXTURES = Path(__file__).parent.parent / "fixtures" / "secrets"
+
+
 class TestSecretScanner:
     def test_scan_file_with_secrets(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "has_secrets.py"))
+        findings = scanner.scan(str(_FIXTURES / "has_secrets.py"))
         assert len(findings) > 0
         rule_ids = {f.rule_id for f in findings}
         # Should detect AWS key, GitHub token, private key, etc.
@@ -23,26 +26,26 @@ class TestSecretScanner:
         assert "SECRET_PRIVATE_KEY" in rule_ids
 
     def test_scan_clean_file(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "clean_file.py"))
+        findings = scanner.scan(str(_FIXTURES / "clean_file.py"))
         # Clean file should have zero or very few findings
         # (allow-list should catch placeholder/example values)
         assert len(findings) == 0
 
     def test_scan_directory(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets"))
+        findings = scanner.scan(str(_FIXTURES))
         # Should find secrets in has_secrets.py
         assert len(findings) > 0
         files = {f.file_path for f in findings}
         assert any("has_secrets" in f for f in files)
 
     def test_finding_has_redacted_match(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "has_secrets.py"))
+        findings = scanner.scan(str(_FIXTURES / "has_secrets.py"))
         for f in findings:
             # Redacted match should contain asterisks
             assert "****" in f.match
 
     def test_finding_has_line_number(self, scanner: SecretScanner) -> None:
-        findings = scanner.scan(str(Path(__file__).parent.parent / "fixtures" / "secrets" / "has_secrets.py"))
+        findings = scanner.scan(str(_FIXTURES / "has_secrets.py"))
         for f in findings:
             assert f.line_number > 0
 

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from threatcode.scanner.fs import (
-    _SKIP_DIRS,
     _is_dockerfile,
     _is_iac_candidate,
     scan_filesystem,

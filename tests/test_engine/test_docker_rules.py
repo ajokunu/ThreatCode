@@ -18,14 +18,16 @@ def docker_rules():
 @pytest.fixture
 def insecure_resources():
     parser = DockerfileParser()
-    content = (Path(__file__).parent.parent / "fixtures" / "docker" / "insecure.Dockerfile").read_text()
+    fixture = Path(__file__).parent.parent / "fixtures" / "docker" / "insecure.Dockerfile"
+    content = fixture.read_text()
     return parser.parse(content).resources
 
 
 @pytest.fixture
 def secure_resources():
     parser = DockerfileParser()
-    content = (Path(__file__).parent.parent / "fixtures" / "docker" / "secure.Dockerfile").read_text()
+    fixture = Path(__file__).parent.parent / "fixtures" / "docker" / "secure.Dockerfile"
+    content = fixture.read_text()
     return parser.parse(content).resources
 
 
