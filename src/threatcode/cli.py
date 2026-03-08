@@ -549,6 +549,303 @@ def license_cmd(path: str, output_format: str, output_path: str | None) -> None:
         sys.exit(1)
 
 
+@cli.command(name="fs")
+@click.argument("path", type=click.Path(exists=True))
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    default="json",
+    type=click.Choice(["json"]),
+    help="Output format.",
+)
+@click.option("--output", "-o", "output_path", type=click.Path(), default=None)
+@click.option(
+    "--scanners",
+    "-s",
+    "scanners",
+    default="vuln,secret,misconfig,license",
+    help="Comma-separated scanner types: vuln,secret,misconfig,license.",
+)
+@click.option("--ignore-unfixed", is_flag=True, default=False, help="Skip unfixed vulnerabilities.")
+@click.option(
+    "--severity",
+    default="info",
+    type=click.Choice(["critical", "high", "medium", "low", "info"]),
+    help="Minimum severity to report.",
+)
+@click.option("--no-llm", is_flag=True, default=False, help="Disable LLM analysis.")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    type=click.Path(),
+    default=None,
+    help="Path to .threatcode.yml config file.",
+)
+@click.option(
+    "--ignorefile",
+    type=click.Path(),
+    default=None,
+    help="Path to .threatcodeignore file.",
+)
+def fs_cmd(
+    path: str,
+    output_format: str,
+    output_path: str | None,
+    scanners: str,
+    ignore_unfixed: bool,
+    severity: str,
+    no_llm: bool,
+    config_path: str | None,
+    ignorefile: str | None,
+) -> None:
+    """Scan a filesystem directory for security issues.
+
+    Walks the directory tree, discovers lockfiles, IaC files, Dockerfiles,
+    and Kubernetes manifests, then runs vuln, secret, misconfig, and license
+    scanners against the discovered files.
+    """
+    import json as json_mod
+
+    from threatcode.ignore import load_ignore_ids
+    from threatcode.scanner.fs import scan_filesystem
+
+    scanner_list = tuple(s.strip() for s in scanners.split(",") if s.strip())
+    valid_scanners = {"vuln", "secret", "misconfig", "license"}
+    for s in scanner_list:
+        if s not in valid_scanners:
+            click.echo(
+                f"Unknown scanner '{s}'. Valid: {', '.join(sorted(valid_scanners))}",
+                err=True,
+            )
+            sys.exit(1)
+
+    ignore_ids = load_ignore_ids(
+        search_dir=Path(path),
+        ignore_path=Path(ignorefile) if ignorefile else None,
+    )
+
+    try:
+        result = scan_filesystem(
+            path,
+            scanners=scanner_list,
+            ignore_unfixed=ignore_unfixed,
+            min_severity=severity,
+            no_llm=no_llm,
+            config_path=config_path,
+        )
+    except ThreatCodeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    # Apply ignore rules
+    if ignore_ids:
+        _apply_ignore_to_result(result, ignore_ids)
+
+    # Summary
+    click.echo(
+        f"Scanned {result['files_scanned']} files "
+        f"({result['lockfiles_found']} lockfiles, {result['iac_files_found']} IaC files)",
+        err=True,
+    )
+    if "vuln" in result:
+        click.echo(
+            f"[vuln] {result['vuln'].get('total_vulnerabilities', 0)} vulnerabilities",
+            err=True,
+        )
+    if "secret" in result:
+        click.echo(
+            f"[secret] {result['secret'].get('total_secrets', 0)} secrets",
+            err=True,
+        )
+    if "misconfig" in result:
+        click.echo(
+            f"[misconfig] {result['misconfig'].get('total_threats', 0)} threats",
+            err=True,
+        )
+    if "license" in result:
+        click.echo(
+            f"[license] {result['license'].get('total_issues', 0)} license issues",
+            err=True,
+        )
+
+    if ignore_ids:
+        click.echo(f"({len(ignore_ids)} rules suppressed via .threatcodeignore)", err=True)
+
+    output = json_mod.dumps(result, indent=2)
+    if output_path:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(output, encoding="utf-8")
+        click.echo(f"Output written to {out.name}")
+    else:
+        click.echo(output)
+
+    if result.get("has_issues"):
+        sys.exit(1)
+
+
+@cli.command(name="repo")
+@click.argument("url")
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    default="json",
+    type=click.Choice(["json"]),
+    help="Output format.",
+)
+@click.option("--output", "-o", "output_path", type=click.Path(), default=None)
+@click.option("--branch", "-b", default=None, help="Branch to clone.")
+@click.option(
+    "--scanners",
+    "-s",
+    "scanners",
+    default="vuln,secret,misconfig,license",
+    help="Comma-separated scanner types: vuln,secret,misconfig,license.",
+)
+@click.option("--ignore-unfixed", is_flag=True, default=False, help="Skip unfixed vulnerabilities.")
+@click.option(
+    "--severity",
+    default="info",
+    type=click.Choice(["critical", "high", "medium", "low", "info"]),
+    help="Minimum severity to report.",
+)
+@click.option("--no-llm", is_flag=True, default=False, help="Disable LLM analysis.")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    type=click.Path(),
+    default=None,
+    help="Path to .threatcode.yml config file.",
+)
+def repo_cmd(
+    url: str,
+    output_format: str,
+    output_path: str | None,
+    branch: str | None,
+    scanners: str,
+    ignore_unfixed: bool,
+    severity: str,
+    no_llm: bool,
+    config_path: str | None,
+) -> None:
+    """Scan a Git repository for security issues.
+
+    Clones the repository (shallow, depth=1) into a temporary directory
+    and runs the filesystem scanner against it.
+
+    Supports HTTPS and SSH URLs.
+    """
+    import json as json_mod
+
+    from threatcode.scanner.repo import scan_repository
+
+    scanner_list = tuple(s.strip() for s in scanners.split(",") if s.strip())
+    valid_scanners = {"vuln", "secret", "misconfig", "license"}
+    for s in scanner_list:
+        if s not in valid_scanners:
+            click.echo(
+                f"Unknown scanner '{s}'. Valid: {', '.join(sorted(valid_scanners))}",
+                err=True,
+            )
+            sys.exit(1)
+
+    click.echo(f"Cloning {url} ...", err=True)
+
+    try:
+        result = scan_repository(
+            url,
+            branch=branch,
+            scanners=scanner_list,
+            ignore_unfixed=ignore_unfixed,
+            min_severity=severity,
+            no_llm=no_llm,
+            config_path=config_path,
+        )
+    except ThreatCodeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    # Summary
+    click.echo(
+        f"Scanned {result['files_scanned']} files "
+        f"({result['lockfiles_found']} lockfiles, {result['iac_files_found']} IaC files)",
+        err=True,
+    )
+    if "vuln" in result:
+        click.echo(
+            f"[vuln] {result['vuln'].get('total_vulnerabilities', 0)} vulnerabilities",
+            err=True,
+        )
+    if "secret" in result:
+        click.echo(
+            f"[secret] {result['secret'].get('total_secrets', 0)} secrets",
+            err=True,
+        )
+    if "misconfig" in result:
+        click.echo(
+            f"[misconfig] {result['misconfig'].get('total_threats', 0)} threats",
+            err=True,
+        )
+    if "license" in result:
+        click.echo(
+            f"[license] {result['license'].get('total_issues', 0)} license issues",
+            err=True,
+        )
+
+    output = json_mod.dumps(result, indent=2)
+    if output_path:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(output, encoding="utf-8")
+        click.echo(f"Output written to {out.name}")
+    else:
+        click.echo(output)
+
+    if result.get("has_issues"):
+        sys.exit(1)
+
+
+def _apply_ignore_to_result(result: dict[str, Any], ignore_ids: frozenset[str]) -> None:
+    """Apply ignore rules to scan results in-place."""
+    for scanner_key in ("vuln", "secret", "misconfig", "license"):
+        section = result.get(scanner_key)
+        if not isinstance(section, dict):
+            continue
+        findings = section.get("findings", [])
+        if not findings:
+            continue
+
+        # Determine the ID key based on scanner type
+        id_key = "id"
+        if scanner_key == "vuln":
+            id_key = "vuln_id"
+        elif scanner_key == "secret":
+            id_key = "rule_id"
+
+        original_count = len(findings)
+        section["findings"] = [
+            f for f in findings if str(f.get(id_key, "")) not in ignore_ids
+        ]
+        suppressed = original_count - len(section["findings"])
+
+        # Update counts
+        if scanner_key == "vuln":
+            section["total_vulnerabilities"] = len(section["findings"])
+        elif scanner_key == "secret":
+            section["total_secrets"] = len(section["findings"])
+        elif scanner_key == "misconfig":
+            section["total_threats"] = len(section["findings"])
+        elif scanner_key == "license":
+            section["total_issues"] = len(section["findings"])
+
+        if suppressed > 0:
+            section["suppressed"] = suppressed
+
+
 @cli.group()
 def db() -> None:
     """Manage the vulnerability database."""
