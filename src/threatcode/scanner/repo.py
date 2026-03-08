@@ -64,8 +64,7 @@ def scan_repository(
         or repo_url.startswith("ssh://")
     ):
         raise ThreatCodeError(
-            f"Unsupported repository URL scheme: {repo_url}. "
-            "Use https://, git@, or ssh:// URLs."
+            f"Unsupported repository URL scheme: {repo_url}. Use https://, git@, or ssh:// URLs."
         )
 
     tmpdir = tempfile.mkdtemp(prefix="threatcode-repo-")
@@ -115,6 +114,4 @@ def _clone_repo(url: str, dest: str, *, branch: str | None = None) -> None:
         stderr = e.stderr.strip() if e.stderr else "unknown error"
         raise ThreatCodeError(f"Failed to clone {url}: {stderr}") from e
     except subprocess.TimeoutExpired as e:
-        raise ThreatCodeError(
-            f"Clone of {url} timed out after {_CLONE_TIMEOUT}s"
-        ) from e
+        raise ThreatCodeError(f"Clone of {url} timed out after {_CLONE_TIMEOUT}s") from e

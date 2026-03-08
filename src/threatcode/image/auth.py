@@ -35,9 +35,7 @@ def _validate_realm_url(realm: str, registry: str) -> None:
 
     # Warn if realm hostname differs from registry
     if hostname != registry.lower() and not hostname.endswith(f".{registry.lower()}"):
-        logger.warning(
-            "Token realm hostname %r differs from registry %r", hostname, registry
-        )
+        logger.warning("Token realm hostname %r differs from registry %r", hostname, registry)
 
     # Resolve hostname and reject private/loopback/link-local IPs
     default_port = 443
@@ -57,9 +55,7 @@ def _validate_realm_url(realm: str, registry: str) -> None:
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             addr = addr.ipv4_mapped
         if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
-            raise ValueError(
-                f"Token realm resolves to non-public address ({ip_str})"
-            )
+            raise ValueError(f"Token realm resolves to non-public address ({ip_str})")
 
 
 @dataclass

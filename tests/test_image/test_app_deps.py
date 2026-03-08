@@ -20,9 +20,12 @@ def _make_image(tmp_path: Path, files: dict[str, str]) -> ExtractedImage:
 
 class TestFindAppDependencies:
     def test_finds_requirements_txt(self, tmp_path: Path) -> None:
-        image = _make_image(tmp_path, {
-            "app/requirements.txt": "flask==2.3.0\nrequests==2.31.0\n",
-        })
+        image = _make_image(
+            tmp_path,
+            {
+                "app/requirements.txt": "flask==2.3.0\nrequests==2.31.0\n",
+            },
+        )
         deps = find_app_dependencies(image)
         names = {d["name"] for d in deps}
         assert "flask" in names
@@ -39,18 +42,24 @@ class TestFindAppDependencies:
                 "node_modules/lodash": {"version": "4.17.21"},
             },
         }
-        image = _make_image(tmp_path, {
-            "app/package-lock.json": json.dumps(lockfile),
-        })
+        image = _make_image(
+            tmp_path,
+            {
+                "app/package-lock.json": json.dumps(lockfile),
+            },
+        )
         deps = find_app_dependencies(image)
         assert any(d["name"] == "lodash" for d in deps)
 
     def test_skips_proc_sys_dirs(self, tmp_path: Path) -> None:
-        image = _make_image(tmp_path, {
-            "proc/requirements.txt": "evil==1.0\n",
-            "sys/requirements.txt": "evil==1.0\n",
-            "app/requirements.txt": "flask==2.3.0\n",
-        })
+        image = _make_image(
+            tmp_path,
+            {
+                "proc/requirements.txt": "evil==1.0\n",
+                "sys/requirements.txt": "evil==1.0\n",
+                "app/requirements.txt": "flask==2.3.0\n",
+            },
+        )
         deps = find_app_dependencies(image)
         names = {d["name"] for d in deps}
         assert "evil" not in names

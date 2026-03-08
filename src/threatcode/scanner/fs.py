@@ -13,21 +13,23 @@ from threatcode.exceptions import ThreatCodeError
 logger = logging.getLogger(__name__)
 
 # Directories to always skip
-_SKIP_DIRS: frozenset[str] = frozenset({
-    ".git",
-    "node_modules",
-    "vendor",
-    "__pycache__",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".tox",
-    ".venv",
-    "venv",
-    ".terraform",
-    "dist",
-    "build",
-    ".eggs",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        "node_modules",
+        "vendor",
+        "__pycache__",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".tox",
+        ".venv",
+        "venv",
+        ".terraform",
+        "dist",
+        "build",
+        ".eggs",
+    }
+)
 
 # Max file size for IaC/lockfile parsing (50 MB matches existing parser limit)
 _MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -191,9 +193,7 @@ def _scan_vulns(lockfiles: list[Path], *, ignore_unfixed: bool = False) -> dict[
         try:
             parsed = detect_and_parse(lockfile)
             deps = [
-                r.properties
-                for r in parsed.resources
-                if r.resource_type.startswith("dependency_")
+                r.properties for r in parsed.resources if r.resource_type.startswith("dependency_")
             ]
             if not deps:
                 continue
@@ -294,9 +294,7 @@ def _scan_licenses(lockfiles: list[Path]) -> dict[str, Any]:
         try:
             parsed = detect_and_parse(lockfile)
             deps = [
-                r.properties
-                for r in parsed.resources
-                if r.resource_type.startswith("dependency_")
+                r.properties for r in parsed.resources if r.resource_type.startswith("dependency_")
             ]
             if not deps:
                 continue

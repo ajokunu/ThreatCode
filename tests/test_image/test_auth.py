@@ -31,9 +31,7 @@ class TestValidateRealmUrl:
         # Use a hostname that will fail DNS — that's fine, we just want the warning
         with caplog.at_level(logging.WARNING):
             with pytest.raises(ValueError, match="resolve"):
-                _validate_realm_url(
-                    "https://evil-auth-server.invalid/token", "docker.io"
-                )
+                _validate_realm_url("https://evil-auth-server.invalid/token", "docker.io")
         assert any("differs from registry" in r.message for r in caplog.records)
 
     def test_rejects_loopback(self) -> None:

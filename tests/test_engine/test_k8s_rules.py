@@ -18,9 +18,7 @@ def k8s_rules():
 @pytest.fixture
 def insecure_resources():
     parser = KubernetesParser()
-    fixture = (
-        Path(__file__).parent.parent / "fixtures" / "kubernetes" / "insecure_deployment.yml"
-    )
+    fixture = Path(__file__).parent.parent / "fixtures" / "kubernetes" / "insecure_deployment.yml"
     content = fixture.read_text()
     return parser.parse(content).resources
 
@@ -28,9 +26,7 @@ def insecure_resources():
 @pytest.fixture
 def secure_resources():
     parser = KubernetesParser()
-    fixture = (
-        Path(__file__).parent.parent / "fixtures" / "kubernetes" / "secure_deployment.yml"
-    )
+    fixture = Path(__file__).parent.parent / "fixtures" / "kubernetes" / "secure_deployment.yml"
     content = fixture.read_text()
     return parser.parse(content).resources
 

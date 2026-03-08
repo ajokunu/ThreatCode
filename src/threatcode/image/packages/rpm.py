@@ -132,7 +132,9 @@ def _parse_sqlite_rpm_db(db_path: Path) -> list[OSPackage]:
         if db_size > _MAX_RPM_DB_SIZE:
             logger.warning(
                 "RPM SQLite DB at %s is %d bytes, exceeding %d limit — skipping",
-                db_path, db_size, _MAX_RPM_DB_SIZE,
+                db_path,
+                db_size,
+                _MAX_RPM_DB_SIZE,
             )
             return packages
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)

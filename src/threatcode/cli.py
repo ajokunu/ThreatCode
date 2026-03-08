@@ -827,9 +827,7 @@ def _apply_ignore_to_result(result: dict[str, Any], ignore_ids: frozenset[str]) 
             id_key = "rule_id"
 
         original_count = len(findings)
-        section["findings"] = [
-            f for f in findings if str(f.get(id_key, "")) not in ignore_ids
-        ]
+        section["findings"] = [f for f in findings if str(f.get(id_key, "")) not in ignore_ids]
         suppressed = original_count - len(section["findings"])
 
         # Update counts

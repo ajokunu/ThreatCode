@@ -113,7 +113,8 @@ def load_rules_from_file(path: Path) -> list[Rule]:
         if mitre and not isinstance(mitre, dict):
             logger.warning(
                 "Rule %s: metadata.mitre must be a dict, got %s",
-                rule.id, type(mitre).__name__,
+                rule.id,
+                type(mitre).__name__,
             )
             mitre = {}
         if mitre:

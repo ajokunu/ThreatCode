@@ -19,7 +19,6 @@ class ParsedResource:
     source_location: str = ""
 
 
-
 @dataclass
 class ParsedOutput:
     resources: list[ParsedResource] = field(default_factory=list)

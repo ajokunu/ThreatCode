@@ -213,9 +213,7 @@ class LayerExtractor:
                 elif m.issym():
                     # Symlink — validate target stays inside extraction dir
                     if os.path.isabs(m.linkname):
-                        logger.debug(
-                            "Skipping absolute symlink: %s -> %s", name, m.linkname
-                        )
+                        logger.debug("Skipping absolute symlink: %s -> %s", name, m.linkname)
                         continue
                     link_target = (target.parent / m.linkname).resolve()
                     dest_resolved = str(dest.resolve())
@@ -225,7 +223,8 @@ class LayerExtractor:
                     ):
                         logger.debug(
                             "Skipping symlink escaping extraction dir: %s -> %s",
-                            name, m.linkname,
+                            name,
+                            m.linkname,
                         )
                         continue
                     if target.exists() or target.is_symlink():
