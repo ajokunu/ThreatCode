@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from threatcode.models.finding import ScanReport as ScanReport
     from threatcode.models.report import ThreatReport
 
-__version__ = "0.7.2"
+__version__ = "0.8.0"
 
 
 def _run_pipeline(
@@ -284,6 +284,108 @@ def scan_all(
             result["license"] = {"error": str(e)}
 
     return result
+
+
+def scan_filesystem(
+    target: str | Path,
+    *,
+    scanners: tuple[str, ...] = ("vuln", "secret", "misconfig", "license"),
+    ignore_unfixed: bool = False,
+    min_severity: str = "info",
+    no_llm: bool = True,
+    config_path: str | Path | None = None,
+    extra_rule_paths: list[str | Path] | None = None,
+    ignore_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Public API: scan a directory for vulnerabilities, secrets, misconfigs, and licenses.
+
+    Walks the directory tree, discovers lockfiles, IaC files, Dockerfiles,
+    and Kubernetes manifests, then runs the selected scanners.
+
+    Args:
+        target: Directory path to scan.
+        scanners: Scanner types to run (vuln, secret, misconfig, license).
+        ignore_unfixed: If True, skip vulnerabilities without a fix.
+        min_severity: Minimum severity to include.
+        no_llm: If True, skip LLM analysis for misconfig scanner.
+        config_path: Optional path to .threatcode.yml config file.
+        extra_rule_paths: Additional rule files for misconfig scanner.
+        ignore_path: Optional path to .threatcodeignore file.
+
+    Returns:
+        Dict with per-scanner results and file discovery metadata.
+
+    Raises:
+        ThreatCodeError: If target is not a directory.
+    """
+    from threatcode.ignore import load_ignore_ids
+    from threatcode.scanner.fs import scan_filesystem as _fs_scan
+
+    result = _fs_scan(
+        target,
+        scanners=scanners,
+        ignore_unfixed=ignore_unfixed,
+        min_severity=min_severity,
+        no_llm=no_llm,
+        config_path=config_path,
+        extra_rule_paths=extra_rule_paths,
+    )
+
+    ignore_ids = load_ignore_ids(
+        search_dir=Path(target),
+        ignore_path=Path(ignore_path) if ignore_path else None,
+    )
+    if ignore_ids:
+        from threatcode.cli import _apply_ignore_to_result
+
+        _apply_ignore_to_result(result, ignore_ids)
+
+    return result
+
+
+def scan_repository(
+    repo_url: str,
+    *,
+    branch: str | None = None,
+    scanners: tuple[str, ...] = ("vuln", "secret", "misconfig", "license"),
+    ignore_unfixed: bool = False,
+    min_severity: str = "info",
+    no_llm: bool = True,
+    config_path: str | Path | None = None,
+    extra_rule_paths: list[str | Path] | None = None,
+) -> dict[str, Any]:
+    """Public API: clone a Git repository and scan it for security issues.
+
+    Performs a shallow clone and runs the filesystem scanner against it.
+
+    Args:
+        repo_url: Git repository URL (HTTPS or SSH).
+        branch: Branch to clone. Defaults to the repo's default branch.
+        scanners: Scanner types to run (vuln, secret, misconfig, license).
+        ignore_unfixed: If True, skip vulnerabilities without a fix.
+        min_severity: Minimum severity to include.
+        no_llm: If True, skip LLM analysis for misconfig scanner.
+        config_path: Optional path to .threatcode.yml config file.
+        extra_rule_paths: Additional rule files for misconfig scanner.
+
+    Returns:
+        Dict with scan results plus repository metadata.
+
+    Raises:
+        ThreatCodeError: If git is not installed or clone fails.
+    """
+    from threatcode.scanner.repo import scan_repository as _repo_scan
+
+    return _repo_scan(
+        repo_url,
+        branch=branch,
+        scanners=scanners,
+        ignore_unfixed=ignore_unfixed,
+        min_severity=min_severity,
+        no_llm=no_llm,
+        config_path=config_path,
+        extra_rule_paths=extra_rule_paths,
+    )
 
 
 def scan_image(

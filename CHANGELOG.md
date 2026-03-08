@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0] - 2026-03-07
+
+### Added
+- **`threatcode fs <path>`** — Filesystem scanner command. Walks a directory tree, discovers lockfiles, IaC files (Terraform, CloudFormation, Dockerfile, Kubernetes), and runs vuln, secret, misconfig, and license scanners against discovered files.
+- **`threatcode repo <url>`** — Repository scanner command. Shallow-clones a Git repo (HTTPS/SSH) into a temp directory and runs the filesystem scanner. Supports `--branch` flag.
+- **`.threatcodeignore` support** — Suppress findings by CVE ID, rule ID, or secret rule ID. Optional `exp:YYYY-MM-DD` expiration dates. Loaded automatically from the scan directory or via `--ignorefile` flag.
+- **`scan_filesystem()` public API** — Programmatic filesystem scanning with ignore support.
+- **`scan_repository()` public API** — Programmatic repository scanning.
+- **`threatcode.ignore` module** — Parser for `.threatcodeignore` files with expiration date support.
+- **`threatcode.scanner.fs` module** — Core filesystem walking and multi-scanner orchestration.
+- **`threatcode.scanner.repo` module** — Git clone + filesystem scan delegation.
+
+### Changed
+- Version bump from 0.7.2 to 0.8.0 (new feature: filesystem and repository scanning).
+
 ## [0.7.2] - 2026-03-06
 
 ### Security
