@@ -123,3 +123,39 @@ rules:
       mitre:
         techniques: ["T1611"]
         tactics: ["TA0004"]
+
+  - id: DOCKER_NO_DIGEST_PIN
+    title: Base image not pinned by digest
+    description: >
+      The base image is referenced by tag instead of SHA256 digest.
+      Tags are mutable and can point to different images over time.
+    stride_category: tampering
+    severity: medium
+    resource_type: dockerfile_image
+    condition:
+      has_digest_pin:
+        equals: false
+    mitigation: >
+      Pin base images to a specific SHA256 digest for reproducibility.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: DOCKER_NON_MINIMAL_BASE
+    title: Non-minimal base image used
+    description: >
+      The base image is a full OS image rather than a minimal variant.
+      Full images contain unnecessary packages that increase attack surface.
+    stride_category: tampering
+    severity: low
+    resource_type: dockerfile_image
+    condition:
+      is_non_minimal:
+        equals: true
+    mitigation: >
+      Use minimal base images like alpine, distroless, or slim variants.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]

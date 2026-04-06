@@ -86,3 +86,75 @@ rules:
       mitre:
         techniques: ["T1078"]
         tactics: ["TA0004"]
+
+  - id: EKS_PUBLIC_NODE_GROUP
+    title: EKS node group with public subnets
+    description: >
+      EKS worker nodes are deployed in public subnets with public IP addresses.
+      This exposes nodes directly to the internet.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_eks_node_group
+    condition:
+      remote_access.ec2_ssh_key:
+        not_exists: false
+    mitigation: >
+      Deploy node groups in private subnets using a NAT gateway for outbound traffic.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: EKS_SSH_ACCESS_NODES
+    title: EKS node group allows SSH access
+    description: >
+      The EKS node group has SSH access enabled via an EC2 key pair.
+      Direct SSH access to worker nodes is a security risk.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: aws_eks_node_group
+    condition:
+      remote_access.ec2_ssh_key:
+        not_exists: false
+    mitigation: >
+      Remove SSH key configuration. Use SSM Session Manager for node access.
+    metadata:
+      mitre:
+        techniques: ["T1021"]
+        tactics: ["TA0008"]
+
+  - id: EKS_UNENCRYPTED_NODE_AMI
+    title: EKS node group without encrypted launch template
+    description: >
+      The EKS node group does not use an encrypted AMI or launch template
+      with encrypted EBS volumes. Data at rest on nodes is unprotected.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_eks_node_group
+    condition:
+      launch_template:
+        not_exists: true
+    mitigation: >
+      Use a launch template with encrypted EBS volumes for node groups.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: EKS_NO_FARGATE_LOGGING
+    title: EKS Fargate profile without logging
+    description: >
+      The EKS Fargate profile does not have logging configured.
+      Container logs from Fargate pods cannot be audited.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_eks_fargate_profile
+    condition:
+      selector:
+        not_exists: true
+    mitigation: >
+      Configure Fargate logging with a Fluent Bit sidecar or AWS for Fluent Bit.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

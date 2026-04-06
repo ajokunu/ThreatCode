@@ -1,0 +1,90 @@
+rules:
+  - id: WAF_NO_DEFAULT_BLOCK
+    title: WAF web ACL does not default to block
+    description: >
+      The WAF web ACL default action allows requests instead of blocking them.
+      Without a default block, unmatched traffic passes through unchecked.
+    stride_category: tampering
+    severity: high
+    resource_type: aws_wafv2_web_acl
+    condition:
+      default_action.block:
+        not_exists: true
+    mitigation: >
+      Set the default action to Block to deny unmatched requests.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: WAF_NO_LOGGING
+    title: WAF web ACL without logging
+    description: >
+      The WAF web ACL does not have logging enabled.
+      Without logging, blocked and allowed requests cannot be audited.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_wafv2_web_acl
+    condition:
+      logging_configuration:
+        not_exists: true
+    mitigation: >
+      Enable WAF logging to S3, CloudWatch Logs, or Kinesis Data Firehose.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: WAF_NO_RATE_LIMITING
+    title: WAF web ACL without rate-based rules
+    description: >
+      The WAF web ACL does not include any rate-based rules.
+      This leaves the application vulnerable to brute-force and DDoS attacks.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: aws_wafv2_web_acl
+    condition:
+      has_rate_based_rule:
+        equals: false
+    mitigation: >
+      Add a rate-based rule to limit request frequency per IP.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: WAF_NO_MANAGED_RULES
+    title: WAF web ACL without managed rule groups
+    description: >
+      The WAF web ACL does not reference any AWS Managed Rule groups.
+      Managed rules provide baseline protection against common threats.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_wafv2_web_acl
+    condition:
+      has_managed_rules:
+        equals: false
+    mitigation: >
+      Add AWS Managed Rule groups such as AWSManagedRulesCommonRuleSet.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: WAF_EMPTY_RULES
+    title: WAF web ACL has no rules defined
+    description: >
+      The WAF web ACL has an empty rule set. Without rules,
+      no traffic inspection or filtering occurs.
+    stride_category: tampering
+    severity: high
+    resource_type: aws_wafv2_web_acl
+    condition:
+      rules:
+        is_empty: true
+    mitigation: >
+      Add WAF rules to inspect and filter traffic.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

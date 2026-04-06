@@ -1,0 +1,54 @@
+rules:
+  - id: MONITOR_NO_ACTIVITY_LOG_ALERT
+    title: No activity log alert configured
+    description: >
+      No activity log alert is configured for critical operations.
+      Security-relevant changes will not trigger notifications.
+    stride_category: repudiation
+    severity: medium
+    resource_type: azurerm_monitor_activity_log_alert
+    condition:
+      enabled:
+        equals: false
+    mitigation: >
+      Create activity log alerts for critical operations like policy changes.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: MONITOR_NO_DIAGNOSTIC_SETTING
+    title: No diagnostic setting configured
+    description: >
+      No diagnostic setting is configured. Platform logs and metrics
+      are not being collected for analysis.
+    stride_category: repudiation
+    severity: medium
+    resource_type: azurerm_monitor_diagnostic_setting
+    condition:
+      log:
+        not_exists: true
+    mitigation: >
+      Configure diagnostic settings to collect logs and metrics.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: MONITOR_SHORT_RETENTION
+    title: Monitor log retention too short
+    description: >
+      Log retention is set to less than 90 days. Insufficient log
+      retention hampers incident investigation and compliance.
+    stride_category: repudiation
+    severity: medium
+    resource_type: azurerm_monitor_diagnostic_setting
+    condition:
+      log.0.retention_policy.days:
+        less_than: 90
+    mitigation: >
+      Set log retention to at least 90 days.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

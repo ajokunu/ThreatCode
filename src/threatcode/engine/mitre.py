@@ -16,6 +16,7 @@ TACTIC_DB: dict[str, dict[str, str]] = {
     "TA0010": {"name": "Exfiltration", "url": "https://attack.mitre.org/tactics/TA0010/"},
     "TA0011": {"name": "Command and Control", "url": "https://attack.mitre.org/tactics/TA0011/"},
     "TA0040": {"name": "Impact", "url": "https://attack.mitre.org/tactics/TA0040/"},
+    "TA0042": {"name": "Resource Development", "url": "https://attack.mitre.org/tactics/TA0042/"},
 }
 
 # ATT&CK Technique definitions relevant to cloud IaC threats
@@ -159,6 +160,26 @@ TECHNIQUE_DB: dict[str, dict[str, str | list[str]]] = {
         "name": "Exploitation for Privilege Escalation",
         "tactic_ids": ["TA0004"],
         "url": "https://attack.mitre.org/techniques/T1068/",
+    },
+    "T1048": {
+        "name": "Exfiltration Over Alternative Protocol",
+        "tactic_ids": ["TA0010"],
+        "url": "https://attack.mitre.org/techniques/T1048/",
+    },
+    "T1189": {
+        "name": "Drive-by Compromise",
+        "tactic_ids": ["TA0001"],
+        "url": "https://attack.mitre.org/techniques/T1189/",
+    },
+    "T1587.001": {
+        "name": "Develop Capabilities: Malware",
+        "tactic_ids": ["TA0042"],
+        "url": "https://attack.mitre.org/techniques/T1587/001/",
+    },
+    "T1587": {
+        "name": "Develop Capabilities",
+        "tactic_ids": ["TA0042"],
+        "url": "https://attack.mitre.org/techniques/T1587/",
     },
 }
 

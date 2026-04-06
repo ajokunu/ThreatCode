@@ -15,3 +15,39 @@ rules:
       mitre:
         techniques: ["T1040"]
         tactics: ["TA0007"]
+
+  - id: K8S_DEFAULT_ALLOW_EGRESS
+    title: Default-allow egress policy
+    description: >
+      No NetworkPolicy restricts egress traffic. Pods can communicate
+      with any external endpoint including command and control servers.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: kubernetes_network_policy
+    condition:
+      has_egress_rules:
+        equals: false
+    mitigation: >
+      Define egress NetworkPolicies to restrict outbound traffic.
+    metadata:
+      mitre:
+        techniques: ["T1048"]
+        tactics: ["TA0010"]
+
+  - id: K8S_INGRESS_NO_TLS
+    title: Ingress resource without TLS configuration
+    description: >
+      The Ingress resource does not have TLS configured.
+      Traffic to the application is not encrypted in transit.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: kubernetes_ingress
+    condition:
+      has_tls:
+        equals: false
+    mitigation: >
+      Configure TLS in the Ingress spec with a valid certificate.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]

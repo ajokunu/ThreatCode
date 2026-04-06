@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -49,6 +50,16 @@ class LockfileParser(BaseParser):
             )
         elif filename == "composer.lock":
             resources = self._parse_composer(data, source_path)
+        elif filename == "mix.lock":
+            resources = self._parse_mix_lock(
+                data if isinstance(data, str) else str(data), source_path
+            )
+        elif filename == "pubspec.lock":
+            resources = self._parse_pubspec_lock(
+                data if isinstance(data, str) else str(data), source_path
+            )
+        elif filename == "conan.lock":
+            resources = self._parse_conan_lock(data, source_path)
 
         return ParsedOutput(
             resources=resources,
@@ -406,6 +417,93 @@ class LockfileParser(BaseParser):
                             ecosystem="packagist",
                             source_path=source_path,
                             license_id=lic,
+                        )
+                    )
+
+        return resources
+
+    def _parse_mix_lock(self, content: str, source_path: str) -> list[ParsedResource]:
+        """Parse mix.lock (Elixir/Hex)."""
+        resources: list[ParsedResource] = []
+        # Format: %{"dep": {:hex, :dep, "1.2.3", ...}, ...}
+        for match in re.finditer(r'"([^"]+)":\s*\{:hex,\s*:[^,]+,\s*"([^"]+)"', content):
+            name = match.group(1)
+            version = match.group(2)
+            resources.append(
+                self._make_dep(
+                    name=name,
+                    version=version,
+                    ecosystem="hex",
+                    source_path=source_path,
+                )
+            )
+        return resources
+
+    def _parse_pubspec_lock(self, content: str, source_path: str) -> list[ParsedResource]:
+        """Parse pubspec.lock (Dart/Pub)."""
+        resources: list[ParsedResource] = []
+        try:
+            import yaml
+
+            data = yaml.safe_load(content)
+        except Exception:
+            return resources
+
+        if not isinstance(data, dict):
+            return resources
+
+        packages = data.get("packages", {})
+        if not isinstance(packages, dict):
+            return resources
+
+        for pkg_name, pkg_info in packages.items():
+            if not isinstance(pkg_info, dict):
+                continue
+            version = pkg_info.get("version", "")
+            if pkg_name and version:
+                resources.append(
+                    self._make_dep(
+                        name=pkg_name,
+                        version=version,
+                        ecosystem="pub",
+                        source_path=source_path,
+                    )
+                )
+
+        return resources
+
+    def _parse_conan_lock(self, data: Any, source_path: str) -> list[ParsedResource]:
+        """Parse conan.lock (C++/Conan)."""
+        resources: list[ParsedResource] = []
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                return resources
+
+        if not isinstance(data, dict):
+            return resources
+
+        # Conan v2 lockfile format: {"requires": ["pkg/1.2.3#hash", ...]}
+        requires = data.get("requires", [])
+        if not isinstance(requires, list):
+            return resources
+
+        for entry in requires:
+            if not isinstance(entry, str):
+                continue
+            # Strip hash suffix: "pkg/1.2.3#hash" -> "pkg/1.2.3"
+            entry = entry.split("#")[0]
+            parts = entry.split("/", 1)
+            if len(parts) == 2:
+                name, version = parts[0], parts[1]
+                if name and version:
+                    resources.append(
+                        self._make_dep(
+                            name=name,
+                            version=version,
+                            ecosystem="conan",
+                            source_path=source_path,
                         )
                     )
 

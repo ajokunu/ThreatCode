@@ -145,3 +145,57 @@ rules:
       mitre:
         techniques: ["T1195.002"]
         tactics: ["TA0001"]
+
+  - id: DOCKER_COPY_NO_CHOWN
+    title: COPY without --chown flag
+    description: >
+      A COPY instruction does not use the --chown flag. Files are
+      copied with root ownership, which may be inappropriate.
+    stride_category: elevation_of_privilege
+    severity: low
+    resource_type: dockerfile_copy
+    condition:
+      has_chown:
+        equals: false
+    mitigation: >
+      Use --chown=user:group with COPY to set proper file ownership.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: DOCKER_ADD_FROM_URL
+    title: ADD instruction fetches from URL
+    description: >
+      The ADD instruction downloads content from a URL at build time.
+      This introduces supply chain risk as the URL content may change.
+    stride_category: tampering
+    severity: medium
+    resource_type: dockerfile_add
+    condition:
+      is_url_add:
+        equals: true
+    mitigation: >
+      Use curl/wget in a RUN instruction with checksum verification instead.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+
+  - id: DOCKER_APT_NO_CLEAN
+    title: apt-get install without cleanup
+    description: >
+      apt-get install does not clean up the apt cache afterward.
+      This unnecessarily increases the image size and attack surface.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: dockerfile_run
+    condition:
+      has_apt_no_clean:
+        equals: true
+    mitigation: >
+      Add 'rm -rf /var/lib/apt/lists/*' after apt-get install.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]

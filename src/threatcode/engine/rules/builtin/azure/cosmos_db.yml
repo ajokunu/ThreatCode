@@ -1,0 +1,72 @@
+rules:
+  - id: COSMOS_PUBLIC_ACCESS
+    title: Cosmos DB allows public network access
+    description: >
+      The Cosmos DB account allows public network access.
+      Data is potentially accessible from the internet.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_cosmosdb_account
+    condition:
+      public_network_access_enabled:
+        equals: true
+    mitigation: >
+      Disable public network access and use private endpoints.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: COSMOS_NO_VNET_RULES
+    title: Cosmos DB without VNET service endpoint rules
+    description: >
+      No VNET rules are configured for the Cosmos DB account.
+      Access is not restricted to specific virtual networks.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_cosmosdb_account
+    condition:
+      virtual_network_rule:
+        not_exists: true
+    mitigation: >
+      Add VNET rules to restrict access to specific virtual networks.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: COSMOS_NO_CMK
+    title: Cosmos DB without customer-managed encryption key
+    description: >
+      The Cosmos DB account uses service-managed encryption.
+      Customer-managed keys provide additional control over data protection.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_cosmosdb_account
+    condition:
+      key_vault_key_id:
+        not_exists: true
+    mitigation: >
+      Configure a customer-managed key from Azure Key Vault.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: COSMOS_NO_ANALYTICAL_STORAGE
+    title: Cosmos DB without analytical storage
+    description: >
+      Analytical storage is not enabled. This prevents separation of
+      analytical workloads from transactional data access patterns.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: azurerm_cosmosdb_account
+    condition:
+      analytical_storage_enabled:
+        equals: false
+    mitigation: >
+      Enable analytical storage for workload isolation.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

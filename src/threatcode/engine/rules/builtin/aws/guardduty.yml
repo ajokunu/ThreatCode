@@ -1,0 +1,72 @@
+rules:
+  - id: GUARDDUTY_NOT_ENABLED
+    title: GuardDuty detector is not enabled
+    description: >
+      The GuardDuty detector is configured but not enabled.
+      Disabled detectors do not generate security findings.
+    stride_category: repudiation
+    severity: high
+    resource_type: aws_guardduty_detector
+    condition:
+      enable:
+        equals: false
+    mitigation: >
+      Set enable to true on the GuardDuty detector.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: GUARDDUTY_NO_S3_PROTECTION
+    title: GuardDuty S3 protection disabled
+    description: >
+      S3 data event monitoring is not enabled in GuardDuty.
+      Threats against S3 data will not be detected.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_guardduty_detector
+    condition:
+      datasources.s3_logs.enable:
+        equals: false
+    mitigation: >
+      Enable S3 protection in the GuardDuty detector datasources.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: GUARDDUTY_NO_EKS_PROTECTION
+    title: GuardDuty EKS protection disabled
+    description: >
+      EKS audit log monitoring is not enabled in GuardDuty.
+      Kubernetes-level threats will not be detected.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: aws_guardduty_detector
+    condition:
+      datasources.kubernetes.audit_logs.enable:
+        equals: false
+    mitigation: >
+      Enable EKS audit log monitoring in GuardDuty.
+    metadata:
+      mitre:
+        techniques: ["T1613"]
+        tactics: ["TA0007"]
+
+  - id: GUARDDUTY_NO_MALWARE_SCAN
+    title: GuardDuty malware protection disabled
+    description: >
+      Malware protection is not enabled in GuardDuty.
+      Malicious files on EBS volumes will not be detected.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_guardduty_detector
+    condition:
+      datasources.malware_protection.scan_ec2_instance_with_findings.ebs_volumes.enable:
+        equals: false
+    mitigation: >
+      Enable malware protection scanning for EBS volumes.
+    metadata:
+      mitre:
+        techniques: ["T1587.001"]
+        tactics: ["TA0042"]

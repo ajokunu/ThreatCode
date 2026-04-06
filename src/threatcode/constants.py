@@ -69,5 +69,8 @@ LOCKFILE_NAMES: frozenset[str] = frozenset(
         "Cargo.lock",
         "Gemfile.lock",
         "composer.lock",
+        "mix.lock",
+        "pubspec.lock",
+        "conan.lock",
     }
 )

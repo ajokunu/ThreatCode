@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.9.0] - 2026-03-08
+
+### Added
+
+#### Expanded Misconfig Rules (131 → 221)
+- **AWS** (+30 rules, 7 files): WAF web ACL (5), Secrets Manager (4), GuardDuty (4), AWS Config (4), SSM Parameter Store (4), WAFv2 rule groups (5), EKS node groups (4)
+- **Azure** (+25 rules, 6 files): Key Vault (5), App Service (5), Functions (4), SQL Database (4), Cosmos DB (4), Monitor (3)
+- **GCP** (+20 rules, 5 files): Cloud SQL (5), Cloud Functions (4), BigQuery (4), Pub/Sub (3), Cloud Run (4)
+- **Kubernetes** (+10 rules): Pod Security Admission, default service accounts, security context defaults, seccomp profiles, resource quotas, PodDisruptionBudget, ephemeral storage, egress policies, Ingress TLS
+- **Docker** (+5 rules): COPY --chown, ADD from URL, apt cleanup, digest pinning, minimal base images
+
+#### OS Advisory Sources (2 → 5 families)
+- **Ubuntu OVAL** — advisories for 18.04 (Bionic), 20.04 (Focal), 22.04 (Jammy), 24.04 (Noble) via OVAL XML
+- **Amazon Linux ALAS** — advisories for AL2 and AL2023 via ALAS RSS feeds
+- **RHEL CVE API** — advisories for RHEL 8 and 9 via Red Hat Security Data API with exponential backoff
+
+#### New Lockfile Parsers (10 → 13 formats)
+- **`mix.lock`** (Elixir/Hex) — regex-based parser for Hex dependencies
+- **`pubspec.lock`** (Dart/Pub) — YAML-based parser for Pub dependencies
+- **`conan.lock`** (C++/Conan) — JSON-based parser for Conan v2 lockfiles
+- Added `Hex` and `Pub` ecosystems to OSV database update
+
+#### Helm Chart Scanning
+- **`HelmParser`** — renders Helm charts to Kubernetes YAML via `helm template` CLI or raw template fallback
+- **Parser registry** — Helm chart detection via `Chart.yaml` at priority 8
+- **Filesystem scanner** — automatic Helm chart discovery and misconfig scanning
+- Test fixtures: sample insecure Helm chart with privileged deployment
+
+### Changed
+- Version bump from 0.8.0 to 0.9.0 (new features: expanded rules, OS advisories, lockfile parsers, Helm scanning)
+- `LOCKFILE_NAMES` extended with `mix.lock`, `pubspec.lock`, `conan.lock`
+- `OSAdvisoryDownloader.update_all()` now includes Ubuntu, Amazon Linux, and RHEL
+- `db update` OSV ecosystems now include Hex and Pub
+- Filesystem scanner reports `helm_charts_found` in result metadata
+- Unsupported format error message updated with Helm and new lockfile formats
+
 ## [0.8.0] - 2026-03-07
 
 ### Added

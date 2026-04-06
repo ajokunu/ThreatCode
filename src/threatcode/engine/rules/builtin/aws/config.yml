@@ -1,0 +1,72 @@
+rules:
+  - id: CONFIG_NOT_ENABLED
+    title: AWS Config recorder not enabled
+    description: >
+      The AWS Config configuration recorder is not enabled.
+      Configuration changes will not be tracked.
+    stride_category: repudiation
+    severity: high
+    resource_type: aws_config_configuration_recorder
+    condition:
+      recording_group:
+        not_exists: true
+    mitigation: >
+      Enable the configuration recorder to track resource changes.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CONFIG_NOT_ALL_RESOURCES
+    title: AWS Config not recording all resource types
+    description: >
+      The configuration recorder is not set to record all resource types.
+      Some configuration changes may go untracked.
+    stride_category: repudiation
+    severity: medium
+    resource_type: aws_config_configuration_recorder
+    condition:
+      recording_group.all_supported:
+        equals: false
+    mitigation: >
+      Set all_supported to true in the recording group.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CONFIG_NO_DELIVERY_CHANNEL
+    title: AWS Config without delivery channel
+    description: >
+      No delivery channel is configured for AWS Config.
+      Configuration snapshots and history cannot be delivered.
+    stride_category: repudiation
+    severity: high
+    resource_type: aws_config_delivery_channel
+    condition:
+      s3_bucket_name:
+        not_exists: true
+    mitigation: >
+      Configure a delivery channel with an S3 bucket for Config data.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: CONFIG_NO_AGGREGATION
+    title: AWS Config without configuration aggregator
+    description: >
+      No configuration aggregator is set up for multi-account visibility.
+      Security posture across accounts cannot be centrally monitored.
+    stride_category: information_disclosure
+    severity: low
+    resource_type: aws_config_configuration_aggregator
+    condition:
+      account_aggregation_source:
+        not_exists: true
+    mitigation: >
+      Set up a configuration aggregator for cross-account visibility.
+    metadata:
+      mitre:
+        techniques: ["T1580"]
+        tactics: ["TA0007"]

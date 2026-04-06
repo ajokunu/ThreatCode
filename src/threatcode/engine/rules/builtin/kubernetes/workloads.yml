@@ -302,3 +302,57 @@ rules:
       mitre:
         techniques: ["T1611"]
         tactics: ["TA0004"]
+
+  - id: K8S_NO_RESOURCE_QUOTAS
+    title: Namespace without resource quotas
+    description: >
+      No ResourceQuota is defined for the namespace. Pods can consume
+      unlimited cluster resources, leading to resource starvation.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: kubernetes_namespace
+    condition:
+      has_resource_quota:
+        equals: false
+    mitigation: >
+      Define ResourceQuota objects to limit resource consumption per namespace.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: K8S_NO_PDB
+    title: Deployment without PodDisruptionBudget
+    description: >
+      No PodDisruptionBudget is defined for the deployment.
+      Voluntary disruptions could take down all replicas simultaneously.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: kubernetes_deployment
+    condition:
+      has_pdb:
+        equals: false
+    mitigation: >
+      Create a PodDisruptionBudget to ensure minimum availability during disruptions.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: K8S_EPHEMERAL_STORAGE_UNBOUNDED
+    title: Container without ephemeral storage limits
+    description: >
+      No ephemeral storage limits are set on the container.
+      A container can fill the node's disk, causing node failure.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      has_resource_limits:
+        equals: false
+    mitigation: >
+      Set ephemeral-storage limits in container resource specifications.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

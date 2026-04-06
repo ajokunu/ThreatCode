@@ -1,0 +1,72 @@
+rules:
+  - id: CLOUDRUN_UNAUTHENTICATED
+    title: Cloud Run service allows unauthenticated access
+    description: >
+      The Cloud Run service allows unauthenticated invocations.
+      Anyone can access the service without identity verification.
+    stride_category: spoofing
+    severity: high
+    resource_type: google_cloud_run_service
+    condition:
+      has_allow_unauthenticated:
+        equals: true
+    mitigation: >
+      Require authentication by removing allUsers IAM binding.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]
+
+  - id: CLOUDRUN_NO_VPC_CONNECTOR
+    title: Cloud Run service without VPC connector
+    description: >
+      The Cloud Run service does not use a VPC connector.
+      It cannot access internal VPC resources securely.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_cloud_run_service
+    condition:
+      template.0.metadata.0.annotations.run.googleapis.com/vpc-access-connector:
+        not_exists: true
+    mitigation: >
+      Configure a VPC connector for private network access.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: CLOUDRUN_NO_CPU_LIMIT
+    title: Cloud Run service without CPU limit
+    description: >
+      The Cloud Run service does not set a CPU limit.
+      Unrestricted CPU usage can lead to cost overruns.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: google_cloud_run_service
+    condition:
+      template.0.spec.0.containers.0.resources.limits.cpu:
+        not_exists: true
+    mitigation: >
+      Set CPU limits in container resource specifications.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: CLOUDRUN_NO_MAX_INSTANCES
+    title: Cloud Run service without max instance scaling limit
+    description: >
+      The Cloud Run service does not limit the maximum number of instances.
+      Unrestricted scaling can lead to cost explosion.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: google_cloud_run_service
+    condition:
+      template.0.metadata.0.annotations.autoscaling.knative.dev/maxScale:
+        not_exists: true
+    mitigation: >
+      Set maxScale annotation to limit instance scaling.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

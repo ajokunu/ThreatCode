@@ -1,0 +1,72 @@
+rules:
+  - id: GCFUNC_PUBLIC_INGRESS
+    title: Cloud Function allows all ingress
+    description: >
+      The Cloud Function allows ingress from all sources.
+      It can be invoked from any network.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_cloudfunctions_function
+    condition:
+      ingress_settings:
+        equals: "ALLOW_ALL"
+    mitigation: >
+      Set ingress_settings to ALLOW_INTERNAL_ONLY or ALLOW_INTERNAL_AND_GCLB.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: GCFUNC_NO_VPC_CONNECTOR
+    title: Cloud Function without VPC connector
+    description: >
+      The Cloud Function does not use a VPC connector.
+      It cannot securely access resources in private VPC networks.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_cloudfunctions_function
+    condition:
+      vpc_connector:
+        not_exists: true
+    mitigation: >
+      Configure a Serverless VPC Access connector.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: GCFUNC_HTTP_NO_AUTH
+    title: Cloud Function HTTP trigger without authentication
+    description: >
+      The HTTP-triggered Cloud Function does not require authentication.
+      Anyone with the URL can invoke the function.
+    stride_category: spoofing
+    severity: high
+    resource_type: google_cloudfunctions_function
+    condition:
+      https_trigger_security_level:
+        equals: "SECURE_OPTIONAL"
+    mitigation: >
+      Require authentication for HTTP-triggered functions.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]
+
+  - id: GCFUNC_NO_MAX_INSTANCES
+    title: Cloud Function without max instance limit
+    description: >
+      The Cloud Function does not set a maximum instance limit.
+      Unrestricted scaling can lead to cost explosion and resource exhaustion.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: google_cloudfunctions_function
+    condition:
+      max_instances:
+        not_exists: true
+    mitigation: >
+      Set max_instances to limit function scaling.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

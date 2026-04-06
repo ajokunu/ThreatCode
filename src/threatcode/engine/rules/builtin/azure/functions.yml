@@ -1,0 +1,72 @@
+rules:
+  - id: FUNC_NO_MANAGED_IDENTITY
+    title: Function App without managed identity
+    description: >
+      The Function App does not use a managed identity.
+      Service credentials must be managed manually.
+    stride_category: spoofing
+    severity: medium
+    resource_type: azurerm_function_app
+    condition:
+      identity:
+        not_exists: true
+    mitigation: >
+      Enable a system-assigned or user-assigned managed identity.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]
+
+  - id: FUNC_HTTP_V1
+    title: Function App using HTTP trigger v1
+    description: >
+      The Function App uses HTTP extension version 1.
+      Version 2 provides improved security features.
+    stride_category: tampering
+    severity: low
+    resource_type: azurerm_function_app
+    condition:
+      site_config.http2_enabled:
+        equals: false
+    mitigation: >
+      Enable HTTP/2 in site_config for improved performance and security.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: FUNC_NO_HTTPS
+    title: Function App without HTTPS enforcement
+    description: >
+      HTTPS-only is not enabled on the Function App.
+      Traffic can be intercepted over unencrypted HTTP.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_function_app
+    condition:
+      https_only:
+        equals: false
+    mitigation: >
+      Set https_only to true to enforce HTTPS connections.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: FUNC_PUBLIC_ACCESS
+    title: Function App allows public network access
+    description: >
+      The Function App is publicly accessible from the internet.
+      Unauthorized users may invoke functions.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_function_app
+    condition:
+      public_network_access_enabled:
+        equals: true
+    mitigation: >
+      Disable public network access and use private endpoints or VNET integration.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

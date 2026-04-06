@@ -1,0 +1,90 @@
+rules:
+  - id: WAFV2_NO_SQL_INJECTION_RULE
+    title: WAF rule group missing SQL injection protection
+    description: >
+      The WAF rule group does not include a SQL injection match statement.
+      Applications are exposed to SQL injection attacks.
+    stride_category: tampering
+    severity: high
+    resource_type: aws_wafv2_rule_group
+    condition:
+      has_sqli_rule:
+        equals: false
+    mitigation: >
+      Add a SqliMatchStatement rule to detect SQL injection attempts.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: WAFV2_NO_XSS_RULE
+    title: WAF rule group missing XSS protection
+    description: >
+      The WAF rule group does not include a cross-site scripting match
+      statement. Applications are exposed to XSS attacks.
+    stride_category: tampering
+    severity: high
+    resource_type: aws_wafv2_rule_group
+    condition:
+      has_xss_rule:
+        equals: false
+    mitigation: >
+      Add an XssMatchStatement rule to detect XSS attempts.
+    metadata:
+      mitre:
+        techniques: ["T1189"]
+        tactics: ["TA0001"]
+
+  - id: WAFV2_RATE_LIMIT_HIGH
+    title: WAF rate limit threshold too high
+    description: >
+      The WAF rate-based rule has a threshold above 2000 requests per
+      5-minute window. This may not effectively limit abuse.
+    stride_category: denial_of_service
+    severity: medium
+    resource_type: aws_wafv2_rule_group
+    condition:
+      rate_limit:
+        greater_than: 2000
+    mitigation: >
+      Lower the rate limit threshold to an appropriate value.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: WAFV2_NO_IP_REPUTATION
+    title: WAF rule group without IP reputation list
+    description: >
+      The WAF rule group does not use AWS IP reputation lists.
+      Known malicious IP addresses are not blocked.
+    stride_category: tampering
+    severity: medium
+    resource_type: aws_wafv2_rule_group
+    condition:
+      has_ip_reputation:
+        equals: false
+    mitigation: >
+      Add the AWSManagedRulesAmazonIpReputationList managed rule group.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: WAFV2_NO_GEO_BLOCKING
+    title: WAF rule group without geographic restrictions
+    description: >
+      The WAF rule group does not include geographic match conditions.
+      Requests from unauthorized regions are not blocked.
+    stride_category: tampering
+    severity: low
+    resource_type: aws_wafv2_rule_group
+    condition:
+      has_geo_match:
+        equals: false
+    mitigation: >
+      Add geographic match conditions to restrict traffic by country.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

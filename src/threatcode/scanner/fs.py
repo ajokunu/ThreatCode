@@ -94,6 +94,7 @@ def scan_filesystem(
     # Phase 1: discover files
     lockfiles: list[Path] = []
     iac_files: list[Path] = []
+    helm_charts: list[Path] = []
     all_files: list[Path] = []
 
     for root, dirs, filenames in os.walk(target):
@@ -114,14 +115,17 @@ def scan_filesystem(
 
             if fname in LOCKFILE_NAMES:
                 lockfiles.append(fpath)
+            elif fname == "Chart.yaml":
+                helm_charts.append(fpath)
             elif _is_iac_candidate(fpath):
                 iac_files.append(fpath)
 
     logger.info(
-        "Discovered %d files (%d lockfiles, %d IaC candidates) in %s",
+        "Discovered %d files (%d lockfiles, %d IaC candidates, %d Helm charts) in %s",
         len(all_files),
         len(lockfiles),
         len(iac_files),
+        len(helm_charts),
         target,
     )
 
@@ -131,6 +135,7 @@ def scan_filesystem(
         "files_scanned": len(all_files),
         "lockfiles_found": len(lockfiles),
         "iac_files_found": len(iac_files),
+        "helm_charts_found": len(helm_charts),
     }
 
     has_issues = False
@@ -147,10 +152,13 @@ def scan_filesystem(
         if result["secret"].get("total_secrets", 0) > 0:
             has_issues = True
 
-    # Phase 4: run misconfig scanner on IaC files
+    # Phase 4: run misconfig scanner on IaC files (including rendered Helm charts)
+    misconfig_files = list(iac_files)
+    for chart_yaml in helm_charts:
+        misconfig_files.append(chart_yaml)
     if "misconfig" in scanners:
         result["misconfig"] = _scan_misconfigs(
-            iac_files,
+            misconfig_files,
             no_llm=no_llm,
             min_severity=min_severity,
             config_path=config_path,

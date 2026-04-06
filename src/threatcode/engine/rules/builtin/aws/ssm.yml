@@ -1,0 +1,75 @@
+rules:
+  - id: SSM_UNENCRYPTED_PARAMETER
+    title: SSM parameter not encrypted
+    description: >
+      The SSM parameter is stored as a String instead of SecureString.
+      Parameter values are visible in plaintext to anyone with read access.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: aws_ssm_parameter
+    condition:
+      type:
+        equals: "String"
+    mitigation: >
+      Use SecureString type for sensitive parameter values.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: SSM_NO_DESCRIPTION
+    title: SSM parameter without description
+    description: >
+      The SSM parameter lacks a description. Without descriptions,
+      the purpose and owner of parameters is unclear.
+    stride_category: repudiation
+    severity: low
+    resource_type: aws_ssm_parameter
+    condition:
+      description:
+        not_exists: true
+    mitigation: >
+      Add a description to document the parameter's purpose and owner.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]
+
+  - id: SSM_STANDARD_TIER_SECRET
+    title: SSM secret parameter using standard tier
+    description: >
+      A SecureString parameter is using the Standard tier.
+      Advanced tier provides enhanced security features.
+    stride_category: information_disclosure
+    severity: low
+    resource_type: aws_ssm_parameter
+    condition:
+      all_of:
+        - type:
+            equals: "SecureString"
+        - tier:
+            equals: "Standard"
+    mitigation: >
+      Consider using Advanced tier for enhanced parameter policies.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: SSM_NO_ALLOWED_PATTERN
+    title: SSM parameter without allowed pattern
+    description: >
+      The SSM parameter does not define an allowed pattern constraint.
+      Invalid values could be stored without validation.
+    stride_category: tampering
+    severity: low
+    resource_type: aws_ssm_parameter
+    condition:
+      allowed_pattern:
+        not_exists: true
+    mitigation: >
+      Define an allowed_pattern to validate parameter values.
+    metadata:
+      mitre:
+        techniques: ["T1565.001"]
+        tactics: ["TA0040"]

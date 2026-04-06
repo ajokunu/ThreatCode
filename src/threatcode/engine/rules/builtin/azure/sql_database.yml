@@ -1,0 +1,72 @@
+rules:
+  - id: MSSQL_NO_AUDITING
+    title: SQL Server without auditing
+    description: >
+      The SQL Server does not have auditing enabled.
+      Database operations cannot be tracked for compliance.
+    stride_category: repudiation
+    severity: high
+    resource_type: azurerm_mssql_server
+    condition:
+      extended_auditing_policy:
+        not_exists: true
+    mitigation: >
+      Enable extended auditing policy on the SQL Server.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]
+
+  - id: MSSQL_NO_TDE
+    title: SQL Database without transparent data encryption
+    description: >
+      Transparent data encryption (TDE) is not enabled.
+      Data at rest in the database is not encrypted.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_mssql_server
+    condition:
+      transparent_data_encryption_enabled:
+        equals: false
+    mitigation: >
+      Enable transparent data encryption on the database.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: MSSQL_NO_THREAT_DETECTION
+    title: SQL Server without threat detection
+    description: >
+      Advanced Threat Protection is not enabled on the SQL Server.
+      SQL injection and anomalous activities will not be detected.
+    stride_category: tampering
+    severity: medium
+    resource_type: azurerm_mssql_server
+    condition:
+      threat_detection_policy:
+        not_exists: true
+    mitigation: >
+      Enable Advanced Threat Protection for SQL Server.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: MSSQL_PUBLIC_ACCESS
+    title: SQL Server allows public network access
+    description: >
+      The SQL Server allows connections from public IP addresses.
+      The database is potentially accessible from the internet.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_mssql_server
+    condition:
+      public_network_access_enabled:
+        equals: true
+    mitigation: >
+      Disable public network access and use private endpoints.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]

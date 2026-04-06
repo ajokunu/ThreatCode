@@ -1,0 +1,72 @@
+rules:
+  - id: BQ_PUBLIC_ACCESS
+    title: BigQuery dataset allows public access
+    description: >
+      The BigQuery dataset grants access to allUsers or allAuthenticatedUsers.
+      Data is accessible without proper authorization.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: google_bigquery_dataset
+    condition:
+      has_public_access:
+        equals: true
+    mitigation: >
+      Remove allUsers and allAuthenticatedUsers from dataset access entries.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: BQ_NO_ENCRYPTION
+    title: BigQuery dataset without customer-managed encryption
+    description: >
+      The BigQuery dataset uses Google-managed encryption.
+      Customer-managed keys provide additional access control.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_bigquery_dataset
+    condition:
+      default_encryption_configuration:
+        not_exists: true
+    mitigation: >
+      Configure a Cloud KMS key for dataset encryption.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: BQ_NO_ACCESS_POLICY
+    title: BigQuery dataset without explicit access policy
+    description: >
+      The BigQuery dataset does not define explicit access entries.
+      Default project-level permissions may be overly broad.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: google_bigquery_dataset
+    condition:
+      access:
+        not_exists: true
+    mitigation: >
+      Define explicit access entries with least-privilege roles.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: BQ_NO_LOCATION
+    title: BigQuery dataset without location constraint
+    description: >
+      The BigQuery dataset does not specify a location.
+      Data may be stored in an unintended region.
+    stride_category: information_disclosure
+    severity: low
+    resource_type: google_bigquery_dataset
+    condition:
+      location:
+        not_exists: true
+    mitigation: >
+      Specify a location constraint for data residency requirements.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]

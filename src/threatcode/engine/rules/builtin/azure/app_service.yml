@@ -1,0 +1,90 @@
+rules:
+  - id: APPSVC_HTTP_ONLY
+    title: App Service allows HTTP traffic
+    description: >
+      HTTPS-only is not enabled on the App Service. Traffic can
+      be sent over unencrypted HTTP connections.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_app_service
+    condition:
+      https_only:
+        equals: false
+    mitigation: >
+      Set https_only to true to enforce HTTPS connections.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: APPSVC_NO_MANAGED_IDENTITY
+    title: App Service without managed identity
+    description: >
+      The App Service does not use a managed identity for authentication.
+      Credentials must be managed manually, increasing leak risk.
+    stride_category: spoofing
+    severity: medium
+    resource_type: azurerm_app_service
+    condition:
+      identity:
+        not_exists: true
+    mitigation: >
+      Enable a system-assigned or user-assigned managed identity.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]
+
+  - id: APPSVC_OLD_TLS
+    title: App Service using outdated TLS version
+    description: >
+      The App Service does not enforce TLS 1.2 or higher.
+      Older TLS versions have known vulnerabilities.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_app_service
+    condition:
+      site_config.min_tls_version:
+        not_exists: true
+    mitigation: >
+      Set min_tls_version to 1.2 or higher in site_config.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: APPSVC_FTP_ENABLED
+    title: App Service FTP access enabled
+    description: >
+      FTP deployment is enabled on the App Service. FTP transmits
+      credentials and code in plaintext.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: azurerm_app_service
+    condition:
+      site_config.ftps_state:
+        equals: "AllAllowed"
+    mitigation: >
+      Set ftps_state to FtpsOnly or Disabled.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+
+  - id: APPSVC_NO_AUTH
+    title: App Service without authentication
+    description: >
+      Authentication is not enabled on the App Service.
+      The application is accessible without identity verification.
+    stride_category: spoofing
+    severity: medium
+    resource_type: azurerm_app_service
+    condition:
+      auth_settings.enabled:
+        equals: false
+    mitigation: >
+      Enable App Service Authentication / Authorization.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0001"]

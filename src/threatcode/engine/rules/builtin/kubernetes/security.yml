@@ -1,0 +1,90 @@
+rules:
+  - id: K8S_NO_PSA_LABELS
+    title: Namespace without Pod Security Admission labels
+    description: >
+      The namespace does not have Pod Security Admission labels configured.
+      Without PSA labels, pod security standards are not enforced.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_namespace
+    condition:
+      labels.pod-security.kubernetes.io/enforce:
+        not_exists: true
+    mitigation: >
+      Add Pod Security Admission labels to enforce security standards.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_DEFAULT_SERVICE_ACCOUNT
+    title: Pod uses default service account
+    description: >
+      The pod uses the default service account. Default service accounts
+      may have overly broad permissions in some cluster configurations.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      service_account_name:
+        equals: "default"
+    mitigation: >
+      Create and use a dedicated service account with minimal permissions.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+        tactics: ["TA0004"]
+
+  - id: K8S_NO_SECURITY_CONTEXT_DEFAULTS
+    title: Pod without pod-level security context
+    description: >
+      The pod spec does not define a pod-level securityContext.
+      Container-level settings may be inconsistent or missing.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      pod_run_as_non_root:
+        not_exists: true
+    mitigation: >
+      Set a pod-level securityContext with runAsNonRoot and fsGroup.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+
+  - id: K8S_AUTOMOUNT_DEFAULT
+    title: Service account token auto-mounted by default
+    description: >
+      The service account has automountServiceAccountToken enabled.
+      Compromised pods can use the token to access the Kubernetes API.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_service_account
+    condition:
+      automountServiceAccountToken:
+        not_exists: true
+    mitigation: >
+      Set automountServiceAccountToken to false on service accounts.
+    metadata:
+      mitre:
+        techniques: ["T1528"]
+        tactics: ["TA0006"]
+
+  - id: K8S_NO_SECCOMP_PROFILE
+    title: Container without seccomp profile
+    description: >
+      No seccomp profile is configured for the pod or container.
+      System calls are not restricted, expanding the attack surface.
+    stride_category: elevation_of_privilege
+    severity: medium
+    resource_type: kubernetes_deployment
+    condition:
+      has_security_context:
+        equals: true
+    mitigation: >
+      Set seccomp profile to RuntimeDefault or a custom profile.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]

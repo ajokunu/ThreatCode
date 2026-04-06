@@ -1,0 +1,90 @@
+rules:
+  - id: CLOUDSQL_NO_SSL
+    title: Cloud SQL instance without SSL enforcement
+    description: >
+      The Cloud SQL instance does not require SSL for connections.
+      Database traffic can be intercepted in transit.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: google_sql_database_instance
+    condition:
+      settings.ip_configuration.require_ssl:
+        equals: false
+    mitigation: >
+      Enable require_ssl in ip_configuration settings.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+        tactics: ["TA0006"]
+
+  - id: CLOUDSQL_PUBLIC_IP
+    title: Cloud SQL instance with public IP
+    description: >
+      The Cloud SQL instance has a public IP address assigned.
+      The database is potentially accessible from the internet.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: google_sql_database_instance
+    condition:
+      settings.ip_configuration.ipv4_enabled:
+        equals: true
+    mitigation: >
+      Disable public IP and use private IP with VPC peering.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+
+  - id: CLOUDSQL_NO_BACKUP
+    title: Cloud SQL instance without automated backups
+    description: >
+      Automated backups are not enabled for the Cloud SQL instance.
+      Data cannot be recovered in case of failure or attack.
+    stride_category: denial_of_service
+    severity: high
+    resource_type: google_sql_database_instance
+    condition:
+      settings.backup_configuration.enabled:
+        equals: false
+    mitigation: >
+      Enable automated backups in backup_configuration.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
+
+  - id: CLOUDSQL_NO_ENCRYPTION
+    title: Cloud SQL instance without customer-managed encryption
+    description: >
+      The Cloud SQL instance uses Google-managed encryption.
+      Customer-managed keys provide additional control.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_sql_database_instance
+    condition:
+      encryption_key_name:
+        not_exists: true
+    mitigation: >
+      Configure a Cloud KMS key for customer-managed encryption.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: CLOUDSQL_NO_MAINTENANCE_WINDOW
+    title: Cloud SQL instance without maintenance window
+    description: >
+      No maintenance window is configured. Updates may occur during
+      peak hours causing unexpected downtime.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: google_sql_database_instance
+    condition:
+      settings.maintenance_window:
+        not_exists: true
+    mitigation: >
+      Configure a maintenance window during off-peak hours.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]

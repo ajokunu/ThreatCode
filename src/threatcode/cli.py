@@ -890,6 +890,8 @@ def db_update(include_os: bool) -> None:
         "crates.io": "crates.io",
         "RubyGems": "rubygems",
         "Packagist": "packagist",
+        "Hex": "hex",
+        "Pub": "pub",
     }
 
     max_download_size = 500 * 1024 * 1024  # 500 MB

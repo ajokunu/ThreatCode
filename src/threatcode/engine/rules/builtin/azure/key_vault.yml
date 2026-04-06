@@ -1,0 +1,90 @@
+rules:
+  - id: KEYVAULT_NO_SOFT_DELETE
+    title: Key Vault without soft delete
+    description: >
+      Soft delete is not enabled on the Key Vault. Deleted secrets,
+      keys, and certificates cannot be recovered.
+    stride_category: denial_of_service
+    severity: high
+    resource_type: azurerm_key_vault
+    condition:
+      soft_delete_retention_days:
+        not_exists: true
+    mitigation: >
+      Enable soft delete with a retention period of at least 7 days.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
+
+  - id: KEYVAULT_NO_PURGE_PROTECTION
+    title: Key Vault without purge protection
+    description: >
+      Purge protection is not enabled. Deleted Key Vault objects can be
+      permanently removed before the retention period expires.
+    stride_category: denial_of_service
+    severity: high
+    resource_type: azurerm_key_vault
+    condition:
+      purge_protection_enabled:
+        equals: false
+    mitigation: >
+      Enable purge protection to prevent premature permanent deletion.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]
+
+  - id: KEYVAULT_NO_NETWORK_ACLS
+    title: Key Vault without network restrictions
+    description: >
+      The Key Vault does not have network ACLs configured.
+      It is accessible from all networks by default.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_key_vault
+    condition:
+      network_acls:
+        not_exists: true
+    mitigation: >
+      Configure network ACLs to restrict Key Vault access to specific networks.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: KEYVAULT_PUBLIC_ACCESS
+    title: Key Vault allows public network access
+    description: >
+      The Key Vault allows public network access. Secrets and keys
+      are potentially accessible from the internet.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: azurerm_key_vault
+    condition:
+      public_network_access_enabled:
+        equals: true
+    mitigation: >
+      Disable public network access and use private endpoints.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: KEYVAULT_NO_DIAGNOSTICS
+    title: Key Vault without diagnostic settings
+    description: >
+      The Key Vault does not have diagnostic settings enabled.
+      Access to secrets and keys is not being audited.
+    stride_category: repudiation
+    severity: medium
+    resource_type: azurerm_key_vault
+    condition:
+      diagnostic_settings:
+        not_exists: true
+    mitigation: >
+      Enable diagnostic settings to log Key Vault operations.
+    metadata:
+      mitre:
+        techniques: ["T1562.008"]
+        tactics: ["TA0005"]

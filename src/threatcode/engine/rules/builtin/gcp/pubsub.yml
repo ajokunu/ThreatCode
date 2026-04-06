@@ -1,0 +1,54 @@
+rules:
+  - id: PUBSUB_NO_ENCRYPTION
+    title: Pub/Sub topic without customer-managed encryption
+    description: >
+      The Pub/Sub topic uses Google-managed encryption.
+      Customer-managed keys provide additional control.
+    stride_category: information_disclosure
+    severity: medium
+    resource_type: google_pubsub_topic
+    condition:
+      kms_key_name:
+        not_exists: true
+    mitigation: >
+      Configure a Cloud KMS key for topic encryption.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+        tactics: ["TA0009"]
+
+  - id: PUBSUB_NO_DEAD_LETTER
+    title: Pub/Sub subscription without dead letter policy
+    description: >
+      The subscription does not have a dead letter topic configured.
+      Undeliverable messages are silently dropped.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: google_pubsub_subscription
+    condition:
+      dead_letter_policy:
+        not_exists: true
+    mitigation: >
+      Configure a dead letter policy with a dead letter topic.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+        tactics: ["TA0040"]
+
+  - id: PUBSUB_NO_RETENTION
+    title: Pub/Sub topic without message retention
+    description: >
+      The Pub/Sub topic does not have message retention configured.
+      Messages cannot be replayed for recovery or debugging.
+    stride_category: denial_of_service
+    severity: low
+    resource_type: google_pubsub_topic
+    condition:
+      message_retention_duration:
+        not_exists: true
+    mitigation: >
+      Configure message retention duration for the topic.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+        tactics: ["TA0040"]

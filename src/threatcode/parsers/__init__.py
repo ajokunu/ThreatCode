@@ -114,7 +114,8 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
     raise UnsupportedFormatError(
         f"Cannot detect format for {path.name}. "
         "Supported: terraform plan JSON, .tf files, CloudFormation YAML/JSON, "
-        "Dockerfile, Kubernetes YAML, lockfiles (package-lock.json, requirements.txt, etc.)"
+        "Dockerfile, Kubernetes YAML, Helm charts (Chart.yaml), "
+        "lockfiles (package-lock.json, requirements.txt, mix.lock, pubspec.lock, conan.lock, etc.)"
     )
 
 
@@ -231,6 +232,27 @@ register_parser(
     factory=_factory_kubernetes,
     extensions=frozenset({".yml", ".yaml"}),
     priority=22,
+)
+
+
+def _detect_helm_chart(path: Path, content: str, data: Any) -> bool:
+    if path.name == "Chart.yaml" and isinstance(data, dict):
+        return "apiVersion" in data and ("name" in data or "version" in data)
+    return False
+
+
+def _factory_helm() -> BaseParser:
+    from threatcode.parsers.helm import HelmParser
+
+    return HelmParser()
+
+
+register_parser(
+    name="helm",
+    detector=_detect_helm_chart,
+    factory=_factory_helm,
+    extensions=frozenset({".yaml", ".yml"}),
+    priority=8,
 )
 
 
