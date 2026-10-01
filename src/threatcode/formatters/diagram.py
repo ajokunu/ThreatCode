@@ -137,6 +137,18 @@ def _truncate(text: str, max_len: int) -> str:
     return text[: max_len - 3] + "..."
 
 
+# Average glyph width as a fraction of font size, slightly above Inter's real
+# average so truncated text stays inside its column across fallback fonts.
+_AVG_CHAR_WIDTH_EM = 0.6
+_COLUMN_GAP_PX = 8
+
+
+def _fit(text: str, width_px: float, font_size: float) -> str:
+    """Truncate text so it fits a column of width_px at the given font size."""
+    max_chars = int((width_px - _COLUMN_GAP_PX) / (font_size * _AVG_CHAR_WIDTH_EM))
+    return _truncate(text, max(max_chars, 4))
+
+
 class DiagramRenderer:
     """Renders a threat model data flow diagram as SVG."""
 
@@ -420,7 +432,7 @@ class DiagramRenderer:
             f'<text x="16" y="{HEADER_H // 2 + 5}" fill="#ffffff" '
             f'font-size="14" font-weight="600">{_esc(title)}</text>'
             f'<text x="{w - 16}" y="{HEADER_H // 2 + 5}" fill="#94a3b8" '
-            f'font-size="11" text-anchor="end">{_esc(meta)}  {_esc(ts)}</text>'
+            f'font-size="11" text-anchor="end">{_esc(meta)} \u00b7 {_esc(ts)}</text>'
         )
 
     def _svg_summary_bar(self) -> str:
@@ -808,14 +820,16 @@ class DiagramRenderer:
         )
         y += 28
 
-        # Column widths (proportional to canvas)
-        col_sev_w = 56
-        col_res_w = min(150, w * 0.15)
-        col_threat_w = min(160, w * 0.17)
-        col_desc_w = min(170, w * 0.18)
-        col_attack_w = min(160, w * 0.17)
-        col_stride_w = min(110, w * 0.12)
+        # Column widths: severity, STRIDE and source hold short fixed labels, and the
+        # free-text columns share what is left of the table width.
+        col_sev_w = 66
+        col_stride_w = 132  # fits "Elevation of Privilege"
         col_source_w = 50
+        flexible = max(w - 40 - col_sev_w - col_stride_w - col_source_w, 320)
+        col_res_w = flexible * 0.22
+        col_threat_w = flexible * 0.26
+        col_desc_w = flexible * 0.28
+        col_attack_w = flexible * 0.24
 
         # Header row
         parts.append(
@@ -857,7 +871,7 @@ class DiagramRenderer:
             # Severity dot + label
             sev = threat.severity.value
             sev_color = SEVERITY_COLORS.get(sev, "#94a3b8")
-            sev_label = sev.upper()[:4]
+            sev_label = sev.upper()
             parts.append(f'<circle cx="{rx + 4:.0f}" cy="{ry - 2:.0f}" r="3" fill="{sev_color}"/>')
             parts.append(
                 f'<text x="{rx + 12:.0f}" y="{ry:.0f}" fill="{sev_color}" '
@@ -866,7 +880,7 @@ class DiagramRenderer:
             rx += col_sev_w
 
             # Resource
-            res_display = _truncate(threat.resource_address, 22)
+            res_display = _fit(threat.resource_address, col_res_w, 9)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#475569" '
                 f'font-size="9">{_esc(res_display)}</text>'
@@ -874,7 +888,7 @@ class DiagramRenderer:
             rx += col_res_w
 
             # Threat title
-            title_display = _truncate(threat.title, 28)
+            title_display = _fit(threat.title, col_threat_w, 9)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#1e293b" '
                 f'font-size="9">{_esc(title_display)}</text>'
@@ -882,7 +896,7 @@ class DiagramRenderer:
             rx += col_threat_w
 
             # Description (truncated, full in tooltip)
-            desc_display = _truncate(threat.description, 60)
+            desc_display = _fit(threat.description.strip(), col_desc_w, 8)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#64748b" '
                 f'font-size="8" class="threat-desc">{_esc(desc_display)}</text>'
@@ -890,7 +904,7 @@ class DiagramRenderer:
             rx += col_desc_w
 
             # ATT&CK Technique
-            mitre_display = _truncate(self._format_mitre_techniques(threat), 28)
+            mitre_display = _fit(self._format_mitre_techniques(threat), col_attack_w, 8)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#7c3aed" '
                 f'font-size="8" class="threat-mitre">{_esc(mitre_display)}</text>'
@@ -901,7 +915,7 @@ class DiagramRenderer:
             stride = STRIDE_DISPLAY.get(threat.stride_category, threat.stride_category)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#64748b" '
-                f'font-size="9">{_esc(stride)}</text>'
+                f'font-size="9">{_esc(_fit(stride, col_stride_w, 9))}</text>'
             )
             rx += col_stride_w
 

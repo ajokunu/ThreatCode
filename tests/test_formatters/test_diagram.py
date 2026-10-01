@@ -729,3 +729,45 @@ class TestExpandedThreatTable:
         report = _make_report(threats=[threat], n_resources=5)
         svg = format_diagram(report, graph)
         assert "Mitigation: Enable encryption at rest" in svg
+
+
+class TestThreatTableFit:
+    """Cells in the findings table must not spill into the next column."""
+
+    def _rows(self, svg: str) -> list[list[ElementTree.Element]]:
+        root = ElementTree.fromstring(svg)
+        rows = []
+        for group in root.iter(f"{NS}g"):
+            if group.get("class") == "threat-row":
+                rows.append(list(group.iter(f"{NS}text")))
+        return rows
+
+    def test_text_fits_column_width(self) -> None:
+        long = "word " * 80
+        threats = [
+            Threat(
+                id="T-1",
+                title=long,
+                description=long,
+                stride_category="elevation_of_privilege",
+                severity=Severity.MEDIUM,
+                source=ThreatSource.RULE,
+                resource_type="aws_s3_bucket",
+                resource_address="aws_s3_bucket." + "x" * 80,
+                mitre_techniques=["T1552.001", "T1195.002", "T1611"],
+            )
+        ]
+        svg = format_diagram(_make_report(threats, 1), _make_graph_with_nodes(SAMPLE_NODES[:1]))
+        rows = self._rows(svg)
+        assert len(rows) == 1
+        texts = rows[0]
+        assert texts[0].text == "MEDIUM"
+        assert texts[4].text and texts[4].text.endswith("...")
+        # Each cell's rendered width (at a generous 0.55em per glyph) ends before the next cell.
+        for cell, nxt in zip(texts, texts[1:], strict=False):
+            width = len(cell.text or "") * float(cell.get("font-size", "9")) * 0.55
+            assert float(cell.get("x", "0")) + width < float(nxt.get("x", "0")), cell.text
+
+    def test_header_separates_timestamp(self) -> None:
+        svg = format_diagram(_make_report([], 3), _make_graph_with_nodes(SAMPLE_NODES[:1]))
+        assert "3 resources · 0 threats · " in svg
