@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,9 @@ version = "0.9.0"
 description = "Automated security scanning and threat modeling from Infrastructure-as-Code and container images"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
-authors = [{ name = "ThreatCode Contributors" }]
+authors = [{ name = "Aaron Lindahl", email = "lindahlaaron@yahoo.com" }]
 keywords = ["security", "threat-modeling", "stride", "terraform", "iac"]
 classifiers = [
     "Development Status :: 3 - Alpha",
