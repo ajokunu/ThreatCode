@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.1] - 2026-10-01
+
+### Fixed
+- **Wheel shipped without rules**: the 0.9.0 build left out all 50 builtin rule YAML files, so a pip-installed ThreatCode loaded no rules and reported no threats. `[tool.setuptools.package-data]` now includes `engine/rules/builtin/**/*.yml`.
+- **mypy**: resolved a `no-any-return` error in `engine/vulns/os_advisories.py` that failed the CI typecheck job.
+
+### Added
+- **`LICENSE`** file with the MIT license text. `pyproject.toml` already declared MIT, but the repository had no license file, so GitHub detected no license and the wheel shipped none.
+- **CI `package` job**: builds the sdist and wheel, installs the wheel into a clean virtualenv, and scans `tests/fixtures/kubernetes` from outside the checkout. It fails if the wheel holds fewer than 50 rule files, loads fewer than 220 rules, or finds no threats (`scripts/smoke_test_wheel.sh`).
+- **Publish workflow** (`.github/workflows/publish.yml`): publishes to PyPI with trusted publishing when a GitHub release is published, after checking that the release tag matches the package version and re-running the wheel smoke test.
+
+### Changed
+- Package author set to Aaron Lindahl.
+- Build requirement raised to `setuptools>=77`, the first release that supports the PEP 639 `license` and `license-files` fields.
+
 ## [0.9.0] - 2026-03-08
 
 ### Added
