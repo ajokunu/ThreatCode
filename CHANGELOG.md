@@ -12,6 +12,7 @@
 - **Publish workflow** (`.github/workflows/publish.yml`): publishes to PyPI with trusted publishing when a GitHub release is published, after checking that the release tag matches the package version and re-running the wheel smoke test.
 
 ### Changed
+- **README** now leads with the STRIDE and ATT&CK threat-model output and explains how ThreatCode relates to Trivy and Checkov. Corrected stale or false claims: rule counts (131 to 221), ATT&CK coverage (24 techniques in 12 tactics), supported ecosystems, a STRIDE-to-tactic table the code never applied, a GitLab example that labeled SARIF as a GitLab SAST report, and an Ollama example that the SSRF guard rejects.
 - Package author set to Aaron Lindahl.
 - Build requirement raised to `setuptools>=77`, the first release that supports the PEP 639 `license` and `license-files` fields.
 

@@ -27,7 +27,7 @@ llm:
   provider: anthropic              # anthropic | openai | ollama | local
   model: claude-sonnet-4-20250514  # Model identifier
   api_key: ""                      # Prefer ANTHROPIC_API_KEY env var
-  base_url: ""                     # Required for ollama/local endpoints
+  base_url: ""                     # HTTPS endpoint for the openai provider
   max_tokens: 4096                 # Token budget for LLM response
   temperature: 0.2                 # LLM sampling temperature
 
@@ -88,14 +88,11 @@ llm:
   api_key: sk-...
 ```
 
-### Ollama (local, air-gapped)
+### Ollama and other local servers (not supported yet)
 
-```yaml
-llm:
-  provider: ollama
-  base_url: http://localhost:11434
-  model: llama3.2
-```
+The SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses.
+A local server such as Ollama on `http://localhost:11434` is rejected, so the `ollama` and `local` providers do not work yet.
+Use `--no-llm` for air-gapped runs.
 
 ### Other OpenAI-compatible endpoints
 

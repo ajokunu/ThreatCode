@@ -84,7 +84,7 @@ threatcode license requirements.txt
 
 ```json
 {
-  "version": "0.7.0",
+  "version": "0.9.1",
   "timestamp": "2026-03-05T12:00:00Z",
   "scanned_resources": 14,
   "total_threats": 3,

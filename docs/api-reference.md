@@ -49,7 +49,7 @@ report = scan(
 
 ```python
 {
-    "version": "0.7.0",
+    "version": "0.9.1",
     "timestamp": "2026-03-05T12:00:00+00:00",
     "input_file": "tfplan.json",
     "scanned_resources": 14,

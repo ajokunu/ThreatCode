@@ -1,31 +1,68 @@
 # ThreatCode
 
-**Automated security scanning and threat modeling from Infrastructure-as-Code.**
+**STRIDE threat models with MITRE ATT&CK mappings, generated from your Infrastructure-as-Code.**
+
+ThreatCode reads Terraform plans and `.tf` files, CloudFormation templates, Dockerfiles, Kubernetes manifests and Helm charts.
+It turns them into a graph of resources, puts each resource in a trust zone (internet, DMZ, private, data or management), and reports the threats that architecture allows.
+Each rule and boundary finding names its STRIDE category and the ATT&CK techniques and tactics it enables, with a mitigation attached.
 
 ```bash
-pip install threatcode
+terraform plan -out tfplan
+terraform show -json tfplan > tfplan.json
+threatcode scan tfplan.json --no-llm
 ```
 
-```python
-from threatcode import scan
+Here is trimmed output from the insecure test fixture in this repository (`tests/fixtures/terraform/multi_service_insecure.plan.json`):
 
-report = scan("tfplan.json", no_llm=True)
-for t in report["threats"]:
-    print(f"[{t['severity'].upper()}] {t['title']} — {t['resource_address']}")
-    print(f"  MITRE: {t['mitre_techniques']}  Fix: {t['mitigation']}")
+```json
+{
+  "scanned_resources": 22,
+  "total_threats": 42,
+  "summary": {"critical": 3, "high": 14, "medium": 19, "low": 6},
+  "threats": [
+    {
+      "title": "RDS instance is publicly accessible",
+      "stride_category": "information_disclosure",
+      "severity": "critical",
+      "source": "rule",
+      "resource_address": "aws_db_instance.public_db",
+      "rule_id": "RDS_PUBLIC_ACCESS",
+      "mitre_techniques": ["T1190"],
+      "mitre_tactics": ["TA0001"]
+    },
+    {
+      "title": "Trust boundary crossing: dmz -> private",
+      "stride_category": "tampering",
+      "severity": "medium",
+      "source": "boundary",
+      "resource_address": "aws_db_instance.public_db",
+      "mitre_techniques": ["T1040", "T1557"],
+      "mitre_tactics": ["TA0006", "TA0009"]
+    }
+  ]
+}
 ```
 
-ThreatCode is a Python security scanning library and CLI that works across the full DevSecOps stack:
+## Where the threats come from
 
-- **Filesystem scanning** — walk any directory for vulns, secrets, misconfigs, and license issues
-- **Repository scanning** — clone a Git repo and scan it automatically
-- **STRIDE threat modeling** from Terraform, CloudFormation, Dockerfile, and Kubernetes — with MITRE ATT&CK mapping
-- **Secret detection** across codebases and IaC files — 24 built-in patterns
-- **Vulnerability scanning** from lockfiles — 10 package ecosystems, offline SQLite DB from OSV
-- **Container image scanning** — pull from any OCI registry, scan OS packages and app dependencies
-- **SBOM generation** in CycloneDX 1.5 format
-- **License compliance** scanning with SPDX classification
-- **`.threatcodeignore`** — suppress findings by ID with optional expiration dates
+- **Rules.** 221 declarative YAML rules cover AWS, Azure, GCP, Dockerfiles and Kubernetes, and each rule carries its own STRIDE category and ATT&CK mapping.
+- **Trust boundaries.** Each graph edge that crosses from one trust zone into another, such as DMZ to private, becomes a Tampering threat.
+  These findings are still generic, with the same description pattern and mitigation for every crossing.
+- **LLM review, if you turn it on.** With a provider configured, ThreatCode sends a redacted copy of the graph to the model and asks for cross-resource threats the rules miss, such as implicit trust between services.
+  `--no-llm` skips this step.
+
+The same findings can come out as SARIF for GitHub code scanning, Markdown for pull request comments, an ATT&CK Navigator layer, or an SVG data-flow diagram.
+The diagram draws the trust zones as swim lanes and traces attack paths from internet-facing resources to the data and management resources behind them.
+
+## ThreatCode, Trivy and Checkov
+
+Trivy and Checkov check each resource against a large catalog of misconfiguration policies, and Trivy also scans for vulnerabilities, secrets and container image issues.
+Both are mature projects with far more checks than ThreatCode, so if you run them today, keep running them.
+ThreatCode's rules exist to feed a threat model, which is why each one carries STRIDE and ATT&CK tags, and the graph adds trust-boundary threats and attack paths that neither tool produces.
+Run it beside them when you want to know what an attacker could reach through your architecture, on top of which settings are wrong.
+
+ThreatCode also ships secret, vulnerability, SBOM, license and container image scanners.
+They are handy for a single-tool CI job on a small project, but with 24 secret patterns and OSV data for 8 package ecosystems they cover far less than Trivy, Grype, OSV-Scanner or Gitleaks.
 
 ---
 
@@ -35,16 +72,43 @@ ThreatCode is a Python security scanning library and CLI that works across the f
 pip install threatcode
 ```
 
+Release 0.9.1 is the first one published to PyPI.
+To run the current `main` branch instead:
+
+```bash
+pip install "git+https://github.com/ajokunu/ThreatCode.git"
+```
+
 **Requirements:** Python 3.10 or newer.
 
 ---
 
 ## Quick Start
 
+### Threat modeling (IaC)
+
+```bash
+# Scan a Terraform plan and write SARIF for GitHub code scanning
+terraform show -json tfplan > tfplan.json
+threatcode scan tfplan.json --no-llm --format sarif -o results.sarif
+
+# Draw the threat model as an SVG data-flow diagram with attack paths
+threatcode scan tfplan.json --no-llm --format diagram -o threat-model.svg
+
+# Scan a Kubernetes manifest
+threatcode scan deployment.yaml --no-llm --format json
+
+# Scan a Dockerfile
+threatcode scan Dockerfile --no-llm --format markdown
+
+# Add the secret and vulnerability scanners to the same run
+threatcode scan tfplan.json --scanners misconfig,secret,vuln --no-llm
+```
+
 ### Filesystem scanning
 
 ```bash
-# Scan a project directory for everything
+# Scan a project directory with every scanner
 threatcode fs ./my-project
 
 # Scan with specific scanners
@@ -65,23 +129,6 @@ threatcode repo https://github.com/org/repo.git
 threatcode repo https://github.com/org/repo.git --branch develop --scanners vuln,secret
 ```
 
-### Threat modeling (IaC)
-
-```bash
-# Scan a Terraform plan
-terraform show -json > tfplan.json
-threatcode scan tfplan.json --no-llm --format sarif -o results.sarif
-
-# Scan a Kubernetes manifest
-threatcode scan deployment.yaml --no-llm --format json
-
-# Scan a Dockerfile
-threatcode scan Dockerfile --no-llm --format markdown
-
-# Run all scanners at once
-threatcode scan tfplan.json --scanners misconfig,secret,vuln --no-llm
-```
-
 ### Secret scanning
 
 ```bash
@@ -91,7 +138,7 @@ threatcode secret ./src/
 ### Vulnerability scanning
 
 ```bash
-threatcode db update                          # one-time DB download (~few hundred MB)
+threatcode db update                          # one-time download of OSV data
 threatcode vuln package-lock.json
 threatcode vuln requirements.txt --ignore-unfixed
 ```
@@ -123,6 +170,7 @@ threatcode license requirements.txt
 | CloudFormation | `AWSTemplateFormatVersion` or `Resources` + descriptor key | All resources and properties |
 | Dockerfile | `Dockerfile`, `Dockerfile.*`, `*.dockerfile` | All instructions (FROM, USER, RUN, COPY, ADD, EXPOSE, ENV, HEALTHCHECK, WORKDIR) |
 | Kubernetes | YAML with `apiVersion` + `kind` | Deployments, DaemonSets, StatefulSets, Jobs, CronJobs, Pods, Services, Ingresses, RBAC, NetworkPolicies |
+| Helm chart | `Chart.yaml` | Templates rendered with `helm template` when the Helm CLI is installed, otherwise scanned raw, then parsed as Kubernetes |
 | package-lock.json | Filename match | npm dependencies (v1/v2/v3 format) |
 | yarn.lock | Filename match | npm dependencies |
 | pnpm-lock.yaml | Filename match | npm dependencies |
@@ -133,6 +181,9 @@ threatcode license requirements.txt
 | Cargo.lock | Filename match | Rust crate dependencies |
 | Gemfile.lock | Filename match | RubyGems dependencies |
 | composer.lock | Filename match | PHP Packagist dependencies |
+| mix.lock | Filename match | Elixir Hex dependencies |
+| pubspec.lock | Filename match | Dart Pub dependencies |
+| conan.lock | Filename match | C/C++ Conan dependencies (no OSV vulnerability data) |
 
 Maximum input size: 50 MB.
 
@@ -159,7 +210,8 @@ Options:
   --ignorefile      Path to .threatcodeignore file (auto-detected in target dir)
 ```
 
-Discovers lockfiles, Terraform files, CloudFormation templates, Dockerfiles, and Kubernetes manifests, then runs all selected scanners against them. Skips `.git`, `node_modules`, `vendor`, `__pycache__`, `.venv`, and other common non-source directories.
+Discovers lockfiles, Terraform files, CloudFormation templates, Dockerfiles, Kubernetes manifests and Helm charts, then runs the selected scanners against them.
+Skips `.git`, `node_modules`, `vendor`, `__pycache__`, `.venv`, every other directory whose name starts with a dot, and other common non-source directories.
 
 ### `threatcode repo`
 
@@ -281,7 +333,7 @@ Options:
   -o, --output    Write output to file
 ```
 
-Produces CycloneDX 1.5 JSON with Package URL (PURL) identifiers for all 6 supported ecosystems.
+Produces CycloneDX 1.5 JSON with a Package URL (PURL) for every dependency.
 
 ### `threatcode license`
 
@@ -314,8 +366,8 @@ Manage the offline vulnerability database (powered by OSV).
 
 ```
 threatcode db status             # Show DB path, size, entry count
-threatcode db update             # Download ecosystem vuln data (npm, PyPI, Go, Cargo, Ruby, PHP)
-threatcode db update --os        # Also download OS advisory data (Alpine, Debian, Amazon Linux)
+threatcode db update             # OSV data: npm, PyPI, Go, crates.io, RubyGems, Packagist, Hex, Pub
+threatcode db update --os        # Also OS advisories: Alpine, Debian, Ubuntu, Amazon Linux, RHEL
 ```
 
 ---
@@ -341,14 +393,14 @@ SECRET_AWS_ACCESS_KEY  exp:2026-12-31
 Rules:
 - One ID per line (CVE IDs, rule IDs, or secret rule IDs)
 - Lines starting with `#` are comments
-- Optional `exp:YYYY-MM-DD` suffix sets an expiration — after that date, the finding is no longer suppressed
+- Optional `exp:YYYY-MM-DD` suffix sets an expiration, after which the finding is no longer suppressed
 - Auto-detected in the target directory for `threatcode fs`, or specify with `--ignorefile`
 
 ---
 
 ## Python API
 
-### `scan_filesystem()` — Directory scanning
+### `scan_filesystem()`: Directory scanning
 
 ```python
 from threatcode import scan_filesystem
@@ -375,7 +427,7 @@ result = scan_filesystem(
 # }
 ```
 
-### `scan_repository()` — Git repo scanning
+### `scan_repository()`: Git repo scanning
 
 ```python
 from threatcode import scan_repository
@@ -391,7 +443,7 @@ result = scan_repository(
 # "branch": "main",
 ```
 
-### `scan()` — IaC threat modeling
+### `scan()`: IaC threat modeling
 
 ```python
 from threatcode import scan
@@ -406,7 +458,7 @@ report = scan(
 
 # Return shape:
 # {
-#   "version": "0.7.0",
+#   "version": "0.9.1",
 #   "timestamp": "2026-03-05T...",
 #   "scanned_resources": 14,
 #   "total_threats": 6,
@@ -431,25 +483,25 @@ report = scan(
 # }
 ```
 
-### `analyze()` — Returns graph + report
+### `analyze()`: Returns graph + report
 
 ```python
 from threatcode import analyze
 
 result = analyze("tfplan.json", no_llm=True)
 
-# result.graph — InfraGraph (NetworkX-backed)
+# result.graph: InfraGraph (NetworkX-backed)
 for node_id, node in result.graph.nodes.items():
     print(f"{node_id}: {node.category.value} / {node.trust_zone.value}")
 
 for edge in result.graph.get_boundary_crossing_edges():
     print(f"Trust boundary: {edge.source} → {edge.target}")
 
-# result.report — ThreatReport
+# result.report: ThreatReport
 print(result.report.to_dict())
 ```
 
-### `scan_secrets()` — Secret detection
+### `scan_secrets()`: Secret detection
 
 ```python
 from threatcode import scan_secrets
@@ -474,7 +526,7 @@ result = scan_secrets("./src/")
 # }
 ```
 
-### `scan_vulnerabilities()` — Lockfile vuln scanning
+### `scan_vulnerabilities()`: Lockfile vuln scanning
 
 ```python
 from threatcode import scan_vulnerabilities
@@ -501,7 +553,7 @@ result = scan_vulnerabilities("requirements.txt", ignore_unfixed=False)
 # }
 ```
 
-### `scan_all()` — Unified multi-scanner
+### `scan_all()`: Unified multi-scanner
 
 ```python
 from threatcode import scan_all
@@ -522,7 +574,7 @@ result = scan_all(
 # }
 ```
 
-### `scan_image()` — Container image scanning
+### `scan_image()`: Container image scanning
 
 ```python
 from threatcode import scan_image
@@ -557,17 +609,18 @@ result = scan_image(
 
 ## Built-in Security Rules
 
-### IaC Misconfiguration Rules (131 total)
+### IaC Misconfiguration Rules (221 total)
 
 | Provider | Rules | Services Covered |
 |----------|-------|-----------------|
-| **AWS** | 57 | S3, IAM, EC2, VPC, RDS, Lambda, KMS, CloudTrail, ECS, EKS, CloudFront, ElastiCache, Elasticsearch, ELB, SNS, SQS, DynamoDB |
-| **Azure** | 19 | Compute, Storage, Network, Database, AKS |
-| **GCP** | 17 | Compute, Storage, Network, GKE, IAM |
-| **Dockerfile** | 15 | Image security, instruction best practices |
-| **Kubernetes** | 21 | Workloads, RBAC, networking |
+| **AWS** | 90 | S3, IAM, EC2, VPC, RDS, Lambda, KMS, CloudTrail, ECS, EKS, CloudFront, ElastiCache, Elasticsearch, ELB, SNS, SQS, DynamoDB, WAF, WAFv2, Secrets Manager, GuardDuty, Config, SSM Parameter Store |
+| **Azure** | 45 | Compute, Storage, Network, Database, AKS, Key Vault, App Service, Functions, SQL Database, Cosmos DB, Monitor |
+| **GCP** | 35 | Compute, Storage, Network, GKE, IAM, Cloud SQL, Cloud Functions, BigQuery, Pub/Sub, Cloud Run |
+| **Dockerfile** | 20 | Image security, instruction best practices |
+| **Kubernetes** | 31 | Workloads, RBAC, networking |
 
-Every rule is declarative YAML — no `eval()`, no code execution. Add custom rules:
+Every rule is declarative YAML, evaluated by a fixed set of operators with no `eval()` or code execution.
+Add custom rules:
 
 ```bash
 threatcode scan tfplan.json --rules my_org_rules.yml
@@ -621,7 +674,7 @@ All secrets are redacted in output (first/last 4 characters shown: `AKIA****WXYZ
 
 | Check ID | Severity | Description |
 |----------|----------|-------------|
-| `IMG_ROOT_USER` | HIGH | Image runs as root — no USER instruction set |
+| `IMG_ROOT_USER` | HIGH | Image runs as root because no USER instruction is set |
 | `IMG_NO_HEALTHCHECK` | MEDIUM | No HEALTHCHECK defined |
 | `IMG_SECRET_IN_ENV` | CRITICAL | Secret-like value in ENV variable |
 | `IMG_PRIVILEGED_PORT` | LOW | Port below 1024 exposed |
@@ -631,7 +684,9 @@ All secrets are redacted in output (first/last 4 characters shown: `AKIA****WXYZ
 
 ## MITRE ATT&CK Integration
 
-All findings map to [MITRE ATT&CK Cloud Matrix](https://attack.mitre.org/) technique and tactic IDs. ThreatCode covers **25 techniques** across **12 tactics**.
+Every rule-based and boundary finding carries [MITRE ATT&CK](https://attack.mitre.org/) technique and tactic IDs.
+Across the builtin rules and the boundary analysis, ThreatCode maps to **24 techniques** in **12 tactics**.
+Each rule names its own techniques and tactics, so the mapping follows what the misconfiguration enables rather than a fixed STRIDE-to-tactic table.
 
 Export an ATT&CK Navigator layer for visualization:
 
@@ -639,12 +694,10 @@ Export an ATT&CK Navigator layer for visualization:
 threatcode scan tfplan.json --no-llm --format matrix -o layer.json
 ```
 
-Load `layer.json` at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/). Findings appear as color-coded technique cells (red = critical, orange = high, yellow = medium, blue = low, gray = info).
+Load `layer.json` at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/).
+Findings appear as color-coded technique cells (red = critical, orange = high, yellow = medium, blue = low, gray = info).
 
-**STRIDE → ATT&CK tactic mapping:**
-
-| STRIDE | ATT&CK Tactics |
-|--------|---------------|
+--------|---------------|
 | Spoofing | TA0001 (Initial Access), TA0006 (Credential Access) |
 | Tampering | TA0040 (Impact) |
 | Repudiation | TA0005 (Defense Evasion) |
@@ -656,12 +709,13 @@ Load `layer.json` at [mitre-attack.github.io/attack-navigator](https://mitre-att
 
 ## LLM-Augmented Analysis
 
-In addition to deterministic rules, ThreatCode can use an LLM to identify architectural threats — cross-service attack paths, implicit trust assumptions, missing network segmentation — that rules can't catch.
+Rules look at one resource at a time.
+With an LLM configured, ThreatCode also sends the infrastructure graph and the IDs of the rules that already fired, and asks the model for threats that span resources: cross-service attack paths, implicit trust between services and missing network segmentation.
 
 ```yaml
 # .threatcode.yml
 llm:
-  provider: anthropic             # or "openai", "ollama", "local"
+  provider: anthropic             # or "openai" for an OpenAI-compatible HTTPS endpoint
   model: claude-sonnet-4-20250514
   api_key: ""                     # Set ANTHROPIC_API_KEY env var instead
 
@@ -669,16 +723,13 @@ min_severity: info
 no_llm: false
 ```
 
-Before any data reaches an external API, ThreatCode **redacts all sensitive values**: AWS account IDs, ARNs, IP addresses, email addresses, tags, and any field named `secret`, `password`, `token`, `api_key`, etc. The redacted placeholder mapping is reversed on the way out, so findings still reference real resource addresses.
+Before any data leaves the machine, ThreatCode redacts sensitive values: AWS account IDs, ARNs, IP addresses, email addresses, tags, and any field named `secret`, `password`, `token`, `api_key` or similar.
+It reverses the placeholder mapping on the way back, so findings still reference real resource addresses.
+`--dry-run` builds the payload and reports its size without calling the API.
 
-For **air-gapped environments**, point at a local LLM:
-
-```yaml
-llm:
-  provider: ollama
-  base_url: http://localhost:11434
-  model: llama3.2
-```
+**Known limitation:** the SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses.
+A local model server such as Ollama on `http://localhost:11434` is rejected, so the `ollama` and `local` providers do not work yet.
+Use `--no-llm` for air-gapped runs.
 
 ---
 
@@ -688,10 +739,10 @@ Create `.threatcode.yml` in your project root:
 
 ```yaml
 llm:
-  provider: anthropic                # anthropic | openai | ollama | local
+  provider: anthropic                # anthropic | openai
   model: claude-sonnet-4-20250514
   api_key: ""                        # Use ANTHROPIC_API_KEY env var
-  base_url: ""                       # Required for local/Ollama endpoints
+  base_url: ""                       # HTTPS endpoint for the openai provider
   max_tokens: 4096
   temperature: 0.2
 
@@ -712,28 +763,37 @@ output_format: json
 
 ### GitHub Actions
 
+The composite action in this repository installs ThreatCode, scans one file and uploads the SARIF to GitHub code scanning.
+
 ```yaml
 name: Security Scan
 on: [push, pull_request]
+
+permissions:
+  contents: read
+  security-events: write   # needed for the SARIF upload
 
 jobs:
   threatcode:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - name: Generate Terraform plan
-        run: terraform show -json > tfplan.json
+        run: |
+          terraform init
+          terraform plan -out tfplan
+          terraform show -json tfplan > tfplan.json
 
-      # STRIDE threat model → SARIF → GitHub Code Scanning
-      - name: ThreatCode scan
-        uses: ./.github/actions/threatcode
+      - name: ThreatCode threat model
+        uses: ajokunu/ThreatCode/.github/actions/threatcode@v0.9.1
         with:
           input-file: tfplan.json
           format: sarif
           no-llm: 'true'
           min-severity: medium
 
-      # Secret scan (fails build on findings)
+      # Secret scan (fails the build on findings)
       - name: Secret scan
         run: pip install threatcode && threatcode secret ./
 ```
@@ -745,20 +805,23 @@ threatcode:
   image: python:3.12
   script:
     - pip install threatcode
-    - terraform show -json > tfplan.json
-    - threatcode scan tfplan.json --no-llm --format sarif -o gl-sast-report.json
+    - threatcode scan tfplan.json --no-llm --format sarif -o threatcode.sarif
     - threatcode secret . || true
   artifacts:
-    reports:
-      sast: gl-sast-report.json
+    when: always
+    paths:
+      - threatcode.sarif
 ```
+
+The job assumes an earlier stage wrote `tfplan.json`.
+ThreatCode writes SARIF, not GitLab's own SAST report schema, so keep the file as a plain artifact rather than under `artifacts:reports:sast`.
 
 ### Generic CI
 
 ```bash
 pip install threatcode
 
-# Scan entire project (recommended — runs all scanners)
+# Scan the whole project with every scanner
 threatcode fs . --severity high --ignore-unfixed
 
 # Or scan a remote repo directly
@@ -766,7 +829,7 @@ threatcode repo https://github.com/org/repo.git --scanners vuln,secret
 
 # Fail on high+ threats (IaC only)
 threatcode scan tfplan.json --no-llm --min-severity high
-# Exit code 0 = clean, 1 = findings
+# Exit code 0 means no findings; 1 means findings or an error
 
 # Fail on any secrets
 threatcode secret ./src/
@@ -788,7 +851,7 @@ The generated SVG includes:
 - **Trust zone swim lanes** (Internet → DMZ → Private → Data → Management)
 - **Infrastructure nodes** with DFD-standard shapes (process, data store, data flow, external entity)
 - **Interactive tooltips** on nodes (resource type, zone, all threats) and edges (edge type, endpoints)
-- **Attack path visualization** — traced routes from internet-facing entry points to critical backend assets
+- **Attack paths** traced from internet-facing and DMZ resources to data and management resources, where both ends have findings
 - **Threat findings table** with severity badges, STRIDE category, ATT&CK technique IDs, and mitigations
 - **Summary bar** with color-coded severity counts
 
@@ -799,7 +862,7 @@ The generated SVG includes:
 - No `eval()`, `exec()`, `pickle`, `marshal`, or `compile()` anywhere in the codebase
 - All YAML loading uses `yaml.safe_load()` exclusively
 - Rule files are sandboxed: blocked symlinks, 1 MB size limit, 100 rules/file, 1000 total rules
-- LLM output is parsed as JSON only — never executed
+- LLM output is parsed as JSON and never executed
 - SSRF protection: registry and LLM base URLs are validated against DNS resolution + ipaddress module (blocks loopback, private, link-local, reserved ranges)
 - Bidi character stripping in prompts (prevents prompt injection via Unicode override characters)
 - Dependency audit: run `pip-audit` against all dependencies
@@ -815,7 +878,7 @@ IaC / Lockfile / Dockerfile / Image
    ┌─────────────────────────────────────────────────┐
    │              Parser Layer (auto-detect)          │
    │  Terraform Plan │ HCL │ CloudFormation           │
-   │  Dockerfile │ Kubernetes │ Lockfiles             │
+   │  Dockerfile │ Kubernetes │ Helm │ Lockfiles      │
    │  OCI Registry Client + Layer Extractor          │
    └──────────────────┬──────────────────────────────┘
                       │ ParsedOutput
@@ -829,7 +892,7 @@ IaC / Lockfile / Dockerfile / Image
                       ▼
    ┌─────────────────────────────────────────────────┐
    │                Hybrid Engine                     │
-   │  ① YAML rule matching (131 built-in rules)      │
+   │  ① YAML rule matching (221 built-in rules)      │
    │  ② Trust boundary crossing detection            │
    │  ③ LLM architectural analysis (optional)        │
    │  ④ Secret scanner (24 regex patterns)           │
@@ -852,9 +915,11 @@ IaC / Lockfile / Dockerfile / Image
 
 | Version | Highlights |
 |---------|-----------|
+| **0.9.1** | MIT LICENSE file, CI check that installs the built wheel and scans a fixture, trusted-publishing workflow for PyPI, fix for wheels that shipped without rule files |
+| **0.9.0** | 221 misconfig rules (up from 131), Ubuntu, Amazon Linux and RHEL advisories, `mix.lock`, `pubspec.lock` and `conan.lock` parsers, Helm chart scanning |
 | **0.8.0** | Filesystem scanning (`threatcode fs`), repository scanning (`threatcode repo`), `.threatcodeignore` with expiration dates |
-| **0.7.2** | Security hardening — SSRF fixes, symlink traversal, ReDoS, ENV redaction, type safety, dead code cleanup |
-| **0.7.0** | Container image scanning — OCI registry client, Alpine/Debian/RPM package DB parsers, OS advisory DB, image config checks |
+| **0.7.2** | Security hardening: SSRF fixes, symlink traversal, ReDoS, ENV redaction, type safety, dead code cleanup |
+| **0.7.0** | Container image scanning: OCI registry client, Alpine/Debian/RPM package DB parsers, OS advisory DB, image config checks |
 | **0.6.0** | Dockerfile scanner (16 rules), Kubernetes scanner (22 rules), secret scanning (24 patterns), vulnerability scanning (10 lockfile formats), SBOM/CycloneDX, license compliance, 76 new cloud rules |
 | **0.5.x** | SVG diagram with attack paths, interactive tooltips, threat table, MITRE technique columns |
 | **0.4.x** | Security audit: SSRF rewrite, prompt injection hardening, redaction improvements, CI hardening |
@@ -868,4 +933,4 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
