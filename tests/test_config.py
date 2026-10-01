@@ -88,6 +88,55 @@ class TestLoadConfig:
         captured = capsys.readouterr()
         assert "restricted" in captured.err.lower()
 
+    def test_allow_local_network_defaults_off(self) -> None:
+        assert ThreatCodeConfig().llm.allow_local_network is False
+
+    @pytest.mark.parametrize("provider", ["ollama", "local"])
+    def test_allow_local_network_for_local_providers(self, tmp_path: Path, provider: str) -> None:
+        config_file = tmp_path / ".threatcode.yml"
+        config_file.write_text(
+            f"llm:\n  provider: {provider}\n  base_url: http://localhost:11434\n"
+            "  allow_local_network: true\n"
+        )
+        cfg = load_config(config_file)
+        assert cfg.llm.allow_local_network is True
+
+    @pytest.mark.parametrize("provider", ["openai", "anthropic"])
+    def test_allow_local_network_rejected_for_hosted_providers(
+        self, tmp_path: Path, provider: str
+    ) -> None:
+        config_file = tmp_path / ".threatcode.yml"
+        config_file.write_text(f"llm:\n  provider: {provider}\n  allow_local_network: true\n")
+        expected = (
+            f"llm: allow_local_network requires provider 'ollama' or 'local', not '{provider}'"
+        )
+        with pytest.raises(ConfigError, match=expected):
+            load_config(config_file)
+
+    def test_allow_local_network_stripped_on_auto_discovery(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cloned repo's .threatcode.yml must not be able to opt in to local addresses."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CI", raising=False)
+        (tmp_path / ".threatcode.yml").write_text(
+            "llm:\n  provider: ollama\n  base_url: http://10.0.0.5:11434\n"
+            "  allow_local_network: true\n"
+        )
+        cfg = load_config(None)
+        assert cfg.llm.allow_local_network is False
+        assert cfg.llm.provider == "anthropic"
+        assert cfg.llm.base_url == ""
+
+    def test_validation_error_message_has_no_pydantic_boilerplate(self, tmp_path: Path) -> None:
+        config_file = tmp_path / ".threatcode.yml"
+        config_file.write_text("min_severity: extreme\n")
+        with pytest.raises(ConfigError) as exc_info:
+            load_config(config_file)
+        message = str(exc_info.value)
+        assert "min_severity:" in message
+        assert "errors.pydantic.dev" not in message
+
     def test_yaml_with_extra_rule_paths(self, tmp_path: Path) -> None:
         config_file = tmp_path / ".threatcode.yml"
         config_file.write_text("extra_rule_paths:\n  - rules/custom.yml\n")

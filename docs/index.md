@@ -29,7 +29,7 @@ for threat in report["threats"]:
 - **221 built-in rules** across AWS, Azure, GCP, Dockerfiles and Kubernetes
 - **MITRE ATT&CK mapping** -- every rule and boundary finding carries ATT&CK technique and tactic IDs
 - **Multiple output formats** -- SARIF 2.1.0 (GitHub Code Scanning), JSON, Markdown, Bitbucket Code Insights, and ATT&CK Navigator layers
-- **LLM augmentation** -- optional hybrid analysis with Claude, OpenAI-compatible APIs, to catch architectural threats rules cannot (local model servers are blocked by the SSRF guard for now)
+- **LLM augmentation** -- optional hybrid analysis with Claude, OpenAI-compatible APIs or a local Ollama server, to catch architectural threats rules cannot
 - **Trust boundary detection** -- automatically identifies cross-zone data flows (internet, DMZ, private, data, management) and flags missing controls
 - **Enterprise-grade redaction** -- strips AWS account IDs, ARNs, IP addresses, and emails before any data reaches an external LLM
 

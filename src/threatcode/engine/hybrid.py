@@ -10,6 +10,7 @@ from threatcode.engine.mitre import BOUNDARY_TACTICS, BOUNDARY_TECHNIQUES, tacti
 from threatcode.engine.rules.loader import Rule, load_all_rules
 from threatcode.engine.rules.matcher import matches_rule
 from threatcode.engine.stride import StrideCategory
+from threatcode.exceptions import LLMError
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode
 from threatcode.models.report import ThreatReport
@@ -71,8 +72,11 @@ class HybridEngine:
                 llm_threats = self._run_llm_analysis(graph, rule_threats)
                 for t in llm_threats:
                     report.add(t)
+            except LLMError as e:
+                # Expected failures (server down, bad response): one line, no traceback.
+                logger.warning("LLM analysis failed (%s) - returning rule-based results only", e)
             except Exception:
-                logger.exception("LLM analysis failed — returning rule-based results only")
+                logger.exception("LLM analysis failed - returning rule-based results only")
 
         logger.info(
             "Analysis complete: total_threats=%d (rule=%d, boundary=%d, llm=%d)",

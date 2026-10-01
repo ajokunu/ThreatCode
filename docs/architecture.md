@@ -227,7 +227,7 @@ ExtractedImage (temp filesystem)
 - **No `eval()` anywhere** — rule conditions use explicit Python comparison functions
 - **YAML `safe_load` only** — no arbitrary Python object deserialization
 - **Sandboxed rule loading** — symlinks blocked, 1 MB size limit, 1000 rule cap
-- **SSRF protection** — all HTTP calls (LLM, registry) validate resolved IPs against private/loopback ranges
+- **SSRF protection** - all HTTP calls (LLM, registry) validate resolved IPs against private/loopback ranges (the `ollama` and `local` LLM providers can opt in to local addresses with `llm.allow_local_network`)
 - **Redaction pipeline** — sensitive values stripped before LLM calls; reversible mapping maintained
 - **Path traversal protection** — OCI layer extraction rejects `..` path components before normalization
 - **Digest verification** — all downloaded blobs are SHA-256 verified before extraction

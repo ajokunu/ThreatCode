@@ -5,6 +5,9 @@
 ### Fixed
 - **Wheel shipped without rules**: the 0.9.0 build left out all 50 builtin rule YAML files, so a pip-installed ThreatCode loaded no rules and reported no threats. `[tool.setuptools.package-data]` now includes `engine/rules/builtin/**/*.yml`.
 - **mypy**: resolved a `no-any-return` error in `engine/vulns/os_advisories.py` that failed the CI typecheck job.
+- **Ollama and local model servers**: the `ollama` and `local` providers could not reach a model server, because the SSRF guard on `base_url` accepted only HTTPS URLs on public addresses. `threatcode scan` crashed with a traceback whose message claimed http was allowed. The new `llm.allow_local_network: true` option lets these two providers use plain HTTP to loopback, private and shared (`100.64.0.0/10`) addresses. The `openai` and `anthropic` providers reject the option, redirects still get the strict check, link-local addresses such as `169.254.169.254` stay blocked, and the option is read only from a `--config` file.
+- **Doubled `/v1` in LLM URLs**: the OpenAI-compatible client appended `/v1/chat/completions` to `base_url`, so the documented `https://api.openai.com/v1` posted to `/v1/v1/chat/completions`. `base_url` now works with or without the trailing `/v1`.
+- **CLI errors**: an invalid LLM setup, a missing `--config` file or an invalid config value now prints one `Error:` line and exits 1 instead of a traceback. Config validation errors name the field without the pydantic boilerplate. When a local model server is down, the scan logs one warning line instead of a traceback and returns the rule-based findings.
 
 ### Added
 - **`LICENSE`** file with the MIT license text. `pyproject.toml` already declared MIT, but the repository had no license file, so GitHub detected no license and the wheel shipped none.
@@ -12,8 +15,9 @@
 - **Publish workflow** (`.github/workflows/publish.yml`): publishes to PyPI with trusted publishing when a GitHub release is published, after checking that the release tag matches the package version and re-running the wheel smoke test.
 
 ### Changed
-- **README** now leads with the STRIDE and ATT&CK threat-model output and explains how ThreatCode relates to Trivy and Checkov. Corrected stale or false claims: rule counts (131 to 221), ATT&CK coverage (24 techniques in 12 tactics), supported ecosystems, a STRIDE-to-tactic table the code never applied, a GitLab example that labeled SARIF as a GitLab SAST report, and an Ollama example that the SSRF guard rejects.
+- **README** now leads with the STRIDE and ATT&CK threat-model output and explains how ThreatCode relates to Trivy and Checkov. Corrected stale or false claims: rule counts (131 to 221), ATT&CK coverage (24 techniques in 12 tactics), supported ecosystems, a STRIDE-to-tactic table the code never applied, a GitLab example that labeled SARIF as a GitLab SAST report, and an Ollama example that the SSRF guard rejected (restored with the opt-in it needs, see Fixed).
 - Package author set to Aaron Lindahl.
+- `OpenAICompatibleLLMClient`'s `allow_insecure` parameter is now `allow_local_network`. Plain HTTP is no longer accepted for public addresses. The plain-HTTP warning now fires only when an API key would be sent.
 - Build requirement raised to `setuptools>=77`, the first release that supports the PEP 639 `license` and `license-files` fields.
 
 ## [0.9.0] - 2026-03-08

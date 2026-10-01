@@ -38,11 +38,19 @@ All outbound HTTP calls (LLM API, registry API, vulnerability DB download) valid
 - Loopback (`127.0.0.0/8`, `::1`)
 - Private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`)
 - Link-local (`169.254.0.0/16`, `fe80::/10`) — including AWS EC2 metadata endpoint
-- Reserved ranges
+- Multicast and reserved ranges
 - Unspecified address (`0.0.0.0`)
 - IPv4-mapped IPv6 addresses
 
 Validation uses DNS resolution + Python's `ipaddress` module so no private address reachable by hostname can be called (cloud metadata endpoint: `169.254.169.254`).
+
+LLM base URLs must also use HTTPS.
+
+The `ollama` and `local` LLM providers can opt in to local model servers with `llm.allow_local_network: true`.
+The opt-in accepts loopback, private and shared (`100.64.0.0/10`) addresses over plain HTTP or HTTPS.
+Link-local, multicast, reserved and unspecified addresses stay blocked, plain HTTP to a public address is rejected, and redirects always get the strict default check.
+The `openai` and `anthropic` providers reject the option.
+ThreatCode reads it only from a `--config` file, because the whole `llm` section is stripped from auto-discovered configs.
 
 Container registry connections additionally support `--insecure` for HTTP (opt-in only).
 
