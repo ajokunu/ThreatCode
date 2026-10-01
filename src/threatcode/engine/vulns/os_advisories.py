@@ -63,7 +63,8 @@ def _fetch_bytes(url: str, timeout: int = 120) -> bytes:
 
     req = urllib.request.Request(url, headers={"User-Agent": f"ThreatCode/{__version__}"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read(_MAX_RESPONSE_SIZE)
+        data: bytes = resp.read(_MAX_RESPONSE_SIZE)
+        return data
 
 
 class OSAdvisoryDownloader:

@@ -56,6 +56,9 @@ threatcode = "threatcode.cli:cli"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+threatcode = ["engine/rules/builtin/**/*.yml"]
+
 [tool.ruff]
 target-version = "py310"
 line-length = 100
