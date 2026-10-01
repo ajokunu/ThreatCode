@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "@acme/weather-mcp"],
+      "env": {
+        "WEATHER_API_KEY": "9f8e2c4b7a1d6e3f5c0b8a7d2e4f6c1b"
+      }
+    },
+    "home-files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "/Users/alice"]
+    },
+    "terminal": {
+      "command": "npx",
+      "args": ["-y", "@wonderwhy-er/desktop-commander@0.2.52"]
+    },
+    "builder": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--privileged",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "ghcr.io/acme/builder-mcp:latest"
+      ]
+    },
+    "inventory": {
+      "type": "http",
+      "url": "http://mcp.inventory.corp.internal:8080/mcp"
+    }
+  }
+}

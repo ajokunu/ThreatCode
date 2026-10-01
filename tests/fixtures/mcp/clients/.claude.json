@@ -1,0 +1,25 @@
+{
+  "numStartups": 12,
+  "mcpServers": {
+    "search": {
+      "type": "http",
+      "url": "https://search.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SEARCH_TOKEN}"
+      }
+    }
+  },
+  "projects": {
+    "/Users/alice/src/shop": {
+      "mcpServers": {
+        "db": {
+          "command": "uvx",
+          "args": ["--from", "acme-db-mcp", "acme-db-mcp"],
+          "env": {
+            "DATABASE_URL": "postgres://shop:Kq7vR2mXp9sLw4Tz@db.corp.internal:5432/shop"
+          }
+        }
+      }
+    }
+  }
+}

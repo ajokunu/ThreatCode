@@ -80,9 +80,23 @@ def _threat_to_rule(threat: Threat, rule_id: str) -> dict[str, Any]:
                 f"stride/{threat.stride_category}",
                 f"source/{threat.source.value}",
                 *[f"mitre/{tid}" for tid in threat.mitre_techniques],
+                *_owasp_tags(threat.metadata),
             ],
         },
     }
+
+
+def _owasp_tags(metadata: dict[str, Any]) -> list[str]:
+    """Return SARIF tags for OWASP IDs a rule declares under metadata.owasp."""
+    owasp = metadata.get("owasp") if isinstance(metadata, dict) else None
+    if not isinstance(owasp, dict):
+        return []
+    tags: list[str] = []
+    for list_name in ("mcp_top_10", "agentic_top_10"):
+        ids = owasp.get(list_name)
+        if isinstance(ids, list):
+            tags.extend(f"owasp-{list_name.replace('_', '-')}/{i}" for i in ids)
+    return tags
 
 
 def _threat_to_result(threat: Threat, rule_id: str, rule_index: int) -> dict[str, Any]:

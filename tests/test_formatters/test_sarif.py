@@ -60,3 +60,31 @@ class TestSarifFormatter:
         for rule in rules:
             tags = rule.get("properties", {}).get("tags", [])
             assert any(t.startswith("stride/") for t in tags)
+
+
+class TestSarifOwaspTags:
+    def test_mcp_rules_tag_owasp_ids(self) -> None:
+        from pathlib import Path
+
+        from threatcode.parsers import detect_and_parse
+
+        path = Path(__file__).parent.parent / "fixtures" / "mcp" / "vulnerable" / ".mcp.json"
+        graph = InfraGraph.from_parsed(detect_and_parse(path))
+        report = HybridEngine().analyze(graph, input_file=str(path))
+        sarif = json.loads(format_sarif(report))
+        rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+        tags = next(
+            r["properties"]["tags"]
+            for r in rules
+            if r["shortDescription"]["text"] == "Literal credential in MCP server configuration"
+        )
+        assert "owasp-mcp-top-10/MCP01:2025" in tags
+        assert "owasp-agentic-top-10/ASI03" in tags
+
+    def test_rules_without_owasp_metadata_have_no_owasp_tags(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        sarif = json.loads(format_sarif(report))
+        for rule in sarif["runs"][0]["tool"]["driver"]["rules"]:
+            assert not any(t.startswith("owasp-") for t in rule["properties"]["tags"])

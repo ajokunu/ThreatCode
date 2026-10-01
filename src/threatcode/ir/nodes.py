@@ -127,6 +127,8 @@ CATEGORY_MAP: dict[str, NodeCategory] = {
     "kubernetes_cluster_role_binding": NodeCategory.IAM,
     "kubernetes_namespace": NodeCategory.CONTAINER,
     "kubernetes_pvc": NodeCategory.STORAGE,
+    # MCP client configuration
+    "mcp_server": NodeCategory.COMPUTE,
     # Dependencies
     "dependency_npm": NodeCategory.UNKNOWN,
     "dependency_pypi": NodeCategory.UNKNOWN,
@@ -191,6 +193,8 @@ TRUST_ZONE_MAP: dict[str, TrustZone] = {
     "kubernetes_role": TrustZone.MANAGEMENT,
     "kubernetes_cluster_role": TrustZone.MANAGEMENT,
     "kubernetes_network_policy": TrustZone.PRIVATE,
+    # MCP servers run locally unless the config points at a remote URL
+    "mcp_server": TrustZone.PRIVATE,
 }
 
 # Pre-sorted prefix lists (longest prefix first) — rebuilt on registration
@@ -253,6 +257,14 @@ def infer_trust_zone(resource_type: str, properties: dict[str, Any]) -> TrustZon
     # Public RDS → DMZ
     if properties.get("publicly_accessible"):
         return TrustZone.DMZ
+
+    # A remote MCP server is a third-party endpoint outside the local machine
+    if (
+        resource_type == "mcp_server"
+        and properties.get("is_remote")
+        and not properties.get("is_loopback")
+    ):
+        return TrustZone.INTERNET
 
     for prefix, zone in _TRUST_ZONE_PREFIXES:
         if resource_type.startswith(prefix):

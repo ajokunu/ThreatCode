@@ -86,6 +86,16 @@ TECHNIQUE_DB: dict[str, dict[str, str | list[str]]] = {
         "tactic_ids": ["TA0007"],
         "url": "https://attack.mitre.org/techniques/T1580/",
     },
+    "T1059": {
+        "name": "Command and Scripting Interpreter",
+        "tactic_ids": ["TA0002"],
+        "url": "https://attack.mitre.org/techniques/T1059/",
+    },
+    "T1005": {
+        "name": "Data from Local System",
+        "tactic_ids": ["TA0009"],
+        "url": "https://attack.mitre.org/techniques/T1005/",
+    },
     "T1611": {
         "name": "Escape to Host",
         "tactic_ids": ["TA0004"],

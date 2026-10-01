@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "@acme/weather-mcp@1.4.2"],
+      "env": {
+        "WEATHER_API_KEY": "${WEATHER_API_KEY}"
+      }
+    },
+    "project-files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "/Users/alice/src/shop"]
+    },
+    "builder": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--cap-drop=ALL",
+        "-v", "/Users/alice/src/shop:/workspace:ro",
+        "ghcr.io/acme/builder-mcp@sha256:3b1c9a2f0d4e5b6a7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
+      ]
+    },
+    "inventory": {
+      "type": "http",
+      "url": "https://mcp.inventory.corp.internal/mcp",
+      "headers": {
+        "Authorization": "Bearer ${INVENTORY_TOKEN}"
+      }
+    },
+    "local-dev": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LOCAL_DEV_TOKEN}"
+      }
+    }
+  }
+}

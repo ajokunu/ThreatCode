@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **MCP client config parser** (`parsers/mcp_config.py`): turns each server in an MCP client config into an `mcp_server` resource, offline, without starting or contacting the server. Supports the `mcpServers` shape (Claude Desktop `claude_desktop_config.json`, Claude Code `.mcp.json` and `~/.claude.json` including per-project entries, Cursor `.cursor/mcp.json`, Windsurf/Devin `mcp_config.json` with `serverUrl`, the VS Code and Copilot portable `.mcp.json` and `mcp-config.json`) and VS Code's `servers` shape in `.vscode/mcp.json`, including JSONC comments and trailing commas. File names and shapes were checked against each client's documentation on 2026-10-01. Only the names of environment variables and headers are stored, never their values.
+- **7 MCP rules** (`engine/rules/builtin/mcp/servers.yml`): `MCP_SECRET_IN_CONFIG`, `MCP_PLAINTEXT_TRANSPORT`, `MCP_REMOTE_NO_AUTH`, `MCP_UNPINNED_PACKAGE`, `MCP_BROAD_FILESYSTEM`, `MCP_SHELL_EXEC`, `MCP_CONTAINER_PRIVILEGED`. Each carries a STRIDE category, ATT&CK techniques, and IDs from the OWASP MCP Top 10 (2025, beta) and the OWASP Top 10 for Agentic Applications 2026 under `metadata.owasp`. Vulnerable and fixed fixtures for every client shape live in `tests/fixtures/mcp/`.
+- **`threatcode fs` finds `.cursor/mcp.json` and `.vscode/mcp.json`**, which the walk previously skipped with every other dot-directory, so agent configs are scanned in the same run as the IaC.
+- **SARIF tags for OWASP IDs**: rules that declare `metadata.owasp` emit `owasp-mcp-top-10/<id>` and `owasp-agentic-top-10/<id>` tags.
+- ATT&CK techniques T1059 (Command and Scripting Interpreter) and T1005 (Data from Local System) added to the technique database.
+
+### Changed
+- Remote MCP servers that are not on loopback are placed in the internet trust zone.
+
+### Fixed
+- **Diagram findings table**: cell text was truncated by character count while columns have fixed pixel widths, so descriptions ran into the ATT&CK column. Text is now truncated to each column's width, the severity column shows the full word instead of `MEDI`/`CRIT`, and the header separates the threat count from the timestamp.
+
 ## [0.9.1] - 2026-10-01
 
 ### Fixed

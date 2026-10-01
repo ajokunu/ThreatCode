@@ -1,0 +1,26 @@
+{
+  // VS Code workspace MCP config (JSONC: comments and trailing commas allowed)
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "github-token",
+      "description": "GitHub token",
+      "password": true
+    }
+  ],
+  "servers": {
+    /* Secret comes from an input variable, so this entry is clean */
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${input:github-token}"
+      }
+    },
+    "python-tools": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["acme-python-mcp"],
+    },
+  },
+}

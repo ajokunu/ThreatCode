@@ -16,6 +16,8 @@ env/
 # IDE
 .idea/
 .vscode/
+# MCP parser fixture for VS Code's .vscode/mcp.json
+!tests/fixtures/mcp/vscode/.vscode/
 *.swp
 *.swo
 *~

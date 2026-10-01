@@ -1,0 +1,190 @@
+# Rules for MCP client configuration files (resource type mcp_server).
+#
+# metadata.owasp maps each rule to:
+#   mcp_top_10:     OWASP MCP Top 10 (2025), https://owasp.org/www-project-mcp-top-10/
+#                   (in beta, phase 3 of 5, when checked on 2026-10-01)
+#   agentic_top_10: OWASP Top 10 for Agentic Applications 2026 (published 2025-12-09),
+#                   https://genai.owasp.org/
+#
+# The MCP config parser derives the boolean properties these rules match on;
+# see src/threatcode/parsers/mcp_config.py.
+rules:
+  - id: MCP_SECRET_IN_CONFIG
+    title: Literal credential in MCP server configuration
+    description: >
+      An env variable, header or URL query parameter of this MCP server holds a
+      literal credential instead of a reference such as ${API_KEY},
+      ${env:API_KEY} or ${input:api-key}. MCP config files such as .mcp.json and
+      .vscode/mcp.json are meant to be committed and shared, so the credential
+      ends up in version control and on every machine that clones the repository.
+    stride_category: information_disclosure
+    severity: critical
+    resource_type: mcp_server
+    condition:
+      has_literal_secret:
+        equals: true
+    mitigation: >
+      Remove the value from the file and rotate the credential. Reference it
+      from the environment instead (${VAR} in Claude Code, ${env:VAR} in Cursor
+      and Windsurf) or use a VS Code input variable (${input:id}) so the client
+      prompts for it and stores it securely.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+      owasp:
+        mcp_top_10: ["MCP01:2025"]
+        agentic_top_10: ["ASI03"]
+
+  - id: MCP_PLAINTEXT_TRANSPORT
+    title: Remote MCP server over unencrypted HTTP
+    description: >
+      The server URL uses http:// or ws:// to a host that is not loopback. Tool
+      calls, tool results and any credentials sent in headers cross the network
+      in cleartext, where anyone on the path can read or modify them.
+    stride_category: information_disclosure
+    severity: high
+    resource_type: mcp_server
+    condition:
+      uses_plaintext_transport:
+        equals: true
+    mitigation: >
+      Use an https:// (or wss://) URL. Reserve plain http for servers bound to
+      localhost.
+    metadata:
+      mitre:
+        techniques: ["T1040", "T1557"]
+        tactics: ["TA0006", "TA0009"]
+      owasp:
+        mcp_top_10: ["MCP01:2025", "MCP07:2025"]
+        agentic_top_10: ["ASI03"]
+
+  - id: MCP_REMOTE_NO_AUTH
+    title: Remote MCP server with no credentials configured
+    description: >
+      The config points at a remote MCP server but sets no Authorization or API
+      key header, no OAuth settings and no header helper. Clients that follow
+      the MCP authorization spec discover OAuth at connect time, so the server
+      may still require sign-in; the config alone cannot show that. If the
+      server accepts anonymous calls, anyone who learns the URL can use its
+      tools and data.
+    stride_category: spoofing
+    severity: low
+    resource_type: mcp_server
+    condition:
+      remote_without_configured_auth:
+        equals: true
+    mitigation: >
+      Confirm the server requires authentication. Prefer servers that implement
+      MCP OAuth authorization, or pass a credential through a header that
+      references an environment or input variable.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+        tactics: ["TA0001"]
+      owasp:
+        mcp_top_10: ["MCP07:2025"]
+        agentic_top_10: ["ASI03"]
+
+  - id: MCP_UNPINNED_PACKAGE
+    title: MCP server launched from an unpinned package or image
+    description: >
+      The server starts through npx, bunx, pnpm dlx, yarn dlx, uvx, docker or
+      podman with a package or image that has no fixed version (no @version,
+      ==version, image tag or digest, or a floating tag such as latest). Every
+      launch can fetch new code, so a compromised release, a typosquatted or
+      hallucinated package name, or a hijacked maintainer account runs on the
+      developer's machine with access to whatever the agent can reach.
+    stride_category: tampering
+    severity: medium
+    resource_type: mcp_server
+    condition:
+      package_unpinned:
+        equals: true
+    mitigation: >
+      Pin an exact version (npx -y package@1.2.3, uvx package==1.2.3) or an
+      image digest (image@sha256:...), and review changes before raising it.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+        tactics: ["TA0001"]
+      owasp:
+        mcp_top_10: ["MCP04:2025"]
+        agentic_top_10: ["ASI04"]
+
+  - id: MCP_BROAD_FILESYSTEM
+    title: Filesystem MCP server rooted at the whole disk or home directory
+    description: >
+      A filesystem server is given /, a home directory or a whole Windows drive
+      as an allowed root. The agent can then read and change SSH keys, cloud
+      credentials, browser profiles and every other project on the machine,
+      and a prompt injection in any document it reads inherits that reach.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: mcp_server
+    condition:
+      broad_filesystem_access:
+        equals: true
+    mitigation: >
+      Pass only the project directories the agent needs as allowed roots, and
+      keep credential directories such as ~/.ssh and ~/.aws out of them.
+    metadata:
+      mitre:
+        techniques: ["T1005"]
+        tactics: ["TA0009"]
+      owasp:
+        mcp_top_10: ["MCP02:2025"]
+        agentic_top_10: ["ASI02", "ASI03"]
+
+  - id: MCP_SHELL_EXEC
+    title: MCP server gives the agent shell command execution
+    description: >
+      The configured server exists to run shell or terminal commands for the
+      agent, either a package known for this (such as
+      @wonderwhy-er/desktop-commander, mcp-server-commands or mcp-shell-server)
+      or an MCP package whose name marks it as a shell or terminal server. Any
+      prompt injection that reaches the agent can then run arbitrary commands
+      with the user's privileges.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: mcp_server
+    condition:
+      exposes_shell_exec:
+        equals: true
+    mitigation: >
+      Remove the server where a narrower tool would do. Otherwise run it in a
+      container or sandbox without credentials, restrict it to an allowlist of
+      commands, and require human approval for every call.
+    metadata:
+      mitre:
+        techniques: ["T1059"]
+        tactics: ["TA0002"]
+      owasp:
+        mcp_top_10: ["MCP05:2025"]
+        agentic_top_10: ["ASI05", "ASI02"]
+
+  - id: MCP_CONTAINER_PRIVILEGED
+    title: Containerized MCP server launched with host-level privileges
+    description: >
+      The server runs through docker run or podman run with --privileged, host
+      networking or another host namespace, a dangerous added capability, an
+      unconfined seccomp or AppArmor profile, or a bind mount of / or the
+      container runtime socket. Each of these lets code in the container reach
+      the host, which defeats the reason for containerizing the server.
+    stride_category: elevation_of_privilege
+    severity: high
+    resource_type: mcp_server
+    condition:
+      container_privileged:
+        equals: true
+    mitigation: >
+      Drop --privileged and host namespaces, mount only the directories the
+      server needs (read-only where possible), never mount the Docker socket,
+      and add --cap-drop=ALL with only the capabilities the server requires.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+        tactics: ["TA0004"]
+      owasp:
+        mcp_top_10: ["MCP02:2025", "MCP05:2025"]
+        agentic_top_10: ["ASI05"]

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tickets": {
+      "serverUrl": "http://tickets.corp.internal/mcp"
+    },
+    "shell": {
+      "command": "uvx",
+      "args": ["mcp-shell-server==1.1.12"]
+    }
+  }
+}

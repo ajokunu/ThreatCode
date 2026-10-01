@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "docs": {
+      "url": "http://docs-mcp.corp.internal/mcp",
+      "headers": {
+        "x-api-key": "c7d1e9a4b2f80635de41a97c2b5f8e03"
+      }
+    }
+  }
+}

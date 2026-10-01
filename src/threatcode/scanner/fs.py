@@ -37,6 +37,10 @@ _MAX_FILE_SIZE = 50 * 1024 * 1024
 # IaC file patterns
 _IAC_EXTENSIONS: frozenset[str] = frozenset({".tf", ".json", ".yml", ".yaml"})
 
+# Dot-directories where MCP clients keep a project-level mcp.json (Cursor, VS Code).
+# The walk prunes every dot-directory, so these files are collected explicitly.
+_MCP_CONFIG_DIRS: tuple[str, ...] = (".cursor", ".vscode")
+
 # Dockerfile name patterns
 _DOCKERFILE_NAMES: frozenset[str] = frozenset({"Dockerfile", "dockerfile"})
 
@@ -98,12 +102,20 @@ def scan_filesystem(
     all_files: list[Path] = []
 
     for root, dirs, filenames in os.walk(target):
+        root_path = Path(root)
+
+        # Collect project-level MCP configs before the dot-directories are pruned
+        mcp_configs = [
+            root_path / d / "mcp.json"
+            for d in _MCP_CONFIG_DIRS
+            if d in dirs and d not in dirs_to_skip and (root_path / d / "mcp.json").is_file()
+        ]
+
         # Prune skip directories
         dirs[:] = [d for d in dirs if d not in dirs_to_skip and not d.startswith(".")]
 
-        root_path = Path(root)
-        for fname in filenames:
-            fpath = root_path / fname
+        for fpath in [*(root_path / f for f in filenames), *mcp_configs]:
+            fname = fpath.name
 
             try:
                 if fpath.stat().st_size > _MAX_FILE_SIZE:

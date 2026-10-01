@@ -85,7 +85,9 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
         try:
             parsed_data = json.loads(content)
         except json.JSONDecodeError as e:
-            raise UnsupportedFormatError(f"Invalid JSON: {e}") from e
+            parsed_data = _parse_jsonc_mcp_config(path, content)
+            if parsed_data is None:
+                raise UnsupportedFormatError(f"Invalid JSON: {e}") from e
     elif path.suffix in (".yml", ".yaml"):
         import yaml
 
@@ -115,8 +117,24 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
         f"Cannot detect format for {path.name}. "
         "Supported: terraform plan JSON, .tf files, CloudFormation YAML/JSON, "
         "Dockerfile, Kubernetes YAML, Helm charts (Chart.yaml), "
+        "MCP client configs (.mcp.json, .vscode/mcp.json, claude_desktop_config.json), "
         "lockfiles (package-lock.json, requirements.txt, mix.lock, pubspec.lock, conan.lock, etc.)"
     )
+
+
+def _parse_jsonc_mcp_config(path: Path, content: str) -> Any:
+    """Parse an MCP config file that uses JSONC comments, as VS Code's mcp.json may.
+
+    Returns None when the file is not a known MCP config name or still fails to parse.
+    """
+    from threatcode.parsers.mcp_config import MCP_CONFIG_FILENAMES, strip_jsonc
+
+    if path.name not in MCP_CONFIG_FILENAMES:
+        return None
+    try:
+        return json.loads(strip_jsonc(content))
+    except json.JSONDecodeError:
+        return None
 
 
 # ── Built-in parser registration ──────────────────────────────────────
@@ -274,4 +292,25 @@ register_parser(
     factory=_factory_lockfile,
     extensions=frozenset(),
     priority=5,
+)
+
+
+def _detect_mcp_config(path: Path, content: str, data: Any) -> bool:
+    from threatcode.parsers.mcp_config import is_mcp_config
+
+    return is_mcp_config(path, data)
+
+
+def _factory_mcp_config() -> BaseParser:
+    from threatcode.parsers.mcp_config import MCPConfigParser
+
+    return MCPConfigParser()
+
+
+register_parser(
+    name="mcp_config",
+    detector=_detect_mcp_config,
+    factory=_factory_mcp_config,
+    extensions=frozenset({".json"}),
+    priority=15,
 )

@@ -3,6 +3,7 @@
 **STRIDE threat models with MITRE ATT&CK mappings, generated from your Infrastructure-as-Code.**
 
 ThreatCode reads Terraform plans and `.tf` files, CloudFormation templates, Dockerfiles, Kubernetes manifests and Helm charts.
+It also reads the MCP server configs that AI coding agents load, so agent tooling shows up in the same threat model as the infrastructure.
 It turns them into a graph of resources, puts each resource in a trust zone (internet, DMZ, private, data or management), and reports the threats that architecture allows.
 Each rule and boundary finding names its STRIDE category and the ATT&CK techniques and tactics it enables, with a mitigation attached.
 
@@ -45,7 +46,7 @@ Here is trimmed output from the insecure test fixture in this repository (`tests
 
 ## Where the threats come from
 
-- **Rules.** 221 declarative YAML rules cover AWS, Azure, GCP, Dockerfiles and Kubernetes, and each rule carries its own STRIDE category and ATT&CK mapping.
+- **Rules.** 228 declarative YAML rules cover AWS, Azure, GCP, Dockerfiles, Kubernetes and MCP server configs, and each rule carries its own STRIDE category and ATT&CK mapping.
 - **Trust boundaries.** Each graph edge that crosses from one trust zone into another, such as DMZ to private, becomes a Tampering threat.
   These findings are still generic, with the same description pattern and mitigation for every crossing.
 - **LLM review, if you turn it on.** With a provider configured, ThreatCode sends a redacted copy of the graph to the model and asks for cross-resource threats the rules miss, such as implicit trust between services.
@@ -63,6 +64,37 @@ Run it beside them when you want to know what an attacker could reach through yo
 
 ThreatCode also ships secret, vulnerability, SBOM, license and container image scanners.
 They are handy for a single-tool CI job on a small project, but with 24 secret patterns and OSV data for 8 package ecosystems they cover far less than Trivy, Grype, OSV-Scanner or Gitleaks.
+
+## MCP server configs
+
+AI coding agents launch MCP servers from config files that usually sit in the repository next to the infrastructure code.
+ThreatCode parses those files offline, without starting or contacting any server, and turns each configured server into an `mcp_server` resource with its own rules.
+
+| Client | File | Shape |
+|--------|------|-------|
+| Claude Code | `.mcp.json` (project), `~/.claude.json` (user and per-project) | `mcpServers` |
+| Claude Desktop | `claude_desktop_config.json` | `mcpServers` |
+| Cursor | `.cursor/mcp.json` | `mcpServers` |
+| VS Code | `.vscode/mcp.json`, comments allowed | `servers` |
+| VS Code and Copilot portable format | `.mcp.json`, `~/.copilot/mcp-config.json` | `mcpServers` |
+| Windsurf (now Devin Desktop) | `mcp_config.json` | `mcpServers`, remote servers use `serverUrl` |
+
+File names and shapes were checked against each client's documentation on 2026-10-01.
+`threatcode fs` picks up `.cursor/mcp.json` and `.vscode/mcp.json` even though it skips other dot-directories, so one run covers the agent configs and the IaC.
+
+| Rule | Flags | STRIDE | OWASP MCP Top 10 | OWASP Agentic Top 10 |
+|------|-------|--------|------------------|----------------------|
+| `MCP_SECRET_IN_CONFIG` | A literal credential in `env`, `headers` or the URL query, instead of `${VAR}`, `${env:VAR}` or `${input:id}` | Information disclosure | MCP01 | ASI03 |
+| `MCP_PLAINTEXT_TRANSPORT` | A remote server reached over `http://` or `ws://` on a non-loopback host | Information disclosure | MCP01, MCP07 | ASI03 |
+| `MCP_REMOTE_NO_AUTH` | A remote server with no auth header, OAuth block or header helper (low severity, since OAuth can be negotiated at connect time) | Spoofing | MCP07 | ASI03 |
+| `MCP_UNPINNED_PACKAGE` | `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `uvx`, `docker` or `podman` launching a package or image without a fixed version | Tampering | MCP04 | ASI04 |
+| `MCP_BROAD_FILESYSTEM` | A filesystem server rooted at `/`, a home directory or a whole drive | Elevation of privilege | MCP02 | ASI02, ASI03 |
+| `MCP_SHELL_EXEC` | A server that exists to run shell commands for the agent | Elevation of privilege | MCP05 | ASI05, ASI02 |
+| `MCP_CONTAINER_PRIVILEGED` | A containerized server started with `--privileged`, host namespaces, dangerous capabilities or a mount of `/` or the Docker socket | Elevation of privilege | MCP02, MCP05 | ASI05 |
+
+The OWASP IDs appear in each finding's `metadata.owasp` in JSON output and as `owasp-mcp-top-10/...` and `owasp-agentic-top-10/...` tags in SARIF.
+The MCP Top 10 (2025) was still in beta when these mappings were written.
+ThreatCode stores only the names of environment variables and headers, never their values.
 
 ---
 
@@ -170,6 +202,7 @@ threatcode license requirements.txt
 | CloudFormation | `AWSTemplateFormatVersion` or `Resources` + descriptor key | All resources and properties |
 | Dockerfile | `Dockerfile`, `Dockerfile.*`, `*.dockerfile` | All instructions (FROM, USER, RUN, COPY, ADD, EXPOSE, ENV, HEALTHCHECK, WORKDIR) |
 | Kubernetes | YAML with `apiVersion` + `kind` | Deployments, DaemonSets, StatefulSets, Jobs, CronJobs, Pods, Services, Ingresses, RBAC, NetworkPolicies |
+| MCP client config | `mcpServers` key in any `.json` file, `servers` key in `mcp.json`, `projects.*.mcpServers` in `.claude.json` | One `mcp_server` resource per configured server |
 | Helm chart | `Chart.yaml` | Templates rendered with `helm template` when the Helm CLI is installed, otherwise scanned raw, then parsed as Kubernetes |
 | package-lock.json | Filename match | npm dependencies (v1/v2/v3 format) |
 | yarn.lock | Filename match | npm dependencies |
@@ -210,8 +243,9 @@ Options:
   --ignorefile      Path to .threatcodeignore file (auto-detected in target dir)
 ```
 
-Discovers lockfiles, Terraform files, CloudFormation templates, Dockerfiles, Kubernetes manifests and Helm charts, then runs the selected scanners against them.
+Discovers lockfiles, Terraform files, CloudFormation templates, Dockerfiles, Kubernetes manifests, Helm charts and MCP client configs, then runs the selected scanners against them.
 Skips `.git`, `node_modules`, `vendor`, `__pycache__`, `.venv`, every other directory whose name starts with a dot, and other common non-source directories.
+The one exception is `mcp.json` inside `.cursor/` and `.vscode/`, which is collected so agent configs are scanned in the same run.
 
 ### `threatcode repo`
 
@@ -609,7 +643,7 @@ result = scan_image(
 
 ## Built-in Security Rules
 
-### IaC Misconfiguration Rules (221 total)
+### Misconfiguration Rules (228 total)
 
 | Provider | Rules | Services Covered |
 |----------|-------|-----------------|
@@ -618,6 +652,7 @@ result = scan_image(
 | **GCP** | 35 | Compute, Storage, Network, GKE, IAM, Cloud SQL, Cloud Functions, BigQuery, Pub/Sub, Cloud Run |
 | **Dockerfile** | 20 | Image security, instruction best practices |
 | **Kubernetes** | 31 | Workloads, RBAC, networking |
+| **MCP server configs** | 7 | Secrets, transport, pinning, filesystem scope, shell access, container privileges ([details](#mcp-server-configs)) |
 
 Every rule is declarative YAML, evaluated by a fixed set of operators with no `eval()` or code execution.
 Add custom rules:
@@ -685,7 +720,7 @@ All secrets are redacted in output (first/last 4 characters shown: `AKIA****WXYZ
 ## MITRE ATT&CK Integration
 
 Every rule-based and boundary finding carries [MITRE ATT&CK](https://attack.mitre.org/) technique and tactic IDs.
-Across the builtin rules and the boundary analysis, ThreatCode maps to **24 techniques** in **12 tactics**.
+Across the builtin rules and the boundary analysis, ThreatCode maps to **26 techniques** in **12 tactics**.
 Each rule names its own techniques and tactics, so the mapping follows what the misconfiguration enables rather than a fixed STRIDE-to-tactic table.
 
 Export an ATT&CK Navigator layer for visualization:
@@ -876,23 +911,24 @@ IaC / Lockfile / Dockerfile / Image
          │
          ▼
    ┌─────────────────────────────────────────────────┐
-   │              Parser Layer (auto-detect)          │
-   │  Terraform Plan │ HCL │ CloudFormation           │
-   │  Dockerfile │ Kubernetes │ Helm │ Lockfiles      │
+   │              Parser Layer (auto-detect)         │
+   │  Terraform Plan │ HCL │ CloudFormation          │
+   │  Dockerfile │ Kubernetes │ Helm │ Lockfiles     │
+   │  MCP client configs                             │
    │  OCI Registry Client + Layer Extractor          │
    └──────────────────┬──────────────────────────────┘
                       │ ParsedOutput
                       ▼
    ┌─────────────────────────────────────────────────┐
-   │         Infrastructure Graph (NetworkX)          │
+   │         Infrastructure Graph (NetworkX)         │
    │  Nodes: category + trust zone + properties      │
    │  Edges: dependency, containment, network, IAM   │
    └──────────────────┬──────────────────────────────┘
                       │ InfraGraph
                       ▼
    ┌─────────────────────────────────────────────────┐
-   │                Hybrid Engine                     │
-   │  ① YAML rule matching (221 built-in rules)      │
+   │                Hybrid Engine                    │
+   │  ① YAML rule matching (228 built-in rules)      │
    │  ② Trust boundary crossing detection            │
    │  ③ LLM architectural analysis (optional)        │
    │  ④ Secret scanner (24 regex patterns)           │
@@ -902,10 +938,10 @@ IaC / Lockfile / Dockerfile / Image
                       │ ThreatReport / Findings
                       ▼
    ┌─────────────────────────────────────────────────┐
-   │              Output Formatters                   │
+   │              Output Formatters                  │
    │  JSON │ SARIF │ Markdown │ Bitbucket            │
    │  ATT&CK Navigator │ SVG Diagram │ CycloneDX     │
-   │  Table │ Diff                                    │
+   │  Table │ Diff                                   │
    └─────────────────────────────────────────────────┘
 ```
 
