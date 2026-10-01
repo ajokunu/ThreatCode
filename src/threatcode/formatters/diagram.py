@@ -1,14 +1,27 @@
-"""SVG threat model diagram renderer — data flow diagrams with trust zone swim lanes."""
+"""SVG threat model diagram renderer - data flow diagrams with trust zone swim lanes."""
 
 from __future__ import annotations
 
 import logging
+import math
 from html import escape
 from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
 from threatcode.engine.mitre import TECHNIQUE_DB
+from threatcode.formatters.diagram_routing import (
+    Grid,
+    GridNode,
+    Point,
+    Rect,
+    Shape,
+    place_on_route,
+    point_at_half_length,
+    polyline_to_path,
+    route_edges,
+    route_segments,
+)
 from threatcode.ir.edges import EdgeType
 from threatcode.ir.nodes import NodeCategory, TrustZone
 
@@ -24,9 +37,9 @@ logger = logging.getLogger(__name__)
 NODE_W = 160
 NODE_H = 54
 NODE_GAP_X = 36
-NODE_GAP_Y = 24
+NODE_GAP_Y = 40
 LANE_PAD_X = 80
-LANE_PAD_Y = 20
+LANE_PAD_Y = 40
 HEADER_H = 44
 SUMMARY_BAR_H = 32
 LEGEND_H = 140
@@ -35,6 +48,27 @@ THREAT_TABLE_HEADER_H = 28
 MIN_LANE_H = 90
 MAX_NODES_PER_ROW = 5
 CANVAS_PAD = 20
+
+# Node text baselines (offsets from the node top), shared by every shape so names
+# line up across a row; clear of cylinder caps and inside the diamond outline
+NODE_TYPE_BASELINE = 21
+NODE_NAME_BASELINE = 37
+NODE_TYPE_MAX_CHARS = 22
+DIAMOND_TYPE_MAX_CHARS = 20
+
+# Routing clearances: keep horizontal runs off node edges and threat badges
+CHANNEL_CLEAR_BELOW = 8
+CHANNEL_CLEAR_ABOVE = 14
+GAP_CLEAR = 6
+
+# Boundary label geometry (font-size 9, semibold, uppercase)
+EDGE_LABEL_FONT = 9
+EDGE_LABEL_CHAR_W = 5.9
+# Glyphs much narrower or wider than an average uppercase letter at that size
+EDGE_LABEL_GLYPH_W = {" ": 2.6, "I": 2.6, "\u2192": 9.0}
+EDGE_LABEL_PAD_X = 8
+EDGE_LABEL_H = 16
+OVERLAY_CLEARANCE = 5
 
 ZONE_ORDER = [
     TrustZone.INTERNET,
@@ -152,24 +186,38 @@ class DiagramRenderer:
         self._attack_paths: list[tuple[int, str, list[str]]] = []  # (num, severity, node_ids)
         self._edge_attack_path_map: dict[tuple[str, str], list[int]] = {}
         self._attack_paths_y = 0.0
+        # Routing state -- populated by _compute_routes
+        self._node_cells: dict[str, tuple[int, int]] = {}  # node_id -> (col, global row)
+        self._grid: Grid | None = None
+        self._routes: dict[tuple[str, str], list[Point]] = {}
+        self._edge_labels: dict[tuple[str, str], tuple[Rect, str, str]] = {}
+        self._edge_markers: dict[tuple[str, str], tuple[Rect, list[int]]] = {}
 
     def render(self) -> str:
         self._compute_layout()
         parts: list[str] = []
         parts.append(self._svg_open())
         parts.append(self._svg_defs())
+        # Opaque canvas so the diagram stays readable in dark-themed viewers
+        parts.append(
+            f'<rect x="0" y="0" width="{self._canvas_w:.0f}" '
+            f'height="{self._canvas_h:.0f}" fill="#ffffff"/>'
+        )
         parts.append(self._svg_header())
         parts.append(self._svg_summary_bar())
         for zone, y, h, nodes in self._zone_lanes:
             parts.append(self._svg_zone_lane(zone, y, h, nodes))
+        glowing: set[tuple[str, str]] = set()
         for edge in self.graph.edges:
-            svg = self._svg_edge(edge)
+            svg = self._svg_edge(edge, glowing)
             if svg:
                 parts.append(svg)
         for node_id, (x, y) in self._node_positions.items():
             node = self.graph.get_node(node_id)
             if node:
                 parts.append(self._svg_node(node, x, y))
+        # Labels and markers sit above nodes so no box can cover them
+        parts.append(self._svg_edge_overlays())
         parts.append(self._svg_attack_paths())
         parts.append(self._svg_threat_table())
         parts.append(self._svg_legend())
@@ -182,6 +230,7 @@ class DiagramRenderer:
         zones_map = self.graph.nodes_by_zone()
         y_cursor: float = HEADER_H + SUMMARY_BAR_H + CANVAS_PAD
         max_lane_w = 0.0
+        row_base = 0
 
         for zone in ZONE_ORDER:
             nodes = zones_map.get(zone, [])
@@ -190,7 +239,7 @@ class DiagramRenderer:
             n = len(nodes)
             cols = min(n, MAX_NODES_PER_ROW)
             rows = (n + MAX_NODES_PER_ROW - 1) // MAX_NODES_PER_ROW
-            lane_h = max(MIN_LANE_H, rows * (NODE_H + NODE_GAP_Y) + LANE_PAD_Y * 2)
+            lane_h = max(MIN_LANE_H, rows * (NODE_H + NODE_GAP_Y) - NODE_GAP_Y + LANE_PAD_Y * 2)
             lane_w = LANE_PAD_X + cols * (NODE_W + NODE_GAP_X) + NODE_GAP_X
 
             for i, node in enumerate(nodes):
@@ -199,9 +248,11 @@ class DiagramRenderer:
                 nx = LANE_PAD_X + NODE_GAP_X + col * (NODE_W + NODE_GAP_X)
                 ny = y_cursor + LANE_PAD_Y + row * (NODE_H + NODE_GAP_Y)
                 self._node_positions[node.id] = (nx, ny)
+                self._node_cells[node.id] = (col, row_base + row)
 
             self._zone_lanes.append((zone, y_cursor, lane_h, nodes))
             y_cursor += lane_h
+            row_base += rows
             max_lane_w = max(max_lane_w, lane_w)
 
         # Handle empty graph
@@ -249,6 +300,141 @@ class DiagramRenderer:
         y_cursor += threat_table_h
         self._legend_y = y_cursor
         self._canvas_h = y_cursor + LEGEND_H + CANVAS_PAD
+
+        self._compute_routes()
+        self._place_edge_overlays()
+
+    # -- Edge routing ---------------------------------------------------------
+
+    def _compute_routes(self) -> None:
+        """Route every node pair through the gaps between grid rows and columns."""
+        if not self._zone_lanes:
+            return
+
+        lane_end: dict[int, float] = {}
+        row_tops: dict[int, float] = {}
+        for node_id, (_, row) in self._node_cells.items():
+            row_tops[row] = self._node_positions[node_id][1]
+        for _, lane_y, lane_h, nodes in self._zone_lanes:
+            for node in nodes:
+                lane_end[self._node_cells[node.id][1]] = lane_y + lane_h
+
+        n_rows = max(row_tops) + 1
+        channels: list[tuple[float, float]] = []
+        keep_out: dict[int, tuple[float, float]] = {}
+        half_label = EDGE_LABEL_H / 2 + OVERLAY_CLEARANCE + 1
+        for row in range(n_rows):
+            lo = row_tops[row] + NODE_H + CHANNEL_CLEAR_BELOW
+            if row + 1 < n_rows:
+                hi = row_tops[row + 1] - CHANNEL_CLEAR_ABOVE
+                border = lane_end[row]
+                if border < row_tops[row + 1]:
+                    # Keep runs (and the labels centered on them) off the lane border
+                    keep_out[row] = (border - half_label, border + half_label)
+            else:
+                hi = lane_end[row] - CHANNEL_CLEAR_BELOW
+            channels.append((lo, hi))
+
+        n_cols = max(col for col, _ in self._node_cells.values()) + 1
+        gaps: list[tuple[float, float]] = []
+        for gap in range(n_cols + 1):
+            right = LANE_PAD_X + NODE_GAP_X + gap * (NODE_W + NODE_GAP_X)
+            gaps.append((right - NODE_GAP_X + GAP_CLEAR, right - GAP_CLEAR))
+
+        grid_nodes: dict[str, GridNode] = {}
+        for node_id, (col, row) in self._node_cells.items():
+            node = self.graph.get_node(node_id)
+            if node is None:
+                continue
+            x, y = self._node_positions[node_id]
+            grid_nodes[node_id] = GridNode(
+                id=node_id,
+                col=col,
+                row=row,
+                rect=Rect(x, y, NODE_W, NODE_H),
+                shape=_shape_for(node.category),
+            )
+
+        self._grid = Grid(nodes=grid_nodes, channels=channels, gaps=gaps, keep_out=keep_out)
+        pairs = [(e.source, e.target) for e in self.graph.edges]
+        self._routes = route_edges(self._grid, pairs)
+
+    def _overlay_obstacles(self) -> list[Rect]:
+        """Areas edge labels and markers must stay clear of: nodes, badges, lane titles."""
+        obstacles: list[Rect] = []
+        for node_id, (x, y) in self._node_positions.items():
+            obstacles.append(Rect(x, y, NODE_W, NODE_H).expand(OVERLAY_CLEARANCE))
+            if self._threats_for_node(node_id):
+                obstacles.append(_badge_rect(x, y).expand(OVERLAY_CLEARANCE))
+        for zone, lane_y, _, _ in self._zone_lanes:
+            label = ZONE_LABELS.get(zone, zone.value.upper())
+            obstacles.append(Rect(8, lane_y + 12, len(label) * 7.5 + 8, 18))
+        return obstacles
+
+    def _place_edge_overlays(self) -> None:
+        """Pick collision-free spots for boundary labels and attack path markers."""
+        if not self._routes:
+            return
+        lanes_top = self._zone_lanes[0][1]
+        last_lane = self._zone_lanes[-1]
+        lanes_bottom = last_lane[1] + last_lane[2]
+        bounds = Rect(4, lanes_top + 2, self._canvas_w - 8, lanes_bottom - lanes_top - 4)
+        obstacles = self._overlay_obstacles()
+
+        labels: dict[tuple[str, str], tuple[str, str]] = {}
+        markers: dict[tuple[str, str], list[int]] = {}
+        for edge in self.graph.edges:
+            key = (edge.source, edge.target)
+            if key not in self._routes:
+                continue
+            if edge.crosses_trust_boundary and key not in labels:
+                text = self._edge_label_text(edge)
+                if text:
+                    labels[key] = (text, self._edge_tooltip(edge))
+            path_nums = self._edge_attack_path_map.get(key) or self._edge_attack_path_map.get(
+                (edge.target, edge.source), []
+            )
+            if path_nums and key not in markers:
+                markers[key] = path_nums
+
+        # Lane borders count as lines to keep labels off, like other routes
+        lane_borders: list[tuple[Point, Point]] = [
+            ((0.0, lane_y), (self._canvas_w, lane_y)) for _, lane_y, _, _ in self._zone_lanes[1:]
+        ]
+
+        def avoid_for(key: tuple[str, str]) -> list[tuple[Point, Point]]:
+            return lane_borders + [
+                seg
+                for other, points in self._routes.items()
+                if other != key
+                for seg in route_segments(points)
+            ]
+
+        # Longest routes first: they have the most room, short ones get what is left
+        def route_len(key: tuple[str, str]) -> float:
+            return -sum(math.dist(a, b) for a, b in route_segments(self._routes[key]))
+
+        for key in sorted(labels, key=lambda k: (route_len(k), k)):
+            text, tooltip = labels[key]
+            size = (_label_text_width(text) + EDGE_LABEL_PAD_X * 2, EDGE_LABEL_H)
+            points = self._routes[key]
+            rect = place_on_route(points, size, obstacles, bounds, avoid_for(key))
+            if rect is None:
+                # Nothing is free; fall back to the midpoint, still drawn above nodes
+                mx, my = point_at_half_length(points)
+                rect = Rect(mx - size[0] / 2, my - size[1] / 2, size[0], size[1])
+            self._edge_labels[key] = (rect, text, tooltip)
+            obstacles.append(rect.expand(OVERLAY_CLEARANCE))
+
+        for key, path_nums in markers.items():
+            d = ATTACK_PATH_CIRCLE_R * 2
+            size = (len(path_nums) * (d + 2) - 2, d)
+            rect = place_on_route(self._routes[key], size, obstacles, bounds, avoid_for(key))
+            if rect is None:
+                mx, my = point_at_half_length(self._routes[key])
+                rect = Rect(mx - size[0] / 2, my - size[1] / 2, size[0], size[1])
+            self._edge_markers[key] = (rect, path_nums)
+            obstacles.append(rect.expand(OVERLAY_CLEARANCE))
 
     def _threats_for_node(self, node_id: str) -> list[Threat]:
         return [t for t in self.report.threats if t.resource_address == node_id]
@@ -357,13 +543,16 @@ class DiagramRenderer:
         )
 
     def _svg_defs(self) -> str:
+        # The glow region is in user space: straight edges have a zero-height (or
+        # zero-width) bounding box, and a bbox-relative region would clip them away.
         return (
             "<defs>"
             + self._svg_style()
             + '<filter id="shadow" x="-4%" y="-4%" width="108%" height="116%">'
             '<feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/>'
             "</filter>"
-            '<filter id="glow" x="-10%" y="-10%" width="120%" height="120%">'
+            f'<filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" '
+            f'width="{self._canvas_w:.0f}" height="{self._canvas_h:.0f}">'
             '<feGaussianBlur stdDeviation="2" result="blur"/>'
             '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>'
             "</filter>" + self._svg_arrow_markers() + "</defs>"
@@ -503,7 +692,8 @@ class DiagramRenderer:
 
         # Resource type (first part of ID before the dot, or resource_type)
         res_type = node.resource_type if node.resource_type else node.id.split(".")[0]
-        res_type_display = _truncate(res_type, 22)
+        max_chars = DIAMOND_TYPE_MAX_CHARS if cat in _DATA_FLOW_CATEGORIES else NODE_TYPE_MAX_CHARS
+        res_type_display = _truncate(res_type, max_chars)
 
         # Short name: last segment after dot
         short_name = node.name if "." not in node.id else node.id.rsplit(".", 1)[-1]
@@ -512,10 +702,10 @@ class DiagramRenderer:
             f'<g class="node" data-id="{_esc(node.id)}" filter="url(#shadow)">',
             shape,
             # Resource type label (top, 8px gray)
-            f'<text x="{x + NODE_W / 2:.0f}" y="{y + 14:.0f}" fill="#94a3b8" '
+            f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_TYPE_BASELINE:.0f}" fill="#94a3b8" '
             f'font-size="8" text-anchor="middle">{_esc(res_type_display)}</text>',
             # Resource short name (center, 11px bold)
-            f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_H / 2 + 5:.0f}" '
+            f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_NAME_BASELINE:.0f}" '
             f'fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">'
             f"{_esc(short_name)}</text>",
         ]
@@ -595,18 +785,13 @@ class DiagramRenderer:
             f'font-size="9" font-weight="600" text-anchor="middle">{count}</text>'
         )
 
-    def _svg_edge(self, edge: InfraEdge) -> str:
-        src_pos = self._node_positions.get(edge.source)
-        tgt_pos = self._node_positions.get(edge.target)
-        if not src_pos or not tgt_pos:
+    def _svg_edge(self, edge: InfraEdge, glowing: set[tuple[str, str]]) -> str:
+        key = (edge.source, edge.target)
+        points = self._routes.get(key)
+        if not points:
             return ""
 
-        x1 = src_pos[0] + NODE_W / 2
-        y1 = src_pos[1] + NODE_H
-        x2 = tgt_pos[0] + NODE_W / 2
-        y2 = tgt_pos[1]
-
-        path_d = self._bezier(x1, y1, x2, y2)
+        path_d = polyline_to_path(points)
 
         is_boundary = edge.crosses_trust_boundary
         if is_boundary:
@@ -614,7 +799,9 @@ class DiagramRenderer:
             width = "2"
             dash = ""
             marker = "url(#arrow-boundary)"
-            filt = ' filter="url(#glow)"'
+            # Parallel edges share a route; glow once so stacked glows do not darken
+            filt = "" if key in glowing else ' filter="url(#glow)"'
+            glowing.add(key)
         else:
             color, width, dash = EDGE_STYLES.get(edge.edge_type, ("#94a3b8", "1", ""))
             marker = f"url(#arrow-{edge.edge_type.value})"
@@ -628,40 +815,13 @@ class DiagramRenderer:
         parts: list[str] = [
             '<g class="edge-group">',
             f'<path d="{path_d}" fill="none" stroke="{color}" '
-            f'stroke-width="{width}"{dash_attr} '
+            f'stroke-width="{width}"{dash_attr} stroke-linejoin="round" '
             f'marker-end="{marker}"{filt} '
             f'class="edge" data-type="{edge.edge_type.value}" '
             f'data-boundary="{str(is_boundary).lower()}"/>',
             f"<title>{_esc(tooltip)}</title>",
+            "</g>",
         ]
-
-        # Edge label for boundary crossings
-        if is_boundary:
-            label = self._edge_label_text(edge)
-            if label:
-                mx = (x1 + x2) / 2
-                my = (y1 + y2) / 2
-                parts.append(self._svg_edge_label(mx, my, label))
-
-        # Attack path overlay markers
-        path_nums = self._edge_attack_path_map.get((edge.source, edge.target), [])
-        if not path_nums:
-            path_nums = self._edge_attack_path_map.get((edge.target, edge.source), [])
-        if path_nums:
-            mx = (x1 + x2) / 2
-            my = (y1 + y2) / 2
-            for j, pnum in enumerate(path_nums):
-                offset_x = j * (ATTACK_PATH_CIRCLE_R * 2 + 2)
-                parts.append(
-                    f'<g class="attack-path-marker">'
-                    f'<circle cx="{mx + offset_x:.0f}" cy="{my + 12:.0f}" '
-                    f'r="{ATTACK_PATH_CIRCLE_R}" fill="#dc2626"/>'
-                    f'<text x="{mx + offset_x:.0f}" y="{my + 16:.0f}" fill="#ffffff" '
-                    f'font-size="9" font-weight="700" text-anchor="middle">{pnum}</text>'
-                    f"</g>"
-                )
-
-        parts.append("</g>")
         return "\n".join(parts)
 
     def _edge_tooltip(self, edge: InfraEdge) -> str:
@@ -670,30 +830,55 @@ class DiagramRenderer:
             src_zone = edge.metadata.get("source_zone", "?")
             tgt_zone = edge.metadata.get("target_zone", "?")
             return (
-                f"Trust boundary crossing: {src_zone} -> {tgt_zone}\n"
+                f"Trust boundary crossing: {src_zone} \u2192 {tgt_zone}\n"
                 f"Data should be encrypted, authenticated, and validated"
             )
         label = EDGE_LABELS.get(edge.edge_type, edge.edge_type.value)
-        return f"{label}: {edge.source} -> {edge.target}"
+        return f"{label}: {edge.source} \u2192 {edge.target}"
 
     def _edge_label_text(self, edge: InfraEdge) -> str:
         """Return zone transition label for boundary-crossing edges."""
         src_zone = edge.metadata.get("source_zone", "")
         tgt_zone = edge.metadata.get("target_zone", "")
         if src_zone and tgt_zone:
-            return f"{src_zone.upper()} -> {tgt_zone.upper()}"
+            return f"{src_zone.upper()} \u2192 {tgt_zone.upper()}"
         return ""
 
-    def _svg_edge_label(self, x: float, y: float, text: str) -> str:
-        """Render a small label at the midpoint of a boundary-crossing edge."""
-        text_w = len(text) * 5.5 + 8
+    def _svg_edge_overlays(self) -> str:
+        """Render boundary labels and attack path markers in a layer above the nodes."""
+        if not self._edge_labels and not self._edge_markers:
+            return ""
+        parts: list[str] = ['<g class="edge-overlays">']
+        for rect, text, tooltip in self._edge_labels.values():
+            parts.append(self._svg_edge_label(rect, text, tooltip))
+        for rect, path_nums in self._edge_markers.values():
+            cy = rect.cy
+            for j, pnum in enumerate(path_nums):
+                cx = rect.x + ATTACK_PATH_CIRCLE_R + j * (ATTACK_PATH_CIRCLE_R * 2 + 2)
+                parts.append(
+                    f'<g class="attack-path-marker">'
+                    f'<circle cx="{cx:.1f}" cy="{cy:.1f}" '
+                    f'r="{ATTACK_PATH_CIRCLE_R}" fill="#dc2626" '
+                    f'stroke="#ffffff" stroke-width="1.5"/>'
+                    f'<text x="{cx:.1f}" y="{cy + 3.2:.1f}" fill="#ffffff" '
+                    f'font-size="9" font-weight="700" text-anchor="middle">{pnum}</text>'
+                    f"</g>"
+                )
+        parts.append("</g>")
+        return "\n".join(parts)
+
+    def _svg_edge_label(self, rect: Rect, text: str, tooltip: str) -> str:
+        """Render a boundary-crossing label on an opaque pill so it reads over edges."""
         return (
-            f'<rect x="{x - text_w / 2:.0f}" y="{y - 7:.0f}" '
-            f'width="{text_w:.0f}" height="14" rx="3" fill="#ffffff" '
-            f'stroke="#ef4444" stroke-width="0.5" opacity="0.95"/>'
-            f'<text x="{x:.0f}" y="{y + 3:.0f}" fill="#ef4444" '
-            f'font-size="8" font-weight="500" text-anchor="middle" '
+            f'<g class="edge-label-group">'
+            f"<title>{_esc(tooltip)}</title>"
+            f'<rect class="edge-label-bg" x="{rect.x:.1f}" y="{rect.y:.1f}" '
+            f'width="{rect.w:.1f}" height="{rect.h:.1f}" rx="3" fill="#ffffff" '
+            f'stroke="#fca5a5" stroke-width="1"/>'
+            f'<text x="{rect.cx:.1f}" y="{rect.cy + 3.2:.1f}" fill="#dc2626" '
+            f'font-size="{EDGE_LABEL_FONT}" font-weight="600" text-anchor="middle" '
             f'class="edge-label">{_esc(text)}</text>'
+            f"</g>"
         )
 
     def _svg_attack_paths(self) -> str:
@@ -816,6 +1001,8 @@ class DiagramRenderer:
         col_attack_w = min(160, w * 0.17)
         col_stride_w = min(110, w * 0.12)
         col_source_w = 50
+        # 8px text averages about 4.4px per character; leave a gutter before ATT&CK
+        desc_max_chars = int((col_desc_w - 12) / 4.4)
 
         # Header row
         parts.append(
@@ -881,8 +1068,8 @@ class DiagramRenderer:
             )
             rx += col_threat_w
 
-            # Description (truncated, full in tooltip)
-            desc_display = _truncate(threat.description, 60)
+            # Description (truncated to the column width, full in tooltip)
+            desc_display = _truncate(threat.description, desc_max_chars)
             parts.append(
                 f'<text x="{rx:.0f}" y="{ry:.0f}" fill="#64748b" '
                 f'font-size="8" class="threat-desc">{_esc(desc_display)}</text>'
@@ -1084,17 +1271,24 @@ class DiagramRenderer:
         parts.append("</g>")
         return "\n".join(parts)
 
-    # -- Geometry helpers -----------------------------------------------------
 
-    def _bezier(self, x1: float, y1: float, x2: float, y2: float) -> str:
-        dy = abs(y2 - y1)
-        if dy < 10:
-            offset = 20.0
-        else:
-            offset = dy * 0.4
-        cy1 = y1 + offset
-        cy2 = y2 - offset
-        return f"M{x1:.1f},{y1:.1f} C{x1:.1f},{cy1:.1f} {x2:.1f},{cy2:.1f} {x2:.1f},{y2:.1f}"
+def _shape_for(category: NodeCategory) -> Shape:
+    """Outline used for a node category, for edge port placement."""
+    if category in _DATA_STORE_CATEGORIES:
+        return "cylinder"
+    if category in _DATA_FLOW_CATEGORIES:
+        return "diamond"
+    return "rect"
+
+
+def _label_text_width(text: str) -> float:
+    """Estimated rendered width of a boundary label's text."""
+    return sum(EDGE_LABEL_GLYPH_W.get(ch, EDGE_LABEL_CHAR_W) for ch in text)
+
+
+def _badge_rect(x: float, y: float) -> Rect:
+    """Bounding box of the threat badge drawn by _svg_threat_badge for a node at (x, y)."""
+    return Rect(x + NODE_W - 17, y - 11, 14, 14)
 
 
 def _esc(text: str) -> str:

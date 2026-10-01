@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ElementTree
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +19,7 @@ from threatcode.formatters.diagram import (
     THREAT_TABLE_ROW_H,
     format_diagram,
 )
+from threatcode.formatters.diagram_routing import Rect, polyline_to_path
 from threatcode.ir.edges import EdgeType, InfraEdge
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
@@ -637,7 +641,7 @@ class TestExpandedThreatTable:
         assert 'class="threat-desc"' in svg
 
     def test_description_truncation(self) -> None:
-        """Long descriptions are truncated to 60 chars with ellipsis in the desc cell."""
+        """Long descriptions are truncated with an ellipsis to fit the desc column."""
         graph = _make_graph_with_nodes(SAMPLE_NODES)
         long_desc = "A" * 100
         threat = Threat(
@@ -706,7 +710,7 @@ class TestExpandedThreatTable:
         svg = format_diagram(report, graph)
         # The threat-mitre cell should contain "-"
         assert 'class="threat-mitre"' in svg
-        # Find the mitre cell content — it should be just "-"
+        # Find the mitre cell content - it should be just "-"
         import re
 
         mitre_cells = re.findall(r'class="threat-mitre">(.*?)</text>', svg)
@@ -729,3 +733,253 @@ class TestExpandedThreatTable:
         report = _make_report(threats=[threat], n_resources=5)
         svg = format_diagram(report, graph)
         assert "Mitigation: Enable encryption at rest" in svg
+
+
+# -- Edge routing and label placement -----------------------------------------
+
+_FIXTURE_PATH = (
+    Path(__file__).parent.parent / "fixtures" / "terraform" / "multi_service_insecure.plan.json"
+)
+
+Box = tuple[float, float, float, float]  # x0, y0, x1, y1
+
+
+def _fixture_svg() -> str:
+    from threatcode.parsers import detect_and_parse
+
+    if not _FIXTURE_PATH.exists():
+        pytest.skip("multi_service_insecure fixture not available")
+    graph = InfraGraph.from_parsed(detect_and_parse(str(_FIXTURE_PATH)))
+    report = HybridEngine().analyze(graph, input_file=str(_FIXTURE_PATH))
+    return format_diagram(report, graph)
+
+
+def _span(xs: list[float], ys: list[float]) -> Box:
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _node_boxes(root: ElementTree.Element, badges: bool = False) -> dict[str, Box]:
+    """Bounding box of every node shape, or of its threat badge when ``badges``."""
+    boxes: dict[str, Box] = {}
+    for g in root.iter(f"{NS}g"):
+        if g.get("class") != "node":
+            continue
+        xs: list[float] = []
+        ys: list[float] = []
+        for el in g:
+            tag = el.tag.removeprefix(NS)
+            if badges:
+                if tag == "circle":
+                    cx, cy, r = (float(el.get(a, 0)) for a in ("cx", "cy", "r"))
+                    xs += [cx - r, cx + r]
+                    ys += [cy - r, cy + r]
+            elif tag == "rect":
+                x, y = float(el.get("x", 0)), float(el.get("y", 0))
+                xs += [x, x + float(el.get("width", 0))]
+                ys += [y, y + float(el.get("height", 0))]
+            elif tag == "ellipse":
+                cx, cy, rx, ry = (float(el.get(a, 0)) for a in ("cx", "cy", "rx", "ry"))
+                xs += [cx - rx, cx + rx]
+                ys += [cy - ry, cy + ry]
+            elif tag == "polygon":
+                for pair in el.get("points", "").split():
+                    px, py = pair.split(",")
+                    xs.append(float(px))
+                    ys.append(float(py))
+        if xs:
+            boxes[g.get("data-id", "")] = _span(xs, ys)
+    return boxes
+
+
+def _label_boxes(root: ElementTree.Element) -> list[Box]:
+    boxes: list[Box] = []
+    for r in root.iter(f"{NS}rect"):
+        if r.get("class") == "edge-label-bg":
+            x, y = float(r.get("x", 0)), float(r.get("y", 0))
+            boxes.append((x, y, x + float(r.get("width", 0)), y + float(r.get("height", 0))))
+    return boxes
+
+
+def _boxes_overlap(a: Box, b: Box) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _path_points(d: str) -> list[tuple[float, float]]:
+    """Every coordinate in an M/L/Q path, control points included (conservative)."""
+    nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", d)]
+    return list(zip(nums[0::2], nums[1::2], strict=True))
+
+
+def _edge_node_crossings(svg: str) -> list[tuple[str, str]]:
+    """(edge tooltip, node id) for each edge segment that enters an unrelated node."""
+    root = ElementTree.fromstring(svg)
+    node_rects = {
+        node_id: Rect(x0, y0, x1 - x0, y1 - y0)
+        for node_id, (x0, y0, x1, y1) in _node_boxes(root).items()
+    }
+    hits: list[tuple[str, str]] = []
+    for g in root.iter(f"{NS}g"):
+        if g.get("class") != "edge-group":
+            continue
+        path = g.find(f"{NS}path")
+        title = g.find(f"{NS}title")
+        assert path is not None and title is not None
+        points = _path_points(path.get("d", ""))
+        start, end = points[0], points[-1]
+        for node_id, rect in node_rects.items():
+            # Endpoints sit on their own node's outline; skip the edge's two nodes
+            own = rect.expand(1)
+            if Rect(start[0], start[1], 0, 0).intersects(own) or Rect(
+                end[0], end[1], 0, 0
+            ).intersects(own):
+                continue
+            if any(rect.intersects_segment(a, b) for a, b in zip(points, points[1:])):
+                hits.append((title.text or "", node_id))
+    return hits
+
+
+# INTERNET -> PRIVATE edge whose straight line is blocked by two DMZ nodes
+_SKIP_LANE_NODES = [
+    InfraNode(
+        id="aws_internet_gateway.igw",
+        resource_type="aws_internet_gateway",
+        name="igw",
+        category=NodeCategory.NETWORK,
+        trust_zone=TrustZone.INTERNET,
+    ),
+    InfraNode(
+        id="aws_instance.web",
+        resource_type="aws_instance",
+        name="web",
+        category=NodeCategory.COMPUTE,
+        trust_zone=TrustZone.DMZ,
+    ),
+    InfraNode(
+        id="aws_instance.bastion",
+        resource_type="aws_instance",
+        name="bastion",
+        category=NodeCategory.COMPUTE,
+        trust_zone=TrustZone.DMZ,
+    ),
+    InfraNode(
+        id="aws_instance.app",
+        resource_type="aws_instance",
+        name="app",
+        category=NodeCategory.COMPUTE,
+        trust_zone=TrustZone.PRIVATE,
+    ),
+    InfraNode(
+        id="aws_vpc.main",
+        resource_type="aws_vpc",
+        name="main",
+        category=NodeCategory.NETWORK,
+        trust_zone=TrustZone.PRIVATE,
+    ),
+]
+
+_SKIP_LANE_EDGES = [
+    InfraEdge(
+        source="aws_internet_gateway.igw",
+        target="aws_vpc.main",
+        edge_type=edge_type,
+        metadata={
+            "crosses_trust_boundary": True,
+            "source_zone": "internet",
+            "target_zone": "private",
+        },
+    )
+    for edge_type in (EdgeType.DEPENDENCY, EdgeType.CONTAINMENT)
+]
+
+
+def _skip_lane_svg() -> str:
+    graph = _make_graph_with_nodes(_SKIP_LANE_NODES, _SKIP_LANE_EDGES)
+    threats = [_make_threat(n.id) for n in _SKIP_LANE_NODES]
+    return format_diagram(_make_report(threats=threats, n_resources=5), graph)
+
+
+class TestEdgeLabelPlacement:
+    @pytest.mark.parametrize("svg_factory", [_fixture_svg, _skip_lane_svg])
+    def test_labels_do_not_intersect_nodes(self, svg_factory: Callable[[], str]) -> None:
+        root = ElementTree.fromstring(svg_factory())
+        labels = _label_boxes(root)
+        assert labels
+        nodes = _node_boxes(root)
+        badges = _node_boxes(root, badges=True)
+        assert badges
+        for label in labels:
+            for node_id, node in nodes.items():
+                assert not _boxes_overlap(label, node), f"label {label} covers {node_id}"
+            for node_id, badge in badges.items():
+                assert not _boxes_overlap(label, badge), f"label {label} covers {node_id} badge"
+
+    @pytest.mark.parametrize("svg_factory", [_fixture_svg, _skip_lane_svg])
+    def test_labels_do_not_intersect_each_other(self, svg_factory: Callable[[], str]) -> None:
+        labels = _label_boxes(ElementTree.fromstring(svg_factory()))
+        for i, a in enumerate(labels):
+            for b in labels[i + 1 :]:
+                assert not _boxes_overlap(a, b)
+
+    def test_labels_inside_canvas(self) -> None:
+        root = ElementTree.fromstring(_fixture_svg())
+        _, _, width, height = (float(v) for v in root.get("viewBox", "").split())
+        for x0, y0, x1, y1 in _label_boxes(root):
+            assert 0 <= x0 and x1 <= width and 0 <= y0 and y1 <= height
+
+    def test_labels_drawn_above_nodes(self) -> None:
+        """Labels render after every node so no node box can paint over them."""
+        svg = _fixture_svg()
+        assert svg.index('class="edge-overlays"') > svg.rindex('class="node"')
+
+    def test_labels_have_opaque_background(self) -> None:
+        root = ElementTree.fromstring(_fixture_svg())
+        bgs = [r for r in root.iter(f"{NS}rect") if r.get("class") == "edge-label-bg"]
+        assert bgs
+        for bg in bgs:
+            assert bg.get("fill") == "#ffffff"
+            assert bg.get("opacity") is None
+
+    def test_parallel_edges_share_one_label(self) -> None:
+        """Dependency + containment between the same pair yield a single label."""
+        svg = _fixture_svg()
+        texts = re.findall(r'class="edge-label">(.*?)</text>', svg)
+        assert texts.count("INTERNET → PRIVATE") == 1
+        assert texts.count("DMZ → PRIVATE") == 2  # public_db and public subnet
+
+        root = ElementTree.fromstring(_skip_lane_svg())
+        assert len(_label_boxes(root)) == 1
+        paths = [p for p in root.iter(f"{NS}path") if p.get("class") == "edge"]
+        assert len(paths) == 2
+
+
+class TestEdgeRouting:
+    @pytest.mark.parametrize("svg_factory", [_fixture_svg, _skip_lane_svg])
+    def test_edges_avoid_unrelated_nodes(self, svg_factory: Callable[[], str]) -> None:
+        assert _edge_node_crossings(svg_factory()) == []
+
+    def test_straight_vertical_edge(self) -> None:
+        """Nodes stacked in one column connect with a straight vertical line."""
+        nodes = [SAMPLE_NODES[0], SAMPLE_NODES[1]]  # igw (INTERNET) above alb (DMZ)
+        graph = _make_graph_with_nodes(nodes, [SAMPLE_EDGES[0]])
+        root = ElementTree.fromstring(format_diagram(_make_report(), graph))
+        path = next(p for p in root.iter(f"{NS}path") if p.get("class") == "edge")
+        points = _path_points(path.get("d", ""))
+        assert len({x for x, _ in points}) == 1
+
+    def test_glow_filter_survives_straight_lines(self) -> None:
+        """A bbox-relative filter region clips zero-height lines; use user space."""
+        root = ElementTree.fromstring(_skip_lane_svg())
+        glow = next(f for f in root.iter(f"{NS}filter") if f.get("id") == "glow")
+        assert glow.get("filterUnits") == "userSpaceOnUse"
+
+    def test_rect_segment_intersection(self) -> None:
+        rect = Rect(10, 10, 20, 20)
+        assert rect.intersects_segment((0, 20), (40, 20))
+        assert rect.intersects_segment((15, 0), (15, 15))
+        assert not rect.intersects_segment((0, 5), (40, 5))
+        assert not rect.intersects_segment((10, 0), (10, 40))  # grazes the edge
+        assert not rect.intersects_segment((0, 0), (5, 5))
+
+    def test_polyline_rounded_corners(self) -> None:
+        d = polyline_to_path([(0, 0), (0, 20), (30, 20)])
+        assert d == "M0.0,0.0 L0.0,14.0 Q0.0,20.0 6.0,20.0 L30.0,20.0"
