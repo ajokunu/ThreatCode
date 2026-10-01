@@ -236,7 +236,7 @@ threatcode diff baseline.json current.json --format markdown > diff.md
 When running with LLM analysis enabled:
 
 - **Use `--no-llm` in CI** unless you specifically need architectural threat detection
-- Rule-based scanning is free and covers 221 built-in rules
+- Rule-based scanning is free and covers 228 built-in rules
 - LLM analysis adds architectural threat discovery (cross-resource attack paths, implicit trust assumptions)
 - Use `--dry-run` to preview what would be sent to the LLM before paying for API calls
 - Token budget is configurable: `llm.max_tokens: 4096` (default)

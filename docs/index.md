@@ -26,7 +26,7 @@ for threat in report["threats"]:
 
 ## Feature Highlights
 
-- **221 built-in rules** across AWS, Azure, GCP, Dockerfiles and Kubernetes
+- **228 built-in rules** across AWS, Azure, GCP, Dockerfiles, Kubernetes and MCP server configs
 - **MITRE ATT&CK mapping** -- every rule and boundary finding carries ATT&CK technique and tactic IDs
 - **Multiple output formats** -- SARIF 2.1.0 (GitHub Code Scanning), JSON, Markdown, Bitbucket Code Insights, and ATT&CK Navigator layers
 - **LLM augmentation** -- optional hybrid analysis with Claude, OpenAI-compatible APIs, to catch architectural threats rules cannot (local model servers are blocked by the SSRF guard for now)

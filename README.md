@@ -77,7 +77,7 @@ ThreatCode parses those files offline, without starting or contacting any server
 | Cursor | `.cursor/mcp.json` | `mcpServers` |
 | VS Code | `.vscode/mcp.json`, comments allowed | `servers` |
 | VS Code and Copilot portable format | `.mcp.json`, `~/.copilot/mcp-config.json` | `mcpServers` |
-| Windsurf (now Devin Desktop) | `mcp_config.json` | `mcpServers`, remote servers use `serverUrl` |
+| Windsurf / Devin Desktop | `mcp_config.json` | `mcpServers`, remote servers use `serverUrl` |
 
 File names and shapes were checked against each client's documentation on 2026-10-01.
 `threatcode fs` picks up `.cursor/mcp.json` and `.vscode/mcp.json` even though it skips other dot-directories, so one run covers the agent configs and the IaC.

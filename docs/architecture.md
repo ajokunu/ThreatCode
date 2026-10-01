@@ -45,7 +45,7 @@ Input Files / Container Images
 │                  Scanning Engines                        │
 │                                                          │
 │  ① HybridEngine (threat modeling)                       │
-│     - YAML rule matching (221 built-in rules)           │
+│     - YAML rule matching (228 built-in rules)           │
 │     - Trust boundary crossing detection                  │
 │     - Optional LLM architectural analysis               │
 │                                                          │

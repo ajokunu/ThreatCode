@@ -6,20 +6,20 @@ Every rule-based and boundary finding carries [MITRE ATT&CK](https://attack.mitr
 
 ## Coverage
 
-Across the builtin rules and the boundary analysis, ThreatCode maps to **24 ATT&CK techniques** in **12 tactics**.
+Across the builtin rules and the boundary analysis, ThreatCode maps to **26 ATT&CK techniques** in **12 tactics**.
 The table lists each technique under every tactic ATT&CK assigns it to, so some techniques appear more than once.
 
 | Tactic | ID | Techniques Covered |
 |--------|----|--------------------|
 | Initial Access | TA0001 | T1078, T1078.004, T1189, T1190, T1195.002 |
-| Execution | TA0002 | T1609 |
+| Execution | TA0002 | T1059, T1609 |
 | Persistence | TA0003 | T1078, T1078.004, T1098 |
 | Privilege Escalation | TA0004 | T1068, T1078, T1078.004, T1098, T1611 |
 | Defense Evasion | TA0005 | T1078, T1078.004, T1562.008 |
 | Credential Access | TA0006 | T1040, T1528, T1552.001, T1557 |
 | Discovery | TA0007 | T1040, T1046, T1580, T1613 |
 | Lateral Movement | TA0008 | T1021 |
-| Collection | TA0009 | T1530, T1557 |
+| Collection | TA0009 | T1005, T1530, T1557 |
 | Exfiltration | TA0010 | T1048 |
 | Impact | TA0040 | T1485, T1499, T1565.001 |
 | Resource Development | TA0042 | T1587.001 |
