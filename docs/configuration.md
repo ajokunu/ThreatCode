@@ -96,12 +96,12 @@ Use `--no-llm` for air-gapped runs.
 
 ### Other OpenAI-compatible endpoints
 
-vLLM, llama.cpp, Together AI, Groq, etc.:
+Hosted OpenAI-compatible APIs such as Together AI or Groq work through the `openai` provider, as long as `base_url` is an HTTPS URL on a public address:
 
 ```yaml
 llm:
-  provider: local
-  base_url: http://localhost:8080
+  provider: openai
+  base_url: https://api.together.xyz/v1
   model: my-model
   api_key: ""
 ```
@@ -184,13 +184,10 @@ min_severity: high
 output_format: sarif
 ```
 
-### Air-gapped with local LLM
+### Air-gapped
+
+Local model servers are not supported yet (see the Ollama note above), so air-gapped runs use rules only:
 
 ```yaml
-llm:
-  provider: ollama
-  base_url: http://localhost:11434
-  model: llama3.2
-  max_tokens: 2048
-no_llm: false
+no_llm: true
 ```

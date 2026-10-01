@@ -1,40 +1,30 @@
 # MITRE ATT&CK Integration
 
-ThreatCode maps every finding to the [MITRE ATT&CK Cloud Matrix](https://attack.mitre.org/matrices/enterprise/cloud/), giving every threat a globally recognized technique and tactic ID.
+Every rule-based and boundary finding carries [MITRE ATT&CK](https://attack.mitre.org/) technique and tactic IDs.
 
 ---
 
 ## Coverage
 
-ThreatCode covers **25 ATT&CK techniques** across **12 tactics**:
+Across the builtin rules and the boundary analysis, ThreatCode maps to **24 ATT&CK techniques** in **12 tactics**.
+The table lists each technique under every tactic ATT&CK assigns it to, so some techniques appear more than once.
 
 | Tactic | ID | Techniques Covered |
 |--------|----|--------------------|
-| Initial Access | TA0001 | T1078, T1078.004, T1190, T1195, T1195.002 |
-| Execution | TA0002 | T1609, T1610 |
-| Persistence | TA0003 | T1078, T1098 |
-| Privilege Escalation | TA0004 | T1068, T1548, T1078.004, T1611 |
-| Defense Evasion | TA0005 | T1562.008 |
-| Credential Access | TA0006 | T1552, T1552.001 |
-| Discovery | TA0007 | T1046, T1580, T1613 |
+| Initial Access | TA0001 | T1078, T1078.004, T1189, T1190, T1195.002 |
+| Execution | TA0002 | T1609 |
+| Persistence | TA0003 | T1078, T1078.004, T1098 |
+| Privilege Escalation | TA0004 | T1068, T1078, T1078.004, T1098, T1611 |
+| Defense Evasion | TA0005 | T1078, T1078.004, T1562.008 |
+| Credential Access | TA0006 | T1040, T1528, T1552.001, T1557 |
+| Discovery | TA0007 | T1040, T1046, T1580, T1613 |
 | Lateral Movement | TA0008 | T1021 |
-| Collection | TA0009 | T1530, T1528, T1565, T1565.001 |
-| Exfiltration | TA0010 | T1537 |
-| Command & Control | TA0011 | T1021 |
-| Impact | TA0040 | T1485, T1499 |
+| Collection | TA0009 | T1530, T1557 |
+| Exfiltration | TA0010 | T1048 |
+| Impact | TA0040 | T1485, T1499, T1565.001 |
+| Resource Development | TA0042 | T1587.001 |
 
----
-
-## STRIDE → ATT&CK Mapping
-
-| STRIDE Category | ATT&CK Tactics |
-|-----------------|---------------|
-| Spoofing | TA0001 (Initial Access), TA0006 (Credential Access) |
-| Tampering | TA0040 (Impact) |
-| Repudiation | TA0005 (Defense Evasion) |
-| Information Disclosure | TA0009 (Collection), TA0010 (Exfiltration) |
-| Denial of Service | TA0040 (Impact) |
-| Elevation of Privilege | TA0004 (Privilege Escalation) |
+Each rule names its own techniques and tactics, so there is no fixed STRIDE-to-tactic mapping.
 
 ---
 
