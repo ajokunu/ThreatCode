@@ -59,3 +59,42 @@ class TestTerraformPlanParser:
         parser = TerraformPlanParser()
         result = parser.parse({"planned_values": {"root_module": {}}})
         assert len(result.resources) == 0
+
+
+class TestDependencyOrder:
+    def test_dependencies_keep_first_seen_order(self) -> None:
+        """Deduplicated dependencies must not depend on hash order, or edges reorder per run."""
+        data = {
+            "planned_values": {
+                "root_module": {
+                    "resources": [
+                        {"address": a, "type": a.split(".")[0], "name": a.split(".")[1]}
+                        for a in (
+                            "aws_instance.web",
+                            "aws_subnet.a",
+                            "aws_security_group.sg",
+                            "aws_vpc.main",
+                        )
+                    ]
+                }
+            },
+            "configuration": {
+                "root_module": {
+                    "resources": [
+                        {
+                            "type": "aws_instance",
+                            "name": "web",
+                            "depends_on": ["aws_vpc.main"],
+                            "expressions": {
+                                "subnet_id": {"references": ["aws_subnet.a"]},
+                                "vpc_security_group_ids": {"references": ["aws_security_group.sg"]},
+                                "tags": {"references": ["aws_vpc.main", "var.env"]},
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+        parsed = TerraformPlanParser().parse(data)
+        web = next(r for r in parsed.resources if r.address == "aws_instance.web")
+        assert web.dependencies == ["aws_vpc.main", "aws_subnet.a", "aws_security_group.sg"]

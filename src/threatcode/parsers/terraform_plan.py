@@ -112,7 +112,8 @@ class TerraformPlanParser(BaseParser):
             implicit = self._extract_references(expressions)
             if implicit:
                 existing = dep_map.get(address, [])
-                dep_map[address] = list(set(existing + implicit))
+                # dict.fromkeys dedupes in first-seen order, so edges come out the same every run
+                dep_map[address] = list(dict.fromkeys(existing + implicit))
 
         for call_key, call_val in module.get("module_calls", {}).items():
             child_module = call_val.get("module", {})

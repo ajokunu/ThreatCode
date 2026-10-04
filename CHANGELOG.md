@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Multi-document Kubernetes manifests were skipped**: `detect_and_parse` loaded YAML with `safe_load`, which rejects files holding several `---` separated documents. `threatcode scan` failed with "Invalid YAML", and `threatcode fs` skipped the file at debug log level and reported no issues, so RBAC, workload and network findings in the most common manifest layout were silently missed. YAML input is now read with `safe_load_all`; a file whose documents are all Kubernetes objects is parsed as one manifest.
+- **Edge order changed between runs**: the Terraform plan parser deduplicated dependencies through a `set`, so graph edges, diagram layout and LLM prompts could differ between two scans of the same plan. Dependencies now keep their first-seen order.
+
 ## [0.9.1] - 2026-10-03
 
 ### Added
