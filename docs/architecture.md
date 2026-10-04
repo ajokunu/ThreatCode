@@ -97,7 +97,13 @@ Register custom parsers:
 
 ```python
 from threatcode.parsers import register_parser
-register_parser("my_format", my_parse_fn, my_detect_fn, priority=50)
+register_parser(
+    name="my_format",
+    detector=my_detect_fn,   # (path, content, parsed_data) -> bool
+    factory=MyParser,        # returns a BaseParser
+    extensions={".myext"},
+    priority=50,             # lower is checked first; built-ins use 5-30
+)
 ```
 
 ### ParsedResource Structure
@@ -115,7 +121,17 @@ class ParsedResource:
     dependencies: list[str]  # Addresses of resources this depends on
     module: str              # Terraform module path (if applicable)
     source_location: str     # "file.tf:42"
+    trust_zone: str | None   # zone declared by the input; None infers it
+    boundary: str            # declared boundary id, finer than the zone
+    evidence: str            # "config" (IaC) or "design" (diagram, threat model)
 ```
+
+A parser can also state edges directly in `ParsedOutput.edges`, as `ParsedEdge(source, target, edge_type="data_flow", metadata={})`.
+Design inputs use this for data flows, which configuration only implies.
+
+`evidence` records where a resource's properties came from.
+In configuration a missing property is a fact, because a Terraform plan lists every attribute.
+In a design a missing property is unknown, and the engine treats it that way.
 
 ---
 
@@ -158,10 +174,13 @@ The graph engine automatically infers edges from resource properties:
 - **IAM Binding**: Lambda → IAM Role (from `role`, `execution_role_arn` properties)
 - **Network Flow**: EC2 → RDS when both are in the same security group
 - **Dependency**: Explicit `depends_on` references in Terraform
+- **Declared**: Edges a parser states in `ParsedOutput.edges`, such as data flows in a design; a declared edge that repeats an inferred one adds its metadata to it
 
 ### Trust Boundary Crossing Detection
 
-A boundary crossing threat is generated any time an edge crosses two trust zones. The more trust zones spanned, the higher the severity. Internet → Data zone crossings are always critical.
+An edge crosses a trust boundary when its two nodes are in different trust zones, or when both nodes declare a `boundary` and the boundaries differ (two private subnets in a design are separate boundaries in the same zone).
+Each crossing produces one Tampering threat.
+Crossings between internet and private, internet and data, internet and management, or dmz and data are rated high in either direction; every other crossing is rated medium.
 
 ---
 
@@ -175,7 +194,7 @@ Each node's `properties` dict is evaluated against every loaded rule. Rules use 
 
 **Phase 2 — Boundary analysis**
 
-Graph traversal identifies trust boundary crossings. Each crossing generates a threat with STRIDE category `information_disclosure` or `elevation_of_privilege` depending on direction.
+Every edge that crosses a trust boundary (see above) generates a Tampering threat, rated high or medium by the pair of zones it connects.
 
 **Phase 3 — LLM analysis (optional)**
 

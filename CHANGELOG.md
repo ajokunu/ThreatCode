@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- **Declared trust zones, boundaries and edges in the graph** (groundwork for design inputs, #4): `ParsedResource` gains `trust_zone` (overrides inference when set), `boundary` (a declared boundary id; an edge between two different boundaries in the same zone is a trust-boundary crossing) and `evidence` (`config` or `design`). `ParsedOutput.edges` lets a parser state edges directly as `ParsedEdge`; a declared edge that repeats an inferred one merges its metadata. Unknown zones, edge types and evidence values raise `ThreatCodeError`. IaC output is unchanged, which a new golden test over 24 fixtures (`tests/test_ir/test_golden.py`) enforces.
+
 ### Fixed
+- **Architecture docs**: the trust-boundary section claimed crossings produce Information Disclosure or Elevation of Privilege threats and that internet-to-data crossings are critical; the engine produces Tampering threats rated high or medium. The `register_parser` example used a signature that does not exist.
 - **Multi-document Kubernetes manifests were skipped**: `detect_and_parse` loaded YAML with `safe_load`, which rejects files holding several `---` separated documents. `threatcode scan` failed with "Invalid YAML", and `threatcode fs` skipped the file at debug log level and reported no issues, so RBAC, workload and network findings in the most common manifest layout were silently missed. YAML input is now read with `safe_load_all`; a file whose documents are all Kubernetes objects is parsed as one manifest.
 - **Edge order changed between runs**: the Terraform plan parser deduplicated dependencies through a `set`, so graph edges, diagram layout and LLM prompts could differ between two scans of the same plan. Dependencies now keep their first-seen order.
 

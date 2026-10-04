@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from threatcode.parsers.base import Evidence
 
 
 class NodeCategory(str, Enum):
@@ -283,6 +286,8 @@ class InfraNode:
     properties: dict[str, Any] = field(default_factory=dict)
     provider: str = ""
     module: str = ""
+    boundary: str = ""  # declared boundary id; see ParsedResource.boundary
+    evidence: Evidence = "config"  # see ParsedResource.evidence
 
     @property
     def stride_element(self) -> str:

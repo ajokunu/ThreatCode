@@ -15,7 +15,7 @@ from threatcode.ir.nodes import (
     categorize_resource,
     infer_trust_zone,
 )
-from threatcode.parsers.base import ParsedOutput, ParsedResource
+from threatcode.parsers.base import ParsedEdge, ParsedOutput, ParsedResource
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class InfraGraph:
         self._graph: nx.DiGraph[str] = nx.DiGraph()
         self._nodes: dict[str, InfraNode] = {}
         self._edges: list[InfraEdge] = []
-        self._edge_keys: set[tuple[str, str, str]] = set()  # (source, target, type) dedup
+        self._edge_index: dict[tuple[str, str, str], InfraEdge] = {}  # (source, target, type)
         self._type_index: dict[str, list[str]] = {}
 
     @classmethod
@@ -63,6 +63,7 @@ class InfraGraph:
         for resource in parsed.resources:
             graph._add_resource(resource)
         graph._infer_edges(parsed.resources)
+        graph._add_declared_edges(parsed.edges)
         graph._mark_trust_boundary_crossings()
         return graph
 
@@ -119,8 +120,13 @@ class InfraGraph:
                 "Split your IaC into smaller modules or increase MAX_NODES."
             )
 
+        if resource.evidence not in ("config", "design"):
+            raise ThreatCodeError(
+                f"Resource {resource.address} has unknown evidence '{resource.evidence}'. "
+                "Valid: config, design"
+            )
         category = categorize_resource(resource.resource_type)
-        trust_zone = infer_trust_zone(resource.resource_type, resource.properties)
+        trust_zone = _declared_or_inferred_zone(resource)
         if resource.address in self._nodes:
             logger.warning(
                 "Duplicate resource address '%s' — overwriting previous node",
@@ -140,6 +146,8 @@ class InfraGraph:
             properties=resource.properties,
             provider=resource.provider,
             module=resource.module,
+            boundary=resource.boundary,
+            evidence=resource.evidence,
         )
         self._nodes[resource.address] = node
         self._graph.add_node(resource.address)
@@ -158,6 +166,27 @@ class InfraGraph:
 
             # IAM bindings
             self._infer_iam_edges(resource)
+
+    def _add_declared_edges(self, edges: list[ParsedEdge]) -> None:
+        """Add edges the input states explicitly, such as data flows in a design."""
+        for edge in edges:
+            missing = [a for a in (edge.source, edge.target) if a not in self._nodes]
+            if missing:
+                logger.debug(
+                    "Skipping declared edge %s -> %s: unknown node %s",
+                    edge.source,
+                    edge.target,
+                    ", ".join(missing),
+                )
+                continue
+            try:
+                edge_type = EdgeType(edge.edge_type)
+            except ValueError as e:
+                raise ThreatCodeError(
+                    f"Edge {edge.source} -> {edge.target} has unknown type '{edge.edge_type}'. "
+                    f"Valid: {', '.join(t.value for t in EdgeType)}"
+                ) from e
+            self._add_edge(edge.source, edge.target, edge_type, metadata=edge.metadata)
 
     def _infer_containment(self, resource: ParsedResource) -> None:
         props = resource.properties
@@ -235,10 +264,19 @@ class InfraGraph:
                 self._add_edge(source_address, nid, EdgeType.IAM_BINDING)
                 return
 
-    def _add_edge(self, source: str, target: str, edge_type: EdgeType) -> None:
-        # Deduplicate edges
+    def _add_edge(
+        self,
+        source: str,
+        target: str,
+        edge_type: EdgeType,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        # Deduplicate edges; a repeated edge only contributes its metadata
         key = (source, target, edge_type.value)
-        if key in self._edge_keys:
+        existing = self._edge_index.get(key)
+        if existing is not None:
+            if metadata:
+                existing.metadata.update(metadata)
             return
 
         if len(self._edges) >= MAX_EDGES:
@@ -250,9 +288,11 @@ class InfraGraph:
             )
             return
 
-        # Only commit the dedup key after confirming the edge will be added
-        self._edge_keys.add(key)
-        edge = InfraEdge(source=source, target=target, edge_type=edge_type)
+        edge = InfraEdge(
+            source=source, target=target, edge_type=edge_type, metadata=dict(metadata or {})
+        )
+        # Only index the edge after confirming it will be added
+        self._edge_index[key] = edge
         self._edges.append(edge)
         self._graph.add_edge(source, target, type=edge_type.value)
 
@@ -260,10 +300,21 @@ class InfraGraph:
         for edge in self._edges:
             src_node = self._nodes.get(edge.source)
             tgt_node = self._nodes.get(edge.target)
-            if src_node and tgt_node and src_node.trust_zone != tgt_node.trust_zone:
+            if not (src_node and tgt_node):
+                continue
+            zones_differ = src_node.trust_zone != tgt_node.trust_zone
+            # Declared boundaries are finer than zone classes: two private
+            # subnets in a design are separate boundaries in the same zone
+            boundaries_differ = bool(
+                src_node.boundary and tgt_node.boundary and src_node.boundary != tgt_node.boundary
+            )
+            if zones_differ or boundaries_differ:
                 edge.metadata["crosses_trust_boundary"] = True
                 edge.metadata["source_zone"] = src_node.trust_zone.value
                 edge.metadata["target_zone"] = tgt_node.trust_zone.value
+                if boundaries_differ:
+                    edge.metadata["source_boundary"] = src_node.boundary
+                    edge.metadata["target_boundary"] = tgt_node.boundary
 
 
 def _node_to_dict(node: InfraNode) -> dict[str, Any]:
@@ -274,4 +325,19 @@ def _node_to_dict(node: InfraNode) -> dict[str, Any]:
         "trust_zone": node.trust_zone.value,
         "stride_element": node.stride_element,
         "provider": node.provider,
+        "boundary": node.boundary,
+        "evidence": node.evidence,
     }
+
+
+def _declared_or_inferred_zone(resource: ParsedResource) -> TrustZone:
+    """Use the zone the input declares, else infer it from type and properties."""
+    if resource.trust_zone is None:
+        return infer_trust_zone(resource.resource_type, resource.properties)
+    try:
+        return TrustZone(resource.trust_zone)
+    except ValueError as e:
+        raise ThreatCodeError(
+            f"Resource {resource.address} declares unknown trust zone '{resource.trust_zone}'. "
+            f"Valid: {', '.join(z.value for z in TrustZone)}"
+        ) from e
