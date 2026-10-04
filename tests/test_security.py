@@ -24,36 +24,43 @@ class TestSSRFProtection:
         from threatcode.exceptions import LLMError
 
         with pytest.raises(LLMError, match="loopback"):
-            _validate_base_url("http://localhost:8080", allow_http=True)
+            _validate_base_url("https://localhost:8080")
 
     def test_blocks_127_0_0_1(self) -> None:
         from threatcode.engine.llm.client import _validate_base_url
         from threatcode.exceptions import LLMError
 
         with pytest.raises(LLMError, match="loopback"):
-            _validate_base_url("http://127.0.0.1:8080", allow_http=True)
+            _validate_base_url("https://127.0.0.1:8080")
 
     def test_blocks_private_10_range(self) -> None:
         from threatcode.engine.llm.client import _validate_base_url
         from threatcode.exceptions import LLMError
 
         with pytest.raises(LLMError, match="private"):
-            _validate_base_url("http://10.0.0.1:8080", allow_http=True)
+            _validate_base_url("https://10.0.0.1:8080")
 
     def test_blocks_private_192_168(self) -> None:
         from threatcode.engine.llm.client import _validate_base_url
         from threatcode.exceptions import LLMError
 
         with pytest.raises(LLMError, match="private"):
-            _validate_base_url("http://192.168.1.1:8080", allow_http=True)
+            _validate_base_url("https://192.168.1.1:8080")
 
     def test_blocks_link_local_169_254(self) -> None:
         from threatcode.engine.llm.client import _validate_base_url
         from threatcode.exceptions import LLMError
 
-        # 169.254.x.x may be classified as link-local or private depending on platform
-        with pytest.raises(LLMError, match="link-local|private"):
-            _validate_base_url("http://169.254.169.254/latest/meta-data/", allow_http=True)
+        with pytest.raises(LLMError, match="link-local"):
+            _validate_base_url("https://169.254.169.254/latest/meta-data/")
+
+    def test_local_network_opt_in_still_blocks_link_local(self) -> None:
+        """The ollama/local opt-in must never open up cloud metadata endpoints."""
+        from threatcode.engine.llm.client import _validate_base_url
+        from threatcode.exceptions import LLMError
+
+        with pytest.raises(LLMError, match="link-local"):
+            _validate_base_url("http://169.254.169.254/latest/meta-data/", allow_local_network=True)
 
     def test_blocks_non_http_scheme(self) -> None:
         from threatcode.engine.llm.client import _validate_base_url
@@ -73,14 +80,15 @@ class TestSSRFProtection:
         """A07-01: Warn when API key sent over plain HTTP."""
         import logging
 
-        from threatcode.engine.llm.client import _validate_base_url
-        from threatcode.exceptions import LLMError
+        from threatcode.engine.llm.client import OpenAICompatibleLLMClient
 
         with caplog.at_level(logging.WARNING):
-            # This will fail on DNS resolution (good — we just want the warning check)
-            with pytest.raises(LLMError):
-                _validate_base_url("http://nonexistent-host-for-test.invalid", allow_http=True)
-        assert any("plain HTTP" in r.message for r in caplog.records)
+            OpenAICompatibleLLMClient(
+                base_url="http://127.0.0.1:11434",
+                api_key="sk-secret",
+                allow_local_network=True,
+            )
+        assert any("plain http" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

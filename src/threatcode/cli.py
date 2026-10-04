@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import click
 
 from threatcode import __version__
-from threatcode.exceptions import ThreatCodeError
+from threatcode.exceptions import ConfigError, LLMError, ThreatCodeError
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,11 @@ def scan(
     # ── Misconfig scanner (default) ──────────────────────────────────
     if "misconfig" in scanner_list:
         cfg_path = Path(config_path) if config_path else None
-        config = load_config(cfg_path)
+        try:
+            config = load_config(cfg_path)
+        except ConfigError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
         config.no_llm = no_llm or config.no_llm
         config.dry_run = dry_run or config.dry_run
         config.output_format = output_format  # type: ignore[assignment]
@@ -147,7 +151,11 @@ def scan(
 
         llm_client = None
         if not config.no_llm:
-            llm_client = _build_llm_client(config, dry_run)
+            try:
+                llm_client = _build_llm_client(config, dry_run)
+            except LLMError as e:
+                click.echo(f"Error: invalid LLM configuration: {e}", err=True)
+                sys.exit(1)
 
         extra_paths = [Path(p) for p in extra_rules]
         try:
@@ -1245,11 +1253,15 @@ def _build_llm_client(config: ThreatCodeConfig, dry_run: bool) -> BaseLLMClient 
         )
 
     if config.llm.provider in ("openai", "ollama", "local"):
+        if not config.llm.base_url:
+            raise LLMError(f"provider '{config.llm.provider}' requires llm.base_url")
         return OpenAICompatibleLLMClient(
             base_url=config.llm.base_url,
             api_key=config.llm.api_key,
             model=config.llm.model,
             max_tokens=config.llm.max_tokens,
+            # Config validation already limits this to ollama and local.
+            allow_local_network=config.llm.allow_local_network,
         )
 
     click.echo(

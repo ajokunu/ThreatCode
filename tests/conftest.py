@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+import threading
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -86,3 +91,42 @@ def s3_node_secure() -> InfraNode:
             },
         },
     )
+
+
+@dataclass
+class FakeLLMServer:
+    """A local OpenAI-compatible chat completions server (stands in for Ollama)."""
+
+    base_url: str
+    reply: str = '{"threats": []}'
+    requests: list[dict[str, Any]] = field(default_factory=list)
+
+
+@pytest.fixture
+def fake_llm_server() -> Iterator[FakeLLMServer]:
+    """Serve /v1/chat/completions on 127.0.0.1 and record each request body."""
+    state = FakeLLMServer(base_url="")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 - http.server naming
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+            state.requests.append({"path": self.path, "body": body})
+            payload = json.dumps({"choices": [{"message": {"content": state.reply}}]})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(payload.encode())
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    state.base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield state
+    finally:
+        server.shutdown()
+        server.server_close()

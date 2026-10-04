@@ -33,33 +33,41 @@ MAX_PROMPT_LENGTH = 256 * 1024  # 256K chars
 # Security: API timeout in seconds
 API_TIMEOUT_SECONDS = 120
 
-_ALLOWED_SCHEMES = frozenset({"https"})
 # Security: max response body size to prevent memory abuse
 MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10 MB
 
+# Shared address space (RFC 6598), used by carrier-grade NAT and overlay
+# networks such as Tailscale. Not routable on the public internet.
+_SHARED_ADDRESS_SPACE = ipaddress.IPv4Network("100.64.0.0/10")
 
-def _validate_base_url(url: str, *, allow_http: bool = False) -> None:
+_LOCAL_NETWORK_HINT = (
+    "local model servers need provider 'ollama' or 'local' with llm.allow_local_network: true"
+)
+
+
+def _validate_base_url(url: str, *, allow_local_network: bool = False) -> None:
     """Validate that a base_url is safe (not SSRF-exploitable).
 
     Resolves hostname via DNS and checks ALL resolved IPs against the
-    ipaddress module — blocks loopback, private, link-local, reserved,
-    and IPv4-mapped IPv6 addresses.
+    ipaddress module. By default only https URLs that resolve to public
+    addresses are accepted.
+
+    With ``allow_local_network`` (the explicit opt-in for the ollama and
+    local providers), loopback, private and shared (RFC 6598) addresses
+    are also accepted, and plain http is allowed for them. Link-local
+    (cloud metadata), unspecified, multicast and reserved addresses stay
+    blocked either way, and plain http to a public address is rejected.
     """
     parsed = urlparse(url)
-    allowed = _ALLOWED_SCHEMES | ({"http"} if allow_http else set())
-    if parsed.scheme not in allowed:
-        raise LLMError(f"Unsafe URL scheme '{parsed.scheme}' — only http/https allowed")
+    if parsed.scheme == "http" and not allow_local_network:
+        raise LLMError(f"Unsafe URL scheme 'http' - only https is allowed; {_LOCAL_NETWORK_HINT}")
+    if parsed.scheme not in ("http", "https"):
+        allowed = "http/https" if allow_local_network else "https"
+        raise LLMError(f"Unsafe URL scheme '{parsed.scheme}' - only {allowed} is allowed")
 
     hostname = (parsed.hostname or "").lower()
     if not hostname:
         raise LLMError("base_url must include a hostname")
-
-    # Warn when sending API key over plain HTTP
-    if parsed.scheme == "http":
-        logger.warning(
-            "base_url uses plain HTTP — API key will be sent unencrypted. "
-            "Use HTTPS for production deployments."
-        )
 
     # Resolve hostname to IP addresses and validate each one
     default_port = 443 if parsed.scheme == "https" else 80
@@ -73,7 +81,7 @@ def _validate_base_url(url: str, *, allow_http: bool = False) -> None:
     if not addrinfo:
         raise LLMError(f"Hostname '{hostname}' resolved to no addresses")
 
-    for family, _type, _proto, _canonname, sockaddr in addrinfo:
+    for _family, _type, _proto, _canonname, sockaddr in addrinfo:
         ip_str = sockaddr[0]
         try:
             addr = ipaddress.ip_address(ip_str)
@@ -84,20 +92,44 @@ def _validate_base_url(url: str, *, allow_http: bool = False) -> None:
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             addr = addr.ipv4_mapped
 
+        # Order matters: CPython also reports 169.254.0.0/16 and 240.0.0.0/4
+        # as private, and ::1 as reserved (it sits in ::/8).
         if addr.is_unspecified:
             raise LLMError(f"base_url resolves to unspecified address ({ip_str})")
-        if addr.is_loopback:
-            raise LLMError(f"base_url resolves to loopback address ({ip_str})")
-        if addr.is_private:
-            raise LLMError(f"base_url resolves to private address ({ip_str})")
         if addr.is_link_local:
             raise LLMError(f"base_url resolves to link-local address ({ip_str})")
-        if addr.is_reserved:
+        if addr.is_multicast:
+            raise LLMError(f"base_url resolves to multicast address ({ip_str})")
+        kind: str | None
+        if addr.is_loopback:
+            kind = "loopback"
+        elif addr.is_reserved:
             raise LLMError(f"base_url resolves to reserved address ({ip_str})")
+        elif addr.is_private:
+            kind = "private"
+        elif isinstance(addr, ipaddress.IPv4Address) and addr in _SHARED_ADDRESS_SPACE:
+            kind = "shared (RFC 6598)"
+        elif not addr.is_global:
+            raise LLMError(f"base_url resolves to non-public address ({ip_str})")
+        else:
+            kind = None  # public
+
+        if kind is None:
+            if parsed.scheme == "http":
+                raise LLMError(
+                    f"plain http is only allowed for loopback or private addresses; "
+                    f"'{hostname}' resolves to public address {ip_str} - use https"
+                )
+        elif not allow_local_network:
+            raise LLMError(f"base_url resolves to {kind} address ({ip_str}); {_LOCAL_NETWORK_HINT}")
 
 
 class _SafeRedirectHandler(HTTPRedirectHandler):
-    """HTTP redirect handler that validates redirect targets against SSRF."""
+    """HTTP redirect handler that validates redirect targets against SSRF.
+
+    Redirect targets always get the strict default check (https, public
+    address), even when the base_url itself used allow_local_network.
+    """
 
     def redirect_request(
         self,
@@ -193,10 +225,17 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         max_tokens: int = 4096,
         timeout: int = API_TIMEOUT_SECONDS,
         temperature: float = 0.2,
-        allow_insecure: bool = False,
+        allow_local_network: bool = False,
     ) -> None:
-        _validate_base_url(base_url, allow_http=allow_insecure)
-        self._base_url = base_url.rstrip("/")
+        _validate_base_url(base_url, allow_local_network=allow_local_network)
+        if urlparse(base_url).scheme == "http" and api_key not in ("", "not-needed"):
+            logger.warning(
+                "base_url uses plain http - the API key will be sent unencrypted. "
+                "Use https if the server needs a key."
+            )
+        # Accept base_url with or without the /v1 suffix: OpenAI and Ollama both
+        # document theirs as ending in /v1.
+        self._base_url = base_url.rstrip("/").removesuffix("/v1")
         self._api_key = api_key
         self._model = model
 

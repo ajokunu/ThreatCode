@@ -13,7 +13,7 @@ ThreatCode searches for config in this order:
 3. `~/.threatcode.yml` in the home directory (skipped in CI when `CI=true`)
 4. Built-in defaults
 
-**Security note:** Auto-discovered configs (2 and 3) are restricted to safe fields only: `min_severity`, `output_format`, `no_llm`, `dry_run`, `redaction`. Security-sensitive fields (`llm.api_key`, `llm.base_url`, `extra_rule_paths`) are stripped with a warning when loaded from auto-discovered locations. Use `--config` for full control.
+**Security note:** Auto-discovered configs (2 and 3) are restricted to safe fields only: `min_severity`, `output_format`, `no_llm`, `dry_run`, `redaction`. Everything else, including the whole `llm` section (`api_key`, `base_url`, `allow_local_network`) and `extra_rule_paths`, is stripped with a warning when loaded from auto-discovered locations. Use `--config` for full control.
 
 ---
 
@@ -27,7 +27,8 @@ llm:
   provider: anthropic              # anthropic | openai | ollama | local
   model: claude-sonnet-4-20250514  # Model identifier
   api_key: ""                      # Prefer ANTHROPIC_API_KEY env var
-  base_url: ""                     # HTTPS endpoint for the openai provider
+  base_url: ""                     # Model server URL for openai, ollama and local
+  allow_local_network: false       # ollama/local only: allow http to loopback and private addresses
   max_tokens: 4096                 # Token budget for LLM response
   temperature: 0.2                 # LLM sampling temperature
 
@@ -88,11 +89,42 @@ llm:
   api_key: sk-...
 ```
 
-### Ollama and other local servers (not supported yet)
+### Ollama and other local servers
 
-The SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses.
-A local server such as Ollama on `http://localhost:11434` is rejected, so the `ollama` and `local` providers do not work yet.
-Use `--no-llm` for air-gapped runs.
+Use the `ollama` provider for Ollama, and `local` for vLLM, llama.cpp or any other server that speaks the OpenAI chat completions API:
+
+```yaml
+llm:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: llama3.2
+  allow_local_network: true
+```
+
+```yaml
+llm:
+  provider: local
+  base_url: http://10.0.0.5:8080
+  model: my-model
+  allow_local_network: true
+```
+
+ThreatCode posts to `<base_url>/v1/chat/completions`, and `base_url` works with or without the trailing `/v1`.
+
+By default the SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses, which rules out a model server on your own machine or network.
+`allow_local_network: true` is the explicit opt-in for these two providers.
+It accepts loopback addresses, private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and the shared range `100.64.0.0/10` that Tailscale uses, over plain HTTP or HTTPS.
+
+Some protections stay on with the opt-in:
+
+- Link-local addresses, including the cloud metadata endpoint `169.254.169.254`, are still rejected, along with multicast, reserved and unspecified addresses.
+- Plain HTTP to a public address is still rejected, so use HTTPS for a hosted endpoint.
+- Redirects get the strict default check, so a local server cannot bounce ThreatCode to another local address.
+- The `openai` and `anthropic` providers refuse the option with a config error.
+- The `llm` section is stripped from auto-discovered configs, so only a file passed with `--config` can switch it on.
+
+If the server needs an API key and `base_url` uses plain HTTP, ThreatCode warns that the key travels unencrypted.
+If the server is down, the scan logs one warning and returns the rule-based findings.
 
 ### Other OpenAI-compatible endpoints
 
@@ -184,9 +216,19 @@ min_severity: high
 output_format: sarif
 ```
 
-### Air-gapped
+### Air-gapped with a local LLM
 
-Local model servers are not supported yet (see the Ollama note above), so air-gapped runs use rules only:
+```yaml
+llm:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: llama3.2
+  max_tokens: 2048
+  allow_local_network: true
+no_llm: false
+```
+
+Without a local model server, run rules only:
 
 ```yaml
 no_llm: true

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from threatcode.exceptions import ConfigError
 
@@ -34,6 +34,10 @@ _SAFE_AUTO_FIELDS = frozenset(
     }
 )
 
+# Providers that talk to a self-hosted model server and may opt in to
+# loopback and private base_url addresses via llm.allow_local_network.
+_LOCAL_PROVIDERS = frozenset({"ollama", "local"})
+
 
 class LLMConfig(BaseModel):
     provider: Literal["anthropic", "openai", "ollama", "local"] = "anthropic"
@@ -42,6 +46,19 @@ class LLMConfig(BaseModel):
     base_url: str = ""
     max_tokens: int = 4096
     temperature: float = 0.2
+    # Explicit opt-in for local model servers: lets base_url use plain http
+    # and resolve to loopback or private addresses. Only valid for the
+    # ollama and local providers, and only honored from a --config file
+    # because the whole llm section is stripped from auto-discovered configs.
+    allow_local_network: bool = False
+
+    @model_validator(mode="after")
+    def _check_allow_local_network(self) -> LLMConfig:
+        if self.allow_local_network and self.provider not in _LOCAL_PROVIDERS:
+            raise ValueError(
+                f"allow_local_network requires provider 'ollama' or 'local', not '{self.provider}'"
+            )
+        return self
 
 
 class RedactionConfig(BaseModel):
@@ -123,5 +140,17 @@ def _load_from_file(path: Path, *, trusted: bool = False) -> ThreatCodeConfig:
 
     try:
         return ThreatCodeConfig(**data)
+    except ValidationError as e:
+        raise ConfigError(f"Invalid config {path}: {_format_validation_error(e)}") from e
     except Exception as e:
         raise ConfigError(f"Failed to load config from {path}: {e}") from e
+
+
+def _format_validation_error(error: ValidationError) -> str:
+    """Render pydantic errors as 'field.path: message' without pydantic boilerplate."""
+    parts = []
+    for err in error.errors():
+        loc = ".".join(str(part) for part in err["loc"]) or "config"
+        msg = str(err["msg"]).removeprefix("Value error, ")
+        parts.append(f"{loc}: {msg}")
+    return "; ".join(parts)

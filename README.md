@@ -750,7 +750,7 @@ With an LLM configured, ThreatCode also sends the infrastructure graph and the I
 ```yaml
 # .threatcode.yml
 llm:
-  provider: anthropic             # or "openai" for an OpenAI-compatible HTTPS endpoint
+  provider: anthropic             # or "openai", "ollama", "local"
   model: claude-sonnet-4-20250514
   api_key: ""                     # Set ANTHROPIC_API_KEY env var instead
 
@@ -762,9 +762,20 @@ Before any data leaves the machine, ThreatCode redacts sensitive values: AWS acc
 It reverses the placeholder mapping on the way back, so findings still reference real resource addresses.
 `--dry-run` builds the payload and reports its size without calling the API.
 
-**Known limitation:** the SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses.
-A local model server such as Ollama on `http://localhost:11434` is rejected, so the `ollama` and `local` providers do not work yet.
-Use `--no-llm` for air-gapped runs.
+For **air-gapped environments**, point ThreatCode at a local model server such as Ollama:
+
+```yaml
+llm:
+  provider: ollama                # or "local" for vLLM, llama.cpp and other OpenAI-compatible servers
+  base_url: http://localhost:11434
+  model: llama3.2
+  allow_local_network: true
+```
+
+By default the SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses.
+`allow_local_network: true` lets the `ollama` and `local` providers use plain HTTP to loopback and private addresses, so a model on the same machine or on a GPU server in your network works.
+Link-local addresses such as the cloud metadata endpoint `169.254.169.254` stay blocked, and redirects still get the strict check.
+ThreatCode reads the `llm` section only from a file passed with `--config`, so a `.threatcode.yml` in a cloned repository cannot switch this on.
 
 ---
 
@@ -774,10 +785,11 @@ Create `.threatcode.yml` in your project root:
 
 ```yaml
 llm:
-  provider: anthropic                # anthropic | openai
+  provider: anthropic                # anthropic | openai | ollama | local
   model: claude-sonnet-4-20250514
   api_key: ""                        # Use ANTHROPIC_API_KEY env var
-  base_url: ""                       # HTTPS endpoint for the openai provider
+  base_url: ""                       # Model server URL for openai, ollama and local
+  allow_local_network: false         # ollama/local only: allow http to loopback and private addresses
   max_tokens: 4096
   temperature: 0.2
 
@@ -898,7 +910,7 @@ The generated SVG includes:
 - All YAML loading uses `yaml.safe_load()` exclusively
 - Rule files are sandboxed: blocked symlinks, 1 MB size limit, 100 rules/file, 1000 total rules
 - LLM output is parsed as JSON and never executed
-- SSRF protection: registry and LLM base URLs are validated against DNS resolution + ipaddress module (blocks loopback, private, link-local, reserved ranges)
+- SSRF protection: registry and LLM base URLs are validated against DNS resolution + ipaddress module (blocks loopback, private, link-local, multicast and reserved ranges; the `ollama` and `local` providers can opt in to loopback and private addresses with `llm.allow_local_network`)
 - Bidi character stripping in prompts (prevents prompt injection via Unicode override characters)
 - Dependency audit: run `pip-audit` against all dependencies
 

@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import socket
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from click.testing import CliRunner
 
 from threatcode.cli import cli
 
+if TYPE_CHECKING:
+    from tests.conftest import FakeLLMServer
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+K8S_FIXTURE = FIXTURES_DIR / "kubernetes" / "insecure_deployment.yml"
 
 
 class TestScanCommand:
@@ -142,6 +149,100 @@ class TestScanCommand:
             ],
         )
         assert result.exit_code in (0, 1)
+
+
+class TestScanLLMConfig:
+    """scan with the ollama/local providers and the allow_local_network opt-in."""
+
+    def _scan(self, tmp_path: Path, config_yaml: str) -> tuple[int, str]:
+        config_file = tmp_path / "threatcode.yml"
+        config_file.write_text(config_yaml)
+        result = CliRunner().invoke(cli, ["scan", str(K8S_FIXTURE), "-c", str(config_file)])
+        return result.exit_code, result.output
+
+    def test_ollama_on_localhost_without_opt_in_is_a_clean_error(self, tmp_path: Path) -> None:
+        exit_code, output = self._scan(
+            tmp_path,
+            "llm:\n  provider: ollama\n  base_url: http://localhost:11434\n  model: llama3.2\n",
+        )
+        assert exit_code == 1
+        assert "Error: invalid LLM configuration: Unsafe URL scheme 'http'" in output
+        assert "llm.allow_local_network: true" in output
+        assert "Traceback" not in output
+
+    def test_opt_in_rejected_for_openai_provider(self, tmp_path: Path) -> None:
+        exit_code, output = self._scan(
+            tmp_path,
+            "llm:\n  provider: openai\n  base_url: http://localhost:11434\n"
+            "  allow_local_network: true\n",
+        )
+        assert exit_code == 1
+        assert "llm: allow_local_network requires provider 'ollama' or 'local'" in output
+        assert "Traceback" not in output
+
+    def test_missing_base_url_is_a_clean_error(self, tmp_path: Path) -> None:
+        exit_code, output = self._scan(
+            tmp_path, "llm:\n  provider: ollama\n  allow_local_network: true\n"
+        )
+        assert exit_code == 1
+        assert "provider 'ollama' requires llm.base_url" in output
+
+    def test_missing_config_file_is_a_clean_error(self, tmp_path: Path) -> None:
+        result = CliRunner().invoke(
+            cli, ["scan", str(K8S_FIXTURE), "-c", str(tmp_path / "missing.yml")]
+        )
+        assert result.exit_code == 1
+        assert "Error: Config file not found" in result.output
+        assert "Traceback" not in result.output
+
+    def test_metadata_endpoint_still_blocked_with_opt_in(self, tmp_path: Path) -> None:
+        exit_code, output = self._scan(
+            tmp_path,
+            "llm:\n  provider: local\n  base_url: http://169.254.169.254\n"
+            "  allow_local_network: true\n",
+        )
+        assert exit_code == 1
+        assert "link-local" in output
+
+    def test_ollama_with_opt_in_reaches_local_server(
+        self, tmp_path: Path, fake_llm_server: FakeLLMServer
+    ) -> None:
+        fake_llm_server.reply = json.dumps(
+            {
+                "threats": [
+                    {
+                        "title": "Local model marker threat",
+                        "description": "Returned by the fake local model server.",
+                        "stride_category": "elevation_of_privilege",
+                        "severity": "high",
+                        "resource_address": "Deployment/insecure-app",
+                    }
+                ]
+            }
+        )
+        exit_code, output = self._scan(
+            tmp_path,
+            f"llm:\n  provider: ollama\n  base_url: {fake_llm_server.base_url}\n"
+            "  model: llama3.2\n  allow_local_network: true\n",
+        )
+        assert exit_code == 1  # the insecure fixture has rule findings
+        assert len(fake_llm_server.requests) == 1
+        assert fake_llm_server.requests[0]["body"]["model"] == "llama3.2"
+        assert "Local model marker threat" in output
+        assert "LLM analysis failed" not in output
+
+    def test_unreachable_local_server_falls_back_to_rules(self, tmp_path: Path) -> None:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        exit_code, output = self._scan(
+            tmp_path,
+            f"llm:\n  provider: ollama\n  base_url: http://127.0.0.1:{port}\n"
+            "  allow_local_network: true\n",
+        )
+        assert exit_code == 1  # rule findings still reported
+        assert '"threats"' in output
+        assert "Traceback" not in output
 
 
 class TestDiffCommand:
