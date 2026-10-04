@@ -94,3 +94,25 @@ class TestRegisterParser:
         finally:
             # Remove the registered parser
             _REGISTRY[:] = [e for e in _REGISTRY if e.name != "custom_test"]
+
+
+class TestMultiDocumentYaml:
+    """Kubernetes manifests with several --- separated documents must parse, not error."""
+
+    def test_multi_document_manifest_detected(self) -> None:
+        result = detect_and_parse(FIXTURES_DIR / "kubernetes" / "multi_resource.yml")
+        assert result.format_type == "kubernetes"
+        types = {r.resource_type for r in result.resources}
+        assert {"kubernetes_cluster_role", "kubernetes_deployment"} <= types
+
+    def test_trailing_separator_is_single_document(self, tmp_path: Path) -> None:
+        manifest = tmp_path / "pod.yaml"
+        manifest.write_text("---\napiVersion: v1\nkind: Pod\nmetadata:\n  name: a\n---\n")
+        result = detect_and_parse(manifest)
+        assert [r.resource_type for r in result.resources] == ["kubernetes_pod"]
+
+    def test_mixed_documents_not_claimed_by_kubernetes(self, tmp_path: Path) -> None:
+        mixed = tmp_path / "mixed.yaml"
+        mixed.write_text("apiVersion: v1\nkind: Pod\nmetadata:\n  name: a\n---\nfoo: bar\n")
+        with pytest.raises(UnsupportedFormatError):
+            detect_and_parse(mixed)

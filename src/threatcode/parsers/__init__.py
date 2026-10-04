@@ -92,9 +92,12 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
         import yaml
 
         try:
-            parsed_data = yaml.safe_load(content)
+            # Kubernetes manifests routinely hold several documents separated by ---.
+            # One document stays a plain value; several become a list of documents.
+            docs = [d for d in yaml.safe_load_all(content) if d is not None]
         except yaml.YAMLError as e:
             raise UnsupportedFormatError(f"Invalid YAML: {e}") from e
+        parsed_data = docs[0] if len(docs) == 1 else (docs or None)
 
     # Check registered parsers in priority order
     for entry in _REGISTRY:
@@ -228,14 +231,22 @@ register_parser(
 )
 
 
-def _detect_kubernetes(path: Path, content: str, data: Any) -> bool:
-    if not isinstance(data, dict):
-        return False
+def _is_kubernetes_doc(doc: Any) -> bool:
     # Must have apiVersion and kind, and NOT be a CloudFormation template
-    if "apiVersion" in data and "kind" in data:
-        if "AWSTemplateFormatVersion" not in data and "Resources" not in data:
-            return True
-    return False
+    return (
+        isinstance(doc, dict)
+        and "apiVersion" in doc
+        and "kind" in doc
+        and "AWSTemplateFormatVersion" not in doc
+        and "Resources" not in doc
+    )
+
+
+def _detect_kubernetes(path: Path, content: str, data: Any) -> bool:
+    if isinstance(data, list):
+        # A multi-document file: every document must be a Kubernetes object
+        return bool(data) and all(_is_kubernetes_doc(doc) for doc in data)
+    return _is_kubernetes_doc(data)
 
 
 def _factory_kubernetes() -> BaseParser:

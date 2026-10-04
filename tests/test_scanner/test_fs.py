@@ -120,3 +120,14 @@ class TestMcpConfigDiscovery:
         (tmp_path / ".idea" / "mcp.json").write_text('{"mcpServers": {"a": {"command": "x"}}}')
         result = scan_filesystem(tmp_path, scanners=("misconfig",))
         assert result["iac_files_found"] == 0
+
+
+class TestMultiDocumentManifests:
+    def test_fs_reports_findings_in_multi_document_manifest(self, tmp_path: Path) -> None:
+        """Regression: a multi-document manifest was skipped and the scan reported no issues."""
+        fixture = Path(__file__).parent.parent / "fixtures" / "kubernetes" / "multi_resource.yml"
+        (tmp_path / "multi_resource.yml").write_text(fixture.read_text())
+        result = scan_filesystem(tmp_path, scanners=("misconfig",), no_llm=True)
+        assert result["misconfig"]["total_threats"] > 0
+        rule_ids = {f["rule_id"] for f in result["misconfig"]["findings"]}
+        assert {"K8S_CLUSTER_ADMIN_BINDING", "K8S_WILDCARD_RBAC_VERBS"} <= rule_ids
