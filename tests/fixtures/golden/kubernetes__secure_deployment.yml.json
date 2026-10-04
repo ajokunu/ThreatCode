@@ -1,0 +1,77 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.production.secure-app": {
+      "category": "container",
+      "trust_zone": "private"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/kubernetes/secure_deployment.yml",
+    "scanned_resources": 1,
+    "summary": {
+      "medium": 2
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "The pod uses the default service account. Default service accounts may have overly broad permissions in some cluster configurations.\n",
+        "id": "0121d33bc0cf",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1078"
+            ]
+          }
+        },
+        "mitigation": "Create and use a dedicated service account with minimal permissions.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1078"
+        ],
+        "resource_address": "kubernetes_deployment.production.secure-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Pod uses default service account"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No seccomp profile is configured for the pod or container. System calls are not restricted, expanding the attack surface.\n",
+        "id": "60836bf9f2ac",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Set seccomp profile to RuntimeDefault or a custom profile.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "kubernetes_deployment.production.secure-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_NO_SECCOMP_PROFILE",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Container without seccomp profile"
+      }
+    ],
+    "total_threats": 2
+  }
+}

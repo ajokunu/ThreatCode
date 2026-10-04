@@ -1,0 +1,133 @@
+{
+  "edges": [],
+  "nodes": {
+    "dockerfile.copy.2": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "dockerfile.copy.4": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "dockerfile.copy.9": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "dockerfile.entrypoint.13": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "dockerfile.expose.10": {
+      "category": "network",
+      "trust_zone": "dmz"
+    },
+    "dockerfile.from.0": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "dockerfile.from.6": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "dockerfile.healthcheck.11": {
+      "category": "monitoring",
+      "trust_zone": "private"
+    },
+    "dockerfile.image.summary": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "dockerfile.run.3": {
+      "category": "compute",
+      "trust_zone": "private"
+    },
+    "dockerfile.run.5": {
+      "category": "compute",
+      "trust_zone": "private"
+    },
+    "dockerfile.run.8": {
+      "category": "compute",
+      "trust_zone": "private"
+    },
+    "dockerfile.user.12": {
+      "category": "iam",
+      "trust_zone": "management"
+    },
+    "dockerfile.workdir.1": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "dockerfile.workdir.7": {
+      "category": "container",
+      "trust_zone": "private"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/docker/multistage.Dockerfile",
+    "scanned_resources": 15,
+    "summary": {
+      "low": 2
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "A COPY instruction does not use the --chown flag. Files are copied with root ownership, which may be inappropriate.\n",
+        "id": "54b52a27f5b1",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Use --chown=user:group with COPY to set proper file ownership.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "dockerfile.copy.2",
+        "resource_type": "dockerfile_copy",
+        "rule_id": "DOCKER_COPY_NO_CHOWN",
+        "severity": "low",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "COPY without --chown flag"
+      },
+      {
+        "confidence": 1.0,
+        "description": "A COPY instruction does not use the --chown flag. Files are copied with root ownership, which may be inappropriate.\n",
+        "id": "02d67d74d6e9",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Use --chown=user:group with COPY to set proper file ownership.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "dockerfile.copy.4",
+        "resource_type": "dockerfile_copy",
+        "rule_id": "DOCKER_COPY_NO_CHOWN",
+        "severity": "low",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "COPY without --chown flag"
+      }
+    ],
+    "total_threats": 2
+  }
+}

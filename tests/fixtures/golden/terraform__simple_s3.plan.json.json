@@ -1,0 +1,501 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.web",
+      "source_zone": "dmz",
+      "target": "aws_s3_bucket.data",
+      "target_zone": "data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_instance.main",
+      "source_zone": null,
+      "target": "aws_instance.web",
+      "target_zone": null,
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_db_instance.main": {
+      "category": "database",
+      "trust_zone": "dmz"
+    },
+    "aws_iam_policy.s3_full": {
+      "category": "iam",
+      "trust_zone": "management"
+    },
+    "aws_iam_role.lambda_exec": {
+      "category": "iam",
+      "trust_zone": "management"
+    },
+    "aws_instance.web": {
+      "category": "compute",
+      "trust_zone": "dmz"
+    },
+    "aws_s3_bucket.data": {
+      "category": "storage",
+      "trust_zone": "data"
+    },
+    "aws_s3_bucket.logs": {
+      "category": "storage",
+      "trust_zone": "data"
+    },
+    "aws_s3_bucket.public_assets": {
+      "category": "storage",
+      "trust_zone": "data"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/terraform/simple_s3.plan.json",
+    "scanned_resources": 7,
+    "summary": {
+      "critical": 3,
+      "high": 5,
+      "low": 1,
+      "medium": 6
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+        "id": "8ec379e733ff",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "aws_s3_bucket.data",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_ENCRYPTION",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "S3 bucket without server-side encryption"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+        "id": "5b683c7d6a65",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "aws_s3_bucket.data",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_VERSIONING",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "S3 bucket without versioning"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+        "id": "d38533330ced",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "aws_s3_bucket.data",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_LOGGING",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "S3 bucket without access logging"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+        "id": "337c2ed38e8f",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "aws_s3_bucket.public_assets",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_ENCRYPTION",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "S3 bucket without server-side encryption"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket ACL or policy allows public read or write access. This can lead to data exposure or unauthorized data modification.\n",
+        "id": "ed7185910e50",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009",
+              "TA0001"
+            ],
+            "techniques": [
+              "T1530",
+              "T1190"
+            ]
+          }
+        },
+        "mitigation": "Set ACL to 'private' and use aws_s3_bucket_public_access_block to block all public access at the bucket level.\n",
+        "mitre_tactics": [
+          "TA0009",
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1530",
+          "T1190"
+        ],
+        "resource_address": "aws_s3_bucket.public_assets",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_PUBLIC_ACCESS",
+        "severity": "critical",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "S3 bucket allows public access"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+        "id": "d5681cbf9872",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "aws_s3_bucket.public_assets",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_VERSIONING",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "S3 bucket without versioning"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+        "id": "e777c9435ff0",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "aws_s3_bucket.public_assets",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_LOGGING",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "S3 bucket without access logging"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The IAM policy grants wildcard (*) actions, providing unrestricted access to AWS services. This violates least privilege and could allow an attacker to escalate privileges across the account.\n",
+        "id": "0eb4edded30e",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001",
+              "TA0003",
+              "TA0004",
+              "TA0005"
+            ],
+            "techniques": [
+              "T1078.004"
+            ]
+          }
+        },
+        "mitigation": "Replace wildcard actions with specific, scoped actions following the principle of least privilege. Use AWS Access Analyzer to identify required permissions.\n",
+        "mitre_tactics": [
+          "TA0001",
+          "TA0003",
+          "TA0004",
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1078.004"
+        ],
+        "resource_address": "aws_iam_policy.s3_full",
+        "resource_type": "aws_iam_policy",
+        "rule_id": "IAM_WILDCARD_ACTION",
+        "severity": "critical",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "IAM policy with wildcard actions"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The EC2 instance is configured with a public IP address, directly exposing it to internet traffic. This increases the attack surface significantly.\n",
+        "id": "7f84113076dc",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1190"
+            ]
+          }
+        },
+        "mitigation": "Remove public IP association and use a load balancer or bastion host for access. Place instances in private subnets.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1190"
+        ],
+        "resource_address": "aws_instance.web",
+        "resource_type": "aws_instance",
+        "rule_id": "EC2_PUBLIC_IP",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "EC2 instance with public IP address"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The EC2 instance does not have detailed monitoring enabled. Without monitoring, unauthorized access or resource abuse may go undetected and actions cannot be attributed.\n",
+        "id": "7ebf61bcd8b2",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable detailed monitoring and configure CloudWatch alarms for suspicious activity patterns.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "aws_instance.web",
+        "resource_type": "aws_instance",
+        "rule_id": "EC2_NO_MONITORING",
+        "severity": "low",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "EC2 instance without detailed monitoring"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The EC2 instance root block device is not encrypted. Data on the volume can be accessed if the underlying storage media is compromised.\n",
+        "id": "9a15e162a713",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Enable EBS encryption on all volumes using AWS-managed or customer-managed KMS keys.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "aws_instance.web",
+        "resource_type": "aws_instance",
+        "rule_id": "EC2_UNENCRYPTED_EBS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "EC2 instance with unencrypted root volume"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The RDS database instance has publicly_accessible set to true, allowing direct connections from the internet. Database endpoints should never be exposed to the public internet.\n",
+        "id": "3b85881edd68",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1190"
+            ]
+          }
+        },
+        "mitigation": "Set publicly_accessible to false and place the RDS instance in a private subnet. Use a bastion host or VPN for admin access.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1190"
+        ],
+        "resource_address": "aws_db_instance.main",
+        "resource_type": "aws_db_instance",
+        "rule_id": "RDS_PUBLIC_ACCESS",
+        "severity": "critical",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "RDS instance is publicly accessible"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The RDS instance does not have storage encryption enabled. Data stored in the database can be read if the underlying storage is compromised.\n",
+        "id": "98cf92f0f2e3",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Enable storage encryption using AWS KMS. Note: encryption must be enabled at creation time and cannot be added to existing instances without migration.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "aws_db_instance.main",
+        "resource_type": "aws_db_instance",
+        "rule_id": "RDS_NO_ENCRYPTION",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "RDS instance without encryption at rest"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The RDS instance has backup retention set to 0 or not configured. Without backups, data loss from deletion or corruption cannot be recovered.\n",
+        "id": "d4f0bfd868f4",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Set backup_retention_period to at least 7 days. Enable automated backups and consider cross-region backup replication.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "aws_db_instance.main",
+        "resource_type": "aws_db_instance",
+        "rule_id": "RDS_NO_BACKUP",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "RDS instance without automated backups"
+      },
+      {
+        "confidence": 1.0,
+        "description": "Data flows from aws_instance.web (dmz zone) to aws_s3_bucket.data (data zone), crossing a trust boundary. This flow should be authenticated, encrypted, and validated.",
+        "id": "b7cb7634c6e1",
+        "metadata": {},
+        "mitigation": "Ensure all data crossing trust boundaries is encrypted in transit (TLS/mTLS), authenticated, and validated at the receiving end.",
+        "mitre_tactics": [
+          "TA0006",
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1040",
+          "T1557"
+        ],
+        "resource_address": "aws_instance.web",
+        "resource_type": "aws_instance",
+        "rule_id": "",
+        "severity": "high",
+        "source": "boundary",
+        "stride_category": "tampering",
+        "title": "Trust boundary crossing: dmz -> data"
+      }
+    ],
+    "total_threats": 15
+  }
+}

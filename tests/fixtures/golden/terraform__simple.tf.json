@@ -1,0 +1,170 @@
+{
+  "edges": [],
+  "nodes": {
+    "aws_instance.web": {
+      "category": "compute",
+      "trust_zone": "private"
+    },
+    "aws_s3_bucket.test": {
+      "category": "storage",
+      "trust_zone": "data"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/terraform/simple.tf",
+    "scanned_resources": 2,
+    "summary": {
+      "high": 1,
+      "low": 1,
+      "medium": 3
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have server-side encryption configured. Data at rest may be accessible if storage media is compromised.\n",
+        "id": "41d042ab9d81",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Enable server-side encryption using AES-256 (SSE-S3) or AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "aws_s3_bucket.test",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_ENCRYPTION",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "S3 bucket without server-side encryption"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, and tampering is harder to detect.\n",
+        "id": "fba2d76e5a15",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Enable bucket versioning via aws_s3_bucket_versioning resource to protect against accidental deletion and enable audit trails.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "aws_s3_bucket.test",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_VERSIONING",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "S3 bucket without versioning"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The S3 bucket does not have access logging configured. Without logging, unauthorized access attempts cannot be detected and actions cannot be attributed to specific actors.\n",
+        "id": "a492bf842eb6",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable server access logging via aws_s3_bucket_logging resource, directing logs to a separate dedicated logging bucket.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "aws_s3_bucket.test",
+        "resource_type": "aws_s3_bucket",
+        "rule_id": "S3_NO_LOGGING",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "S3 bucket without access logging"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The EC2 instance does not have detailed monitoring enabled. Without monitoring, unauthorized access or resource abuse may go undetected and actions cannot be attributed.\n",
+        "id": "7ebf61bcd8b2",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable detailed monitoring and configure CloudWatch alarms for suspicious activity patterns.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "aws_instance.web",
+        "resource_type": "aws_instance",
+        "rule_id": "EC2_NO_MONITORING",
+        "severity": "low",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "EC2 instance without detailed monitoring"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The EC2 instance root block device is not encrypted. Data on the volume can be accessed if the underlying storage media is compromised.\n",
+        "id": "9a15e162a713",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Enable EBS encryption on all volumes using AWS-managed or customer-managed KMS keys.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "aws_instance.web",
+        "resource_type": "aws_instance",
+        "rule_id": "EC2_UNENCRYPTED_EBS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "EC2 instance with unencrypted root volume"
+      }
+    ],
+    "total_threats": 5
+  }
+}

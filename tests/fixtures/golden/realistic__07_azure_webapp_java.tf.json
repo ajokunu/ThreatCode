@@ -1,0 +1,510 @@
+{
+  "edges": [],
+  "nodes": {
+    "azurerm_application_insights.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_key_vault.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_key_vault_access_policy.app_service": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_key_vault_access_policy.dba_team": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_key_vault_access_policy.terraform": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_linux_web_app.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_log_analytics_workspace.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_mssql_database.hr_portal": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_mssql_database.reporting": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_mssql_server.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_network_security_group.app": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_redis_cache.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_resource_group.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_service_plan.main": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_storage_account.main": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "azurerm_storage_container.documents": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "azurerm_storage_container.payslips": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet.app_service": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet.management": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet.private_endpoints": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet_network_security_group_association.app_service": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_virtual_network.main": {
+      "category": "network",
+      "trust_zone": "private"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/realistic/07_azure_webapp_java.tf",
+    "scanned_resources": 22,
+    "summary": {
+      "high": 8,
+      "medium": 6
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "The virtual network does not have DDoS protection enabled.\n",
+        "id": "c139919c1bb4",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1499"
+            ]
+          }
+        },
+        "mitigation": "Enable Azure DDoS Protection.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1499"
+        ],
+        "resource_address": "azurerm_virtual_network.main",
+        "resource_type": "azurerm_virtual_network",
+        "rule_id": "AZURE_VNET_NO_DDOS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Azure virtual network without DDoS protection"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The SQL Server does not have auditing enabled. Database operations cannot be tracked for compliance.\n",
+        "id": "2d173fffd78a",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable extended auditing policy on the SQL Server.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_mssql_server.main",
+        "resource_type": "azurerm_mssql_server",
+        "rule_id": "MSSQL_NO_AUDITING",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "SQL Server without auditing"
+      },
+      {
+        "confidence": 1.0,
+        "description": "Advanced Threat Protection is not enabled on the SQL Server. SQL injection and anomalous activities will not be detected.\n",
+        "id": "5644b8b9e941",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1190"
+            ]
+          }
+        },
+        "mitigation": "Enable Advanced Threat Protection for SQL Server.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1190"
+        ],
+        "resource_address": "azurerm_mssql_server.main",
+        "resource_type": "azurerm_mssql_server",
+        "rule_id": "MSSQL_NO_THREAT_DETECTION",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "SQL Server without threat detection"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The storage account allows non-HTTPS traffic.\n",
+        "id": "cc2363cead48",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0006"
+            ],
+            "techniques": [
+              "T1557"
+            ]
+          }
+        },
+        "mitigation": "Set enable_https_traffic_only to true.\n",
+        "mitre_tactics": [
+          "TA0006"
+        ],
+        "mitre_techniques": [
+          "T1557"
+        ],
+        "resource_address": "azurerm_storage_account.main",
+        "resource_type": "azurerm_storage_account",
+        "rule_id": "AZURE_STORAGE_NO_HTTPS",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Azure storage account allows HTTP"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have diagnostic settings enabled. Access to secrets and keys is not being audited.\n",
+        "id": "b85eb46668e6",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable diagnostic settings to log Key Vault operations.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_key_vault.main",
+        "resource_type": "azurerm_key_vault",
+        "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "Key Vault without diagnostic settings"
+      },
+      {
+        "confidence": 1.0,
+        "description": "Soft delete is not enabled on the Key Vault. Deleted secrets, keys, and certificates cannot be recovered.\n",
+        "id": "71ec7086a73c",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Enable soft delete with a retention period of at least 7 days.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.app_service",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_SOFT_DELETE",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Key Vault without soft delete"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have network ACLs configured. It is accessible from all networks by default.\n",
+        "id": "37a9a5e1238f",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Configure network ACLs to restrict Key Vault access to specific networks.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.app_service",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_NETWORK_ACLS",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Key Vault without network restrictions"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have diagnostic settings enabled. Access to secrets and keys is not being audited.\n",
+        "id": "938585629ded",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable diagnostic settings to log Key Vault operations.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.app_service",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "Key Vault without diagnostic settings"
+      },
+      {
+        "confidence": 1.0,
+        "description": "Soft delete is not enabled on the Key Vault. Deleted secrets, keys, and certificates cannot be recovered.\n",
+        "id": "434d8b72b42a",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Enable soft delete with a retention period of at least 7 days.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.dba_team",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_SOFT_DELETE",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Key Vault without soft delete"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have network ACLs configured. It is accessible from all networks by default.\n",
+        "id": "e93ff40b2c8b",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Configure network ACLs to restrict Key Vault access to specific networks.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.dba_team",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_NETWORK_ACLS",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Key Vault without network restrictions"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have diagnostic settings enabled. Access to secrets and keys is not being audited.\n",
+        "id": "fec56410df95",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable diagnostic settings to log Key Vault operations.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.dba_team",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "Key Vault without diagnostic settings"
+      },
+      {
+        "confidence": 1.0,
+        "description": "Soft delete is not enabled on the Key Vault. Deleted secrets, keys, and certificates cannot be recovered.\n",
+        "id": "0762d9fbb746",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1485"
+            ]
+          }
+        },
+        "mitigation": "Enable soft delete with a retention period of at least 7 days.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1485"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.terraform",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_SOFT_DELETE",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Key Vault without soft delete"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have network ACLs configured. It is accessible from all networks by default.\n",
+        "id": "c935442cc656",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Configure network ACLs to restrict Key Vault access to specific networks.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.terraform",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_NETWORK_ACLS",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Key Vault without network restrictions"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have diagnostic settings enabled. Access to secrets and keys is not being audited.\n",
+        "id": "6bc46cef78c5",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable diagnostic settings to log Key Vault operations.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_key_vault_access_policy.terraform",
+        "resource_type": "azurerm_key_vault_access_policy",
+        "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "Key Vault without diagnostic settings"
+      }
+    ],
+    "total_threats": 14
+  }
+}

@@ -1,0 +1,622 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_cluster_role.default.overly-permissive": {
+      "category": "iam",
+      "trust_zone": "management"
+    },
+    "kubernetes_cluster_role_binding.default.test-admin-binding": {
+      "category": "iam",
+      "trust_zone": "management"
+    },
+    "kubernetes_deployment.test-ns.test-app": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "kubernetes_namespace.default.test-ns": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "kubernetes_network_policy.test-ns.allow-all": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "kubernetes_service_account.test-ns.test-sa": {
+      "category": "iam",
+      "trust_zone": "management"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/kubernetes/multi_resource.yml",
+    "scanned_resources": 6,
+    "summary": {
+      "critical": 1,
+      "high": 4,
+      "low": 2,
+      "medium": 13
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "The namespace does not have Pod Security Admission labels configured. Without PSA labels, pod security standards are not enforced.\n",
+        "id": "d2e36e92d5aa",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Add Pod Security Admission labels to enforce security standards.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "kubernetes_namespace.default.test-ns",
+        "resource_type": "kubernetes_namespace",
+        "rule_id": "K8S_NO_PSA_LABELS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Namespace without Pod Security Admission labels"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The service account has automountServiceAccountToken enabled. Compromised pods can use the token to access the Kubernetes API.\n",
+        "id": "716c2ae5d362",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0006"
+            ],
+            "techniques": [
+              "T1528"
+            ]
+          }
+        },
+        "mitigation": "Set automountServiceAccountToken to false on service accounts.\n",
+        "mitre_tactics": [
+          "TA0006"
+        ],
+        "mitre_techniques": [
+          "T1528"
+        ],
+        "resource_address": "kubernetes_service_account.test-ns.test-sa",
+        "resource_type": "kubernetes_service_account",
+        "rule_id": "K8S_AUTOMOUNT_DEFAULT",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Service account token auto-mounted by default"
+      },
+      {
+        "confidence": 1.0,
+        "description": "A ClusterRoleBinding grants cluster-admin privileges. This gives full control over all resources in the cluster.\n",
+        "id": "13fde12d5813",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1078"
+            ]
+          }
+        },
+        "mitigation": "Use more restrictive roles with least-privilege principles.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1078"
+        ],
+        "resource_address": "kubernetes_cluster_role_binding.default.test-admin-binding",
+        "resource_type": "kubernetes_cluster_role_binding",
+        "rule_id": "K8S_CLUSTER_ADMIN_BINDING",
+        "severity": "critical",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "ClusterRoleBinding to cluster-admin"
+      },
+      {
+        "confidence": 1.0,
+        "description": "An RBAC role grants wildcard (*) verbs, allowing all actions.\n",
+        "id": "9e96761560b4",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1078"
+            ]
+          }
+        },
+        "mitigation": "Specify explicit verbs instead of wildcards.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1078"
+        ],
+        "resource_address": "kubernetes_cluster_role.default.overly-permissive",
+        "resource_type": "kubernetes_cluster_role",
+        "rule_id": "K8S_WILDCARD_RBAC_VERBS",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "RBAC role with wildcard verbs"
+      },
+      {
+        "confidence": 1.0,
+        "description": "An RBAC role grants access to wildcard (*) resources.\n",
+        "id": "188fddac3150",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1078"
+            ]
+          }
+        },
+        "mitigation": "Specify explicit resources instead of wildcards.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1078"
+        ],
+        "resource_address": "kubernetes_cluster_role.default.overly-permissive",
+        "resource_type": "kubernetes_cluster_role",
+        "rule_id": "K8S_WILDCARD_RBAC_RESOURCES",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "RBAC role with wildcard resources"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The pod uses the default service account. Default service accounts may have overly broad permissions in some cluster configurations.\n",
+        "id": "bf79df65591a",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1078"
+            ]
+          }
+        },
+        "mitigation": "Create and use a dedicated service account with minimal permissions.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1078"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Pod uses default service account"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The pod spec does not define a pod-level securityContext. Container-level settings may be inconsistent or missing.\n",
+        "id": "6d58b5bbdd90",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Set a pod-level securityContext with runAsNonRoot and fsGroup.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Pod without pod-level security context"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No CPU or memory limits are set on the container. This can lead to resource exhaustion and denial of service.\n",
+        "id": "50f3ca5ec46f",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1499"
+            ]
+          }
+        },
+        "mitigation": "Set resource limits (cpu, memory) for all containers.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1499"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_NO_RESOURCE_LIMITS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Container without resource limits"
+      },
+      {
+        "confidence": 1.0,
+        "description": "runAsNonRoot is not set to true, allowing the container to run as root.\n",
+        "id": "e33780c080d2",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Set runAsNonRoot: true in the pod or container securityContext.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_RUN_AS_ROOT",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Container may run as root"
+      },
+      {
+        "confidence": 1.0,
+        "description": "readOnlyRootFilesystem is not set to true, allowing writes to the container filesystem. This increases the attack surface.\n",
+        "id": "f9308d56392f",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1565.001"
+            ]
+          }
+        },
+        "mitigation": "Set readOnlyRootFilesystem: true in securityContext. Use emptyDir volumes for writable paths.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1565.001"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_WRITABLE_ROOT_FS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "Container root filesystem is writable"
+      },
+      {
+        "confidence": 1.0,
+        "description": "automountServiceAccountToken is not disabled. Compromised pods can use the token to access the Kubernetes API.\n",
+        "id": "1992319aae1c",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0006"
+            ],
+            "techniques": [
+              "T1528"
+            ]
+          }
+        },
+        "mitigation": "Set automountServiceAccountToken: false unless API access is needed.\n",
+        "mitre_tactics": [
+          "TA0006"
+        ],
+        "mitre_techniques": [
+          "T1528"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Service account token auto-mounted"
+      },
+      {
+        "confidence": 1.0,
+        "description": "A container image uses the 'latest' tag or no tag. This makes deployments non-reproducible.\n",
+        "id": "7fa4ce333360",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1195.002"
+            ]
+          }
+        },
+        "mitigation": "Pin container images to specific version tags or SHA digests.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1195.002"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_LATEST_TAG",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "Container image uses latest tag"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The container does not drop ALL Linux capabilities. Unnecessary capabilities increase the attack surface.\n",
+        "id": "be2c5b3ab626",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Add 'drop: [\"ALL\"]' to securityContext.capabilities and only add back specific required capabilities.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Container capabilities not dropped"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No securityContext is configured for the container. Security defaults may be too permissive.\n",
+        "id": "e2d3fcefa7dc",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1611"
+            ]
+          }
+        },
+        "mitigation": "Add a securityContext with restrictive settings.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1611"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_NO_SECURITY_CONTEXT",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Container missing securityContext"
+      },
+      {
+        "confidence": 1.0,
+        "description": "allowPrivilegeEscalation is not set to false. This allows processes to gain more privileges than the parent.\n",
+        "id": "148513ee607b",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0004"
+            ],
+            "techniques": [
+              "T1068"
+            ]
+          }
+        },
+        "mitigation": "Set allowPrivilegeEscalation: false in securityContext.\n",
+        "mitre_tactics": [
+          "TA0004"
+        ],
+        "mitre_techniques": [
+          "T1068"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "elevation_of_privilege",
+        "title": "Container allows privilege escalation"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No livenessProbe configured. Kubernetes cannot detect deadlocked containers.\n",
+        "id": "97e3161b7660",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1499"
+            ]
+          }
+        },
+        "mitigation": "Add a livenessProbe to detect and restart unhealthy containers.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1499"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_NO_LIVENESS_PROBE",
+        "severity": "low",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Container missing liveness probe"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No readinessProbe configured. Traffic may be sent to containers that are not ready.\n",
+        "id": "6664a092f590",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1499"
+            ]
+          }
+        },
+        "mitigation": "Add a readinessProbe to prevent traffic to unready containers.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1499"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_NO_READINESS_PROBE",
+        "severity": "low",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Container missing readiness probe"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No ephemeral storage limits are set on the container. A container can fill the node's disk, causing node failure.\n",
+        "id": "73bdd3295af3",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1499"
+            ]
+          }
+        },
+        "mitigation": "Set ephemeral-storage limits in container resource specifications.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1499"
+        ],
+        "resource_address": "kubernetes_deployment.test-ns.test-app",
+        "resource_type": "kubernetes_deployment",
+        "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Container without ephemeral storage limits"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No NetworkPolicy is present. All pod-to-pod traffic is allowed by default.\n",
+        "id": "ac44e88dcca3",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0007"
+            ],
+            "techniques": [
+              "T1040"
+            ]
+          }
+        },
+        "mitigation": "Define NetworkPolicies to restrict pod-to-pod traffic.\n",
+        "mitre_tactics": [
+          "TA0007"
+        ],
+        "mitre_techniques": [
+          "T1040"
+        ],
+        "resource_address": "kubernetes_network_policy.test-ns.allow-all",
+        "resource_type": "kubernetes_network_policy",
+        "rule_id": "K8S_NO_NETWORK_POLICY",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "No NetworkPolicy defined"
+      },
+      {
+        "confidence": 1.0,
+        "description": "No NetworkPolicy restricts egress traffic. Pods can communicate with any external endpoint including command and control servers.\n",
+        "id": "e32136ef8ed4",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0010"
+            ],
+            "techniques": [
+              "T1048"
+            ]
+          }
+        },
+        "mitigation": "Define egress NetworkPolicies to restrict outbound traffic.\n",
+        "mitre_tactics": [
+          "TA0010"
+        ],
+        "mitre_techniques": [
+          "T1048"
+        ],
+        "resource_address": "kubernetes_network_policy.test-ns.allow-all",
+        "resource_type": "kubernetes_network_policy",
+        "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Default-allow egress policy"
+      }
+    ],
+    "total_threats": 20
+  }
+}

@@ -1,0 +1,308 @@
+{
+  "edges": [],
+  "nodes": {
+    "azurerm_container_registry.platform": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_key_vault.platform": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_kubernetes_cluster.platform": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "azurerm_kubernetes_cluster_node_pool.workloads": {
+      "category": "container",
+      "trust_zone": "private"
+    },
+    "azurerm_linux_virtual_machine.jumpbox": {
+      "category": "compute",
+      "trust_zone": "private"
+    },
+    "azurerm_mssql_database.inventory": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_mssql_database.orders": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_mssql_server.platform": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_network_security_group.aks": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_resource_group.platform": {
+      "category": "unknown",
+      "trust_zone": "private"
+    },
+    "azurerm_storage_account.data_lake": {
+      "category": "storage",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet.aks_nodes": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet.aks_pods": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_subnet.db": {
+      "category": "network",
+      "trust_zone": "private"
+    },
+    "azurerm_virtual_network.platform": {
+      "category": "network",
+      "trust_zone": "private"
+    }
+  },
+  "report": {
+    "input_file": "tests/fixtures/realistic/02_azure_kubernetes_cluster.tf",
+    "scanned_resources": 15,
+    "summary": {
+      "high": 2,
+      "medium": 6
+    },
+    "threats": [
+      {
+        "confidence": 1.0,
+        "description": "The virtual network does not have DDoS protection enabled.\n",
+        "id": "883b31f0ee6b",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0040"
+            ],
+            "techniques": [
+              "T1499"
+            ]
+          }
+        },
+        "mitigation": "Enable Azure DDoS Protection.\n",
+        "mitre_tactics": [
+          "TA0040"
+        ],
+        "mitre_techniques": [
+          "T1499"
+        ],
+        "resource_address": "azurerm_virtual_network.platform",
+        "resource_type": "azurerm_virtual_network",
+        "rule_id": "AZURE_VNET_NO_DDOS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "denial_of_service",
+        "title": "Azure virtual network without DDoS protection"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The AKS cluster does not have a network policy configured.\n",
+        "id": "5ea99970b957",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0007"
+            ],
+            "techniques": [
+              "T1040"
+            ]
+          }
+        },
+        "mitigation": "Configure a network policy (calico or azure).\n",
+        "mitre_tactics": [
+          "TA0007"
+        ],
+        "mitre_techniques": [
+          "T1040"
+        ],
+        "resource_address": "azurerm_kubernetes_cluster_node_pool.workloads",
+        "resource_type": "azurerm_kubernetes_cluster_node_pool",
+        "rule_id": "AKS_NO_NETWORK_POLICY",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "AKS without network policy"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The SQL Server does not have auditing enabled. Database operations cannot be tracked for compliance.\n",
+        "id": "ac357c2683b8",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable extended auditing policy on the SQL Server.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_mssql_server.platform",
+        "resource_type": "azurerm_mssql_server",
+        "rule_id": "MSSQL_NO_AUDITING",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "SQL Server without auditing"
+      },
+      {
+        "confidence": 1.0,
+        "description": "Advanced Threat Protection is not enabled on the SQL Server. SQL injection and anomalous activities will not be detected.\n",
+        "id": "f369a6b56cfb",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1190"
+            ]
+          }
+        },
+        "mitigation": "Enable Advanced Threat Protection for SQL Server.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1190"
+        ],
+        "resource_address": "azurerm_mssql_server.platform",
+        "resource_type": "azurerm_mssql_server",
+        "rule_id": "MSSQL_NO_THREAT_DETECTION",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "tampering",
+        "title": "SQL Server without threat detection"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have network ACLs configured. It is accessible from all networks by default.\n",
+        "id": "9b014ce13211",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0009"
+            ],
+            "techniques": [
+              "T1530"
+            ]
+          }
+        },
+        "mitigation": "Configure network ACLs to restrict Key Vault access to specific networks.\n",
+        "mitre_tactics": [
+          "TA0009"
+        ],
+        "mitre_techniques": [
+          "T1530"
+        ],
+        "resource_address": "azurerm_key_vault.platform",
+        "resource_type": "azurerm_key_vault",
+        "rule_id": "KEYVAULT_NO_NETWORK_ACLS",
+        "severity": "high",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Key Vault without network restrictions"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The Key Vault does not have diagnostic settings enabled. Access to secrets and keys is not being audited.\n",
+        "id": "3236c55d9b62",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0005"
+            ],
+            "techniques": [
+              "T1562.008"
+            ]
+          }
+        },
+        "mitigation": "Enable diagnostic settings to log Key Vault operations.\n",
+        "mitre_tactics": [
+          "TA0005"
+        ],
+        "mitre_techniques": [
+          "T1562.008"
+        ],
+        "resource_address": "azurerm_key_vault.platform",
+        "resource_type": "azurerm_key_vault",
+        "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "repudiation",
+        "title": "Key Vault without diagnostic settings"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The storage account has no network access restrictions.\n",
+        "id": "c3e378f0ffa6",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1190"
+            ]
+          }
+        },
+        "mitigation": "Configure network rules to restrict access.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1190"
+        ],
+        "resource_address": "azurerm_storage_account.data_lake",
+        "resource_type": "azurerm_storage_account",
+        "rule_id": "AZURE_STORAGE_NO_NETWORK_RULES",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "information_disclosure",
+        "title": "Azure storage without network rules"
+      },
+      {
+        "confidence": 1.0,
+        "description": "The VM does not use a managed identity for Azure service access.\n",
+        "id": "ad9e52ecf744",
+        "metadata": {
+          "mitre": {
+            "tactics": [
+              "TA0001"
+            ],
+            "techniques": [
+              "T1078.004"
+            ]
+          }
+        },
+        "mitigation": "Assign a managed identity to the VM.\n",
+        "mitre_tactics": [
+          "TA0001"
+        ],
+        "mitre_techniques": [
+          "T1078.004"
+        ],
+        "resource_address": "azurerm_linux_virtual_machine.jumpbox",
+        "resource_type": "azurerm_linux_virtual_machine",
+        "rule_id": "AZURE_VM_NO_MANAGED_IDENTITY",
+        "severity": "medium",
+        "source": "rule",
+        "stride_category": "spoofing",
+        "title": "Azure VM without managed identity"
+      }
+    ],
+    "total_threats": 8
+  }
+}
