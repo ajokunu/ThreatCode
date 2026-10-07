@@ -252,8 +252,8 @@ class TestSpans:
                 if kind in ("resource", "data"):
                     for rtype, names in entry.items():
                         for name, body in names.items():
-                            key = (kind, (rtype, name))
-                            expected.setdefault(key, []).append(
+                            resource_key = (kind, (rtype, name))
+                            expected.setdefault(resource_key, []).append(
                                 (body["__start_line__"], body["__end_line__"])
                             )
                 elif kind in ("module", "variable", "output", "provider"):
@@ -310,8 +310,10 @@ class TestJsonSyntax:
         blocks = load_json_syntax(json.loads(text), text).blocks
         lines = {b.labels[1]: b.start_line for b in blocks if b.kind == "resource"}
         source_lines = text.splitlines()
-        assert source_lines[lines["assets"] - 1].strip().startswith('"assets"')
-        assert source_lines[lines["web"] - 1].strip().startswith('"web"')
+        assets, web = lines["assets"], lines["web"]
+        assert assets is not None and web is not None
+        assert source_lines[assets - 1].strip().startswith('"assets"')
+        assert source_lines[web - 1].strip().startswith('"web"')
         assert all(b.end_line is None for b in blocks)
 
     def test_without_text_there_are_no_lines(self) -> None:
