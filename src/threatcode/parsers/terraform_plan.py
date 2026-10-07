@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from threatcode.diagnostics import Diagnostic
+from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.exceptions import ParseError
 from threatcode.ir.addressing import base_address, components
 from threatcode.parsers._json_lines import json_line_index
@@ -56,6 +56,20 @@ MAX_MODULE_DEPTH = 50
 
 # Max depth walked in an after_unknown tree or an expression tree
 _MAX_TREE_DEPTH = 64
+
+# A reference has a type, a name and at most MAX_MODULE_DEPTH module calls of two parts each,
+# plus room for an attribute path; anything longer names nothing
+_MAX_REFERENCE_PARTS = 2 * MAX_MODULE_DEPTH + 8
+
+# Max resolved references over a whole plan. A reference to a counted resource without an index
+# names every instance, so a hostile plan could otherwise ask for a list per resource that is
+# as long as the plan. The graph cannot hold that many edges anyway (MAX_EDGES)
+MAX_REFERENCE_ENTRIES = 500_000
+
+register_code(
+    "plan.reference_limit",
+    "A Terraform plan has more resolved references than the limit, so later ones were dropped",
+)
 
 # Reference roots that name something other than a resource
 _DROPPED_ROOTS = frozenset({"local", "each", "count", "self", "path", "terraform"})
@@ -80,9 +94,11 @@ class _PlannedUnknown(Unknown):
 
 @dataclass
 class _Counter:
-    """Counts the values a merge made unknown."""
+    """Counts what a parse produced: unknown values, and resolved references against the limit."""
 
     unknown: int = 0
+    references: int = 0
+    unresolved_resources: int = 0
 
 
 @dataclass(frozen=True)
@@ -278,6 +294,7 @@ class _Resolver:
 
     def __init__(self, addresses: list[str], config: _Config) -> None:
         self._config = config
+        self._addresses = set(addresses)
         self._by_base: dict[str, list[tuple[str, list[str]]]] = {}
         self._modules_by_base: dict[str, list[tuple[str, list[str]]]] = {}
         seen_modules: set[str] = set()
@@ -317,6 +334,8 @@ class _Resolver:
 
     def _resolve(self, raw: str, instance: str, depth: int) -> list[str]:
         parts = components(raw)
+        if len(parts) > _MAX_REFERENCE_PARTS:
+            return []
         root = parts[0]
         if root == "var":
             return self._through_input(parts, instance, depth)
@@ -370,7 +389,11 @@ class _Resolver:
         """The planned addresses named by the longest prefix of `parts` that names any."""
         for count in range(len(parts), 1, -1):
             prefix = parts[:count]
-            candidates = self._by_base.get(base_address(".".join(prefix)))
+            joined = ".".join(prefix)
+            if joined in self._addresses:
+                # Fully indexed, or not counted: exactly one address, found without a scan
+                return [joined]
+            candidates = self._by_base.get(base_address(joined))
             if not candidates:
                 continue
             hits = [addr for addr, comps in candidates if _index_matches(prefix, comps)]
@@ -567,6 +590,17 @@ class TerraformPlanParser(BaseParser):
                     source_path,
                 )
             )
+        if counter.unresolved_resources:
+            diagnostics.append(
+                Diagnostic(
+                    "warning",
+                    "plan.reference_limit",
+                    f"The plan holds more than {MAX_REFERENCE_ENTRIES} resolved references; the "
+                    f"relationships of {counter.unresolved_resources} resource(s) are missing "
+                    "from the graph",
+                    source_path,
+                )
+            )
         if not any(r.mode == "managed" for r in resources):
             diagnostics.append(
                 Diagnostic(
@@ -665,6 +699,11 @@ class TerraformPlanParser(BaseParser):
         expressions = configured.get("expressions")
         leaves = _walk_expressions(expressions)
 
+        # Past the limit a reference resolves to nothing, but the path is still recorded
+        resolving = counter.references < MAX_REFERENCE_ENTRIES
+        if not resolving:
+            counter.unresolved_resources += 1
+
         references: dict[str, list[str]] = {}
         for leaf in leaves:
             if not leaf.references:
@@ -672,15 +711,21 @@ class TerraformPlanParser(BaseParser):
             # A path is recorded even when none of its references resolves: the graph then
             # knows the attribute is a reference and never guesses from its literal value
             bucket = references.setdefault(leaf.path, [])
-            for reference in leaf.references:
-                bucket.extend(a for a in resolver.resolve(reference, instance) if a != address)
+            if resolving:
+                for reference in leaf.references:
+                    bucket.extend(a for a in resolver.resolve(reference, instance) if a != address)
             references[leaf.path] = _unique(bucket)
 
         depends_on = [d for d in (configured.get("depends_on") or []) if isinstance(d, str) and d]
         dependencies = _unique(
-            a for raw in depends_on for a in resolver.resolve(raw, instance) if a != address
+            a
+            for raw in depends_on
+            if resolving
+            for a in resolver.resolve(raw, instance)
+            if a != address
         )
         dependencies = _unique([*dependencies, *(a for refs in references.values() for a in refs)])
+        counter.references += len(dependencies) + sum(len(refs) for refs in references.values())
 
         properties = self._properties(res, changes.get(address), expressions, leaves, counter)
 

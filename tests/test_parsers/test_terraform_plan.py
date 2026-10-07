@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -717,6 +721,65 @@ class TestHostileModules:
         subnet = _by_address(TerraformPlanParser().parse(data))[f"{address}.aws_subnet.s"]
         assert subnet.dependencies == ["aws_vpc.main"]
 
+    def test_a_reference_with_absurdly_many_parts_names_nothing_and_is_fast(self) -> None:
+        reference = ".".join(["a"] * 200_000)
+        data = _plan(
+            [_resource("aws_vpc.main"), _resource("aws_subnet.a")],
+            [_config("aws_subnet", "a", {"vpc_id": _refs(reference, "aws_vpc.main")})],
+        )
+        started = time.perf_counter()
+        subnet = _by_address(TerraformPlanParser().parse(data))["aws_subnet.a"]
+        assert time.perf_counter() - started < 2.0
+        assert subnet.references == {"vpc_id": ["aws_vpc.main"]}
+
+    def test_thousands_of_indexed_references_resolve_without_scanning_every_instance(self) -> None:
+        count = 8_000
+        data = _plan(
+            [_resource(f"aws_subnet.a[{i}]") for i in range(count)]
+            + [_resource("aws_instance.web")],
+            [
+                _config("aws_subnet", "a"),
+                _config(
+                    "aws_instance",
+                    "web",
+                    {f"nic_{i}": _refs(f"aws_subnet.a[{i}].id") for i in range(count)},
+                ),
+            ],
+        )
+        started = time.perf_counter()
+        web = _by_address(TerraformPlanParser().parse(data))["aws_instance.web"]
+        assert time.perf_counter() - started < 5.0
+        assert web.references["nic_17"] == ["aws_subnet.a[17]"]
+        assert len(web.dependencies) == count
+
+    def test_the_reference_limit_stops_resolution_and_says_so(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("threatcode.parsers.terraform_plan.MAX_REFERENCE_ENTRIES", 3)
+        data = _plan(
+            [_resource("aws_vpc.main"), _resource("aws_subnet.a"), _resource("aws_subnet.b")]
+            + [_resource(f"aws_instance.web[{i}]") for i in range(3)],
+            [
+                _config("aws_subnet", "a", {"vpc_id": _refs("aws_vpc.main")}),
+                _config("aws_subnet", "b", {"vpc_id": _refs("aws_vpc.main")}),
+                _config(
+                    "aws_instance", "web", {"subnet_id": _refs("aws_subnet.a", "aws_subnet.b")}
+                ),
+            ],
+        )
+        parsed = TerraformPlanParser().parse(data)
+        resources = _by_address(parsed)
+        # Resolution runs resource by resource until the limit is reached, in plan order
+        assert resources["aws_subnet.a"].dependencies == ["aws_vpc.main"]
+        assert resources["aws_instance.web[2]"].dependencies == []
+        assert resources["aws_instance.web[2]"].references == {"subnet_id": []}
+        (diagnostic,) = [d for d in parsed.diagnostics if d.code == "plan.reference_limit"]
+        assert diagnostic.level == "warning"
+        assert "resource(s) are missing" in diagnostic.message
+
+    def test_a_plan_inside_the_limit_has_no_limit_diagnostic(self) -> None:
+        assert "plan.reference_limit" not in {d.code for d in _corpus("webapp").diagnostics}
+
     @pytest.mark.parametrize(
         "mutation",
         [
@@ -1126,3 +1189,33 @@ class TestDeterminism:
             flat = [a for refs in res.references.values() for a in refs]
             assert all(a in res.dependencies for a in flat)
             assert len(res.dependencies) == len(set(res.dependencies))
+
+    def test_hash_randomization_does_not_change_the_output(self) -> None:
+        """Two interpreters with different hash seeds produce byte-identical resources."""
+        script = (
+            "import json, sys\n"
+            "from threatcode.parsers import detect_and_parse\n"
+            "out = {}\n"
+            "for path in sys.argv[1:]:\n"
+            "    parsed = detect_and_parse(path)\n"
+            "    out[path] = [[r.address, r.dependencies, r.references, r.meta, r.start_line]\n"
+            "                 for r in parsed.resources]\n"
+            "print(json.dumps(out, sort_keys=True))\n"
+        )
+        paths = [
+            str(real_shape(f"terraform/plan/{name}.plan.json"))
+            for name in ("webapp", "modules", "module_scopes", "unknown_values")
+        ]
+        outputs = []
+        for seed in ("1", "2", "3"):
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            done = subprocess.run(
+                [sys.executable, "-c", script, *paths],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+            outputs.append(done.stdout)
+        assert outputs[0] == outputs[1] == outputs[2]
+        assert json.loads(outputs[0])
