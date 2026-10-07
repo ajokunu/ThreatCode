@@ -123,8 +123,15 @@ class TestSarifFormatter:
     def test_the_rule_tags_include_stride(self, simple_s3_graph: InfraGraph) -> None:
         report = HybridEngine().analyze(simple_s3_graph)
         rules = json.loads(format_sarif(report))["runs"][0]["tool"]["driver"]["rules"]
+        assert rules
         for rule in rules:
-            assert any(t.startswith("stride/") for t in rule["properties"]["tags"])
+            tags = rule["properties"]["tags"]
+            if rule["id"] == ATTACK_PATH_RULE:
+                # An attack path chains several findings, so it has no single STRIDE category.
+                assert "attack-path" in tags
+                assert not any(t.startswith("stride/") for t in tags)
+            else:
+                assert any(t.startswith("stride/") for t in tags)
 
     def test_the_output_is_deterministic(self) -> None:
         threats = [make_threat(threat_id=f"t{i}", address=f"b{i}") for i in range(5)]
