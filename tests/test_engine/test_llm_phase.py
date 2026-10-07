@@ -450,8 +450,12 @@ class TestThroughTheEngine:
         )
         report = HybridEngine(llm_client=client).analyze(graph)
         by_source = [t.source for t in report.threats]
+        baseline = [t.source for t in HybridEngine().analyze(canary_graph()).threats]
         assert by_source.count(ThreatSource.RULE) > 0
-        assert by_source.count(ThreatSource.BOUNDARY) > 0
+        # Boundary threats need a flow that crosses a zone; the canary graph has none, so the
+        # point is that the LLM phase leaves whatever the boundary phase finds untouched
+        assert by_source.count(ThreatSource.BOUNDARY) == baseline.count(ThreatSource.BOUNDARY)
+        assert by_source.count(ThreatSource.RULE) == baseline.count(ThreatSource.RULE)
         assert by_source.count(ThreatSource.LLM) == 1
 
     def test_failed_llm_keeps_rule_results(self, simple_s3_graph: InfraGraph) -> None:

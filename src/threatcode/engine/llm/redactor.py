@@ -314,6 +314,9 @@ class Redactor:
             return text
         result = text
         result = _PEM_BLOCK.sub(self._replacer("pem"), result)
+        # Credential URLs go whole (userinfo and host) before the secret rules, which would
+        # otherwise redact only the password and leave the user name and host behind
+        result = _URL_USERINFO.sub(self._userinfo_replacer, result)
         lowered = result.lower()
         for rule_regex, keywords in self._secret_rules:
             if keywords and not any(k in lowered for k in keywords):
@@ -321,7 +324,6 @@ class Redactor:
             result = rule_regex.sub(self._group_replacer("secret"), result)
         for pattern in _SECRET_PATTERNS:
             result = pattern.sub(self._replacer("secret"), result)
-        result = _URL_USERINFO.sub(self._userinfo_replacer, result)
         result = _AWS_ARN.sub(self._replacer("aws_arn"), result)
         result = _ACCOUNT_CONTEXT.sub(self._group_replacer("aws_account_id"), result)
         result = _EMAIL.sub(self._replacer("email"), result)
@@ -339,13 +341,15 @@ class Redactor:
         return replace
 
     def _group_replacer(self, label: str) -> Callable[[re.Match[str]], str]:
-        """Replace the last capture group of a match (the whole match when it has none)."""
+        """Replace the ``secret`` group of a match, else its last group (else the whole match)."""
 
         def replace(match: re.Match[str]) -> str:
             if not match.re.groups:
                 text = match.group()
                 return text if "REDACTED_" in text else self._get_placeholder(text, label)
-            group = match.lastindex or 1
+            # Rules with a named ``secret`` group (credential URLs and connection strings also
+            # capture the host after it) must redact that group, not whichever group matched last
+            group = match.re.groupindex.get("secret") or match.lastindex or 1
             secret = match.group(group)
             if not secret or "REDACTED_" in secret:
                 return match.group()

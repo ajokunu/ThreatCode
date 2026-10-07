@@ -126,8 +126,10 @@ class TestNodeFacts:
     def test_each_node_carries_zone_category_and_exposure(self) -> None:
         graph = _graph(_res("aws_db_instance", "d", publicly_accessible=True))
         node = next(iter(_nodes(graph).values()))
-        assert node["zone"] == "dmz"
+        # A data store stays in the data zone; its public reachability is the exposure fact
+        assert node["zone"] == "data"
         assert node["category"] == "database"
+        assert node["exposure"] == "internet"
 
     def test_design_evidence_is_marked_and_config_evidence_is_not(self) -> None:
         graph = _graph(
@@ -208,7 +210,7 @@ class TestEdges:
         edge = build_context(self._graph(), [], Redactor()).data["edges"][0]
         assert edge["from"] == "aws_instance.n1" and edge["to"] == "aws_db_instance.n2"
         assert edge["type"] == "network_flow"
-        assert edge["zones"] == ["dmz", "private"]
+        assert edge["zones"] == ["dmz", "data"]
         assert edge["crosses_boundary"] is True
         assert edge["declared"] is True
         assert edge["attrs"] == {
