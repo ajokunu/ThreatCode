@@ -141,9 +141,6 @@ class TestFindingIntegrity:
         dupes = {tid: n for tid, n in counts.items() if n > 1}
         assert not dupes, f"{fixture}: duplicate threat ids {dupes}"
 
-    @pending(
-        "WP-1-1", "exact resource typing: a rule fires on its declared types, not on companions"
-    )
     def test_no_rule_fires_on_a_companion_of_a_resource_it_already_hit(self) -> None:
         from tests.test_quality.harness import companion_duplicates
 

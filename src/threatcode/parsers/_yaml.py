@@ -148,6 +148,35 @@ def load_yaml_documents(
 ) -> tuple[list[Any], list[dict[str, int]]]: ...
 
 
+# libyaml composes flow collections recursively in C, so a document like "[[[[...]]]]"
+# a few thousand levels deep overflows the native stack and kills the process before Python
+# can raise RecursionError. Real manifests and templates nest flow collections a handful of
+# levels, so anything past this depth is rejected before the text reaches the loader.
+MAX_FLOW_DEPTH = 256
+
+
+def _check_flow_depth(text: str, source: str) -> None:
+    """Raise ParseError when brackets nest deeper than ``MAX_FLOW_DEPTH``.
+
+    Every bracket counts, including those inside quoted scalars and comments. Skipping quoted
+    text would let a stray apostrophe in a plain scalar hide the nesting that follows it, and
+    no real document puts hundreds of unclosed brackets inside a string.
+    """
+    if text.count("[") + text.count("{") <= MAX_FLOW_DEPTH:
+        return
+    depth = 0
+    for ch in text:
+        if ch in "[{":
+            depth += 1
+            if depth > MAX_FLOW_DEPTH:
+                raise ParseError(
+                    f"Invalid YAML in {source}: flow collections nest deeper than "
+                    f"{MAX_FLOW_DEPTH} levels"
+                )
+        elif ch in "]}" and depth:
+            depth -= 1
+
+
 def load_yaml_documents(
     text: str, with_lines: bool = False, *, source: str = "<input>"
 ) -> list[Any] | tuple[list[Any], list[dict[str, int]]]:
@@ -167,6 +196,7 @@ def load_yaml_documents(
         ParseError: The text is not valid YAML or uses a tag that is not allowed. The
             message names the source, the line and the problem.
     """
+    _check_flow_depth(text, source)
     documents: list[Any] = []
     indexes: list[dict[str, int]] = []
     loader = CfnSafeLoader(text)

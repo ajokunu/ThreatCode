@@ -77,7 +77,6 @@ class TestSurvivedToday:
 
 
 class TestPendingParserFixes:
-    @pending("WP-1-4", "input is decoded strictly and a non-UTF-8 file is a ParseError naming it")
     def test_a_binary_file_ends_in_a_parse_error_that_names_the_cause(self, tmp_path: Path) -> None:
         path = tmp_path / "main.tf"
         path.write_bytes(b"\x80\x81\x82" * 2000)
@@ -85,9 +84,6 @@ class TestPendingParserFixes:
         assert outcome.status == "error"
         assert outcome.threatcode_error, f"raised {outcome.exception}, which the CLI cannot report"
 
-    @pending(
-        "WP-1-4", "loader exceptions, RecursionError included, become ParseError naming the file"
-    )
     @pytest.mark.parametrize(
         "make",
         [gen.nested_json, gen.nested_yaml_flow, gen.nested_yaml_block],
@@ -150,3 +146,18 @@ class TestPendingDirectoryWalker:
         assert not run.timed_out, "the scan blocked reading the named pipe"
         assert run.exit_code == 0, run.stderr[-300:]
         assert gen.INSIDE_RESOURCE in run.stdout, "positive control: the real file must be modeled"
+
+
+class TestFlowDepthGuard:
+    def test_an_apostrophe_in_a_plain_scalar_cannot_hide_the_nesting(self) -> None:
+        from threatcode.exceptions import ParseError
+        from threatcode.parsers._yaml import MAX_FLOW_DEPTH, load_yaml_documents
+
+        text = "note: don't\nlist: " + "[" * (MAX_FLOW_DEPTH + 1) + "]" * (MAX_FLOW_DEPTH + 1)
+        with pytest.raises(ParseError, match="nest deeper than"):
+            load_yaml_documents(text, source="hostile.yaml")
+
+    def test_ordinary_nesting_still_loads(self) -> None:
+        from threatcode.parsers._yaml import load_yaml_documents
+
+        assert load_yaml_documents("a: [1, {b: [2, [3]]}]") == [{"a": [1, {"b": [2, [3]]}]}]

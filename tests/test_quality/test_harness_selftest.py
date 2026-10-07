@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import pytest
@@ -138,17 +139,17 @@ class TestViolations:
             {
                 "must_not_find": [
                     {
-                        "resource": "aws_s3_bucket_versioning.private_data",
-                        "rule_ids": ["S3_NO_ENCRYPTION"],
-                        "why": "a versioning companion is not a bucket",
+                        "resource": "aws_s3_bucket.public_assets",
+                        "rule_ids": ["S3_PUBLIC_ACCESS"],
+                        "why": "listed as hardened so the harness must report the finding",
                     }
                 ]
             },
         )
         assert len(result.violations) == 1
         entry, offenders = result.violations[0]
-        assert entry.resource == "aws_s3_bucket_versioning.private_data"
-        assert offenders == ["S3_NO_ENCRYPTION"]
+        assert entry.resource == "aws_s3_bucket.public_assets"
+        assert offenders == ["S3_PUBLIC_ACCESS"]
 
     def test_omitted_rule_ids_mean_any_rule_finding(self, synthetic: Path) -> None:
         doc = {
@@ -290,7 +291,16 @@ class TestCompanionDuplicates:
     def test_a_rule_firing_on_a_resource_and_its_companion_is_counted(
         self, synthetic: Path
     ) -> None:
-        duplicates = companion_duplicates(scan_fixture("main.tf", synthetic))
+        # Exact resource typing means no builtin rule fires on the versioning companion any
+        # more, so plant the duplicate: copy a bucket finding onto its companion resource.
+        result = scan_fixture("main.tf", synthetic)
+        original = next(
+            t for t in result.threats if t.resource_address == "aws_s3_bucket.private_data"
+        )
+        planted = copy.copy(original)
+        planted.resource_address = "aws_s3_bucket_versioning.private_data"
+        result.report.threats.append(planted)
+        duplicates = companion_duplicates(result)
         assert any(
             "aws_s3_bucket_versioning.private_data repeats aws_s3_bucket.private_data" in d
             for d in duplicates
@@ -303,7 +313,6 @@ class TestCompanionDuplicates:
         )
         assert companion_duplicates(result, dropped) == []
 
-    @pending("WP-1-1", "exact resource typing: no rule fires on the versioning companion")
     def test_exact_typing_leaves_no_duplicate_on_the_synthetic_bucket(
         self, synthetic: Path
     ) -> None:
