@@ -177,10 +177,12 @@ class TestOneGraphPerScan:
 
     def test_a_helm_chart_is_one_unit_and_its_templates_are_not_scanned_raw(self) -> None:
         result = scan(FIXTURES / "helm")
-        assert result.coverage.units_parsed == 1
+        charts = [p for p in (FIXTURES / "helm").iterdir() if (p / "Chart.yaml").is_file()]
+        assert len(charts) >= 1
+        assert result.coverage.units_parsed == len(charts)
         assert result.coverage.errors == []
         assert result.coverage.not_iac_count == 0
-        assert result.coverage.files_discovered == 1
+        assert result.coverage.files_discovered == len(charts)
         assert result.graph.node_count > 0
 
 

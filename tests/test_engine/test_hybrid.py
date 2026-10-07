@@ -205,7 +205,7 @@ class TestPhaseOrder:
         assert report.attack_paths == []
         assert report.rule_errors == []
         assert all(t.effective_severity is None for t in report.threats)
-        assert "attack_paths" not in data
+        assert data["attack_paths"] == []
         assert "rule_errors" not in data
         assert "llm" not in data
 

@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.pending import pending
 from tests.hostile import generators as gen
 from tests.hostile.support import (
     DEFAULT_BUDGET_SECONDS,

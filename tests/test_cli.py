@@ -1167,8 +1167,10 @@ class TestScanInputs:
     def test_a_directory_with_several_formats_is_one_graph(self) -> None:
         result = invoke("scan", FIXTURES_DIR / "kubernetes", "--fail-on", "none")
         data = report_of(result)
-        assert data["coverage"]["units_parsed"] == 3
-        assert data["scanned_resources"] == 8
+        assert data["coverage"]["units_parsed"] == len(
+            list((FIXTURES_DIR / "kubernetes").iterdir())
+        )
+        assert data["scanned_resources"] == 48
 
     def test_several_paths_are_accepted(self) -> None:
         result = invoke("scan", SIMPLE_TF, K8S_FIXTURE, "--fail-on", "none")

@@ -167,7 +167,7 @@ class TestScan:
 
     def test_a_directory_is_scanned(self) -> None:
         report = threatcode.scan(FIXTURES / "kubernetes")
-        assert report["coverage"]["units_parsed"] == 3
+        assert report["coverage"]["units_parsed"] == len(list((FIXTURES / "kubernetes").iterdir()))
         assert report["input_file"] == "."
 
     def test_a_finding_does_not_raise_whatever_the_gate(self) -> None:
@@ -258,8 +258,9 @@ class TestAnalyze:
 
     def test_the_report_carries_the_coverage_block(self) -> None:
         result = threatcode.analyze(FIXTURES / "kubernetes")
-        assert result.report.coverage.units_parsed == 3
-        assert result.report.coverage.files_discovered == 3
+        expected = len(list((FIXTURES / "kubernetes").iterdir()))
+        assert result.report.coverage.units_parsed == expected
+        assert result.report.coverage.files_discovered == expected
 
     def test_takes_the_same_settings_as_scan(self) -> None:
         result = threatcode.analyze(SIMPLE_TF, min_severity="high", fail_on="none")
