@@ -304,7 +304,7 @@ def _graph_in(directory: Path, spec: FormatSpec, text: str) -> InfraGraph:
 def run_snippet(rule: Rule, fmt: str, text: str, directory: Path | None = None) -> Outcome:
     """Parse, build the graph and evaluate ``rule`` alone against every node."""
     graph = graph_for(fmt, text, directory)
-    nodes = list(graph.nodes.values())
+    nodes = [node for node in graph.nodes.values() if not node.is_synthetic]
     matched = [node for node in nodes if matches_rule(rule, node)]
     return Outcome(
         node_count=len(nodes),

@@ -394,6 +394,16 @@ EDGE_ATTRIBUTE_ALLOWLIST: dict[str, Any] = _allow(
 )
 
 
+def _context_nodes(graph: InfraGraph) -> dict[str, InfraNode]:
+    """The nodes the model sees: the graph's own, without the synthetic internet node.
+
+    The internet node has no address to hide and a handle would rewrite the word "internet" in
+    free text; each node already carries its exposure and each edge its zones, which is what the
+    model needs from it.
+    """
+    return {node_id: node for node_id, node in graph.nodes.items() if not node.is_synthetic}
+
+
 class AddressMap:
     """Opaque handles for graph nodes, and the way back.
 
@@ -406,17 +416,20 @@ class AddressMap:
     def __init__(self, graph: InfraGraph) -> None:
         self._to_handle: dict[str, str] = {}
         self._to_node: dict[str, str] = {}
-        for index, (node_id, node) in enumerate(graph.nodes.items(), start=1):
+        for index, (node_id, node) in enumerate(_context_nodes(graph).items(), start=1):
             kind = _TYPE_RE.sub("_", node.resource_type)[:64] or "resource"
             handle = f"{kind}.n{index}"
             self._to_handle[node_id] = handle
             self._to_node[handle] = node_id
-        self._known = set(graph.nodes)
+        self._known = set(self._to_handle)
         self._handle_pattern: re.Pattern[str] | None = None
         self._node_pattern: re.Pattern[str] | None = None
 
     def __len__(self) -> int:
         return len(self._to_handle)
+
+    def __contains__(self, node_id: object) -> bool:
+        return node_id in self._to_handle
 
     def handle(self, node_id: str) -> str:
         return self._to_handle[node_id]
@@ -517,7 +530,7 @@ def build_context(
     stats = ContextStats(nodes_total=len(graph.nodes), edges_total=len(graph.edges))
 
     nodes: dict[str, dict[str, Any]] = {}
-    for node_id, node in graph.nodes.items():
+    for node_id, node in _context_nodes(graph).items():
         nodes[addresses.handle(node_id)] = _node_entry(
             node, node_id, hits.get(node_id, []), redactor, addresses
         )
@@ -686,12 +699,15 @@ def _reduce(
     """Make the context fit: summarize groups, strip properties, then drop low-value nodes."""
     nodes = dict(nodes)
     groups: list[dict[str, Any]] = []
-    plain_handles = [addresses.handle(node_id) for node_id in graph.nodes if not hits.get(node_id)]
+    context_nodes = _context_nodes(graph)
+    plain_handles = [
+        addresses.handle(node_id) for node_id in context_nodes if not hits.get(node_id)
+    ]
     plain_set = set(plain_handles)
     crossing = {e["from"] for e in edges if e.get("crosses_boundary")} | {
         e["to"] for e in edges if e.get("crosses_boundary")
     }
-    handle_type = {addresses.handle(nid): n.resource_type for nid, n in graph.nodes.items()}
+    handle_type = {addresses.handle(nid): n.resource_type for nid, n in context_nodes.items()}
     node_map: dict[str, str] = {}  # summarized handle -> group handle
 
     for threshold in GROUP_THRESHOLDS:

@@ -880,7 +880,9 @@ class TestEdges:
         )
         assert graph.edges
         assert all(not edge.declared for edge in graph.edges)
-        assert {edge.relation for edge in graph.edges} == {"backend", "selects", "runs_as"}
+        # The ingress is public, so the graph also reaches it from the internet node
+        linked = [edge for edge in graph.edges if edge.source != "internet"]
+        assert {edge.relation for edge in linked} == {"backend", "selects", "runs_as"}
 
     def test_duplicate_addresses_do_not_send_every_edge_to_the_first(self) -> None:
         # Two documents with one address become web and web#2 in the graph; each Service

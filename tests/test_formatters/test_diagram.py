@@ -280,7 +280,7 @@ class TestDiagramFormatter:
         assert root.tag == f"{NS}svg"
 
         node_groups = [g for g in root.iter(f"{NS}g") if g.get("class") == "node"]
-        assert len(node_groups) == graph.node_count
+        assert len(node_groups) == len(graph.nodes)
 
 
 class TestNodeTooltips:

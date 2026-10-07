@@ -238,7 +238,9 @@ class TestConnectedManifests:
         assert zones["kubernetes_config_map.default.web-config"] == "private"
         assert zones["kubernetes_secret.default.db-creds"] == "data"
 
-    def test_the_ingress_to_cluster_role_chain_has_five_edges(self) -> None:
+    def test_the_ingress_to_cluster_role_chain_has_five_linked_edges_and_two_reach_edges(
+        self,
+    ) -> None:
         graph = InfraGraph.from_parsed(
             detect_and_parse(FIXTURES_DIR / "ingress_to_cluster_admin.yml")
         )
@@ -273,6 +275,15 @@ class TestConnectedManifests:
                 "kubernetes_cluster_role.everything",
                 "iam_binding",
                 "grants",
+            ),
+            # Added by the reachability pass: the public ingress is reached from the internet,
+            # and the service account that is bound to a cluster role reaches that role
+            ("internet", "kubernetes_ingress.edge.portal", "network_flow", ""),
+            (
+                "kubernetes_service_account.edge.portal-admin",
+                "kubernetes_cluster_role.everything",
+                "iam_binding",
+                "bound_role",
             ),
         }
 

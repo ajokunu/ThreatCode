@@ -203,13 +203,21 @@ class TestPhaseOrder:
         assert report.to_dict()["attack_paths"][0]["id"] == "p1"
         assert received and len(received[0]) == len(report.threats)
 
-    def test_stub_phases_leave_the_report_unchanged(self, simple_s3_graph: InfraGraph) -> None:
+    def test_the_severity_and_paths_phases_fill_in_the_report(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
         report = HybridEngine().analyze(simple_s3_graph)
         data = report.to_dict()
-        assert report.attack_paths == []
+        # The one public bucket gives one path from the internet to it
+        assert [(p.entry, p.target) for p in report.attack_paths] == [
+            ("internet", "aws_s3_bucket.public_assets")
+        ]
+        assert [p["id"] for p in data["attack_paths"]] == [report.attack_paths[0].id]
+        # Severity is adjusted for some findings and left alone for the rest
+        adjusted = [t for t in report.threats if t.effective_severity is not None]
+        assert adjusted
+        assert any(t.effective_severity is None for t in report.threats)
         assert report.rule_errors == []
-        assert all(t.effective_severity is None for t in report.threats)
-        assert data["attack_paths"] == []
         assert "rule_errors" not in data
         assert "llm" not in data
 

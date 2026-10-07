@@ -71,24 +71,37 @@ def _nodes(graph: InfraGraph, threats: list[Threat] | None = None) -> dict[str, 
     return nodes
 
 
+def _real(graph: InfraGraph) -> list[str]:
+    """The node ids that get a handle: every node but the synthetic internet one."""
+    return [node_id for node_id, node in graph.nodes.items() if not node.is_synthetic]
+
+
 class TestAddressMap:
+    def test_the_synthetic_internet_node_gets_no_handle(self) -> None:
+        graph = canary_graph()
+        amap = AddressMap(graph)
+        synthetic = [nid for nid, node in graph.nodes.items() if node.is_synthetic]
+        assert synthetic
+        assert len(amap) == graph.node_count
+        assert all(nid not in amap and amap.resolve(nid) is None for nid in synthetic)
+
     def test_handles_keep_the_type_and_drop_the_name(self) -> None:
         graph = canary_graph()
         amap = AddressMap(graph)
-        handles = [amap.handle(node_id) for node_id in graph.nodes]
+        handles = [amap.handle(node_id) for node_id in _real(graph)]
         assert handles == ["aws_db_instance.n1", "aws_security_group.n2", "aws_s3_bucket.n3"]
         assert all(CANARY_NAME not in h for h in handles)
 
     def test_handles_are_unique_and_deterministic(self) -> None:
         graph = canary_graph(extra_resources=30)
-        first = [AddressMap(graph).handle(n) for n in graph.nodes]
-        second = [AddressMap(graph).handle(n) for n in graph.nodes]
+        first = [AddressMap(graph).handle(n) for n in _real(graph)]
+        second = [AddressMap(graph).handle(n) for n in _real(graph)]
         assert first == second
         assert len(set(first)) == len(first)
 
     def test_an_odd_resource_type_still_gives_a_clean_handle(self) -> None:
         graph = _graph(_res("Custom::My Thing<x>", "a"))
-        (handle,) = [AddressMap(graph).handle(n) for n in graph.nodes]
+        (handle,) = [AddressMap(graph).handle(n) for n in _real(graph)]
         assert re.fullmatch(r"[A-Za-z0-9_:\-]+\.n1", handle)
 
     def test_resolve_accepts_a_handle_or_a_real_address_and_nothing_else(self) -> None:
@@ -426,10 +439,15 @@ class TestSnapshots:
         graph = InfraGraph.from_parsed(detect_and_parse(FIXTURES / fixture))
         ctx = build_context(graph, [], Redactor())
         text = dump_context(ctx.data)
-        for node_id in graph.nodes:
+        # The synthetic internet node is left out: it has no address to hide, and its edges go
+        # with it (each node carries its exposure, each edge its zones)
+        real = {nid for nid, node in graph.nodes.items() if not node.is_synthetic}
+        for node_id in real:
             assert node_id not in text, node_id
-        assert set(ctx.data["nodes"]) == {AddressMap(graph).handle(n) for n in graph.nodes}
-        assert len(ctx.data["edges"]) == len(graph.edges)
+        assert set(ctx.data["nodes"]) == {AddressMap(graph).handle(n) for n in real}
+        assert len(ctx.data["edges"]) == sum(
+            1 for e in graph.edges if e.source in real and e.target in real
+        )
         assert ctx.stats.reduced is False
         assert ctx.stats.chars == len(text) < 50_000
 
