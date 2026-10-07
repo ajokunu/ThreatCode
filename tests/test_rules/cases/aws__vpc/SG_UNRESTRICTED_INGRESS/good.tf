@@ -1,16 +1,13 @@
 resource "aws_security_group" "bastion" {
-  name   = "bastion"
-  vpc_id = aws_vpc.main.id
+  name        = "bastion"
+  description = "SSH access"
+  vpc_id      = "vpc-0a1b2c3d4e5f67890"
 
   ingress {
-    description = "SSH from the VPN range"
+    description = "SSH from the corporate network"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["10.200.0.0/16"]
+    cidr_blocks = ["10.0.0.0/8"]
   }
-}
-
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
 }

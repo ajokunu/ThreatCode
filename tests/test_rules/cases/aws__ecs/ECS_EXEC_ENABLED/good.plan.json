@@ -1,0 +1,116 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ecs_service.app",
+          "mode": "managed",
+          "type": "aws_ecs_service",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "app",
+            "desired_count": 2,
+            "enable_execute_command": false,
+            "launch_type": "EC2",
+            "deployment_controller": [
+              {
+                "type": "ECS"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_ecs_service.app",
+      "mode": "managed",
+      "type": "aws_ecs_service",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "app",
+          "desired_count": 2,
+          "enable_execute_command": false,
+          "launch_type": "EC2",
+          "deployment_controller": [
+            {
+              "type": "ECS"
+            }
+          ]
+        },
+        "after_unknown": {
+          "iam_role": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true,
+          "cluster": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ecs_service.app",
+          "mode": "managed",
+          "type": "aws_ecs_service",
+          "name": "app",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "app"
+            },
+            "desired_count": {
+              "constant_value": 2
+            },
+            "enable_execute_command": {
+              "constant_value": false
+            },
+            "launch_type": {
+              "constant_value": "EC2"
+            },
+            "deployment_controller": [
+              {
+                "type": {
+                  "constant_value": "ECS"
+                }
+              }
+            ],
+            "cluster": {
+              "references": [
+                "aws_ecs_cluster.main.id",
+                "aws_ecs_cluster.main"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

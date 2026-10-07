@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Cdn:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: app
+            DomainName: app.example.com
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: app
+          ViewerProtocolPolicy: redirect-to-https
+          ForwardedValues:
+            QueryString: false
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: whitelist
+            Locations: [US, CA]
+        WebACLId: arn:aws:wafv2:us-east-1:111122223333:global/webacl/cdn/0a1b2c3d-0000-1111-2222-333344445555
+        Logging:
+          Bucket: cdn-logs.s3.amazonaws.com
+          Prefix: cdn

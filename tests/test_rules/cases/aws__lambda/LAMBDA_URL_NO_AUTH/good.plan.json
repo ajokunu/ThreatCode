@@ -1,0 +1,95 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lambda_function_url.worker",
+          "mode": "managed",
+          "type": "aws_lambda_function_url",
+          "name": "worker",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "authorization_type": "AWS_IAM",
+            "cors": [],
+            "invoke_mode": "BUFFERED"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_lambda_function_url.worker",
+      "mode": "managed",
+      "type": "aws_lambda_function_url",
+      "name": "worker",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "authorization_type": "AWS_IAM",
+          "cors": [],
+          "invoke_mode": "BUFFERED"
+        },
+        "after_unknown": {
+          "function_arn": true,
+          "function_url": true,
+          "url_id": true,
+          "id": true,
+          "arn": true,
+          "function_name": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lambda_function_url.worker",
+          "mode": "managed",
+          "type": "aws_lambda_function_url",
+          "name": "worker",
+          "provider_config_key": "aws",
+          "expressions": {
+            "authorization_type": {
+              "constant_value": "AWS_IAM"
+            },
+            "cors": {
+              "constant_value": []
+            },
+            "invoke_mode": {
+              "constant_value": "BUFFERED"
+            },
+            "function_name": {
+              "references": [
+                "aws_lambda_function.worker.function_name",
+                "aws_lambda_function.worker"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

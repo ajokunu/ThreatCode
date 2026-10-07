@@ -1,0 +1,193 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_eks_cluster.main",
+          "mode": "managed",
+          "type": "aws_eks_cluster",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "main",
+            "role_arn": "arn:aws:iam::111122223333:role/cluster",
+            "version": "1.27",
+            "vpc_config": [
+              {
+                "endpoint_private_access": true,
+                "endpoint_public_access": false,
+                "public_access_cidrs": [],
+                "security_group_ids": null,
+                "subnet_ids": [
+                  "subnet-0a1b2c3d",
+                  "subnet-4e5f6a7b"
+                ]
+              }
+            ],
+            "enabled_cluster_log_types": [
+              "api",
+              "audit",
+              "authenticator"
+            ],
+            "encryption_config": [
+              {
+                "provider": [
+                  {
+                    "key_arn": "arn:aws:kms:us-east-1:111122223333:key/0a1b2c3d-4e5f-6789-abcd-ef0123456789"
+                  }
+                ],
+                "resources": [
+                  "secrets"
+                ]
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_eks_cluster.main",
+      "mode": "managed",
+      "type": "aws_eks_cluster",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "main",
+          "role_arn": "arn:aws:iam::111122223333:role/cluster",
+          "version": "1.27",
+          "vpc_config": [
+            {
+              "endpoint_private_access": true,
+              "endpoint_public_access": false,
+              "public_access_cidrs": [],
+              "security_group_ids": null,
+              "subnet_ids": [
+                "subnet-0a1b2c3d",
+                "subnet-4e5f6a7b"
+              ]
+            }
+          ],
+          "enabled_cluster_log_types": [
+            "api",
+            "audit",
+            "authenticator"
+          ],
+          "encryption_config": [
+            {
+              "provider": [
+                {
+                  "key_arn": "arn:aws:kms:us-east-1:111122223333:key/0a1b2c3d-4e5f-6789-abcd-ef0123456789"
+                }
+              ],
+              "resources": [
+                "secrets"
+              ]
+            }
+          ]
+        },
+        "after_unknown": {
+          "endpoint": true,
+          "identity": true,
+          "platform_version": true,
+          "status": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_eks_cluster.main",
+          "mode": "managed",
+          "type": "aws_eks_cluster",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "main"
+            },
+            "role_arn": {
+              "constant_value": "arn:aws:iam::111122223333:role/cluster"
+            },
+            "version": {
+              "constant_value": "1.27"
+            },
+            "vpc_config": [
+              {
+                "endpoint_private_access": {
+                  "constant_value": true
+                },
+                "endpoint_public_access": {
+                  "constant_value": false
+                },
+                "public_access_cidrs": {
+                  "constant_value": []
+                },
+                "security_group_ids": {
+                  "constant_value": null
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d",
+                    "subnet-4e5f6a7b"
+                  ]
+                }
+              }
+            ],
+            "enabled_cluster_log_types": {
+              "constant_value": [
+                "api",
+                "audit",
+                "authenticator"
+              ]
+            },
+            "encryption_config": [
+              {
+                "provider": [
+                  {
+                    "key_arn": {
+                      "constant_value": "arn:aws:kms:us-east-1:111122223333:key/0a1b2c3d-4e5f-6789-abcd-ef0123456789"
+                    }
+                  }
+                ],
+                "resources": {
+                  "constant_value": [
+                    "secrets"
+                  ]
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

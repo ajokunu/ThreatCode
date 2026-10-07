@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Debug:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: debug-access
+      GroupDescription: temporary debugging access
+      VpcId: vpc-0a1b2c3d4e5f67890
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 10.20.0.0/16

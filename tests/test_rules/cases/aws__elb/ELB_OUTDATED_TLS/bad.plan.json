@@ -1,0 +1,196 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lb.front",
+          "mode": "managed",
+          "type": "aws_lb",
+          "name": "front",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "front",
+            "load_balancer_type": "application",
+            "internal": false
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_lb_listener.https",
+          "mode": "managed",
+          "type": "aws_lb_listener",
+          "name": "https",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "port": 443,
+            "protocol": "HTTPS",
+            "ssl_policy": "ELBSecurityPolicy-2016-08",
+            "certificate_arn": "arn:aws:acm:us-east-1:111122223333:certificate/0123-4567",
+            "default_action": [
+              {
+                "type": "forward",
+                "redirect": [],
+                "fixed_response": [],
+                "forward": [],
+                "order": 1
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_lb.front",
+      "mode": "managed",
+      "type": "aws_lb",
+      "name": "front",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "front",
+          "load_balancer_type": "application",
+          "internal": false
+        },
+        "after_unknown": {
+          "dns_name": true,
+          "vpc_id": true,
+          "zone_id": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_lb_listener.https",
+      "mode": "managed",
+      "type": "aws_lb_listener",
+      "name": "https",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "port": 443,
+          "protocol": "HTTPS",
+          "ssl_policy": "ELBSecurityPolicy-2016-08",
+          "certificate_arn": "arn:aws:acm:us-east-1:111122223333:certificate/0123-4567",
+          "default_action": [
+            {
+              "type": "forward",
+              "redirect": [],
+              "fixed_response": [],
+              "forward": [],
+              "order": 1
+            }
+          ]
+        },
+        "after_unknown": {
+          "tags_all": true,
+          "id": true,
+          "arn": true,
+          "load_balancer_arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lb.front",
+          "mode": "managed",
+          "type": "aws_lb",
+          "name": "front",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "front"
+            },
+            "load_balancer_type": {
+              "constant_value": "application"
+            },
+            "internal": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_lb_listener.https",
+          "mode": "managed",
+          "type": "aws_lb_listener",
+          "name": "https",
+          "provider_config_key": "aws",
+          "expressions": {
+            "port": {
+              "constant_value": 443
+            },
+            "protocol": {
+              "constant_value": "HTTPS"
+            },
+            "ssl_policy": {
+              "constant_value": "ELBSecurityPolicy-2016-08"
+            },
+            "certificate_arn": {
+              "constant_value": "arn:aws:acm:us-east-1:111122223333:certificate/0123-4567"
+            },
+            "default_action": [
+              {
+                "type": {
+                  "constant_value": "forward"
+                },
+                "redirect": {
+                  "constant_value": []
+                },
+                "fixed_response": {
+                  "constant_value": []
+                },
+                "forward": {
+                  "constant_value": []
+                },
+                "order": {
+                  "constant_value": 1
+                }
+              }
+            ],
+            "load_balancer_arn": {
+              "references": [
+                "aws_lb.front.arn",
+                "aws_lb.front"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

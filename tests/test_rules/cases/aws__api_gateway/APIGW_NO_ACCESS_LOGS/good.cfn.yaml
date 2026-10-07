@@ -1,0 +1,11 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Prod:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: prod
+      RestApiId: abc123def4
+      DeploymentId: dep123
+      AccessLogSetting:
+        DestinationArn: arn:aws:logs:us-east-1:111122223333:log-group:/apigw/api
+        Format: '{"requestId":"$context.requestId"}'

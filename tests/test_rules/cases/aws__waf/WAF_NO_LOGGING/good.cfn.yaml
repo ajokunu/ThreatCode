@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Edge:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: edge
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: edge
+        SampledRequestsEnabled: true
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 2
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+            SampledRequestsEnabled: true
+  EdgeLogging:
+    Type: AWS::WAFv2::LoggingConfiguration
+    Properties:
+      ResourceArn: !GetAtt Edge.Arn
+      LogDestinationConfigs:
+        - arn:aws:logs:us-east-1:111122223333:log-group:aws-waf-logs-edge

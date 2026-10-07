@@ -1,0 +1,8 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  App:
+    Type: AWS::ECS::Service
+    Properties:
+      DesiredCount: 2
+      LaunchType: EC2
+      EnableExecuteCommand: true
