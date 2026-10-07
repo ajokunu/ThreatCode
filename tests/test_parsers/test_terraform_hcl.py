@@ -19,7 +19,7 @@ import pytest
 from threatcode.diagnostics import Diagnostic
 from threatcode.exceptions import ParseError
 from threatcode.ir.graph import InfraGraph
-from threatcode.parsers import detect_and_parse, terraform_hcl
+from threatcode.parsers import _hcl_eval, detect_and_parse, terraform_hcl
 from threatcode.parsers._text import decode_input
 from threatcode.parsers.base import ParsedOutput, ParsedResource
 from threatcode.parsers.terraform_hcl import TerraformHCLParser
@@ -1441,6 +1441,7 @@ class TestSpans:
         text = '\n\n# comment\nresource "a" "b" {\n  x = 1\n}\n'
         (resource,) = parse_snippet(tmp_path, text).resources
         assert (resource.start_line, resource.end_line) == (4, 6)
+        assert resource.start_line is not None and resource.end_line is not None
         assert text.splitlines()[resource.start_line - 1].startswith("resource")
         assert text.splitlines()[resource.end_line - 1] == "}"
 
@@ -1979,7 +1980,7 @@ class TestNestingLimits:
     def test_a_stack_overflow_inside_a_local_is_contained(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        real = terraform_hcl.evaluate_value
+        real = _hcl_eval.evaluate_value
 
         def overflowing(raw: Any, *args: Any, **kwargs: Any) -> Any:
             if raw == "${overflow_marker}":
