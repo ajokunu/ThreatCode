@@ -315,3 +315,38 @@ class TestNewFixtures:
             text = str(threat.to_dict())
             assert "a8f3k2m9q7w1z5x0" not in text
             assert "ghp_16C7e42F292c6912E7710c838347Ae178B4a" not in text
+
+
+class TestMcpUsesTheSecretDetectors:
+    """MCP configs are judged by the provider patterns of the secret detectors."""
+
+    def test_only_provider_rules_judge_a_key_value_pair(self) -> None:
+        from threatcode.parsers._mcp_secrets import _provider_rules
+
+        kinds = {rule.kind for rule in _provider_rules()}
+        assert kinds == {"provider"}
+
+    def test_a_key_name_with_test_in_it_does_not_hide_a_real_token(self) -> None:
+        from threatcode.parsers._mcp_secrets import provider_pattern_hit
+
+        token = "gh" + "p_" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        assert provider_pattern_hit("TEST_GITHUB_TOKEN", token)
+
+    def test_the_documentation_example_key_is_still_not_a_secret(self) -> None:
+        from threatcode.parsers._mcp_secrets import provider_pattern_hit
+
+        assert not provider_pattern_hit("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+
+    def test_a_credential_url_is_judged_by_its_userinfo_not_by_a_provider_rule(self) -> None:
+        from threatcode.parsers._mcp_secrets import provider_pattern_hit
+
+        assert not provider_pattern_hit(
+            "DATABASE_URL", "postgres://admin:Zx9fQ2mLp7@db.internal/app"
+        )
+
+    def test_provider_patterns_are_matched_in_any_case_of_the_key(self) -> None:
+        from threatcode.parsers._mcp_secrets import provider_pattern_hit
+
+        secret = "wJalrXUtnFEMI" + "/K7MDENG/bPxRfiCYZAB1234CDE"
+        assert provider_pattern_hit("AWS_SECRET_ACCESS_KEY", secret)
+        assert provider_pattern_hit("aws_secret_access_key", secret)
