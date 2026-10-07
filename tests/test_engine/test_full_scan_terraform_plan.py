@@ -1,4 +1,4 @@
-"""End-to-end scan tests with multi-service fixtures."""
+"""End-to-end scan tests for Terraform plan JSON fixtures."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from threatcode.engine.hybrid import HybridEngine
+from threatcode.engine.rules.loader import load_all_rules
 from threatcode.ir.graph import InfraGraph
 from threatcode.models.threat import ThreatSource
-from threatcode.parsers import detect_and_parse
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -102,25 +102,37 @@ class TestSecureFixture:
         assert self.report.scanned_resources > 0
 
 
-class TestCloudFormationFixture:
-    def test_cfn_insecure_stack(self) -> None:
-        path = FIXTURES_DIR / "cloudformation" / "insecure_stack.yml"
-        parsed = detect_and_parse(str(path))
-        graph = InfraGraph.from_parsed(parsed)
-        engine = HybridEngine()
-        report = engine.analyze(graph, input_file=str(path))
+class TestFindingsStayOnTheirOwnType:
+    """A rule may only report resources of a type it declares."""
 
-        fired_ids = {t.rule_id for t in report.threats if t.rule_id}
-        # CFN parser converts resource types but not property names (PascalCase vs snake_case),
-        # so rules that check for absence of TF-named properties will fire (they don't exist).
-        # Rules checking property VALUES (e.g., acl, policy, publicly_accessible) won't match
-        # because CFN uses different property names (AccessControl, PolicyDocument, etc.).
-        expected_subset = {
-            "S3_NO_ENCRYPTION",  # server_side_encryption_configuration not_exists → True
-            "S3_NO_VERSIONING",  # versioning not_exists → True
-            "S3_NO_LOGGING",  # logging not_exists → True
-            "RDS_NO_BACKUP",  # backup_retention_period not_exists → True
-            "RDS_NO_ENCRYPTION",  # storage_encrypted not_exists → True
-        }
-        missing = expected_subset - fired_ids
-        assert not missing, f"CFN fixture should trigger these rules but didn't: {missing}"
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "multi_service_insecure.plan.json",
+            "multi_service_secure.plan.json",
+            "simple_s3.plan.json",
+        ],
+    )
+    def test_no_rule_finding_lands_on_a_sibling_type(self, name: str) -> None:
+        from threatcode.parsers.terraform_plan import TerraformPlanParser
+
+        path = FIXTURES_DIR / "terraform" / name
+        parsed = TerraformPlanParser().parse(json.loads(path.read_text(encoding="utf-8")))
+        report = HybridEngine().analyze(InfraGraph.from_parsed(parsed), input_file=str(path))
+        rules = {r.id: r for r in load_all_rules()}
+        offenders = [
+            (t.rule_id, t.resource_type)
+            for t in report.threats
+            if t.source == ThreatSource.RULE and not rules[t.rule_id].matches_type(t.resource_type)
+        ]
+        assert not offenders
+
+    def test_s3_findings_in_the_insecure_plan_sit_on_buckets_only(self) -> None:
+        from threatcode.parsers.terraform_plan import TerraformPlanParser
+
+        path = FIXTURES_DIR / "terraform" / "multi_service_insecure.plan.json"
+        parsed = TerraformPlanParser().parse(json.loads(path.read_text(encoding="utf-8")))
+        report = HybridEngine().analyze(InfraGraph.from_parsed(parsed), input_file=str(path))
+        s3 = [t for t in report.threats if t.rule_id and t.rule_id.startswith("S3_")]
+        assert s3
+        assert {t.resource_type for t in s3} == {"aws_s3_bucket"}
