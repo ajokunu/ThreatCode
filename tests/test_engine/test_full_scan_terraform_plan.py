@@ -332,14 +332,18 @@ class TestProviderConformancePlans:
     def test_the_open_rdp_rule_fires_on_the_azure_rule_and_nothing_hides_it(self) -> None:
         result = scan_real_shape("terraform/plan/azure_network.plan.json")
         assert result.fired("AZURE_NSG_RDP_OPEN", "azurerm_network_security_rule.rdp")
-        assert result.fired("AZURE_NSG_ALLOW_ALL_INBOUND", "azurerm_network_security_rule.rdp")
+        # an RDP-only rule is not an allow-all rule
+        assert not result.fired("AZURE_NSG_ALLOW_ALL_INBOUND", "azurerm_network_security_rule.rdp")
         assert result.fired("AZURE_VNET_NO_DDOS", "azurerm_virtual_network.main")
 
-    def test_inline_security_rules_are_a_list_of_objects_no_rule_reads_yet(self) -> None:
+    def test_inline_security_rules_are_a_list_of_objects_the_network_rules_read(self) -> None:
         result = scan_real_shape("terraform/plan/azure_network.plan.json")
         node = result.graph.nodes["azurerm_network_security_group.app"]
         assert isinstance(node.properties["security_rule"], list)
-        assert result.rule_ids_for("azurerm_network_security_group.app") == set()
+        assert result.rule_ids_for("azurerm_network_security_group.app") == {
+            "AZURE_NSG_SSH_OPEN",
+            "AZURE_NSG_WEB_PORT_OPEN",
+        }
 
     def test_the_open_firewall_is_reported_and_the_internal_one_is_not(self) -> None:
         result = scan_real_shape("terraform/plan/gcp_network.plan.json")

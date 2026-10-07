@@ -19,10 +19,9 @@ from threatcode.engine.rules.loader import (
     deprecated_rule_ids,
     load_builtin_rules,
 )
-from threatcode.ir.enrich import DERIVED, apply_defaults, enrich
+from threatcode.ir.enrich import DERIVED, apply_defaults
 from threatcode.ir.enrichment import azure as azure_enrichment
 from threatcode.ir.graph import InfraGraph
-from threatcode.ir.references import ReferenceIndex
 from threatcode.parsers import detect_and_parse
 from threatcode.parsers.terraform_plan import TerraformPlanParser
 from threatcode.values import Unknown
@@ -44,30 +43,12 @@ def _findings(graph: InfraGraph) -> dict[str, set[str]]:
     return found
 
 
-def _with_defaults(graph: InfraGraph, format_type: str) -> InfraGraph:
-    """Enrich the graph again as a graph that records its parser format would.
-
-    The graph builder does not record node formats yet, so provider defaults stay inert in a
-    plain scan; this is the one place the tests switch them on.
-    """
-    graph.node_formats = {  # type: ignore[attr-defined]
-        node_id: format_type for node_id in graph.nodes
-    }
-    for node in graph.nodes.values():
-        node.properties.pop(DERIVED, None)
-    enrich(graph, ReferenceIndex(graph.nodes))
-    return graph
-
-
-def _scan_hcl(tmp_path: Path, source: str, *, defaults: bool = False) -> dict[str, set[str]]:
+def _scan_hcl(tmp_path: Path, source: str) -> dict[str, set[str]]:
     """Rule ids per resource address for a Terraform HCL snippet."""
     path = tmp_path / "main.tf"
     path.write_text(textwrap.dedent(source), encoding="utf-8")
     parsed = detect_and_parse(path)
-    graph = InfraGraph.from_parsed(parsed)
-    if defaults:
-        graph = _with_defaults(graph, parsed.format_type)
-    return _findings(graph)
+    return _findings(InfraGraph.from_parsed(parsed))
 
 
 def _plan_document(*resources: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
@@ -96,12 +77,11 @@ def _scan_plan(*resources: tuple[str, str, dict[str, Any]]) -> dict[str, set[str
     return _findings(InfraGraph.from_parsed(TerraformPlanParser().parse(plan)))
 
 
-def _graph_for(tmp_path: Path, source: str, *, defaults: bool = False) -> InfraGraph:
+def _graph_for(tmp_path: Path, source: str) -> InfraGraph:
     path = tmp_path / "main.tf"
     path.write_text(textwrap.dedent(source), encoding="utf-8")
     parsed = detect_and_parse(path)
-    graph = InfraGraph.from_parsed(parsed)
-    return _with_defaults(graph, parsed.format_type) if defaults else graph
+    return InfraGraph.from_parsed(parsed)
 
 
 def _derived(graph: InfraGraph, node_id: str) -> dict[str, Any]:
@@ -667,7 +647,7 @@ class TestStorageAttributeNames:
         assert "AZURE_STORAGE_PUBLIC_ACCESS" in found["azurerm_storage_account.v3"]
         assert "AZURE_STORAGE_PUBLIC_ACCESS" not in found["azurerm_storage_account.closed"]
 
-    def test_an_omitted_public_access_attribute_fires_once_defaults_apply(
+    def test_an_omitted_public_access_attribute_fires_from_hcl_but_not_from_a_plan(
         self, tmp_path: Path
     ) -> None:
         source = """
@@ -675,12 +655,29 @@ class TestStorageAttributeNames:
               name = "bare"
             }
         """
-        assert (
-            "AZURE_STORAGE_PUBLIC_ACCESS"
-            not in _scan_hcl(tmp_path, source)["azurerm_storage_account.bare"]
-        )
-        found = _scan_hcl(tmp_path, source, defaults=True)
+        found = _scan_hcl(tmp_path, source)
         assert "AZURE_STORAGE_PUBLIC_ACCESS" in found["azurerm_storage_account.bare"]
+        planned = _scan_plan(("azurerm_storage_account", "bare", {}))
+        assert "AZURE_STORAGE_PUBLIC_ACCESS" not in planned["azurerm_storage_account.bare"]
+
+    def test_the_legacy_name_set_to_false_is_not_overridden_by_the_default(
+        self, tmp_path: Path
+    ) -> None:
+        found = _scan_hcl(
+            tmp_path,
+            """
+            resource "azurerm_storage_account" "legacy_closed" {
+              name                     = "legacyclosed"
+              allow_blob_public_access = false
+            }
+            resource "azurerm_storage_account" "legacy_open" {
+              name                     = "legacyopen"
+              allow_blob_public_access = true
+            }
+            """,
+        )
+        assert "AZURE_STORAGE_PUBLIC_ACCESS" not in found["azurerm_storage_account.legacy_closed"]
+        assert "AZURE_STORAGE_PUBLIC_ACCESS" in found["azurerm_storage_account.legacy_open"]
 
     def test_public_containers_are_flagged_and_private_ones_are_not(self, tmp_path: Path) -> None:
         found = _scan_hcl(
@@ -831,14 +828,13 @@ class TestAppService:
             assert "APPSVC_HTTP_ONLY" in found[address], address
         assert "APPSVC_HTTP_ONLY" not in found["azurerm_linux_web_app.safe"]
 
-    def test_an_omitted_https_only_fires_once_defaults_apply(self, tmp_path: Path) -> None:
+    def test_an_omitted_https_only_fires_from_hcl(self, tmp_path: Path) -> None:
         source = """
             resource "azurerm_linux_web_app" "bare" {
               name = "bare"
             }
         """
-        assert "APPSVC_HTTP_ONLY" not in _scan_hcl(tmp_path, source)["azurerm_linux_web_app.bare"]
-        found = _scan_hcl(tmp_path, source, defaults=True)
+        found = _scan_hcl(tmp_path, source)
         assert "APPSVC_HTTP_ONLY" in found["azurerm_linux_web_app.bare"]
 
     def test_authentication_is_read_in_both_block_shapes(self, tmp_path: Path) -> None:
@@ -1216,7 +1212,8 @@ class TestSqlServerCompanions:
             tmp_path,
             """
             resource "azurerm_mssql_server" "covered" {
-              name = "covered"
+              name                          = "covered"
+              public_network_access_enabled = false
             }
             resource "azurerm_mssql_server" "bare" {
               name = "bare"
@@ -1539,11 +1536,10 @@ class TestDefaults:
             ),
         ],
     )
-    def test_an_omitted_attribute_fires_the_rule_only_once_defaults_apply(
+    def test_an_omitted_attribute_fires_the_rule_from_hcl(
         self, tmp_path: Path, source: str, address: str, rule_id: str
     ) -> None:
-        assert rule_id not in _scan_hcl(tmp_path, source)[address]
-        assert rule_id in _scan_hcl(tmp_path, source, defaults=True)[address]
+        assert rule_id in _scan_hcl(tmp_path, source)[address]
 
     def test_a_plan_is_never_defaulted_and_says_what_it_says(self) -> None:
         # A plan materialises the values, so a private cluster stays private
@@ -1570,7 +1566,6 @@ class TestDefaults:
               public_network_access_enabled = false
             }
             """,
-            defaults=True,
         )
         assert "AKS_NO_PRIVATE_CLUSTER" not in found["azurerm_kubernetes_cluster.private"]
         assert (
@@ -1610,7 +1605,6 @@ class TestDefaults:
               }
             }
             """,
-            defaults=True,
         )
         assert "KEYVAULT_PUBLIC_ACCESS" not in found["azurerm_key_vault.fenced"]
         assert "KEYVAULT_NO_NETWORK_ACLS" not in found["azurerm_key_vault.fenced"]
@@ -1721,7 +1715,7 @@ class TestHclPlanParity:
         self, tmp_path: Path, resource_type: str, hcl: str, plan_values: dict[str, Any], why: str
     ) -> None:
         address = f"{resource_type}.x"
-        from_hcl = _scan_hcl(tmp_path, hcl, defaults=True)[address]
+        from_hcl = _scan_hcl(tmp_path, hcl)[address]
         from_plan = _scan_plan((resource_type, "x", plan_values))[address]
         assert from_hcl == from_plan, why
         assert from_plan, f"{why}: the plan trips no rule, so parity proves nothing"
@@ -1835,21 +1829,23 @@ class TestRealisticInputs:
         found = self._scan("02_azure_kubernetes_cluster.tf")
         assert "ACR_ADMIN_ENABLED" in found["azurerm_container_registry.platform"]
 
-    def test_the_cluster_input_reports_the_public_api_server_once_defaults_apply(self) -> None:
-        path = FIXTURES / "realistic" / "02_azure_kubernetes_cluster.tf"
-        parsed = detect_and_parse(path)
-        graph = _with_defaults(InfraGraph.from_parsed(parsed), parsed.format_type)
-        found = _findings(graph)
+    def test_the_cluster_input_reports_the_public_api_server(self) -> None:
+        found = self._scan("02_azure_kubernetes_cluster.tf")
         assert "AKS_NO_PRIVATE_CLUSTER" in found["azurerm_kubernetes_cluster.platform"]
         assert "ACR_PUBLIC_NETWORK_ACCESS" in found["azurerm_container_registry.platform"]
         assert not found.get("azurerm_kubernetes_cluster_node_pool.workloads")
 
-    def test_the_web_app_input_keeps_its_hardened_resources_quiet(self) -> None:
+    def test_the_web_app_input_reports_only_what_its_resources_leave_open(self) -> None:
         found = self._scan("07_azure_webapp_java.tf")
         assert not found.get("azurerm_linux_web_app.main")
         assert found["azurerm_key_vault.main"] == {"KEYVAULT_NO_DIAGNOSTICS"}
-        assert not found.get("azurerm_redis_cache.main")
-        assert found["azurerm_storage_account.main"] == {"AZURE_STORAGE_NO_HTTPS"}
+        # the cache never sets public_network_access_enabled and the provider default is true
+        assert found["azurerm_redis_cache.main"] == {"REDIS_PUBLIC_NETWORK_ACCESS"}
+        # the account never sets allow_nested_items_to_be_public and the provider default is true
+        assert found["azurerm_storage_account.main"] == {
+            "AZURE_STORAGE_NO_HTTPS",
+            "AZURE_STORAGE_PUBLIC_ACCESS",
+        }
 
     def test_the_planted_https_exception_is_still_found(self) -> None:
         found = self._scan("07_azure_webapp_java.tf")

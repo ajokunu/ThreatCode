@@ -51,8 +51,14 @@ rules:
       any_of:
         - allow_blob_public_access:
             equals: true
-        - allow_nested_items_to_be_public:
-            equals: true
+        # The nested attribute is filled with its default (true) when absent, so an account that
+        # still uses the legacy name and sets it to false must not fire on that default.
+        - all_of:
+            - allow_nested_items_to_be_public:
+                equals: true
+            - not:
+                allow_blob_public_access:
+                  equals: false
     mitigation: >
       Set allow_nested_items_to_be_public (allow_blob_public_access before azurerm 3.0) to false
       and share data with private endpoints or short-lived shared access signatures.
