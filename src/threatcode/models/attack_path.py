@@ -67,13 +67,17 @@ class AttackPath:
     rationale: str = ""
     techniques: list[str] = field(default_factory=list)
     tactics: list[str] = field(default_factory=list)
+    # How many other routes through further instances of the same counted resource (`app[1]`
+    # next to `app[0]`) this path stands for; they are not listed, because they differ only by
+    # the instance number
+    alternatives: int = 0
 
     @property
     def node_ids(self) -> list[str]:
         return [hop.node_id for hop in self.hops]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "id": self.id,
             "entry": self.entry,
             "target": self.target,
@@ -84,3 +88,8 @@ class AttackPath:
             "techniques": list(self.techniques),
             "tactics": list(self.tactics),
         }
+        # Emitted only when it differs from its default, so a path that stands for no other
+        # route renders as it always did
+        if self.alternatives:
+            data["alternatives"] = self.alternatives
+        return data

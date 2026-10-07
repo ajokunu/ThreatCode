@@ -133,6 +133,17 @@ API_TYPES = frozenset({"aws_api_gateway_rest_api", "aws_apigatewayv2_api"})
 INTEGRATION_TYPES = frozenset(
     {"aws_api_gateway_integration", "aws_apigatewayv2_integration", "aws_lambda_permission"}
 )
+ORIGIN_TYPES = (
+    LB_TYPES | API_TYPES | frozenset({"aws_s3_bucket", "aws_lambda_function_url", "aws_instance"})
+)
+_GROUP_ARN_PATHS = (
+    "default_action.target_group_arn",
+    "default_action.forward.target_group.arn",
+    "action.target_group_arn",
+    "action.forward.target_group.arn",
+)
+_ATTACHMENT_GROUP_PATHS = ("target_group_arn", "lb_target_group_arn", "alb_target_group_arn")
+_ATTACHMENT_TARGET_PATHS = ("target_id", "instance", "autoscaling_group_name")
 # Resources that answer to anyone once exposure says so, with no security group in front
 PUBLIC_ENDPOINT_PORTS: dict[str, list[str]] = {
     "aws_s3_bucket": ["443"],
@@ -249,6 +260,27 @@ def _walk_security_group_values(value: Any, depth: int = 0) -> Iterator[Any]:
 # ---------------------------------------------------------------------------
 # The pass
 # ---------------------------------------------------------------------------
+
+
+class _BalancerModel:
+    """What the listeners and target groups of the input connect."""
+
+    def __init__(self) -> None:
+        # load balancer id -> its listeners and listener rules
+        self.listeners: dict[str, list[InfraNode]] = {}
+        # listener or rule id -> the target groups it forwards to
+        self.groups: dict[str, list[InfraNode]] = {}
+        # target group id -> what it sends traffic to
+        self.targets: dict[str, list[InfraNode]] = {}
+
+    def add_targets(self, group_id: str, targets: Iterable[InfraNode]) -> None:
+        known = self.targets.setdefault(group_id, [])
+        present = {n.id for n in known}
+        for target in targets:
+            if target.id not in present:
+                present.add(target.id)
+                known.append(target)
+        known.sort(key=lambda n: n.id)
 
 
 class _Budget:
@@ -530,9 +562,31 @@ class _Reach:
 
     # -- load balancers -----------------------------------------------------
 
+    def linked(
+        self,
+        node: InfraNode,
+        paths: Sequence[str],
+        types: frozenset[str],
+    ) -> list[InfraNode]:
+        """The nodes of some types a node names: in the properties at `paths`, or by an edge.
+
+        The properties are read first because an input can name a node without the parser
+        having made it a reference (a `${...}` string in a nested block); the edges the parser
+        and the builder found cover the rest.
+        """
+        found: dict[str, InfraNode] = {}
+        for path in paths:
+            for raw in _values(node.properties, path):
+                for other in self.resolve(node, raw, types.__contains__):
+                    found.setdefault(other.id, other)
+        for other in self.successors(node, types):
+            found.setdefault(other.id, other)
+        return [found[k] for k in sorted(found)]
+
     def _load_balancers(self) -> None:
+        model = self._balancer_model()
         for lb in self.of_types(LB_TYPES):
-            listeners = self._listeners(lb)
+            listeners = model.listeners.get(lb.id, [])
             if (
                 lb.exposure == "internet"
                 and lb.resource_type != "aws_elb"
@@ -550,7 +604,7 @@ class _Reach:
                     definite=bool(ports),
                 )
             budget = self.budget(f"{lb.id} targets")
-            for target, via, protocol, port in self._targets(lb, listeners):
+            for target, via, protocol, port in self._targets(lb, listeners, model):
                 self.add(
                     budget,
                     lb.id,
@@ -563,25 +617,48 @@ class _Reach:
                     definite=bool(port),
                 )
 
-    def _listeners(self, lb: InfraNode) -> list[InfraNode]:
-        direct = self.predecessors(lb, LISTENER_TYPES)
-        rules: list[InfraNode] = []
-        for listener in direct:
-            rules.extend(self.predecessors(listener, LISTENER_RULE_TYPES))
-        found = {n.id: n for n in [*direct, *rules]}
-        return [found[k] for k in sorted(found)]
+    def _balancer_model(self) -> _BalancerModel:
+        """Which listeners belong to which load balancer, and what each target group reaches."""
+        model = _BalancerModel()
+        for listener in self.of_types(LISTENER_TYPES):
+            for lb in self.linked(listener, ["load_balancer_arn"], LB_TYPES):
+                model.listeners.setdefault(lb.id, []).append(listener)
+        for rule in self.of_types(LISTENER_RULE_TYPES):
+            for listener in self.linked(rule, ["listener_arn"], LISTENER_TYPES):
+                for lb_id, listeners in list(model.listeners.items()):
+                    if any(known.id == listener.id for known in listeners):
+                        model.listeners[lb_id].append(rule)
+        for listener in self.of_types(LISTENER_TYPES | LISTENER_RULE_TYPES):
+            model.groups[listener.id] = self.linked(listener, _GROUP_ARN_PATHS, TARGET_GROUP_TYPES)
+        for attachment in self.of_types(ATTACHMENT_TYPES):
+            groups = self.linked(attachment, _ATTACHMENT_GROUP_PATHS, TARGET_GROUP_TYPES)
+            targets = self.linked(attachment, _ATTACHMENT_TARGET_PATHS, TARGET_TYPES)
+            for group in groups:
+                model.add_targets(group.id, targets)
+        for owner in self.of_types({"aws_autoscaling_group", "aws_ecs_service"}):
+            paths = ["target_group_arns", "load_balancer.target_group_arn"]
+            for group in self.linked(owner, paths, TARGET_GROUP_TYPES):
+                model.add_targets(group.id, [owner])
+        for group in self.of_types(TARGET_GROUP_TYPES):
+            inline = [
+                entry.get("id") if isinstance(entry, Mapping) else entry
+                for entry in _values(group.properties, "targets")
+            ]
+            for raw in inline:
+                model.add_targets(group.id, self.resolve(group, raw, TARGET_TYPES.__contains__))
+        return model
 
     def _targets(
-        self, lb: InfraNode, listeners: Sequence[InfraNode]
+        self, lb: InfraNode, listeners: Sequence[InfraNode], model: _BalancerModel
     ) -> list[tuple[InfraNode, list[str], str, str]]:
         """(target, via, protocol, port) for everything a load balancer sends traffic to."""
         found: list[tuple[InfraNode, list[str], str, str]] = []
         seen: set[tuple[str, str]] = set()
         for listener in listeners:
-            for group in self.successors(listener, TARGET_GROUP_TYPES):
+            for group in model.groups.get(listener.id, []):
                 protocol = _lb_protocol(group.properties.get("protocol"))
                 port = _port_text(group.properties.get("port")) or ""
-                for target in self._group_targets(group):
+                for target in model.targets.get(group.id, []):
                     key = (target.id, listener.id)
                     if key not in seen:
                         seen.add(key)
@@ -592,23 +669,6 @@ class _Reach:
                 for port in ports or [""]:
                     found.append((target, [], "tcp", port))
         return found
-
-    def _group_targets(self, group: InfraNode) -> list[InfraNode]:
-        found: dict[str, InfraNode] = {}
-        for node_id in self.graph.predecessors(group.id):
-            other = self.node(node_id)
-            if other is None:
-                continue
-            if other.resource_type in ATTACHMENT_TYPES:
-                for target in self.successors(other, TARGET_TYPES):
-                    found.setdefault(target.id, target)
-            elif other.resource_type in ("aws_autoscaling_group", "aws_ecs_service"):
-                found.setdefault(other.id, other)
-        for entry in _values(group.properties, "targets"):
-            raw = entry.get("id") if isinstance(entry, Mapping) else entry
-            for target in self.resolve(group, raw, _is_target):
-                found.setdefault(target.id, target)
-        return [found[k] for k in sorted(found)]
 
     # -- CDN, API and the other managed endpoints ----------------------------
 
@@ -631,13 +691,12 @@ class _Reach:
 
     def _origins(self, dist: InfraNode) -> list[InfraNode]:
         found: dict[str, InfraNode] = {}
-        matcher = _is_origin
         for key in ("origin", "origins", "Origins"):
             for entry in _values(dist.properties, key):
                 if not isinstance(entry, Mapping):
                     continue
                 domain = entry.get("domain_name", entry.get("DomainName"))
-                for origin in self.resolve(dist, domain, matcher):
+                for origin in self.resolve(dist, domain, ORIGIN_TYPES.__contains__):
                     found.setdefault(origin.id, origin)
                 for name in _text_list(domain):
                     bucket = self._bucket_for_domain(name)
@@ -669,8 +728,9 @@ class _Reach:
                 )
         budget = self.budget("API Gateway integrations")
         for integration in self.of_types(INTEGRATION_TYPES):
-            apis = self.successors(integration, API_TYPES)
-            targets = self.successors(integration, frozenset({"aws_lambda_function", *LB_TYPES}))
+            apis = self.linked(integration, ["rest_api_id", "api_id", "source_arn"], API_TYPES)
+            invoked = frozenset({"aws_lambda_function", *LB_TYPES})
+            targets = self.linked(integration, ["uri", "integration_uri", "function_name"], invoked)
             for api in apis:
                 for target in targets:
                     self.add(
@@ -689,7 +749,7 @@ class _Reach:
         for url in self.of_types({"aws_lambda_function_url"}):
             if url.exposure == "internet":
                 self.from_internet(budget, url, kind=PUBLIC_ENDPOINT, protocol="tcp", ports=["443"])
-            for function in self.successors(url, frozenset({"aws_lambda_function"})):
+            for function in self.linked(url, ["function_name"], frozenset({"aws_lambda_function"})):
                 self.add(
                     budget,
                     url.id,
@@ -714,12 +774,22 @@ class _Reach:
                     )
 
     def _runs(self) -> None:
+        """A group launches the instances of its template, a service runs its task definition."""
         budget = self.budget("launch templates and task definitions")
         for group in self.of_types({"aws_autoscaling_group"}):
-            for template in self.successors(group, LAUNCH_TEMPLATE_TYPES):
+            paths = [
+                "launch_template.id",
+                "launch_template.name",
+                "launch_configuration",
+                "mixed_instances_policy.launch_template.launch_template_specification.launch_template_id",
+            ]
+            for template in self.linked(group, paths, LAUNCH_TEMPLATE_TYPES):
                 self._runs_edge(budget, group, template)
         for service in self.of_types({"aws_ecs_service"}):
-            for task in self.successors(service, frozenset({"aws_ecs_task_definition"})):
+            tasks = self.linked(
+                service, ["task_definition"], frozenset({"aws_ecs_task_definition"})
+            )
+            for task in tasks:
                 self._runs_edge(budget, service, task)
 
     def _runs_edge(self, budget: _Budget, source: InfraNode, target: InfraNode) -> None:
@@ -757,18 +827,6 @@ class _Reach:
 
 def _is_group(resource_type: str) -> bool:
     return resource_type in SG_TYPES
-
-
-def _is_target(resource_type: str) -> bool:
-    return resource_type in TARGET_TYPES
-
-
-def _is_origin(resource_type: str) -> bool:
-    return (
-        resource_type in LB_TYPES
-        or resource_type in API_TYPES
-        or resource_type in ("aws_s3_bucket", "aws_lambda_function_url", "aws_instance")
-    )
 
 
 def _world_open(rule: Mapping[str, Any]) -> bool:

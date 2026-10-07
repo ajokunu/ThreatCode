@@ -13,6 +13,7 @@ from threatcode.engine import boundaries
 from threatcode.engine.boundaries import _boundary_severity
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.engine.mitre import BOUNDARY_TECHNIQUES, TECHNIQUE_DB
+from threatcode.ir.edges import AGENT, FLOW_EDGE_TYPES, InfraEdge
 from threatcode.ir.graph import InfraGraph
 from threatcode.models.threat import Severity, Threat, ThreatSource, hash_id
 from threatcode.parsers import detect_and_parse
@@ -60,6 +61,20 @@ def _tiers(*edges: ParsedEdge) -> InfraGraph:
 def _only(graph: InfraGraph) -> Threat:
     (threat,) = boundaries.analyze(graph)
     return threat
+
+
+def _from(graph: InfraGraph, source: str) -> list[Threat]:
+    """The boundary threats of the flows that start at one node."""
+    return [t for t in boundaries.analyze(graph) if t.metadata["source_address"] == source]
+
+
+def _flow_crossings(graph: InfraGraph) -> list[InfraEdge]:
+    """The edges that carry traffic across a boundary and that the phase reports."""
+    return [
+        e
+        for e in graph.get_boundary_crossing_edges()
+        if e.edge_type in FLOW_EDGE_TYPES and e.source_kind != AGENT
+    ]
 
 
 class TestOnlyFlowsCross:
@@ -128,8 +143,18 @@ class TestOnlyFlowsCross:
         graph = InfraGraph.from_parsed(
             detect_and_parse(REALISTIC / "01_aws_ecommerce_platform.json")
         )
-        assert graph.get_boundary_crossing_edges()
-        assert boundaries.analyze(graph) == []
+        crossings = {
+            (e.source, e.target, e.edge_type)
+            for e in graph.get_boundary_crossing_edges()
+            if e.edge_type not in FLOW_EDGE_TYPES
+        }
+        assert crossings, "the fixture has wiring that crosses zones"
+        threats = boundaries.analyze(graph)
+        assert threats
+        pairs = {(t.metadata["source_address"], t.metadata["target_address"]) for t in threats}
+        assert pairs == {(e.source, e.target) for e in _flow_crossings(graph)}
+        # No structural pair is a threat, even though each crosses a zone
+        assert pairs.isdisjoint({(source, target) for source, target, _ in crossings})
 
 
 class TestEndpointsThatCannotExchangeTraffic:
@@ -472,7 +497,8 @@ class TestSeverity:
         lb = graph.get_node("aws_lb.front")
         assert lb is not None and lb.exposure == "internet"
         # dmz -> private is MEDIUM, but a source that is internet-exposed is an internet pair
-        assert _only(graph).severity == Severity.HIGH
+        (threat,) = _from(graph, "aws_lb.front")
+        assert threat.severity == Severity.HIGH
 
     def test_the_same_pair_without_exposure_stays_medium(self) -> None:
         resources = [
@@ -487,7 +513,8 @@ class TestSeverity:
                 edges=[ParsedEdge("aws_lb.front", "aws_instance.app", "network_flow", {}, False)],
             )
         )
-        assert _only(graph).severity == Severity.MEDIUM
+        (threat,) = _from(graph, "aws_lb.front")
+        assert threat.severity == Severity.MEDIUM
 
 
 class TestMitigation:
@@ -507,11 +534,16 @@ class TestEngineIntegration:
         found = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
         assert len(found) == 1
 
-    def test_a_plan_with_only_wiring_has_no_boundary_threat(
+    def test_a_plan_with_only_wiring_has_no_boundary_threat_but_the_public_bucket(
         self, simple_s3_graph: InfraGraph
     ) -> None:
         report = HybridEngine().analyze(simple_s3_graph)
-        assert [t for t in report.threats if t.source == ThreatSource.BOUNDARY] == []
+        found = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
+        # The wiring (roles, policies, attachments) crosses zones and says nothing about traffic.
+        # The one flow is the one the reachability pass found: the internet reading a public bucket
+        assert [t.metadata["flow"]["source"] for t in found] == ["internet"]
+        assert [t.target_address for t in found] == [""]
+        assert [t.resource_address for t in found] == ["aws_s3_bucket.public_assets"]
 
     def test_what_the_engine_reports_is_what_the_phase_produces(self) -> None:
         graph = _tiers(_edge(WEB, DB), _edge(WEB, APP, "network_flow"))
@@ -571,7 +603,15 @@ class TestKubernetesAndMcpFlowsRemain:
 
     def test_an_ingress_to_a_service_in_another_zone_is_a_flow_threat(self) -> None:
         threats = self._threats("tests/fixtures/real_shapes/kubernetes/shop_stack.yaml")
-        (threat,) = threats
+        pairs = {(t.metadata["source_address"], t.metadata["target_address"]): t for t in threats}
+        threat = pairs[("kubernetes_ingress.shop.web", "kubernetes_service.shop.web")]
+        # The other two flows are the internet entering the Ingress and the workload reading its
+        # Secret; the Service selecting the workload stays inside the private zone
+        assert set(pairs) == {
+            ("kubernetes_ingress.shop.web", "kubernetes_service.shop.web"),
+            ("internet", "kubernetes_ingress.shop.web"),
+            ("kubernetes_deployment.shop.web", "kubernetes_secret.shop.web-db"),
+        }
         assert threat.resource_address == "kubernetes_ingress.shop.web"
         assert threat.target_address == "kubernetes_service.shop.web"
         assert threat.metadata["flow"]["relations"] == ["backend"]
