@@ -1,0 +1,18 @@
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN apt-get update
+      RUN apt-get install -y --no-install-recommends curl
+    good: |
+      FROM debian:12-slim
+      RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+          --mount=type=cache,target=/var/cache/apt,sharing=locked \
+          apt-get update && apt-get install -y --no-install-recommends curl
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN apt-get install -y curl && echo done
+    good: |
+      FROM debian:12-slim
+      RUN apt-get install -y curl && apt-get clean

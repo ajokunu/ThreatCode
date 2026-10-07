@@ -151,9 +151,9 @@ LEGACY_ZONES: dict[str, str] = {
     "google_container_cluster": "private",
     "google_project_iam_member": "management",
     "google_service_account_key": "management",
-    "dockerfile_expose": "dmz",
+    "dockerfile_expose": "private",
     "dockerfile_image": "private",
-    "dockerfile_user": "management",
+    "dockerfile_user": "private",
     "kubernetes_ingress": "dmz",
     "kubernetes_service": "dmz",
     "kubernetes_deployment": "private",
@@ -276,6 +276,17 @@ class TestCatalogParity:
                 zoned += 1
                 assert infer_trust_zone(rtype, props).value == _legacy_zone(rtype, props), rtype
         assert categorized > 100 and zoned > 100
+
+    def test_dockerfile_stage_is_a_private_container(self) -> None:
+        # a type the legacy tables never held, added by the Dockerfile parser rework
+        assert categorize_resource("dockerfile_stage") == NodeCategory.CONTAINER
+        assert infer_trust_zone("dockerfile_stage", {}) == TrustZone.PRIVATE
+
+    def test_dockerfile_expose_and_user_are_private_not_dmz_or_management(self) -> None:
+        # deliberate change from the legacy tables (WP-2-5): an EXPOSE or USER line is image
+        # metadata, not an internet-facing or management resource
+        assert infer_trust_zone("dockerfile_expose", {}) == TrustZone.PRIVATE
+        assert infer_trust_zone("dockerfile_user", {}) == TrustZone.PRIVATE
 
     def test_unknown_type_falls_back_as_before(self) -> None:
         assert categorize_resource("nothing_like_it") == NodeCategory.UNKNOWN

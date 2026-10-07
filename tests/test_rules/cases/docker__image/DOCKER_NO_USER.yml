@@ -1,0 +1,40 @@
+# The image that runs is the final stage. A USER in a build stage must not satisfy the rule,
+# and a stage that starts FROM another stage inherits that stage's USER.
+cases:
+  - format: docker
+    bad: |
+      FROM golang:1.22 AS build
+      RUN useradd --uid 10001 builder
+      USER builder
+      RUN go build -o /out/app ./cmd/app
+
+      FROM debian:12-slim
+      COPY --from=build /out/app /app
+    good: |
+      FROM golang:1.22 AS build
+      RUN go build -o /out/app ./cmd/app
+
+      FROM debian:12-slim
+      COPY --from=build /out/app /app
+      USER 10001
+  - format: docker
+    bad: |
+      FROM debian:12-slim AS base
+      RUN apt-get update
+
+      FROM base AS app
+      COPY app /app
+    good: |
+      FROM debian:12-slim AS base
+      USER 10001
+
+      FROM base AS app
+      COPY app /app
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      COPY app /app
+    good: |
+      from debian:12-slim
+      copy app /app
+      user 10001

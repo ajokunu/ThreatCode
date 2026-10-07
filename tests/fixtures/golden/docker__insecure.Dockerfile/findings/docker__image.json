@@ -1,20 +1,11 @@
 [
   {
     "resource_address": "dockerfile.image.summary",
-    "rule_id": "DOCKER_EXPOSED_PRIVILEGED_PORT",
-    "severity": "low",
-    "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1611"
-    ]
-  },
-  {
-    "resource_address": "dockerfile.image.summary",
     "rule_id": "DOCKER_EXPOSED_SSH",
     "severity": "medium",
     "stride": "information_disclosure",
     "techniques": [
-      "T1021"
+      "T1021.004"
     ]
   },
   {
@@ -31,8 +22,22 @@
     "rule_id": "DOCKER_MISSING_WORKDIR",
     "severity": "low",
     "stride": "tampering",
+    "techniques": []
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NON_MINIMAL_BASE",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": []
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NO_DIGEST_PIN",
+    "severity": "low",
+    "stride": "tampering",
     "techniques": [
-      "T1565.001"
+      "T1195.002"
     ]
   },
   {
@@ -47,7 +52,7 @@
   {
     "resource_address": "dockerfile.image.summary",
     "rule_id": "DOCKER_NO_USER",
-    "severity": "high",
+    "severity": "medium",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"

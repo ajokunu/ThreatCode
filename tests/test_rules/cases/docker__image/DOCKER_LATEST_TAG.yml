@@ -1,0 +1,26 @@
+# The tag comes from an ARG default, an unresolved variable is not judged, and a digest pin
+# wins over a floating tag.
+cases:
+  - format: docker
+    bad: |
+      ARG TAG=latest
+      FROM debian:${TAG}
+      USER 10001
+    good: |
+      ARG TAG=12-slim
+      FROM debian:${TAG}
+      USER 10001
+  - format: docker
+    bad: |
+      FROM --platform=$BUILDPLATFORM golang:1.22 AS build
+      RUN go build -o /out/app ./cmd/app
+
+      FROM debian
+      COPY --from=build /out/app /app
+    good: |
+      ARG GO_VERSION
+      FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}@sha256:5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809102 AS build
+      RUN go build -o /out/app ./cmd/app
+
+      FROM scratch
+      COPY --from=build /out/app /app
