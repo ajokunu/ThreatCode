@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from threatcode.ir.catalog import dependency, mcp
+from threatcode.ir.catalog import mcp
 from threatcode.ir.nodes import NodeCategory, TrustZone, categorize_resource, infer_trust_zone
 
 
@@ -27,9 +27,10 @@ class TestMcpCatalog:
     def test_loopback_flag_alone_does_not_make_a_server_remote(self) -> None:
         assert infer_trust_zone("mcp_server", {"is_loopback": False}) == TrustZone.PRIVATE
 
-    def test_family_only_holds_mcp_types(self) -> None:
-        assert set(mcp.CATEGORIES) == {"mcp_server"}
-        assert set(mcp.ZONES) == {"mcp_server"}
+    def test_family_holds_the_server_type_and_only_mcp_types(self) -> None:
+        assert mcp.CATEGORIES["mcp_server"] == NodeCategory.COMPUTE
+        assert mcp.ZONES["mcp_server"] == TrustZone.PRIVATE
+        assert all(key.startswith("mcp_") for key in (*mcp.CATEGORIES, *mcp.ZONES))
 
 
 class TestZoneOverride:
@@ -62,7 +63,12 @@ class TestZoneOverride:
 
 
 class TestDependencyCatalog:
-    """Lockfile dependencies have no zone and no useful category yet."""
+    """Lockfile dependencies have no zone and no useful category yet.
+
+    The family goes away with the lockfile parser, so these tests skip once the
+    module is gone. The resolution tests keep holding, because an unknown type
+    falls back to the same category and zone.
+    """
 
     @pytest.mark.parametrize(
         "ecosystem", ["npm", "pypi", "go", "crates.io", "rubygems", "packagist"]
@@ -73,6 +79,7 @@ class TestDependencyCatalog:
         assert infer_trust_zone(rtype, {}) == TrustZone.PRIVATE
 
     def test_family_only_holds_dependency_types(self) -> None:
+        dependency = pytest.importorskip("threatcode.ir.catalog.dependency")
         assert dependency.CATEGORIES
         assert all(key.startswith("dependency_") for key in dependency.CATEGORIES)
         assert dependency.ZONES == {}
