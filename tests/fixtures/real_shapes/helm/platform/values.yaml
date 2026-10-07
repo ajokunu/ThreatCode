@@ -1,0 +1,52 @@
+replicaCount: 2
+
+image:
+  repository: registry.example.com/platform/api
+  tag: ""
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: platform-api
+
+service:
+  type: ClusterIP
+  port: 8080
+
+rbac:
+  create: true
+  secretNames:
+    - platform-api-credentials
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces:
+    - ingress-nginx
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+redis:
+  enabled: true
+  auth:
+    existingSecret: platform-redis
+  persistence:
+    size: 4Gi

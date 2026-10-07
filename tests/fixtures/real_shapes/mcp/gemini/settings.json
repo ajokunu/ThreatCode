@@ -1,0 +1,21 @@
+{
+  "theme": "Default",
+  "selectedAuthType": "oauth-personal",
+  "mcpServers": {
+    "internal-search": {
+      "httpUrl": "https://search.internal.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-live-4eC39HqLyjWDarjtT1zdp7dc"
+      },
+      "timeout": 15000
+    },
+    "local-tools": {
+      "command": "python",
+      "args": ["-m", "tools_server"],
+      "cwd": "./servers",
+      "env": {
+        "TOOLS_ENV": "dev"
+      }
+    }
+  }
+}

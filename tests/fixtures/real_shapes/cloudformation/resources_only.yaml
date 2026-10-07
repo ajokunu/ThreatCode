@@ -1,0 +1,20 @@
+Resources:
+  AuditBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: acme-audit-logs
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+
+  AuditTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: audit-events
+      KmsMasterKeyId: alias/aws/sns
+
+  AuditQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: audit-events
+      KmsMasterKeyId: alias/aws/sqs

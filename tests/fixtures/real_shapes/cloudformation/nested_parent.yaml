@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Parent stack that delegates networking to a nested stack
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+
+Resources:
+  Network:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://acme-templates.s3.amazonaws.com/network/nested_child.yaml
+      Parameters:
+        Environment: !Ref Environment
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0c101f26f147fa7fd
+      InstanceType: t3.micro
+      SubnetId: !GetAtt Network.Outputs.PrivateSubnetId

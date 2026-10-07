@@ -1,0 +1,11 @@
+apiVersion: v2
+name: platform
+description: Internal platform API with a bundled Redis cache
+type: application
+version: 1.2.0
+appVersion: "2.8.0"
+dependencies:
+  - name: redis
+    version: 0.4.0
+    repository: file://charts/redis
+    condition: redis.enabled
