@@ -1,0 +1,107 @@
+# API Gateway REST, HTTP and WebSocket APIs.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
+rules:
+  - id: APIGW_METHOD_NO_AUTH
+    title: API Gateway method needs no authorization
+    description: >
+      The method of the REST API has authorization NONE, so anyone who can reach the API can call
+      it without credentials.
+      Public endpoints do this on purpose, and then the integration has to authenticate the caller.
+      OPTIONS methods are not reported, because browsers send CORS preflight requests without
+      credentials.
+    stride_category: spoofing
+    severity: medium
+    confidence: heuristic
+    root_cause: unauthenticated-public-endpoint
+    resource_type: aws_api_gateway_method
+    condition:
+      all_of:
+        - authorization:
+            equals_ci: "NONE"
+        - not:
+            http_method:
+              equals_ci: "OPTIONS"
+    mitigation: >
+      Set authorization to AWS_IAM, COGNITO_USER_POOLS or CUSTOM with an authorizer.
+      For a public method, authenticate the caller in the integration and document the exposure.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: APIGW_ROUTE_NO_AUTH
+    title: API Gateway route needs no authorization
+    description: >
+      The route of the HTTP or WebSocket API has authorization_type NONE, which is also what an
+      omitted authorization_type means, so anyone who can reach the API can call it without
+      credentials.
+      Public endpoints do this on purpose, and then the integration has to authenticate the caller.
+    stride_category: spoofing
+    severity: medium
+    confidence: heuristic
+    root_cause: unauthenticated-public-endpoint
+    resource_type: aws_apigatewayv2_route
+    condition:
+      any_of:
+        - authorization_type:
+            not_exists: true
+        - authorization_type:
+            equals_ci: "NONE"
+    mitigation: >
+      Set authorization_type to JWT, AWS_IAM or CUSTOM and reference an authorizer.
+      For a public route, authenticate the caller in the integration and document the exposure.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: APIGW_PUBLIC_POLICY
+    title: API Gateway resource policy allows any principal
+    description: >
+      The resource policy of the REST API allows the principal "*" with no condition.
+      Any caller on the internet, with or without an AWS account, may invoke the API.
+      A condition on the source IP, VPC endpoint or VPC makes the policy specific and is not
+      reported.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: unauthenticated-public-endpoint
+    resource_type: aws_api_gateway_rest_api
+    condition:
+      derived.policy_statements:
+        any_item:
+          all_of:
+            - effect:
+                equals: "Allow"
+            - principals:
+                contains: "*"
+            - has_condition:
+                equals: false
+    mitigation: >
+      Name the accounts or roles allowed to invoke the API, or add a condition such as
+      aws:SourceIp, aws:SourceVpce or aws:SourceVpc to the statement.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: APIGW_NO_ACCESS_LOGS
+    title: API Gateway stage without access logs
+    description: >
+      The stage has no access_log_settings, so requests to the API cannot be reviewed after an
+      incident.
+    stride_category: repudiation
+    severity: low
+    confidence: absence
+    root_cause: logging-not-enabled
+    resource_types:
+      - aws_api_gateway_stage
+      - aws_apigatewayv2_stage
+    condition:
+      access_log_settings:
+        not_exists: true
+    mitigation: >
+      Add an access_log_settings block with a CloudWatch Logs log group and a log format.
+    metadata: {}

@@ -1,0 +1,73 @@
+# SageMaker notebook instances.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
+rules:
+  - id: SAGEMAKER_NOTEBOOK_DIRECT_INTERNET
+    title: SageMaker notebook has direct internet access
+    description: >
+      direct_internet_access is Enabled, which is also the default.
+      The notebook then reaches the internet through a SageMaker-managed network outside your VPC,
+      where security groups, flow logs and egress filtering do not apply, so data or credentials
+      can be copied out freely.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: definitive
+    root_cause: notebook-unrestricted-egress
+    resource_type: aws_sagemaker_notebook_instance
+    condition:
+      any_of:
+        - direct_internet_access:
+            not_exists: true
+        - direct_internet_access:
+            equals_ci: "Enabled"
+    mitigation: >
+      Set direct_internet_access to Disabled, set subnet_id and security_groups, and give the
+      subnet a NAT gateway or VPC endpoints for what the notebook needs.
+    metadata:
+      mitre:
+        techniques: ["T1567"]
+
+  - id: SAGEMAKER_NOTEBOOK_ROOT_ACCESS
+    title: SageMaker notebook users have root access
+    description: >
+      root_access is Enabled, which is also the default.
+      Every user of the notebook can become root on the instance, install software and read the
+      credentials of its execution role.
+    stride_category: elevation_of_privilege
+    severity: low
+    confidence: definitive
+    root_cause: notebook-privileged-users
+    resource_type: aws_sagemaker_notebook_instance
+    condition:
+      any_of:
+        - root_access:
+            not_exists: true
+        - root_access:
+            equals_ci: "Enabled"
+    mitigation: >
+      Set root_access to Disabled unless the users have to install system packages.
+    metadata:
+      mitre:
+        techniques: ["T1548"]
+
+  - id: SAGEMAKER_NOTEBOOK_NO_KMS
+    title: SageMaker notebook storage not encrypted with a customer-managed key
+    description: >
+      No kms_key_id is set, so the storage volume of the notebook is not encrypted with a key of
+      your own.
+      This is a preference for control over the key, its policy and its audit trail.
+    stride_category: information_disclosure
+    severity: low
+    confidence: absence
+    root_cause: not-using-customer-managed-key
+    resource_type: aws_sagemaker_notebook_instance
+    condition:
+      kms_key_id:
+        not_exists: true
+    mitigation: >
+      Set kms_key_id to the ARN of a KMS key.
+    metadata: {}

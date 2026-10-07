@@ -1,160 +1,209 @@
+# EKS clusters, node groups and Fargate profiles.
+#
+# EKS_PUBLIC_ENDPOINT and EKS_PUBLIC_ACCESS_ANY_CIDR read the provider defaults themselves:
+# vpc_config.endpoint_public_access is true when the vpc_config block does not say, and an absent
+# public_access_cidrs means 0.0.0.0/0.
+# threatcode.ir.enrichment.aws_network also lists the first default, so the attribute is filled in
+# for Terraform HCL and CloudFormation where the graph records the input format; the rules do not
+# depend on that.
+# A plan JSON states both or marks them unknown, and an unknown value never produces a finding.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+#
+# Removed: EKS_PUBLIC_NODE_GROUP (whether nodes are public cannot be told from a node group alone,
+# and its condition was the same as EKS_SSH_ACCESS_NODES), EKS_NO_FARGATE_LOGGING (the setting is
+# an aws-observability ConfigMap in the cluster, not a profile attribute) and
+# EKS_UNENCRYPTED_NODE_AMI (it fired on every node group without a launch template, although
+# EBS encryption by default or the managed node group's own volume settings may apply).
+
 rules:
   - id: EKS_PUBLIC_ENDPOINT
-    title: EKS cluster with public API endpoint
+    title: EKS cluster API server endpoint is public
     description: >
-      The EKS cluster API server endpoint is publicly accessible.
+      vpc_config.endpoint_public_access is true or not set (true is the default).
+      The Kubernetes API server then has an endpoint that answers on the internet.
+      Requests still need valid credentials, which keeps this at medium severity.
+      EKS_PUBLIC_ACCESS_ANY_CIDR reports the case where every address may connect.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: eks-public-api-endpoint
     resource_type: aws_eks_cluster
     condition:
       any_of:
-        - vpc_config.0.endpoint_public_access:
+        - vpc_config.endpoint_public_access:
             equals: true
-        - vpc_config:
+        - vpc_config.endpoint_public_access:
             not_exists: true
     mitigation: >
-      Disable public endpoint access or restrict with CIDR blocks.
+      Set endpoint_public_access to false and reach the API server from inside the VPC, or keep it
+      public and restrict public_access_cidrs to your office and CI addresses.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
-  - id: EKS_NO_ENCRYPTION
-    title: EKS cluster secrets not encrypted
+  - id: EKS_PUBLIC_ACCESS_ANY_CIDR
+    title: EKS cluster API server is open to the whole internet
     description: >
-      EKS cluster does not encrypt Kubernetes secrets at rest.
+      The public endpoint of the Kubernetes API server is on (it is by default).
+      public_access_cidrs lists 0.0.0.0/0 or ::/0, or is not set (the default is 0.0.0.0/0).
+      Anyone can reach the API server, so an exposed credential or a vulnerability in the API server
+      is exploitable from anywhere.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: eks-public-api-endpoint
+    resource_type: aws_eks_cluster
+    condition:
+      all_of:
+        - any_of:
+            - vpc_config.endpoint_public_access:
+                equals: true
+            - vpc_config.endpoint_public_access:
+                not_exists: true
+        - any_of:
+            - vpc_config.public_access_cidrs:
+                is_world_cidr: true
+            - vpc_config.public_access_cidrs:
+                not_exists: true
+    mitigation: >
+      List the CIDR blocks that need the API server in public_access_cidrs, or turn the public
+      endpoint off with endpoint_public_access = false and endpoint_private_access = true.
+    metadata:
+      mitre:
+        techniques: ["T1133", "T1190"]
+
+  - id: EKS_NO_ENCRYPTION
+    title: EKS cluster secrets not encrypted with a customer-managed key
+    description: >
+      The cluster has no encryption_config, so Kubernetes secrets are not envelope-encrypted with a
+      key of your own.
+      EKS encrypts the etcd volumes with AWS-owned keys on current versions, so this is a
+      preference for control over the key, its policy and its audit trail.
+    stride_category: information_disclosure
+    severity: low
+    confidence: absence
+    root_cause: not-using-customer-managed-key
     resource_type: aws_eks_cluster
     condition:
       encryption_config:
         not_exists: true
     mitigation: >
-      Enable envelope encryption for Kubernetes secrets.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+      Add an encryption_config block with resources = ["secrets"] and the ARN of a KMS key.
+    metadata: {}
 
   - id: EKS_NO_LOGGING
-    title: EKS cluster logging disabled
+    title: EKS control plane logging is off
     description: >
-      EKS control plane logging is not enabled.
+      enabled_cluster_log_types is not set, so the API server, audit, authenticator, controller
+      manager and scheduler logs are not sent to CloudWatch Logs.
+      Without the audit log, actions taken with stolen credentials cannot be reconstructed.
     stride_category: repudiation
     severity: medium
+    confidence: absence
+    root_cause: logging-not-enabled
     resource_type: aws_eks_cluster
     condition:
       enabled_cluster_log_types:
         not_exists: true
     mitigation: >
-      Enable API server, audit, and authenticator logging.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Set enabled_cluster_log_types to at least ["api", "audit", "authenticator"].
+    metadata: {}
 
   - id: EKS_OUTDATED_VERSION
-    title: EKS cluster running outdated Kubernetes version
+    title: EKS cluster runs a Kubernetes version past the end of extended support
     description: >
-      The EKS cluster may be running an outdated Kubernetes version.
+      The cluster version is one whose extended support in Amazon EKS has ended.
+      It no longer gets security patches, and EKS upgrades its control plane automatically.
+      Versions in standard or extended support are not reported.
+      The list was checked on 2026-10-07 against the Amazon EKS Kubernetes release calendar, where
+      1.31 is the oldest version still in extended support (until 2026-11-26).
     stride_category: tampering
     severity: medium
+    confidence: definitive
+    root_cause: unsupported-software-version
     resource_type: aws_eks_cluster
     condition:
+      # End-of-life minor versions: every version below 1.31 (verified 2026-10-07 at
+      # https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html).
+      # Move the cut-off up as versions leave extended support: 1.31 on 2026-11-26.
       version:
-        not_exists: true
+        matches_any:
+          - "1.10"
+          - "1.11"
+          - "1.12"
+          - "1.13"
+          - "1.14"
+          - "1.15"
+          - "1.16"
+          - "1.17"
+          - "1.18"
+          - "1.19"
+          - "1.20"
+          - "1.21"
+          - "1.22"
+          - "1.23"
+          - "1.24"
+          - "1.25"
+          - "1.26"
+          - "1.27"
+          - "1.28"
+          - "1.29"
+          - "1.30"
     mitigation: >
-      Specify and maintain a supported Kubernetes version.
-    metadata:
-      mitre:
-        techniques: ["T1195.002"]
-        tactics: ["TA0001"]
-
-  - id: EKS_NO_IRSA
-    title: EKS without IAM roles for service accounts
-    description: >
-      The EKS cluster does not have OIDC provider for IRSA.
-    stride_category: elevation_of_privilege
-    severity: medium
-    resource_type: aws_eks_cluster
-    condition:
-      identity:
-        not_exists: true
-    mitigation: >
-      Configure an OIDC provider for IAM roles for service accounts.
-    metadata:
-      mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0004"]
-
-  - id: EKS_PUBLIC_NODE_GROUP
-    title: EKS node group with public subnets
-    description: >
-      EKS worker nodes are deployed in public subnets with public IP addresses.
-      This exposes nodes directly to the internet.
-    stride_category: information_disclosure
-    severity: high
-    resource_type: aws_eks_node_group
-    condition:
-      remote_access.ec2_ssh_key:
-        not_exists: false
-    mitigation: >
-      Deploy node groups in private subnets using a NAT gateway for outbound traffic.
+      Upgrade the cluster to a version in standard support one minor version at a time, then the
+      node groups and add-ons.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
+
+  - id: EKS_NO_IRSA
+    title: EKS cluster has no IAM OIDC provider for service account roles
+    description: >
+      No aws_iam_openid_connect_provider in the scan points at the issuer of the cluster.
+      Without one, pods cannot assume IAM roles of their own and use the role of the node, which
+      gives every pod on the node the same permissions and lets any pod read them from the
+      instance metadata service.
+      The provider may be created outside this scan, so the finding is an absence.
+    stride_category: elevation_of_privilege
+    severity: low
+    confidence: absence
+    root_cause: workload-identity-missing
+    resource_type: aws_eks_cluster
+    condition:
+      derived.has_oidc_provider:
+        equals: false
+    mitigation: >
+      Create an aws_iam_openid_connect_provider for the cluster's OIDC issuer and give each
+      workload a role with a trust policy on its service account.
+    metadata:
+      mitre:
+        techniques: ["T1552.005"]
 
   - id: EKS_SSH_ACCESS_NODES
     title: EKS node group allows SSH access
     description: >
-      The EKS node group has SSH access enabled via an EC2 key pair.
-      Direct SSH access to worker nodes is a security risk.
+      The node group has remote_access.ec2_ssh_key set.
+      EKS opens port 22 of the nodes to 0.0.0.0/0 when source_security_group_ids is not set, and
+      the shared key gives a shell on every node.
     stride_category: elevation_of_privilege
     severity: medium
+    confidence: definitive
+    root_cause: node-remote-shell
     resource_type: aws_eks_node_group
     condition:
       remote_access.ec2_ssh_key:
-        not_exists: false
+        exists: true
     mitigation: >
-      Remove SSH key configuration. Use SSM Session Manager for node access.
+      Remove the remote_access block and use AWS Systems Manager Session Manager for node access.
     metadata:
       mitre:
-        techniques: ["T1021"]
-        tactics: ["TA0008"]
+        techniques: ["T1021.004"]
 
-  - id: EKS_UNENCRYPTED_NODE_AMI
-    title: EKS node group without encrypted launch template
-    description: >
-      The EKS node group does not use an encrypted AMI or launch template
-      with encrypted EBS volumes. Data at rest on nodes is unprotected.
-    stride_category: information_disclosure
-    severity: medium
-    resource_type: aws_eks_node_group
-    condition:
-      launch_template:
-        not_exists: true
-    mitigation: >
-      Use a launch template with encrypted EBS volumes for node groups.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
-
-  - id: EKS_NO_FARGATE_LOGGING
-    title: EKS Fargate profile without logging
-    description: >
-      The EKS Fargate profile does not have logging configured.
-      Container logs from Fargate pods cannot be audited.
-    stride_category: repudiation
-    severity: medium
-    resource_type: aws_eks_fargate_profile
-    condition:
-      selector:
-        not_exists: true
-    mitigation: >
-      Configure Fargate logging with a Fluent Bit sidecar or AWS for Fluent Bit.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+deprecated_ids:
+  - EKS_PUBLIC_NODE_GROUP
+  - EKS_UNENCRYPTED_NODE_AMI
+  - EKS_NO_FARGATE_LOGGING

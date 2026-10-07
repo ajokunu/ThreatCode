@@ -1,90 +1,122 @@
+# WAFv2 web ACLs.
+#
+# The rules read the facts that threatcode.ir.enrichment.aws_network derives from the rule blocks
+# (derived.has_rules, derived.has_rate_based_rule, derived.has_managed_rules and the others), from
+# the logging configuration resource (derived.has_logging_config) and from the rule groups a web ACL
+# references.
+# A fact is unknown when the rule list cannot be read, and an unknown fact never produces a finding.
+# The rules that look for a missing protection stay quiet on a web ACL with no rules at all,
+# because WAF_EMPTY_RULES already says it.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: WAF_NO_DEFAULT_BLOCK
-    title: WAF web ACL does not default to block
+    title: WAF web ACL allows requests that no rule matched
     description: >
-      The WAF web ACL default action allows requests instead of blocking them.
-      Without a default block, unmatched traffic passes through unchecked.
+      The default action of the web ACL is Allow.
+      That is the usual setup for a web ACL that blocks known bad requests with rules, so this is
+      a posture note: anything the rules do not describe reaches the application.
+      A default Block suits an application with a small, well-known set of allowed requests.
     stride_category: tampering
-    severity: high
+    severity: low
+    confidence: heuristic
     resource_type: aws_wafv2_web_acl
     condition:
       default_action.block:
         not_exists: true
     mitigation: >
-      Set the default action to Block to deny unmatched requests.
+      Keep the Allow default only together with managed rule groups and rate limits that block
+      bad requests, or switch the default action to Block and allow the expected traffic with rules.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: WAF_NO_LOGGING
     title: WAF web ACL without logging
     description: >
-      The WAF web ACL does not have logging enabled.
-      Without logging, blocked and allowed requests cannot be audited.
+      No aws_wafv2_web_acl_logging_configuration in the scan points at the web ACL.
+      Blocked and allowed requests cannot be reviewed after an incident.
+      A logging configuration whose target the scan cannot resolve leaves the finding out.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: logging-not-enabled
     resource_type: aws_wafv2_web_acl
     condition:
-      logging_configuration:
-        not_exists: true
-    mitigation: >
-      Enable WAF logging to S3, CloudWatch Logs, or Kinesis Data Firehose.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
-
-  - id: WAF_NO_RATE_LIMITING
-    title: WAF web ACL without rate-based rules
-    description: >
-      The WAF web ACL does not include any rate-based rules.
-      This leaves the application vulnerable to brute-force and DDoS attacks.
-    stride_category: denial_of_service
-    severity: medium
-    resource_type: aws_wafv2_web_acl
-    condition:
-      has_rate_based_rule:
+      derived.has_logging_config:
         equals: false
     mitigation: >
-      Add a rate-based rule to limit request frequency per IP.
+      Add an aws_wafv2_web_acl_logging_configuration that sends logs to CloudWatch Logs, S3 or
+      Kinesis Data Firehose.
+    metadata: {}
+
+  - id: WAF_NO_RATE_LIMITING
+    title: WAF web ACL without a rate-based rule
+    description: >
+      No rule of the web ACL, nor of a rule group it references, is a rate-based statement.
+      Nothing limits how fast one client can send requests, so credential stuffing and request
+      floods reach the application.
+    stride_category: denial_of_service
+    severity: low
+    confidence: absence
+    root_cause: waf-protection-missing
+    resource_type: aws_wafv2_web_acl
+    condition:
+      all_of:
+        - derived.has_rules:
+            equals: true
+        - derived.has_rate_based_rule:
+            equals: false
+    mitigation: >
+      Add a rule with a rate_based_statement that blocks clients above a limit suited to the
+      application.
     metadata:
       mitre:
         techniques: ["T1499"]
-        tactics: ["TA0040"]
 
   - id: WAF_NO_MANAGED_RULES
     title: WAF web ACL without managed rule groups
     description: >
-      The WAF web ACL does not reference any AWS Managed Rule groups.
-      Managed rules provide baseline protection against common threats.
+      The web ACL references no AWS managed rule group, nor a rule group that holds one.
+      Managed rule groups block the common classes of web attack without rules to maintain.
     stride_category: tampering
     severity: medium
+    confidence: absence
+    root_cause: waf-protection-missing
     resource_type: aws_wafv2_web_acl
     condition:
-      has_managed_rules:
-        equals: false
+      all_of:
+        - derived.has_rules:
+            equals: true
+        - derived.has_managed_rules:
+            equals: false
     mitigation: >
-      Add AWS Managed Rule groups such as AWSManagedRulesCommonRuleSet.
+      Add managed_rule_group_statement rules for AWSManagedRulesCommonRuleSet and
+      AWSManagedRulesKnownBadInputsRuleSet at least.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: WAF_EMPTY_RULES
-    title: WAF web ACL has no rules defined
+    title: WAF has no rules
     description: >
-      The WAF web ACL has an empty rule set. Without rules,
-      no traffic inspection or filtering occurs.
+      The web ACL or rule group has no rule blocks, so it inspects and filters nothing.
     stride_category: tampering
-    severity: high
-    resource_type: aws_wafv2_web_acl
+    severity: medium
+    confidence: absence
+    root_cause: waf-protection-missing
+    resource_types:
+      - aws_wafv2_web_acl
+      - aws_wafv2_rule_group
     condition:
-      rules:
-        is_empty: true
+      derived.has_rules:
+        equals: false
     mitigation: >
-      Add WAF rules to inspect and filter traffic.
+      Add rule blocks that match and block the traffic the application does not expect.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]

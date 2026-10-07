@@ -1,51 +1,85 @@
+# Load balancers and their listeners.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: ELB_NO_HTTPS
-    title: Load balancer listener without HTTPS
+    title: Load balancer listener serves plain HTTP
     description: >
-      The load balancer listener uses HTTP instead of HTTPS.
+      A listener accepts HTTP and does not redirect to HTTPS, so requests and responses, including
+      cookies and credentials, cross the network in clear text.
+      A listener whose default action redirects to HTTPS is the recommended pattern and is not
+      reported.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: traffic-not-encrypted-in-transit
     resource_type: aws_lb_listener
     condition:
-      protocol:
-        equals: "HTTP"
+      all_of:
+        - protocol:
+            equals: "HTTP"
+        - not:
+            default_action:
+              any_item:
+                all_of:
+                  - type:
+                      equals_ci: "redirect"
+                  - redirect.protocol:
+                      equals_ci: "HTTPS"
     mitigation: >
-      Use HTTPS protocol with a valid TLS certificate.
+      Add an HTTPS listener with a certificate, and make the HTTP listener redirect to it with a
+      default_action of type redirect and protocol HTTPS.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
 
   - id: ELB_NO_ACCESS_LOGS
     title: Load balancer without access logs
     description: >
       Access logging is not enabled for the load balancer.
+      Requests cannot be reviewed after an incident.
+      The access_logs block must set enabled = true; a block that only names a bucket leaves
+      logging off.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: logging-not-enabled
     resource_type: aws_lb
     condition:
-      access_logs:
-        not_exists: true
+      not:
+        access_logs.enabled:
+          equals: true
     mitigation: >
-      Enable access logging.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add an access_logs block with enabled = true and an S3 bucket that allows the regional
+      load balancer account to write.
+    metadata: {}
 
   - id: ELB_OUTDATED_TLS
-    title: Load balancer with outdated TLS policy
+    title: Load balancer listener allows TLS versions before 1.2
     description: >
-      The load balancer uses an outdated SSL/TLS policy.
+      The listener uses a security policy that still negotiates TLS 1.0 or 1.1.
+      Those versions have known weaknesses and are retired by browsers and by PCI DSS.
     stride_category: information_disclosure
     severity: medium
+    confidence: definitive
+    root_cause: traffic-not-encrypted-in-transit
     resource_type: aws_lb_listener
     condition:
       ssl_policy:
-        matches_any: ["ELBSecurityPolicy-2016-08", "ELBSecurityPolicy-TLS-1-0-2015-04"]
+        matches_any:
+          - "ELBSecurityPolicy-2015-05"
+          - "ELBSecurityPolicy-2016-08"
+          - "ELBSecurityPolicy-TLS-1-0-2015-04"
+          - "ELBSecurityPolicy-TLS-1-1-2017-01"
+          - "ELBSecurityPolicy-FS-2018-06"
+          - "ELBSecurityPolicy-FS-1-1-2019-08"
     mitigation: >
-      Use a modern TLS policy (TLS 1.2+).
+      Use a policy that starts at TLS 1.2, for example ELBSecurityPolicy-TLS13-1-2-2021-06 or
+      ELBSecurityPolicy-TLS-1-2-2017-01.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]

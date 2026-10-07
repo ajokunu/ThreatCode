@@ -1,87 +1,119 @@
+# ECS task definitions and services.
+#
+# The container rules read derived.container_definitions, the parsed container definitions of the
+# task, so they see the same list whether the definition is a jsonencode() call, a heredoc, a
+# plan's JSON string or a CloudFormation list.
+# The keys are the camelCase names of the ECS API (privileged, readonlyRootFilesystem).
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: ECS_PRIVILEGED_CONTAINER
-    title: ECS task with privileged container
+    title: ECS task runs a privileged container
     description: >
-      An ECS task definition runs a container in privileged mode.
+      A container definition sets privileged to true.
+      The container gets nearly the same access to the host as a process on the host, so a
+      compromised container can take over the instance and every other task on it.
     stride_category: elevation_of_privilege
-    severity: critical
+    severity: high
+    confidence: definitive
+    root_cause: container-escape-to-host
     resource_type: aws_ecs_task_definition
     condition:
-      container_definitions:
-        contains: '"privileged":true'
+      derived.container_definitions:
+        any_item:
+          privileged:
+            equals: true
     mitigation: >
-      Remove privileged mode from the container definition.
+      Remove privileged from the container definition and add only the Linux capabilities the
+      workload needs.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
   - id: ECS_NO_READONLY_FS
-    title: ECS container without read-only filesystem
+    title: ECS container with a writable root filesystem
     description: >
-      The ECS container does not use a read-only root filesystem.
+      A container definition does not set readonlyRootFilesystem to true.
+      The ECS default is a writable root filesystem, so an attacker who runs code in the
+      container can drop tools and change binaries on it.
     stride_category: tampering
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: container-hardening-missing
     resource_type: aws_ecs_task_definition
     condition:
-      container_definitions:
-        contains: '"readonlyRootFilesystem":false'
+      derived.container_definitions:
+        any_item:
+          readonlyRootFilesystem:
+            not_equals: true
     mitigation: >
-      Set readonlyRootFilesystem to true.
+      Set readonlyRootFilesystem to true, and mount a volume for the directories the application
+      has to write.
     metadata:
       mitre:
-        techniques: ["T1565.001"]
-        tactics: ["TA0040"]
+        techniques: ["T1105"]
 
   - id: ECS_EXEC_ENABLED
-    title: ECS service with execute command enabled
+    title: ECS service allows execute command
     description: >
-      ECS execute command is enabled, allowing interactive
-      access to running containers.
+      enable_execute_command is true, so principals with ecs:ExecuteCommand can open an
+      interactive shell in the running containers.
+      Access is governed by IAM and audited in CloudTrail, which makes this a note for production
+      services.
     stride_category: elevation_of_privilege
-    severity: medium
+    severity: low
+    confidence: definitive
     resource_type: aws_ecs_service
     condition:
       enable_execute_command:
         equals: true
     mitigation: >
-      Disable execute command unless required for debugging.
+      Turn execute command off unless the service needs live debugging, and limit
+      ecs:ExecuteCommand to the people who debug it.
     metadata:
       mitre:
         techniques: ["T1609"]
-        tactics: ["TA0002"]
 
   - id: ECS_NO_LOGGING
-    title: ECS task without logging configuration
+    title: ECS container without a log configuration
     description: >
-      The ECS task does not have log configuration.
+      A container definition has no logConfiguration, so the output of the container is not sent to
+      CloudWatch Logs or another log driver.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: logging-not-enabled
     resource_type: aws_ecs_task_definition
     condition:
-      container_definitions:
-        contains: '"logConfiguration":null'
+      derived.container_definitions:
+        any_item:
+          logConfiguration:
+            not_exists: true
     mitigation: >
-      Configure CloudWatch or another log driver.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add a logConfiguration with the awslogs driver, or the driver of your log pipeline.
+    metadata: {}
 
   - id: ECS_HOST_NETWORKING
-    title: ECS task using host network mode
+    title: ECS task uses host network mode
     description: >
-      The ECS task uses host network mode, sharing the host's
-      network namespace.
+      The task shares the network namespace of the instance.
+      A container can then bind the ports of the host, reach services listening on its loopback
+      interface and read the traffic of the instance.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: container-escape-to-host
     resource_type: aws_ecs_task_definition
     condition:
       network_mode:
         equals: "host"
     mitigation: >
-      Use awsvpc or bridge network mode instead.
+      Use the awsvpc network mode, which gives each task its own network interface and security
+      group.
     metadata:
       mitre:
         techniques: ["T1040"]
-        tactics: ["TA0007"]
