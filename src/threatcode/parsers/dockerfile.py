@@ -299,6 +299,8 @@ class _Builder:
         self.diagnostics: list[Diagnostic] = []
         self.global_args: dict[str, str] = {}
         self.stages: list[_Stage] = []
+        self.stage_by_name: dict[str, _Stage] = {}
+        self.idents: set[str] = set()
         self.stage: _Stage | None = None
         self.copies: list[_Copy] = []
         self.add_count = 0
@@ -365,6 +367,7 @@ class _Builder:
         stage = _Stage(index=len(self.stages), name="", ident=str(len(self.stages)), from_line=None)
         stage.kind = "none"
         self.stages.append(stage)
+        self.idents.add(stage.ident)
         self.stage = stage
 
     def _open_stage(self, ins: Instruction) -> _Stage:
@@ -375,19 +378,20 @@ class _Builder:
         if len(words) >= 3 and words[1].lower() == "as":
             name = unquote(words[2]).lower()
         substituted, unresolved = substitute(image_text, self.global_args.get)
-        stage_names = [s.name for s in self.stages if s.name]
-        ref = parse_image_ref(substituted, stage_names)
-        used = {s.ident for s in self.stages}
+        # Look the name up here: handing every stage name to parse_image_ref would cost a
+        # set build per FROM, which is quadratic in the number of stages
+        named = self.stage_by_name.get(substituted.strip().lower())
+        ref = parse_image_ref(substituted, (named.name,) if named else ())
         index = len(self.stages)
-        ident = name if name and name not in used else str(index)
+        ident = name if name and name not in self.idents else str(index)
         stage = _Stage(index=index, name=name, ident=ident, from_line=ins.start_line)
         stage.image_text = substituted
         stage.ref = ref
         stage.kind = ref.kind
         stage.digest_pinned = bool(ref.digest)
-        if ref.kind == "stage":
-            stage.parent = next(s for s in self.stages if s.name == ref.raw.lower())
-            stage.inherit_from(stage.parent)
+        if ref.kind == "stage" and named is not None:
+            stage.parent = named
+            stage.inherit_from(named)
         elif ref.kind == "registry":
             stage.tag = ref.tag if (ref.tag or ref.digest) else "latest"
             stage.uses_latest_tag = (
@@ -406,6 +410,9 @@ class _Builder:
             )
         stage.platform = options.get("platform", "")
         self.stages.append(stage)
+        self.idents.add(ident)
+        if name:
+            self.stage_by_name.setdefault(name, stage)
         self.stage = stage
         if stage.parent is not None:
             self._edge(stage, stage.parent, "base")
@@ -700,7 +707,7 @@ class _Builder:
             index = int(source)
             target = self.stages[index] if index < len(self.stages) else None
         else:
-            target = next((s for s in self.stages if s.name == source), None)
+            target = self.stage_by_name.get(source)
         if target is not None and target is not stage:
             self._edge(stage, target, "copy_from")
 
