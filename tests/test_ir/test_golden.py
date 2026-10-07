@@ -35,6 +35,8 @@ import importlib
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import sys
 from collections.abc import Iterable, Mapping
 from enum import Enum
@@ -637,3 +639,325 @@ class TestRecordingDiff:
     def test_golden_key_replaces_slashes(self) -> None:
         assert golden_key("tests/fixtures/mcp/fixed/.mcp.json") == "mcp__fixed__.mcp.json"
         assert golden_key("tests/fixtures/terraform/simple.tf") == "terraform__simple.tf"
+
+
+# ---------------------------------------------------------------------------
+# scripts/check_golden_scope.py
+# ---------------------------------------------------------------------------
+
+
+def _load_scope_script() -> Any:
+    path = REPO_ROOT / "scripts" / "check_golden_scope.py"
+    spec = importlib.util.spec_from_file_location("check_golden_scope", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+scope = _load_scope_script()
+needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+
+GOLDEN_REL = "tests/fixtures/golden"
+ALL = f"{GOLDEN_REL}/**"
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            *args,
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    """A git repository with two recorded inputs and one source file, committed once."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    for name in ("a", "b"):
+        folder = tmp_path / GOLDEN_REL / name
+        (folder / "findings").mkdir(parents=True)
+        (folder / "meta.json").write_text("{}\n", encoding="utf-8")
+        (folder / "graph.json").write_text("{}\n", encoding="utf-8")
+        (folder / "findings" / "aws__s3.json").write_text("[]\n", encoding="utf-8")
+        (folder / "findings" / "aws__vpc.json").write_text("[]\n", encoding="utf-8")
+    (tmp_path / "src.py").write_text("x = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    return tmp_path
+
+
+def _run(repo: Path, *args: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
+    code = scope.main(["--repo", str(repo), *args])
+    captured = capsys.readouterr()
+    return code, captured.out + captured.err
+
+
+class TestGlobTranslation:
+    @pytest.mark.parametrize(
+        ("pattern", "path", "expected"),
+        [
+            (ALL, f"{GOLDEN_REL}/a/graph.json", True),
+            (ALL, f"{GOLDEN_REL}/a/findings/aws__s3.json", True),
+            (ALL, "src/threatcode/cli.py", False),
+            (f"{GOLDEN_REL}/*/graph.json", f"{GOLDEN_REL}/a/graph.json", True),
+            (f"{GOLDEN_REL}/*/graph.json", f"{GOLDEN_REL}/a/b/graph.json", False),
+            (
+                f"{GOLDEN_REL}/*/findings/aws__s3.json",
+                f"{GOLDEN_REL}/a/findings/aws__s3.json",
+                True,
+            ),
+            (
+                f"{GOLDEN_REL}/*/findings/aws__s3.json",
+                f"{GOLDEN_REL}/a/findings/aws__vpc.json",
+                False,
+            ),
+            (
+                f"{GOLDEN_REL}/*/findings/aws__s3.json",
+                f"{GOLDEN_REL}/a/x/findings/aws__s3.json",
+                False,
+            ),
+            (f"{GOLDEN_REL}/**/graph.json", f"{GOLDEN_REL}/graph.json", True),
+            (f"{GOLDEN_REL}/**/graph.json", f"{GOLDEN_REL}/a/b/graph.json", True),
+            (
+                f"{GOLDEN_REL}/*/findings/aws__*.json",
+                f"{GOLDEN_REL}/a/findings/aws__vpc.json",
+                True,
+            ),
+            (f"{GOLDEN_REL}/*/findings/aws__*.json", f"{GOLDEN_REL}/a/findings/gcp__x.json", False),
+            (f"{GOLDEN_REL}/?/graph.json", f"{GOLDEN_REL}/a/graph.json", True),
+            (f"{GOLDEN_REL}/?/graph.json", f"{GOLDEN_REL}/ab/graph.json", False),
+            (f"{GOLDEN_REL}/[ab]/graph.json", f"{GOLDEN_REL}/b/graph.json", True),
+            (f"{GOLDEN_REL}/[ab]/graph.json", f"{GOLDEN_REL}/c/graph.json", False),
+            (f"./{GOLDEN_REL}/a/graph.json", f"{GOLDEN_REL}/a/graph.json", True),
+            (f"{GOLDEN_REL}/a.b/graph.json", f"{GOLDEN_REL}/aXb/graph.json", False),
+            (f"{GOLDEN_REL}/a", f"{GOLDEN_REL}/a/graph.json", False),
+        ],
+    )
+    def test_glob_matching(self, pattern: str, path: str, expected: bool) -> None:
+        assert bool(scope.glob_to_regex(pattern).fullmatch(path)) is expected
+
+
+@needs_git
+class TestCheckGoldenScope:
+    def test_unchanged_tree_passes(self, repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        code, out = _run(repo, capsys=capsys)
+        assert code == 0
+        assert "0 golden file(s) changed" in out
+
+    def test_the_base_that_was_used_is_printed(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        sha = _git(repo, "rev-parse", "HEAD")
+        _code, out = _run(repo, "--allow", ALL, capsys=capsys)
+        assert f"HEAD ({sha[:12]})" in out
+
+    def test_a_change_inside_the_scope_passes(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / GOLDEN_REL / "a" / "findings" / "aws__s3.json").write_text(
+            "[1]\n", encoding="utf-8"
+        )
+        code, out = _run(repo, "--allow", f"{GOLDEN_REL}/*/findings/aws__s3.json", capsys=capsys)
+        assert code == 0
+        assert "1 golden file(s) changed" in out
+
+    def test_a_modified_file_outside_the_scope_fails_and_is_named(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / GOLDEN_REL / "a" / "findings" / "aws__s3.json").write_text(
+            "[1]\n", encoding="utf-8"
+        )
+        (repo / GOLDEN_REL / "b" / "findings" / "aws__vpc.json").write_text(
+            "[1]\n", encoding="utf-8"
+        )
+        code, out = _run(repo, "--allow", f"{GOLDEN_REL}/*/findings/aws__s3.json", capsys=capsys)
+        assert code == 1
+        assert f"modified: {GOLDEN_REL}/b/findings/aws__vpc.json" in out
+        assert "aws__s3.json" not in out.split("outside")[1]
+
+    def test_a_deleted_file_outside_the_scope_fails(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / GOLDEN_REL / "a" / "graph.json").unlink()
+        code, out = _run(repo, "--allow", f"{GOLDEN_REL}/*/findings/*.json", capsys=capsys)
+        assert code == 1
+        assert f"deleted: {GOLDEN_REL}/a/graph.json" in out
+
+    def test_an_untracked_new_file_outside_the_scope_fails(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        folder = repo / GOLDEN_REL / "c"
+        folder.mkdir()
+        (folder / "meta.json").write_text("{}\n", encoding="utf-8")
+        code, out = _run(repo, "--allow", f"{GOLDEN_REL}/*/graph.json", capsys=capsys)
+        assert code == 1
+        assert f"added: {GOLDEN_REL}/c/meta.json" in out
+
+    def test_a_new_input_directory_is_in_scope_when_every_file_is_allowed(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        folder = repo / GOLDEN_REL / "c"
+        folder.mkdir()
+        (folder / "meta.json").write_text("{}\n", encoding="utf-8")
+        assert _run(repo, "--allow", ALL, capsys=capsys)[0] == 0
+
+    def test_a_staged_change_outside_the_scope_fails(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = repo / GOLDEN_REL / "a" / "graph.json"
+        path.write_text('{"x": 1}\n', encoding="utf-8")
+        _git(repo, "add", str(path))
+        code, out = _run(repo, "--allow", f"{GOLDEN_REL}/*/findings/*.json", capsys=capsys)
+        assert code == 1
+        assert "a/graph.json" in out
+
+    def test_a_committed_change_is_seen_against_an_earlier_base(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        base = _git(repo, "rev-parse", "HEAD")
+        path = repo / GOLDEN_REL / "a" / "graph.json"
+        path.write_text('{"x": 1}\n', encoding="utf-8")
+        _git(repo, "commit", "-q", "-am", "leak")
+        assert _run(repo, "--allow", f"{GOLDEN_REL}/*/findings/*.json", capsys=capsys)[0] == 0
+        code, out = _run(
+            repo, "--base", base, "--allow", f"{GOLDEN_REL}/*/findings/*.json", capsys=capsys
+        )
+        assert code == 1
+        assert "a/graph.json" in out
+
+    def test_the_base_can_come_from_the_environment(
+        self, repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        base = _git(repo, "rev-parse", "HEAD")
+        (repo / GOLDEN_REL / "a" / "graph.json").write_text('{"x": 1}\n', encoding="utf-8")
+        _git(repo, "commit", "-q", "-am", "leak")
+        monkeypatch.setenv("THREATCODE_GOLDEN_BASE", base)
+        code, _out = _run(repo, "--allow", f"{GOLDEN_REL}/*/findings/*.json", capsys=capsys)
+        assert code == 1
+
+    def test_the_flag_wins_over_the_environment(
+        self, repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("THREATCODE_GOLDEN_BASE", "does-not-exist")
+        assert _run(repo, "--base", "HEAD", capsys=capsys)[0] == 0
+
+    def test_an_unknown_base_is_a_usage_error(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out = _run(repo, "--base", "no-such-ref", "--allow", ALL, capsys=capsys)
+        assert code == 2
+        assert "no-such-ref" in out
+
+    def test_outside_a_repository_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out = _run(tmp_path, "--allow", ALL, capsys=capsys)
+        assert code == 2
+        assert "not inside a git repository" in out
+
+    def test_with_no_allow_glob_nothing_may_change(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / GOLDEN_REL / "a" / "graph.json").write_text('{"x": 1}\n', encoding="utf-8")
+        assert _run(repo, capsys=capsys)[0] == 1
+
+    def test_changes_outside_the_golden_directory_are_not_its_business(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / "src.py").write_text("x = 2\n", encoding="utf-8")
+        assert _run(repo, "--allow", f"{GOLDEN_REL}/a/graph.json", capsys=capsys)[0] == 0
+
+    def test_it_works_from_a_subdirectory(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / GOLDEN_REL / "a" / "graph.json").write_text('{"x": 1}\n', encoding="utf-8")
+        sub = repo / GOLDEN_REL / "a"
+        code, out = _run(sub, "--allow", f"{GOLDEN_REL}/*/findings/*.json", capsys=capsys)
+        assert code == 1
+        assert f"{GOLDEN_REL}/a/graph.json" in out
+
+    def test_several_allow_flags_and_globs_are_combined(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        for name in ("graph.json", "findings/aws__s3.json"):
+            (repo / GOLDEN_REL / "a" / name).write_text("[1]\n", encoding="utf-8")
+        code, _out = _run(
+            repo,
+            "--allow",
+            f"{GOLDEN_REL}/*/graph.json",
+            "--allow",
+            f"{GOLDEN_REL}/*/findings/aws__s3.json",
+            capsys=capsys,
+        )
+        assert code == 0
+        code, _out = _run(
+            repo,
+            "--allow",
+            f"{GOLDEN_REL}/*/graph.json",
+            f"{GOLDEN_REL}/*/findings/aws__s3.json",
+            capsys=capsys,
+        )
+        assert code == 0
+
+    def test_paths_with_spaces_are_handled(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        folder = repo / GOLDEN_REL / "with space"
+        folder.mkdir()
+        (folder / "meta.json").write_text("{}\n", encoding="utf-8")
+        code, out = _run(repo, "--allow", f"{GOLDEN_REL}/a/*", capsys=capsys)
+        assert code == 1
+        assert "with space/meta.json" in out
+
+    def test_a_custom_golden_directory(
+        self, repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (repo / "other").mkdir()
+        (repo / "other" / "x.json").write_text("{}\n", encoding="utf-8")
+        code, out = _run(repo, "--golden-dir", "other", "--allow", "nothing", capsys=capsys)
+        assert code == 1
+        assert "other/x.json" in out
+
+    def test_running_the_script_directly_uses_exit_codes(self, repo: Path) -> None:
+        script = REPO_ROOT / "scripts" / "check_golden_scope.py"
+        ok = subprocess.run(
+            [sys.executable, str(script), "--repo", str(repo), "--allow", ALL],
+            capture_output=True,
+            text=True,
+        )
+        assert ok.returncode == 0
+        (repo / GOLDEN_REL / "a" / "graph.json").write_text("[1]\n", encoding="utf-8")
+        bad = subprocess.run(
+            [sys.executable, str(script), "--repo", str(repo)],
+            capture_output=True,
+            text=True,
+        )
+        assert bad.returncode == 1
+        assert "a/graph.json" in bad.stderr
+
+
+@needs_git
+def test_the_real_golden_directory_passes_a_scope_that_covers_it() -> None:
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    script = REPO_ROOT / "scripts" / "check_golden_scope.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--repo", str(REPO_ROOT), "--allow", ALL],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
