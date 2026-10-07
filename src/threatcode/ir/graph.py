@@ -5,19 +5,22 @@ from __future__ import annotations
 import difflib
 import logging
 import os
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import networkx as nx
 
 from threatcode.diagnostics import Diagnostic, Level
 from threatcode.exceptions import ConfigError, ThreatCodeError
+from threatcode.ir import exposure, iam
 from threatcode.ir.addressing import split_location
-from threatcode.ir.edges import COMPUTED_METADATA_KEYS, EdgeType, InfraEdge
+from threatcode.ir.edges import COMPUTED_METADATA_KEYS, REACHABILITY, EdgeType, InfraEdge
 from threatcode.ir.enrich import enrich
 from threatcode.ir.nodes import (
     InfraNode,
+    NodeCategory,
     TrustZone,
     categorize_resource,
     infer_trust_zone,
@@ -30,6 +33,7 @@ from threatcode.ir.references import (
     type_is,
 )
 from threatcode.parsers.base import ParsedEdge, ParsedOutput, ParsedResource
+from threatcode.values import is_unknown
 
 logger = logging.getLogger(__name__)
 
@@ -41,27 +45,19 @@ MAX_EDGES = 50_000
 MAX_NODES_ENV = "THREATCODE_MAX_NODES"
 MAX_EDGES_ENV = "THREATCODE_MAX_EDGES"
 
-# Containment hint registry: (property_name, target_resource_type)
-# When a resource has property_name set, look for nodes of target_resource_type.
-_BUILTIN_CONTAINMENT_HINTS: tuple[tuple[str, str], ...] = (
-    ("vpc_id", "aws_vpc"),
-    ("vnet_id", "azurerm_virtual_network"),
-    ("network_id", "google_compute_network"),
-)
+# Containment hints registered at run time with register_containment_hint
 _custom_containment_hints: list[tuple[str, str]] = []
 
 
 def register_containment_hint(property_name: str, target_type: str) -> None:
     """Register a custom containment hint for edge inference.
 
-    When a resource has `property_name` in its properties, an edge is inferred
-    to nodes matching `target_type`.
+    A resource whose `property_name` attribute names a node of `target_type` is contained in it.
+    The hint joins the attachment table: it applies to the references a parser found for that
+    attribute, and to a literal value the input states (an address, an id, an ARN or a unique
+    name), and it only ever binds a node of `target_type`.
     """
     _custom_containment_hints.append((property_name, target_type))
-
-
-def _all_containment_hints() -> list[tuple[str, str]]:
-    return list(_BUILTIN_CONTAINMENT_HINTS) + _custom_containment_hints
 
 
 @dataclass(frozen=True)
@@ -73,13 +69,37 @@ class AttachmentRule:
     target: TypeMatcher | None
     edge_type: EdgeType
     relation: str
+    # A literal value that names nothing binds the only node of the required type, when there is
+    # exactly one. Only a network placement does this: with a single VPC in the input, a subnet's
+    # literal `vpc_id` is that VPC. With two or more candidates nothing is bound
+    bind_sole_candidate: bool = False
 
 
 # A reference in one of these attributes becomes an edge of this type, and only
 # to a node of the required type, so a vpc_id can never bind to a non-VPC node.
 # Attribute paths use "." for nesting and "[]" for each list level.
 ATTACHMENT_RULES: tuple[AttachmentRule, ...] = (
-    AttachmentRule(("vpc_id",), type_is("aws_vpc"), EdgeType.CONTAINMENT, ""),
+    AttachmentRule(
+        ("vpc_id",), type_is("aws_vpc"), EdgeType.CONTAINMENT, "", bind_sole_candidate=True
+    ),
+    AttachmentRule(
+        ("virtual_network_name", "virtual_network_id"),
+        type_is("azurerm_virtual_network"),
+        EdgeType.CONTAINMENT,
+        "",
+    ),
+    AttachmentRule(
+        ("network", "network_interface[].network"),
+        type_is("google_compute_network"),
+        EdgeType.CONTAINMENT,
+        "",
+    ),
+    AttachmentRule(
+        ("subnetwork", "network_interface[].subnetwork"),
+        type_is("google_compute_subnetwork"),
+        EdgeType.CONTAINMENT,
+        "",
+    ),
     AttachmentRule(
         (
             "subnet_id",
@@ -87,6 +107,9 @@ ATTACHMENT_RULES: tuple[AttachmentRule, ...] = (
             "subnets",
             "vpc_config[].subnet_ids",
             "network_interface[].subnet_id",
+            "network_interfaces[].subnet_id",
+            "ip_configuration[].subnet_id",
+            "virtual_network_subnet_id",
         ),
         type_endswith("subnet"),
         EdgeType.CONTAINMENT,
@@ -98,22 +121,37 @@ ATTACHMENT_RULES: tuple[AttachmentRule, ...] = (
             "vpc_security_group_ids",
             "security_group_ids",
             "vpc_config[].security_group_ids",
+            "network_interfaces[].security_groups",
         ),
         type_contains("security_group"),
         EdgeType.DEPENDENCY,
         "security_group",
     ),
     AttachmentRule(
-        ("role", "role_arn", "execution_role_arn", "task_role_arn"),
+        (
+            "role",
+            "roles",
+            "role_arn",
+            "execution_role_arn",
+            "task_role_arn",
+            "node_role_arn",
+            "service_role",
+        ),
         type_is("aws_iam_role"),
         EdgeType.IAM_BINDING,
         "assumes",
     ),
     AttachmentRule(
-        ("iam_instance_profile",),
+        ("iam_instance_profile", "iam_instance_profile[].name", "iam_instance_profile[].arn"),
         type_is("aws_iam_instance_profile"),
         EdgeType.IAM_BINDING,
         "instance_profile",
+    ),
+    AttachmentRule(
+        ("policy_arn",),
+        type_is("aws_iam_policy"),
+        EdgeType.IAM_BINDING,
+        "attaches",
     ),
     AttachmentRule(
         ("kms_key_id", "kms_master_key_id", "kms_key_arn"),
@@ -131,6 +169,32 @@ _RULE_BY_ATTRIBUTE: dict[str, AttachmentRule] = {
 _MAX_HINTED_EDGES = 20
 # A relation a more specific reference may replace on an existing edge
 _GENERIC_RELATIONS = ("", "references")
+
+
+def _all_rules() -> list[AttachmentRule]:
+    """The built-in attachment rules and one containment rule per registered hint."""
+    return [
+        *ATTACHMENT_RULES,
+        *(
+            AttachmentRule(
+                (prop,), type_is(target), EdgeType.CONTAINMENT, "", bind_sole_candidate=True
+            )
+            for prop, target in _custom_containment_hints
+        ),
+    ]
+
+
+def _rule_for(attribute: str) -> AttachmentRule:
+    """The rule for an attribute path; a registered hint is checked after the built-ins."""
+    found = _RULE_BY_ATTRIBUTE.get(attribute)
+    if found is not None:
+        return found
+    for prop, target in _custom_containment_hints:
+        if prop == attribute:
+            return AttachmentRule(
+                (prop,), type_is(target), EdgeType.CONTAINMENT, "", bind_sole_candidate=True
+            )
+    return _REFERENCES_RULE
 
 
 def _limit(explicit: int | None, env_name: str, default: int, label: str) -> int:
@@ -160,9 +224,6 @@ class _Unit:
     entries: list[tuple[ParsedResource, InfraNode]] = field(default_factory=list)
     # The address a reference is written against -> its node
     by_key: dict[str, InfraNode] = field(default_factory=dict)
-    # node id -> the address it is written as inside this unit (differs from the id
-    # when the graph qualified or suffixed the id)
-    local_key_of: dict[str, str] = field(default_factory=dict)
     # resource type -> node ids of this unit, in input order
     type_index: dict[str, list[str]] = field(default_factory=dict)
     index: ReferenceIndex = field(default_factory=lambda: ReferenceIndex({}))
@@ -189,6 +250,12 @@ class InfraGraph:
         # What the build skipped, approximated or renamed; see threatcode.diagnostics
         self.diagnostics: list[Diagnostic] = []
         self._duplicate_of: dict[str, str] = {}
+        # node id -> the format of the parser that produced it ("terraform_hcl", "cloudformation",
+        # "terraform_plan", ...). Enrichment and exposure read it to know where provider defaults
+        # may be assumed: a plan materialises them, a template or HCL file leaves them out
+        self.node_formats: dict[str, str] = {}
+        # Ids of the nodes whose zone the input declared; no later pass moves them
+        self.zone_declared: set[str] = set()
         self._edges_skipped = 0
         self._adjacency_size = -1
         self._out: dict[str, list[InfraEdge]] = {}
@@ -252,9 +319,15 @@ class InfraGraph:
         for unit in units:
             self._infer_edges(unit)
         self._add_declared_edges(units)
+        # Passes that need the finished edges and the derived facts, in this order:
+        # enrichment computes policy documents, rules and settings; IAM links roles, policies
+        # and the resources they reach; exposure decides what faces the internet and the final
+        # zones. The crossings are marked last because they compare the final zones
+        enrich(self, ReferenceIndex(self._nodes))
+        iam.link(self)
+        exposure.apply(self)
         self._mark_trust_boundary_crossings()
         self._flush_edge_cap()
-        enrich(self, ReferenceIndex(self._nodes))
 
     @property
     def nodes(self) -> dict[str, InfraNode]:
@@ -280,10 +353,23 @@ class InfraGraph:
     def get_node(self, node_id: str) -> InfraNode | None:
         return self._nodes.get(node_id)
 
-    def get_neighbors(self, node_id: str) -> list[InfraNode]:
-        if node_id not in self._graph:
+    def get_neighbors(
+        self, node_id: str, direction: Literal["out", "in", "both"] = "out"
+    ) -> list[InfraNode]:
+        """The nodes next to a node, each once.
+
+        `direction="out"` (the default, and the only behaviour before the argument existed) gives
+        the targets of the node's edges, `"in"` the sources of the edges that enter it and
+        `"both"` the targets and then the sources.
+        """
+        if node_id not in self._nodes:
             return []
-        return [self._nodes[n] for n in self._graph.neighbors(node_id) if n in self._nodes]
+        ids: dict[str, None] = {}
+        if direction in ("out", "both"):
+            ids.update(dict.fromkeys(self.successors(node_id)))
+        if direction in ("in", "both"):
+            ids.update(dict.fromkeys(self.predecessors(node_id)))
+        return [self._nodes[n] for n in ids if n in self._nodes]
 
     def get_edges_for_node(self, node_id: str) -> list[InfraEdge]:
         return [e for e in self._edges if e.source == node_id or e.target == node_id]
@@ -341,6 +427,115 @@ class InfraGraph:
             "edges": [_edge_to_dict(e) for e in self._edges],
         }
 
+    def to_export_dict(self, include_properties: bool = False) -> dict[str, Any]:
+        """The graph as plain data for user-facing output.
+
+        `to_dict` feeds the redacted LLM payload and keeps its small shape.
+        This one is for a person or a tool that wants to see what the engine saw:
+
+        - `nodes`: one entry per node, sorted by id, with `id`, `type`, `name`, `category`,
+          `zone`, `exposure`, `boundary`, `evidence`, `stride_element`, `module`, `mode`,
+          `source_file`, `start_line` and `end_line`.
+        - `edges`: one entry per edge, sorted by source, target and type, with `source`,
+          `target`, `type`, `relation`, `declared`, `crosses_boundary`, `source_zone`,
+          `target_zone` and the parser's `attributes`.
+
+        Node properties are left out unless `include_properties` is true, because they come from
+        the input and can hold secrets.
+        The output depends only on the graph, so two runs over the same input match.
+        """
+        nodes = []
+        for node_id in sorted(self._nodes):
+            node = self._nodes[node_id]
+            entry: dict[str, Any] = {
+                "id": node.id,
+                "type": node.resource_type,
+                "name": node.name,
+                "category": node.category.value,
+                "zone": node.trust_zone.value,
+                "exposure": node.exposure,
+                "boundary": node.boundary,
+                "evidence": node.evidence,
+                "stride_element": node.stride_element,
+                "module": node.module,
+                "mode": node.mode,
+                "source_file": node.source_file,
+                "start_line": node.start_line,
+                "end_line": node.end_line,
+            }
+            if include_properties:
+                entry["properties"] = _plain_data(node.properties)
+            nodes.append(entry)
+        edges = [
+            {
+                "source": edge.source,
+                "target": edge.target,
+                "type": edge.edge_type.value,
+                "relation": edge.relation,
+                "declared": edge.declared,
+                "crosses_boundary": edge.crosses_boundary,
+                "source_zone": edge.source_zone.value if edge.source_zone else None,
+                "target_zone": edge.target_zone.value if edge.target_zone else None,
+                "attributes": _plain_data(edge.attributes),
+            }
+            for edge in sorted(
+                self._edges, key=lambda e: (e.source, e.target, e.edge_type.value, e.relation)
+            )
+        ]
+        return {"nodes": nodes, "edges": edges}
+
+    def subgraph(self, edge_types: Iterable[EdgeType]) -> nx.MultiDiGraph[str]:
+        """A graph with every node and only the edges of the given types.
+
+        It is a `MultiDiGraph`, so two nodes joined by a dependency and a network flow keep both
+        edges, keyed by edge type.
+        Each edge carries `relation`, `declared` and the parser's `attributes`, and the nodes
+        carry `zone` and `category`, for graph algorithms that need them.
+        """
+        wanted = frozenset(edge_types)
+        view: nx.MultiDiGraph[str] = nx.MultiDiGraph()
+        for node_id, node in self._nodes.items():
+            view.add_node(node_id, zone=node.trust_zone.value, category=node.category.value)
+        for edge in self._edges:
+            if edge.edge_type in wanted:
+                view.add_edge(
+                    edge.source,
+                    edge.target,
+                    key=edge.edge_type.value,
+                    relation=edge.relation,
+                    declared=edge.declared,
+                    attributes=edge.attributes,
+                )
+        return view
+
+    def reachability_subgraph(self) -> nx.MultiDiGraph[str]:
+        """The graph of the edges an attacker can follow: network flows, data flows and bindings.
+
+        This is the edge set attack paths walk.
+        The synthetic internet node is not part of it yet.
+        """
+        return self.subgraph(REACHABILITY)
+
+    def add_edge(
+        self,
+        source: str,
+        target: str,
+        edge_type: EdgeType,
+        metadata: dict[str, Any] | None = None,
+        *,
+        relation: str = "",
+    ) -> None:
+        """Add an inferred edge between two nodes of the graph.
+
+        This is the entry point for the passes that run after the build (IAM, exposure,
+        reachability).
+        An edge that already exists keeps its place and only gains what the new one adds, and
+        the edge limit applies.
+        """
+        if source not in self._nodes or target not in self._nodes:
+            raise ThreatCodeError(f"Cannot add edge {source} -> {target}: unknown node")
+        self._add_edge(source, target, edge_type, metadata, relation=relation)
+
     def _diagnose(
         self, level: Level, code: str, message: str, file: str = "", line: int | None = None
     ) -> None:
@@ -352,8 +547,8 @@ class InfraGraph:
         if len(self._nodes) >= self.max_nodes:
             raise ThreatCodeError(
                 f"Infrastructure graph exceeds {self.max_nodes} node limit. "
-                f"Split your IaC into smaller modules, or raise the limit with the "
-                f"{MAX_NODES_ENV} environment variable."
+                f"Split your IaC into smaller modules, or raise the limit with --max-nodes, "
+                f"max_nodes in .threatcode.yml or the {MAX_NODES_ENV} environment variable."
             )
 
         if resource.evidence not in ("config", "design"):
@@ -367,7 +562,7 @@ class InfraGraph:
                 "Valid: managed, data"
             )
         category = categorize_resource(resource.resource_type)
-        trust_zone = _declared_or_inferred_zone(resource)
+        trust_zone = _declared_or_inferred_zone(resource, category)
         source_file, legacy_line = split_location(resource.source_location)
         start_line = resource.start_line if resource.start_line is not None else legacy_line
 
@@ -415,13 +610,23 @@ class InfraGraph:
         self._nodes[node_id] = node
         self._graph.add_node(node_id)
         if unit is not None:
+            self.node_formats[node_id] = unit.parsed.format_type
+            if resource.trust_zone is not None:
+                self.zone_declared.add(node_id)
             unit.by_key[local_key] = node
-            unit.local_key_of[node_id] = local_key
             unit.type_index.setdefault(resource.resource_type, []).append(node_id)
             unit.entries.append((resource, node))
         return node
 
     def _infer_edges(self, unit: _Unit) -> None:
+        """Add the edges a unit's references, dependencies and literal values state.
+
+        An edge exists only because the input names its target: a reference the parser
+        resolved, a dependency, or a literal address, id, ARN or name that matches exactly one
+        node of the required type.
+        Nothing is guessed from a node's position or from the first node of a type.
+        """
+        rules = [rule for rule in _all_rules() if rule.target is not None]
         for resource, node in unit.entries:
             # Explicit dependencies, resolved through the reference index
             for dep in resource.dependencies:
@@ -432,15 +637,12 @@ class InfraGraph:
             # References the parser found, as typed edges
             self._add_reference_edges(unit, resource, node)
 
-            # Containment: subnet → VPC, instance → subnet, etc.
-            self._infer_containment(unit, resource, node)
-
-            # IAM bindings
-            self._infer_iam_edges(unit, resource, node)
+            # Literal values of the attachment attributes the parser found no reference for
+            self._add_literal_edges(unit, resource, node, rules)
 
     def _add_reference_edges(self, unit: _Unit, resource: ParsedResource, node: InfraNode) -> None:
         for attribute, raws in resource.references.items():
-            rule = _RULE_BY_ATTRIBUTE.get(attribute, _REFERENCES_RULE)
+            rule = _rule_for(attribute)
             for raw in [raws] if isinstance(raws, str) else raws:
                 resolution = unit.index.resolve_detailed(
                     raw, resource.module, required_type=rule.target
@@ -462,6 +664,98 @@ class InfraGraph:
                 for target in resolution.ids:
                     if target != node.id:
                         self._add_edge(node.id, target, rule.edge_type, relation=rule.relation)
+
+    def _add_literal_edges(
+        self, unit: _Unit, resource: ParsedResource, node: InfraNode, rules: list[AttachmentRule]
+    ) -> None:
+        """Resolve the literal values of attachment attributes that have no parser reference.
+
+        This keeps hand-written inputs whose attributes hold Terraform addresses, ids, ARNs or
+        names working.
+        A value binds a node only through `ReferenceIndex.resolve_value`, never by position.
+        A value that names nothing is an external id and adds no edge, with one exception: a
+        network placement (`vpc_id`, a registered hint) binds the only node of its type when the
+        input has exactly one, and the edge is marked `binding: only_candidate`.
+        When several nodes of a placement's type exist and the value names none of them, the build
+        says it could not choose between them instead of choosing the first.
+        """
+        for rule in rules:
+            required = rule.target
+            if required is None:
+                continue
+            for attribute in rule.attributes:
+                if attribute in resource.references:
+                    continue
+                for value in _literal_values(resource.properties, attribute):
+                    resolution = unit.index.resolve_value(
+                        value, resource.module, required_type=required
+                    )
+                    for target in resolution.ids:
+                        if target != node.id:
+                            self._add_edge(node.id, target, rule.edge_type, relation=rule.relation)
+                    if resolution.ids:
+                        continue
+                    if self._bind_sole_candidate(unit, node, rule, value, resolution.ambiguous):
+                        continue
+                    self._explain_unbound(unit, node, rule, attribute, value, resolution.ambiguous)
+
+    def _bind_sole_candidate(
+        self,
+        unit: _Unit,
+        node: InfraNode,
+        rule: AttachmentRule,
+        value: str,
+        ambiguous: tuple[str, ...],
+    ) -> bool:
+        """Bind a literal that names nothing to the only node of the required type, if allowed."""
+        if not rule.bind_sole_candidate or rule.target is None or ambiguous:
+            return False
+        if _ADDRESS_LIKE.match(value) or not _same_provider(node.resource_type, unit, rule.target):
+            return False
+        candidates = _candidates(unit, rule.target, node.id)
+        if len(candidates) != 1:
+            return False
+        self._add_edge(
+            node.id,
+            candidates[0],
+            rule.edge_type,
+            {"binding": "only_candidate"},
+            relation=rule.relation,
+        )
+        return True
+
+    def _explain_unbound(
+        self,
+        unit: _Unit,
+        node: InfraNode,
+        rule: AttachmentRule,
+        attribute: str,
+        value: str,
+        ambiguous: tuple[str, ...],
+    ) -> None:
+        """Report a literal placement value that matched no single node, when it was a choice."""
+        if ambiguous:
+            detail = f"matches several nodes ({', '.join(ambiguous)})"
+        elif (
+            rule.target is not None
+            and _is_placement(rule)
+            and not _ADDRESS_LIKE.match(value)
+            and _same_provider(node.resource_type, unit, rule.target)
+        ):
+            candidates = _candidates(unit, rule.target, node.id)
+            if len(candidates) < 2:
+                return
+            shown = ", ".join(candidates[:5]) + (", ..." if len(candidates) > 5 else "")
+            detail = f"names none of {len(candidates)} candidate nodes ({shown})"
+        else:
+            return
+        self._diagnose(
+            "warning",
+            "graph.ambiguous_reference",
+            f"Value '{value}' in {node.id} ({attribute}) {detail}; no edge was added",
+            node.source_file,
+            node.start_line,
+        )
 
     def _add_declared_edges(self, units: list[_Unit]) -> None:
         """Add edges the input states explicitly, such as data flows in a design.
@@ -534,82 +828,6 @@ class InfraGraph:
                 "warning", "graph.dangling_declared_edge", f"Declared edge skipped: {line}"
             )
 
-    def _infer_containment(self, unit: _Unit, resource: ParsedResource, node: InfraNode) -> None:
-        props = resource.properties
-        # An attribute the parser resolved references for has its edges already;
-        # guessing from the literal value again could only add wrong ones
-        resolved = resource.references
-
-        def literal(name: str) -> Any:
-            return None if name in resolved else props.get(name)
-
-        # Registry-driven containment hints
-        for prop_name, target_type in _all_containment_hints():
-            value = literal(prop_name)
-            if value and isinstance(value, str):
-                for nid in unit.type_index.get(target_type, []):
-                    if nid != node.id:
-                        self._add_edge(node.id, nid, EdgeType.CONTAINMENT)
-                        break
-
-        # Subnet containment - match only if we have a reference
-        subnet_id = literal("subnet_id")
-        subnet_ids = literal("subnet_ids") or literal("subnets") or []
-        if subnet_id:
-            # Merge single subnet_id into the list rather than clobbering it
-            if isinstance(subnet_ids, list):
-                subnet_ids = [subnet_id, *subnet_ids]
-            else:
-                subnet_ids = [subnet_id]
-        if isinstance(subnet_ids, list) and subnet_ids:
-            # Build set of referenced subnet IDs for matching
-            ref_ids = set(str(s) for s in subnet_ids if s)
-            for rtype, nids in unit.type_index.items():
-                if rtype.endswith("subnet"):
-                    for nid in nids:
-                        other = self._nodes.get(nid)
-                        if other and nid != node.id:
-                            # Match by address or name against referenced IDs
-                            if _is_referenced(unit, other, ref_ids):
-                                self._add_edge(node.id, nid, EdgeType.CONTAINMENT)
-
-        # Security group attachment - match only if we have a reference
-        sg_ids = literal("security_groups") or literal("vpc_security_group_ids") or []
-        if isinstance(sg_ids, list) and sg_ids:
-            ref_ids = set(str(s) for s in sg_ids if s)
-            for rtype, nids in unit.type_index.items():
-                if "security_group" in rtype:
-                    for nid in nids:
-                        other = self._nodes.get(nid)
-                        if other and nid != node.id:
-                            if _is_referenced(unit, other, ref_ids):
-                                self._add_edge(node.id, nid, EdgeType.NETWORK_FLOW)
-
-    def _infer_iam_edges(self, unit: _Unit, resource: ParsedResource, node: InfraNode) -> None:
-        rtype = resource.resource_type
-        if "role" in resource.references:
-            return
-
-        # Role attachment and instance profile → role
-        if rtype in ("aws_iam_role_policy_attachment", "aws_iam_instance_profile"):
-            role = resource.properties.get("role", "")
-            if role:
-                self._match_iam_role(unit, node.id, role)
-
-    def _match_iam_role(self, unit: _Unit, source_id: str, role_ref: str) -> None:
-        """Match an IAM role reference, trying address-based match first."""
-        # Try address-based match first (e.g., aws_iam_role.my_role)
-        by_address = unit.by_key.get(f"aws_iam_role.{role_ref}")
-        if by_address is not None:
-            self._add_edge(source_id, by_address.id, EdgeType.IAM_BINDING)
-            return
-
-        # Fall back to name-based match
-        for nid in unit.type_index.get("aws_iam_role", []):
-            if self._nodes[nid].name == role_ref:
-                self._add_edge(source_id, nid, EdgeType.IAM_BINDING)
-                return
-
     def _add_edge(
         self,
         source: str,
@@ -661,7 +879,8 @@ class InfraGraph:
             return
         message = (
             f"Edge limit reached ({self.max_edges}): skipped {self._edges_skipped} further "
-            f"edge(s). Raise the limit with the {MAX_EDGES_ENV} environment variable."
+            f"edge(s). Raise the limit with --max-edges, max_edges in .threatcode.yml or the "
+            f"{MAX_EDGES_ENV} environment variable."
         )
         logger.warning(message)
         self._diagnose("warning", "graph.edge_cap", message)
@@ -704,13 +923,72 @@ def _colliding_addresses(units: list[ParsedOutput]) -> dict[str, list[int]]:
     return {a: sorted(p) for a, p in users.items() if len(p) > 1}
 
 
-def _is_referenced(unit: _Unit, node: InfraNode, ref_ids: set[str]) -> bool:
-    """Whether a literal value names `node` by address or by name."""
-    return (
-        node.id in ref_ids
-        or unit.local_key_of.get(node.id, node.id) in ref_ids
-        or bool(node.name and node.name in ref_ids)
+def _literal_values(properties: dict[str, Any], path: str) -> list[str]:
+    """The plain string values at an attribute path, following "." and "[]".
+
+    A value that is not a string, and an `Unknown`, is not a literal and is left out.
+    """
+    current: list[Any] = [properties]
+    for segment in path.split("."):
+        key = segment[:-2] if segment.endswith("[]") else segment
+        following: list[Any] = []
+        for item in current:
+            if isinstance(item, dict) and key in item:
+                value = item[key]
+                if segment.endswith("[]"):
+                    following.extend(value if isinstance(value, list) else [value])
+                else:
+                    following.append(value)
+        current = following
+    found: list[str] = []
+    for value in current:
+        for leaf in value if isinstance(value, list) else [value]:
+            if isinstance(leaf, str) and not is_unknown(leaf) and leaf.strip():
+                found.append(leaf)
+    return found
+
+
+# A value written as a resource address: `aws_subnet.a`, `aws_subnet.a[0].id`, `module.x.y`
+_ADDRESS_LIKE = re.compile(r"^(module\.|[a-z][a-z0-9]*_[a-z0-9_]+(\[[^\]]*\])?\.)[A-Za-z_]")
+
+
+def _is_placement(rule: AttachmentRule) -> bool:
+    """Whether a rule places a node in a network or attaches a security group to it."""
+    return rule.edge_type is EdgeType.CONTAINMENT or rule.relation == "security_group"
+
+
+def _same_provider(resource_type: str, unit: _Unit, required_type: TypeMatcher) -> bool:
+    """Whether the resource and some candidate belong to one provider (`aws_`, `azurerm_`, ...)."""
+    provider = resource_type.split("_", 1)[0]
+    return any(
+        candidate.split("_", 1)[0] == provider and required_type(candidate)
+        for candidate in unit.type_index
     )
+
+
+def _candidates(unit: _Unit, required_type: TypeMatcher, exclude: str) -> list[str]:
+    """The ids of the unit's nodes whose type the rule accepts, in input order."""
+    return [
+        node_id
+        for resource_type, node_ids in unit.type_index.items()
+        if required_type(resource_type)
+        for node_id in node_ids
+        if node_id != exclude
+    ]
+
+
+def _plain_data(value: Any, depth: int = 0) -> Any:
+    """A JSON-safe copy of parser data: mappings, lists and scalars; anything else as text."""
+    if depth > 12:
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _plain_data(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        items = sorted(value, key=str) if isinstance(value, (set, frozenset)) else value
+        return [_plain_data(v, depth + 1) for v in items]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)
 
 
 def _without_computed(attributes: dict[str, Any]) -> dict[str, Any]:
@@ -761,10 +1039,12 @@ def _edge_to_dict(edge: InfraEdge) -> dict[str, Any]:
     return data
 
 
-def _declared_or_inferred_zone(resource: ParsedResource) -> TrustZone:
+def _declared_or_inferred_zone(resource: ParsedResource, category: NodeCategory) -> TrustZone:
     """Use the zone the input declares, else infer it from type and properties."""
     if resource.trust_zone is None:
-        return infer_trust_zone(resource.resource_type, resource.properties)
+        return infer_trust_zone(
+            resource.resource_type, resource.properties, category, resource.evidence
+        )
     try:
         return TrustZone(resource.trust_zone)
     except ValueError as e:

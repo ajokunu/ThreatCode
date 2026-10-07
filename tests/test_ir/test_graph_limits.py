@@ -76,6 +76,13 @@ class TestNodeLimitConfiguration:
         with pytest.raises(ThreatCodeError, match="THREATCODE_MAX_NODES"):
             InfraGraph.from_parsed(ParsedOutput(resources=_instances(2)), max_nodes=1)
 
+    def test_the_error_names_the_config_key_and_the_flag_too(self) -> None:
+        with pytest.raises(ThreatCodeError) as excinfo:
+            InfraGraph.from_parsed(ParsedOutput(resources=_instances(2)), max_nodes=1)
+        message = str(excinfo.value)
+        assert "max_nodes in .threatcode.yml" in message
+        assert "--max-nodes" in message
+
     def test_environment_variable_sets_the_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("THREATCODE_MAX_NODES", "2")
         with pytest.raises(ThreatCodeError, match="exceeds 2 node limit"):
@@ -172,6 +179,8 @@ class TestEdgeCapWarning:
         assert "(3)" in warnings[0].message
         assert "skipped 8 further" in warnings[0].message
         assert "THREATCODE_MAX_EDGES" in warnings[0].message
+        assert "max_edges in .threatcode.yml" in warnings[0].message
+        assert "--max-edges" in warnings[0].message
 
     def test_the_warning_is_also_a_diagnostic(self) -> None:
         graph = InfraGraph.from_parsed(_chain(6, 5), max_edges=2)

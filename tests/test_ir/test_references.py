@@ -9,11 +9,14 @@ import pytest
 from threatcode.ir.nodes import InfraNode, categorize_resource, infer_trust_zone
 from threatcode.ir.references import (
     UNRESOLVABLE_ROOTS,
+    ArnParts,
     ReferenceIndex,
+    parse_arn,
     type_contains,
     type_endswith,
     type_is,
 )
+from threatcode.values import Unknown
 
 
 def _node(address: str, name: str = "", module: str = "", node_id: str = "") -> InfraNode:
@@ -387,3 +390,176 @@ class TestUnsupportedInput:
     @pytest.mark.parametrize("raw", [None, 5, 3.5, True, object(), {}, [], ()])
     def test_non_reference_values_resolve_to_nothing(self, raw: Any) -> None:
         assert _index("aws_vpc.main").resolve(raw) == []
+
+
+ROLE_TYPE = type_is("aws_iam_role")
+
+
+def _role(label: str, name: str = "", arn: str = "", node_id: str = "") -> InfraNode:
+    properties: dict[str, Any] = {}
+    if name:
+        properties["name"] = name
+    if arn:
+        properties["arn"] = arn
+    node = _node(node_id or f"aws_iam_role.{label}")
+    node.properties.update(properties)
+    return node
+
+
+def _roles_index(*roles: InfraNode) -> ReferenceIndex:
+    return ReferenceIndex({r.id: r for r in roles})
+
+
+class TestResolveLiteral:
+    def test_the_name_attribute_wins_over_the_label(self) -> None:
+        by_label = _role("deploy", name="other")
+        by_name = _role("ops", name="deploy")
+        index = _roles_index(by_label, by_name)
+        found = index.resolve_literal("deploy", required_type=ROLE_TYPE)
+        assert found.ids == (by_name.id,)
+
+    def test_the_label_is_the_last_resort(self) -> None:
+        index = _roles_index(_role("deploy", name="x"), _role("ops"))
+        assert index.resolve_literal("ops", required_type=ROLE_TYPE).ids == ("aws_iam_role.ops",)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "arn:aws:iam::123456789012:role/deploy",
+            "arn:aws:iam::123456789012:role/service-role/deploy",
+            "arn:aws:iam::123456789012:role/a/b/c/deploy",
+        ],
+    )
+    def test_an_arn_resolves_through_its_last_component_and_the_name_attribute(
+        self, value: str
+    ) -> None:
+        index = _roles_index(_role("ops", name="deploy"), _role("other", name="elsewhere"))
+        assert index.resolve_literal(value, required_type=ROLE_TYPE).ids == ("aws_iam_role.ops",)
+
+    def test_the_arn_attribute_matches_exactly(self) -> None:
+        arn = "arn:aws:iam::123456789012:role/deploy"
+        index = _roles_index(_role("ops", arn=arn), _role("deploy", name="deploy"))
+        assert index.resolve_literal(arn, required_type=ROLE_TYPE).ids == ("aws_iam_role.ops",)
+
+    def test_the_id_attribute_matches(self) -> None:
+        vpc = _node("aws_vpc.main")
+        vpc.properties["id"] = "vpc-0abc"
+        index = ReferenceIndex({vpc.id: vpc})
+        assert index.resolve_literal("vpc-0abc", required_type=type_is("aws_vpc")).ids == (
+            "aws_vpc.main",
+        )
+
+    def test_a_name_two_nodes_share_is_ambiguous_and_binds_neither(self) -> None:
+        index = _roles_index(_role("a", name="shared"), _role("b", name="shared"))
+        found = index.resolve_literal("shared", required_type=ROLE_TYPE)
+        assert found.ids == ()
+        assert found.ambiguous == ("aws_iam_role.a", "aws_iam_role.b")
+
+    def test_the_required_type_filters_the_match(self) -> None:
+        role = _role("deploy", name="deploy")
+        policy = _node("aws_iam_policy.deploy")
+        policy.properties["name"] = "deploy"
+        index = ReferenceIndex({role.id: role, policy.id: policy})
+        assert index.resolve_literal("deploy", required_type=ROLE_TYPE).ids == (role.id,)
+        assert index.resolve_literal("deploy", required_type=type_is("aws_iam_policy")).ids == (
+            policy.id,
+        )
+
+    @pytest.mark.parametrize("value", ["nobody", "arn:aws:iam::1:role/nobody", "", "  "])
+    def test_a_value_that_names_nothing_resolves_to_nothing(self, value: str) -> None:
+        found = _roles_index(_role("deploy", name="deploy")).resolve_literal(
+            value, required_type=ROLE_TYPE
+        )
+        assert found.ids == () and found.ambiguous == ()
+
+    @pytest.mark.parametrize("value", [None, 5, Unknown("aws_iam_role.deploy"), ["deploy"]])
+    def test_a_value_that_is_not_a_plain_string_resolves_to_nothing(self, value: Any) -> None:
+        index = _roles_index(_role("deploy", name="deploy"))
+        assert index.resolve_literal(value, required_type=ROLE_TYPE).ids == ()
+
+    def test_an_interpolation_is_not_a_literal(self) -> None:
+        index = _roles_index(_role("deploy", name="deploy"))
+        assert (
+            index.resolve_literal("${aws_iam_role.deploy.name}", required_type=ROLE_TYPE).ids == ()
+        )
+
+    def test_an_address_still_resolves_after_the_attribute_steps(self) -> None:
+        index = _roles_index(_role("deploy", name="unrelated"))
+        found = index.resolve_literal("aws_iam_role.deploy", required_type=ROLE_TYPE)
+        assert found.ids == ("aws_iam_role.deploy",)
+
+
+class TestResolveValue:
+    def _index(self) -> ReferenceIndex:
+        return _roles_index(_role("deploy", name="deploy-name"), _role("ops", name="ops-name"))
+
+    def test_an_unknown_resolves_through_the_reference_it_carries(self) -> None:
+        found = self._index().resolve_value(
+            Unknown("aws_iam_role.ops.arn"), required_type=ROLE_TYPE
+        )
+        assert found.ids == ("aws_iam_role.ops",)
+
+    def test_an_unknown_with_no_reference_resolves_to_nothing(self) -> None:
+        assert self._index().resolve_value(Unknown(), required_type=ROLE_TYPE).ids == ()
+
+    def test_an_interpolation_resolves_as_a_reference(self) -> None:
+        found = self._index().resolve_value("${aws_iam_role.deploy.arn}", required_type=ROLE_TYPE)
+        assert found.ids == ("aws_iam_role.deploy",)
+
+    def test_a_plain_string_resolves_as_a_literal(self) -> None:
+        assert self._index().resolve_value("ops-name", required_type=ROLE_TYPE).ids == (
+            "aws_iam_role.ops",
+        )
+
+    def test_a_cloudformation_intrinsic_resolves(self) -> None:
+        role = _role("DeployRole", node_id="DeployRole")
+        role.resource_type = "aws_iam_role"
+        found = ReferenceIndex({role.id: role}).resolve_value(
+            {"Fn::GetAtt": ["DeployRole", "Arn"]}, required_type=ROLE_TYPE
+        )
+        assert found.ids == ("DeployRole",)
+
+    def test_a_list_merges_its_items_in_order_without_repeats(self) -> None:
+        found = self._index().resolve_value(
+            ["ops-name", Unknown("aws_iam_role.deploy.arn"), "ops-name"], required_type=ROLE_TYPE
+        )
+        assert found.ids == ("aws_iam_role.ops", "aws_iam_role.deploy")
+
+    @pytest.mark.parametrize("value", [None, 3, True, {}, []])
+    def test_anything_else_resolves_to_nothing(self, value: Any) -> None:
+        assert self._index().resolve_value(value, required_type=ROLE_TYPE).ids == ()
+
+
+class TestParseArn:
+    def test_the_fields(self) -> None:
+        arn = parse_arn("arn:aws:iam::123456789012:role/service-role/deploy")
+        assert arn == ArnParts("aws", "iam", "", "123456789012", "role/service-role/deploy")
+        assert arn is not None
+        assert (arn.name, arn.kind) == ("deploy", "role")
+
+    def test_a_resource_with_colons(self) -> None:
+        arn = parse_arn("arn:aws:lambda:us-east-1:123456789012:function:orders")
+        assert arn is not None
+        assert (arn.service, arn.region, arn.name, arn.kind) == (
+            "lambda",
+            "us-east-1",
+            "orders",
+            "function",
+        )
+
+    def test_an_s3_arn_has_no_kind(self) -> None:
+        arn = parse_arn("arn:aws:s3:::my-bucket/key")
+        assert arn is not None
+        assert (arn.service, arn.resource, arn.name, arn.kind) == (
+            "s3",
+            "my-bucket/key",
+            "key",
+            "my-bucket",
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        ["", "role/deploy", "arn:aws", "arn:aws:iam", "arn:aws::::x", None, 4, Unknown("a.b")],
+    )
+    def test_anything_else_is_not_an_arn(self, value: Any) -> None:
+        assert parse_arn(value) is None

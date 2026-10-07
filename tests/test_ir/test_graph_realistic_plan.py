@@ -244,21 +244,17 @@ class TestWebappZones:
     def test_zone(self, node: str, zone: str) -> None:
         assert_zone(scan_real_shape(WEBAPP).graph, node, zone)
 
-    @pending("WP-3-1", "RDS and Aurora types have an explicit DATABASE category, so zone data")
     def test_the_database_is_in_the_data_zone(self) -> None:
         assert_zone(scan_real_shape(WEBAPP).graph, "aws_db_instance.orders", "data")
 
-    @pending("WP-3-1", "Secrets Manager secrets are the new SECRET category in the data zone")
     def test_the_secret_is_in_the_data_zone(self) -> None:
         assert_zone(scan_real_shape(WEBAPP).graph, "aws_secretsmanager_secret.db", "data")
 
 
 class TestWebappExposure:
-    @pending("WP-3-1", "an internet-facing load balancer has exposure internet")
     def test_the_internet_facing_load_balancer_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(WEBAPP).graph, "aws_lb.front", "internet")
 
-    @pending("WP-3-1", "a security group with world-open ingress has exposure internet")
     def test_the_world_open_security_group_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(WEBAPP).graph, "aws_security_group.alb", "internet")
 
@@ -326,7 +322,6 @@ class TestWebappUnknownValues:
 
 
 class TestWebappAttackSurface:
-    @pending("WP-3-1", "role resolution links an instance, its profile and its role by iam_binding")
     def test_the_instance_profile_is_bound_to_the_role(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_iam_instance_profile.app", "aws_iam_role.app", type="iam_binding")
@@ -644,37 +639,30 @@ class TestOtherProviders:
     def test_the_azure_edge_set(self) -> None:
         graph = scan_real_shape(AZURE_NETWORK).graph
         group = "azurerm_resource_group.main"
+        vnet, subnet = "azurerm_virtual_network.main", "azurerm_subnet.app"
+        nsg = "azurerm_network_security_group.app"
         assert edge_set(graph) == {
-            ("azurerm_virtual_network.main", group, "dependency"),
-            ("azurerm_subnet.app", group, "dependency"),
-            ("azurerm_subnet.app", "azurerm_virtual_network.main", "dependency"),
-            ("azurerm_network_security_group.app", group, "dependency"),
+            (vnet, group, "dependency"),
+            (subnet, group, "dependency"),
+            (subnet, vnet, "dependency"),
+            (subnet, vnet, "containment"),
+            (nsg, group, "dependency"),
             ("azurerm_network_security_rule.rdp", group, "dependency"),
-            (
-                "azurerm_network_security_rule.rdp",
-                "azurerm_network_security_group.app",
-                "dependency",
-            ),
+            ("azurerm_network_security_rule.rdp", nsg, "dependency"),
             ("azurerm_network_interface.app", group, "dependency"),
-            ("azurerm_network_interface.app", "azurerm_subnet.app", "dependency"),
+            ("azurerm_network_interface.app", subnet, "dependency"),
+            ("azurerm_network_interface.app", subnet, "containment"),
             ("azurerm_linux_virtual_machine.app", group, "dependency"),
             ("azurerm_linux_virtual_machine.app", "azurerm_network_interface.app", "dependency"),
-            (
-                "azurerm_subnet_network_security_group_association.app",
-                "azurerm_network_security_group.app",
-                "dependency",
-            ),
-            (
-                "azurerm_subnet_network_security_group_association.app",
-                "azurerm_subnet.app",
-                "dependency",
-            ),
-            (
-                "azurerm_subnet_network_security_group_association.app",
-                "azurerm_subnet.app",
-                "containment",
-            ),
+            ("azurerm_subnet_network_security_group_association.app", nsg, "dependency"),
+            ("azurerm_subnet_network_security_group_association.app", subnet, "dependency"),
+            ("azurerm_subnet_network_security_group_association.app", subnet, "containment"),
         }
+
+    def test_a_subnet_is_contained_in_its_virtual_network_by_the_reference(self) -> None:
+        graph = scan_real_shape(AZURE_NETWORK).graph
+        assert_edge(graph, "azurerm_subnet.app", "azurerm_virtual_network.main", type="containment")
+        assert_no_edge(graph, "azurerm_virtual_network.main", "azurerm_subnet.app")
 
     def test_a_nested_block_reference_reaches_the_subnet(self) -> None:
         graph = scan_real_shape(AZURE_NETWORK).graph
@@ -689,11 +677,16 @@ class TestOtherProviders:
         network, subnet = "google_compute_network.vpc", "google_compute_subnetwork.app"
         assert edge_set(graph) == {
             (subnet, network, "dependency"),
+            (subnet, network, "containment"),
             ("google_compute_firewall.ssh", network, "dependency"),
+            ("google_compute_firewall.ssh", network, "containment"),
             ("google_compute_firewall.internal", network, "dependency"),
+            ("google_compute_firewall.internal", network, "containment"),
             ("google_compute_firewall.internal", subnet, "dependency"),
             ("google_compute_instance.vm", network, "dependency"),
+            ("google_compute_instance.vm", network, "containment"),
             ("google_compute_instance.vm", subnet, "dependency"),
+            ("google_compute_instance.vm", subnet, "containment"),
         }
 
     def test_the_gcp_network_interface_block_keeps_its_unknown_network(self) -> None:
