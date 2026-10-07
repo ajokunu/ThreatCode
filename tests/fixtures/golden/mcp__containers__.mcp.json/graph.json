@@ -1,0 +1,122 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.device",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.etc-mount",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.home-mount",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.net-admin",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.not-privileged",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.privileged-true",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.root-user",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.device",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.etc-mount",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.home-mount",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.net-admin",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.not-privileged",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.privileged-true",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.root-user",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.device": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.etc-mount": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.home-mount": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.net-admin": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.not-privileged": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.privileged-true": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.root-user": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

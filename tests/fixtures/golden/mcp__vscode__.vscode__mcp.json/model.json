@@ -1,0 +1,14 @@
+{
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "mcp_agent.config",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_server.github",
+      "stride": "tampering"
+    }
+  ]
+}

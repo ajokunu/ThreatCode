@@ -1,0 +1,42 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.on",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.on",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.off-by-enabled": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.off-by-flag": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.off-by-list": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.off-with-secret": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.on": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "mcp_server.api-be72395b.postgres",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.api-6c846ce7.postgres",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.api-be72395b.postgres",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

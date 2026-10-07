@@ -1,0 +1,34 @@
+{
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "mcp_agent.config",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_agent.config",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_agent.config",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_server.path-token",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_server.query-auth",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_server.userinfo",
+      "stride": "tampering"
+    }
+  ]
+}
