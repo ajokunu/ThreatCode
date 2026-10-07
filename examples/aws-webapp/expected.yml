@@ -53,7 +53,7 @@ attack_paths:
     entry: internet
     target: aws_secretsmanager_secret.db_credentials
     via: [aws_lb.front, "aws_instance.app[0]"]
-    why: The same role allows secretsmanager:GetSecretValue on orders/db-*.
+    why: The same role allows secretsmanager:GetSecretValue on the ARN of the orders/db secret (its name plus the six character suffix Secrets Manager adds).
   - id: internet-to-database
     entry: internet
     target: aws_db_instance.orders

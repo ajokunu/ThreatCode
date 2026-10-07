@@ -9,8 +9,19 @@ gateway attached to a VPC and a function bound to its role are not trust boundar
 A security group, a network ACL, a route table, an IAM policy and a network or namespace
 container cannot send or receive traffic either (`InfraNode.can_exchange_traffic`).
 
+The flow edges include the ones the reachability pass adds (`threatcode.ir.reachability`): the
+internet to an exposed load balancer on 443/tcp, the load balancer to its targets on 8080/tcp, an
+application tier to a database on 5432/tcp.
+The port and protocol of such an edge are in the description.
+The pass also adds edges that model what an attacker controls rather than traffic (an MCP server
+that fetches untrusted content, `source` `agent`); those produce no boundary threat, because the
+MCP rules already report the exposure.
+
 One threat is produced per ordered (source, target) pair, merging every flow edge between them.
 Its id hashes the pair and the sorted edge types, so ids are stable and never repeat.
+A crossing that starts at the synthetic internet node belongs to the node it enters: it has no
+file and line of its own, so `resource_address` is the exposed resource and the flow's source is
+in the title, the description and the `flow` metadata.
 
 What the threat says follows what the flow is known to be:
 
@@ -33,7 +44,7 @@ from typing import Any
 
 from threatcode.engine.mitre import tactics_for_techniques
 from threatcode.engine.stride import StrideCategory
-from threatcode.ir.edges import FLOW_EDGE_TYPES, InfraEdge
+from threatcode.ir.edges import AGENT, FLOW_EDGE_TYPES, InfraEdge
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode
 from threatcode.models.threat import Severity, Threat, ThreatSource, hash_id
@@ -101,7 +112,14 @@ class _Flow:
 
     @property
     def protocols(self) -> list[str]:
-        found = {str(p).lower() for e in self.edges if (p := _attribute(e, "protocol"))}
+        found: set[str] = set()
+        for edge in self.edges:
+            listed = _attribute(edge, "protocols")
+            for value in (
+                listed if isinstance(listed, (list, tuple)) else [_attribute(edge, "protocol")]
+            ):
+                if isinstance(value, str) and value.strip():
+                    found.add(value.strip().lower())
         return sorted(found)
 
     @property
@@ -147,7 +165,7 @@ def analyze(graph: InfraGraph) -> list[Threat]:
     """Generate threats for the traffic that crosses a trust boundary."""
     flows: dict[tuple[str, str], _Flow] = {}
     for edge in graph.get_boundary_crossing_edges():
-        if edge.edge_type not in FLOW_EDGE_TYPES:
+        if edge.edge_type not in FLOW_EDGE_TYPES or _is_modelled_exposure(graph, edge):
             continue
         src = graph.get_node(edge.source)
         tgt = graph.get_node(edge.target)
@@ -165,6 +183,15 @@ def analyze(graph: InfraGraph) -> list[Threat]:
     return threats
 
 
+def _is_modelled_exposure(graph: InfraGraph, edge: InfraEdge) -> bool:
+    """Whether the edge is the pass's model of untrusted content reaching an agent's server.
+
+    It says what an attacker controls, not that traffic crosses, and the MCP rules report it.
+    """
+    source = graph.get_node(edge.source)
+    return source is not None and source.is_internet and edge.source_kind == AGENT
+
+
 def _zone(node: InfraNode) -> str:
     return node.trust_zone.value
 
@@ -179,6 +206,8 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
     known = flow.encrypted is not None or flow.authenticated is not None
     # The separator keeps ("a_b", "c") apart from ("a", "b_c")
     seed = f"BOUNDARY|{src.id}|{tgt.id}|{'+'.join(flow.edge_types)}"
+    # The internet has no file and no line: the finding sits on the resource it enters
+    anchor, other = (tgt, "") if src.is_internet else (src, tgt.id)
     return Threat(
         id=hash_id(seed),
         title=f"Trust boundary crossing: {src.id} ({src_zone}) -> {tgt.id} ({tgt_zone})",
@@ -186,8 +215,8 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
         stride_category=stride,
         severity=severity,
         source=ThreatSource.BOUNDARY,
-        resource_type=src.resource_type,
-        resource_address=src.id,
+        resource_type=anchor.resource_type,
+        resource_address=anchor.id,
         mitigation=_mitigation(stride),
         confidence=1.0 if known else _LOW_CONFIDENCE,
         metadata={
@@ -209,7 +238,7 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
         },
         mitre_techniques=techniques,
         mitre_tactics=tactics_for_techniques(techniques),
-        target_address=tgt.id,
+        target_address=other,
     )
 
 
@@ -258,6 +287,8 @@ def _description(src: InfraNode, tgt: InfraNode, flow: _Flow) -> str:
 
 def _where(flow: _Flow) -> str:
     protocols, ports = flow.protocols, flow.ports
+    if protocols == ["all"]:
+        return " over all protocols and ports"
     if protocols and ports:
         return f" over {'/'.join(protocols)}/{','.join(ports)}"
     if protocols:
