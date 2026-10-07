@@ -347,7 +347,8 @@ class TestProviderConformancePlans:
 
     def test_the_open_firewall_is_reported_and_the_internal_one_is_not(self) -> None:
         result = scan_real_shape("terraform/plan/gcp_network.plan.json")
-        assert result.fired("GCP_FW_ALLOW_ALL", "google_compute_firewall.ssh")
+        assert result.fired("GCP_FW_SSH_OPEN", "google_compute_firewall.ssh")
+        assert not result.fired("GCP_FW_ALLOW_ALL", "google_compute_firewall.ssh")
         assert result.rule_ids_for("google_compute_firewall.internal") == set()
 
     def test_a_restricted_source_range_stays_a_plain_list(self) -> None:
