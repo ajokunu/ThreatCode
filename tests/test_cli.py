@@ -984,16 +984,23 @@ class TestErrorHandling:
         assert "--debug" in lines[0]
         assert "Traceback" not in result.output
 
-    def test_debug_shows_the_traceback(self, exploding: None) -> None:
+    def test_debug_shows_the_traceback_and_still_exits_two(self, exploding: None) -> None:
         result = invoke("--debug", "scan", SIMPLE_TF)
-        assert result.exit_code == 1  # click's own exit for an uncaught exception
-        assert isinstance(result.exception, RuntimeError)
+        assert result.exit_code == 2
+        assert "Traceback (most recent call last)" in result.stderr
+        assert "RuntimeError: something nobody planned for" in result.stderr
+        assert result.stderr.startswith("Error: unexpected RuntimeError")
 
-    def test_the_debug_variable_shows_the_traceback(
+    def test_the_debug_variable_shows_the_traceback_and_still_exits_two(
         self, exploding: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("THREATCODE_DEBUG", "1")
-        assert isinstance(invoke("scan", SIMPLE_TF).exception, RuntimeError)
+        result = invoke("scan", SIMPLE_TF)
+        assert result.exit_code == 2
+        assert "Traceback (most recent call last)" in result.stderr
+
+    def test_the_traceback_is_absent_without_debug(self, exploding: None) -> None:
+        assert "Traceback" not in invoke("scan", SIMPLE_TF).stderr
 
     def test_threatcode_errors_print_the_bare_message(self, tmp_path: Path) -> None:
         result = invoke("scan", SHAPES / "terraform_state.json")

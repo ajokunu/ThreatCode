@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -141,12 +142,14 @@ class _ThreatCodeGroup(click.Group):
             click.echo(f"Error: {exc}", err=True)
             ctx.exit(2)
         except Exception as exc:
-            if bool(ctx.params.get("debug")) or os.environ.get(DEBUG_ENV) == "1":
-                raise
             click.echo(
                 f"Error: unexpected {type(exc).__name__}: {exc} (run with --debug for a traceback)",
                 err=True,
             )
+            if bool(ctx.params.get("debug")) or os.environ.get(DEBUG_ENV) == "1":
+                # The traceback is for the person debugging; the exit status stays 2 so a crash
+                # can never be read as "findings" (1).
+                traceback.print_exc(file=sys.stderr)
             ctx.exit(2)
 
 

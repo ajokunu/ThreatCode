@@ -475,8 +475,14 @@ def _parse_unit(
     try:
         parsed = detect_and_parse(unit.path)
     except UnsupportedFormatError as exc:
-        # Nothing claimed the file: for a file found by walking, that is "not infrastructure".
-        if unit.explicit or unit.kind == HCL_MODULE:
+        # Nothing claimed the file. For a file found by walking that is "not infrastructure",
+        # unless its name says it should be (Chart.yaml, an MCP config) and it is so broken
+        # that no parser could have told: then it is an input error.
+        if (
+            unit.explicit
+            or unit.kind == HCL_MODULE
+            or (unit.by_name and not _well_formed(unit.path))
+        ):
             errors.append(_parse_error(unit, exc))
         else:
             coverage.note_not_iac(unit.relpath)
@@ -505,6 +511,37 @@ def _readable_text(path: Path) -> bool:
     try:
         decode_input(path)
     except (ParseError, OSError):
+        return False
+    return True
+
+
+def _well_formed(path: Path) -> bool:
+    """Whether a JSON or YAML file is readable text with valid syntax."""
+    import json
+
+    from threatcode.parsers._text import decode_input
+
+    try:
+        text = decode_input(path)
+    except (ParseError, OSError):
+        return False
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".json":
+            try:
+                json.loads(text)
+            except json.JSONDecodeError:
+                # MCP configs may carry comments and trailing commas (VS Code JSONC).
+                from threatcode.parsers.mcp_config import strip_jsonc
+
+                json.loads(strip_jsonc(text))
+        elif suffix in (".yml", ".yaml"):
+            from threatcode.parsers._yaml import load_yaml_documents
+
+            load_yaml_documents(text, source=path.name)
+        else:
+            return False
+    except (ValueError, ParseError, RecursionError):
         return False
     return True
 

@@ -197,16 +197,34 @@ class TestCoverage:
         assert result.exit_code == EXIT_USAGE
         assert result.report.to_dict()["coverage"]["errors"] == [error]
 
-    def test_a_broken_dockerfile_name_or_mcp_config_is_an_error_not_not_iac(
+    def test_a_broken_file_identified_by_name_is_an_error_not_not_iac(self, tmp_path: Path) -> None:
+        write(tmp_path, "ok.tf", bucket("fine"))
+        (tmp_path / "Dockerfile").write_bytes(b"\x80\x81\x82" * 50)
+        write(tmp_path, "mcp-servers/.mcp.json", "{ nope")
+        write(tmp_path, "chart/Chart.yaml", "a: [unclosed\n")
+        result = scan(tmp_path)
+        assert sorted(e["file"] for e in result.coverage.errors) == [
+            "Dockerfile",
+            "chart/Chart.yaml",
+            "mcp-servers/.mcp.json",
+        ]
+        assert result.coverage.not_iac_count == 0
+        assert result.exit_code == EXIT_USAGE
+
+    def test_a_well_formed_file_with_a_telling_name_that_is_not_infrastructure_is_not_an_error(
         self, tmp_path: Path
     ) -> None:
         write(tmp_path, "ok.tf", bucket("fine"))
-        (tmp_path / "Dockerfile").write_bytes(b"\x80\x81\x82" * 50)
-        write(tmp_path, ".mcp.json", "{ nope")
+        write(tmp_path, "tool/mcp.json", '{"name": "some other tool"}')
+        write(tmp_path, "docs/Chart.yaml", "title: a chart of accounts\n")
+        write(tmp_path, "vscode/.mcp.json", '// comment\n{"other": 1,}\n')
         result = scan(tmp_path)
-        assert sorted(e["file"] for e in result.coverage.errors) == ["Dockerfile"]
-        assert result.coverage.not_iac_count == 1
-        assert result.coverage.not_iac_paths == [".mcp.json"]
+        assert result.coverage.errors == []
+        assert result.coverage.not_iac_paths == [
+            "docs/Chart.yaml",
+            "tool/mcp.json",
+            "vscode/.mcp.json",
+        ]
 
     def test_candidates_no_parser_claims_are_counted_not_errors(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", bucket("fine"))
