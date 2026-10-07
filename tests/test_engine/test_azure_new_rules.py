@@ -1430,6 +1430,14 @@ class TestVirtualMachinePublicIp:
         found = _findings(graph)
         assert "AZURE_VM_PUBLIC_IP" not in found["azurerm_linux_virtual_machine.elsewhere"]
 
+    def test_a_plan_machine_without_an_interface_list_is_unknown_not_private(self) -> None:
+        # network_interface_ids is mandatory, so a plan that omits it has it computed
+        plan = _plan_document(("azurerm_linux_virtual_machine", "vm", {"name": "vm"}))
+        graph = InfraGraph.from_parsed(TerraformPlanParser().parse(plan))
+        derived = _derived(graph, "azurerm_linux_virtual_machine.vm")
+        assert isinstance(derived["has_public_ip"], Unknown)
+        assert "AZURE_VM_PUBLIC_IP" not in _findings(graph)["azurerm_linux_virtual_machine.vm"]
+
     def test_a_conditional_public_address_is_not_assumed(self, tmp_path: Path) -> None:
         graph = _graph_for(
             tmp_path,
