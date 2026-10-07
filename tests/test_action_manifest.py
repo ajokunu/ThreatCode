@@ -475,6 +475,10 @@ class TestRepositoryAutomation:
         assert "scripts/smoke_test_wheel.sh" in makefile
         assert re.search(r"^ci:.*\bsmoke\b", makefile, re.MULTILINE)
 
+    def test_make_mitre_check_runs_the_drift_script(self) -> None:
+        makefile = (REPO / "Makefile").read_text(encoding="utf-8")
+        assert re.search(r"^mitre-check:\n\t.*scripts/gen_mitre_db\.py --check", makefile, re.M)
+
     def test_the_package_declares_python_314(self) -> None:
         text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
         assert "Programming Language :: Python :: 3.14" in text

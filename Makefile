@@ -1,4 +1,4 @@
-.PHONY: install dev test lint typecheck format audit docs docs-check smoke clean ci
+.PHONY: install dev test lint typecheck format audit docs docs-check smoke mitre-check clean ci
 
 install:
 	pip install -e .
@@ -38,6 +38,10 @@ smoke:
 	rm -rf dist
 	$${PYTHON:-python3} -m build
 	PYTHON=$${PYTHON:-python3} bash scripts/smoke_test_wheel.sh dist/*.whl
+
+# Compare the committed ATT&CK tables with the release they pin (needs the network).
+mitre-check:
+	$${PYTHON:-python3} scripts/gen_mitre_db.py --check
 
 clean:
 	rm -rf build/ dist/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ .coverage
