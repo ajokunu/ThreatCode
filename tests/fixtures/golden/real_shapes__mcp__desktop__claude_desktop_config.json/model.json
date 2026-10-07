@@ -1,0 +1,24 @@
+{
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "mcp_agent.config",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_agent.config",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_server.legacy-http-bridge",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "mcp_server.remote-docs",
+      "stride": "tampering"
+    }
+  ]
+}

@@ -27,10 +27,32 @@ class TestMcpCatalog:
     def test_loopback_flag_alone_does_not_make_a_server_remote(self) -> None:
         assert infer_trust_zone("mcp_server", {"is_loopback": False}) == TrustZone.PRIVATE
 
-    def test_family_holds_the_server_type_and_only_mcp_types(self) -> None:
+    def test_family_holds_the_server_and_agent_types_and_only_mcp_types(self) -> None:
         assert mcp.CATEGORIES["mcp_server"] == NodeCategory.COMPUTE
         assert mcp.ZONES["mcp_server"] == TrustZone.PRIVATE
+        assert set(mcp.CATEGORIES) == {"mcp_server", "mcp_agent"}
+        assert set(mcp.ZONES) == {"mcp_server", "mcp_agent"}
         assert all(key.startswith("mcp_") for key in (*mcp.CATEGORIES, *mcp.ZONES))
+
+
+class TestAgentCatalog:
+    def test_agent_is_compute(self) -> None:
+        assert categorize_resource("mcp_agent") == NodeCategory.COMPUTE
+
+    def test_agent_is_private(self) -> None:
+        assert infer_trust_zone("mcp_agent", {}) == TrustZone.PRIVATE
+
+    def test_agent_stays_private_whatever_its_servers_are(self) -> None:
+        # The agent runs on the user's machine; only a server can be a remote endpoint
+        props = {"is_remote": True, "can_exfiltrate_or_act": True}
+        assert infer_trust_zone("mcp_agent", props) == TrustZone.PRIVATE
+        assert mcp.zone_override("mcp_agent", props) is None
+
+    def test_agent_and_server_do_not_share_a_prefix_with_other_families(self) -> None:
+        from threatcode.ir.catalog import CATEGORY_MAP
+
+        owners = [key for key in CATEGORY_MAP if key.startswith("mcp_")]
+        assert sorted(owners) == ["mcp_agent", "mcp_server"]
 
 
 class TestZoneOverride:

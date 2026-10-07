@@ -46,6 +46,16 @@
     ]
   },
   {
+    "resource_address": "mcp_server.builder",
+    "rule_id": "MCP_SENSITIVE_PATHS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1005",
+      "T1552.001"
+    ]
+  },
+  {
     "resource_address": "mcp_server.terminal",
     "rule_id": "MCP_SHELL_EXEC",
     "severity": "high",

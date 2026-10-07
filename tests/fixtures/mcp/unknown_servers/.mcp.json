@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "inventory": {
+      "command": "npx",
+      "args": ["-y", "@acme/inventory-mcp@2.1.0"]
+    },
+    "billing": {
+      "command": "uvx",
+      "args": ["acme-billing-mcp==0.9.1"]
+    }
+  }
+}

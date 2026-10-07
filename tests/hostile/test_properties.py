@@ -13,8 +13,6 @@ from typing import Any
 
 import pytest
 
-from tests.helpers.pending import pending
-
 hypothesis = pytest.importorskip("hypothesis")
 
 from hypothesis import example, given, settings  # noqa: E402
@@ -79,7 +77,6 @@ class TestStripJsonc:
         commented = f"// {comment}\n{body}\n/* {comment} */\n"
         assert json.loads(strip_jsonc(commented)) == document
 
-    @pending("WP-2-6", "strip_jsonc drops a trailing comma only outside strings")
     @FIXED
     @given(json_documents)
     @example("abc,}")
@@ -87,11 +84,6 @@ class TestStripJsonc:
     def test_a_string_holding_a_comma_before_a_bracket_survives(self, document: Any) -> None:
         text = json.dumps(document, indent=2)
         assert json.loads(strip_jsonc(text)) == document
-
-    def test_the_known_corruption_is_real_today(self) -> None:
-        """The pending test above names a real defect: this reproduces it without hypothesis."""
-        text = json.dumps({"value": "abc,}"})
-        assert json.loads(strip_jsonc(text)) != {"value": "abc,}"}
 
     def test_trailing_commas_outside_strings_are_dropped(self) -> None:
         assert json.loads(strip_jsonc('{"a": [1, 2,], "b": {"c": 1,},}')) == {

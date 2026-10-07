@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "net-admin": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--cap-add", "NET_ADMIN", "ghcr.io/acme/tool-mcp:1.4.2"]
+    },
+    "privileged-true": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--privileged=true", "ghcr.io/acme/tool-mcp:1.4.2"]
+    },
+    "device": {
+      "command": "podman",
+      "args": ["run", "-i", "--rm", "--device", "/dev/mem", "ghcr.io/acme/tool-mcp:1.4.2"]
+    },
+    "etc-mount": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/etc:/etc", "ghcr.io/acme/tool-mcp:1.4.2"]
+    },
+    "home-mount": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/Users/me:/projects", "ghcr.io/acme/tool-mcp:1.4.2"]
+    },
+    "root-user": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--user", "root", "ghcr.io/acme/tool-mcp:1.4.2"]
+    },
+    "not-privileged": {
+      "command": "docker",
+      "args": [
+        "--context", "remote", "run", "-i", "--rm", "--privileged=false", "--cap-drop=ALL",
+        "--security-opt", "no-new-privileges", "--memory", "512m", "--pull", "always",
+        "-v", "/Users/me/src/shop:/workspace:ro", "ghcr.io/acme/tool-mcp:1.4.2"
+      ]
+    }
+  }
+}

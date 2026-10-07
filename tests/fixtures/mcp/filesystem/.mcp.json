@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "ssh-dir": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "~/.ssh"]
+    },
+    "etc": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "/etc"]
+    },
+    "env-home": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "${env:HOME}"]
+    },
+    "windows-home": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "%USERPROFILE%"]
+    },
+    "custom-name": {
+      "command": "npx",
+      "args": ["-y", "acme-fs-mcp@1.0.0", "--allowed-directories=/"]
+    },
+    "scoped": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "/Users/alice/src/shop"]
+    }
+  }
+}

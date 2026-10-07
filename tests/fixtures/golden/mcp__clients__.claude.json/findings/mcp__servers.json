@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "mcp_server.shop-03d170ec.db",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.shop-03d170ec.db",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "builder": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--privileged=false", "--cap-drop=ALL",
+        "--security-opt", "no-new-privileges", "--pull", "always",
+        "-v", "/Users/alice/src/shop:/workspace:ro",
+        "ghcr.io/acme/builder-mcp:1.4.2"
+      ]
+    }
+  }
+}

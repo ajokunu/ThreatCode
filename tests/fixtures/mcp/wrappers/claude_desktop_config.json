@@ -1,0 +1,51 @@
+{
+  "mcpServers": {
+    "win-npx": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@acme/win-mcp"]
+    },
+    "bash-npx": {
+      "command": "bash",
+      "args": ["-c", "npx -y @acme/bash-mcp"]
+    },
+    "env-npx": {
+      "command": "env",
+      "args": ["FOO=1", "npx", "-y", "@acme/env-mcp"]
+    },
+    "npm-exec": {
+      "command": "npm",
+      "args": ["exec", "-y", "@acme/npm-mcp"]
+    },
+    "pnpm-exec": {
+      "command": "pnpm",
+      "args": ["exec", "@acme/pnpm-mcp"]
+    },
+    "pipx": {
+      "command": "pipx",
+      "args": ["run", "acme-pipx-mcp"]
+    },
+    "uv-tool": {
+      "command": "uv",
+      "args": ["tool", "run", "acme-uv-mcp"]
+    },
+    "deno": {
+      "command": "deno",
+      "args": ["run", "-A", "npm:@acme/deno-mcp"]
+    },
+    "bridge-plain": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@0.1.5",
+        "http://mcp.acme.example.net/sse",
+        "--header",
+        "Authorization: Bearer a8f3k2m9q7w1z5x0",
+        "--allow-http"
+      ]
+    },
+    "pinned-cmd": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@acme/pinned-mcp@1.2.3"]
+    }
+  }
+}

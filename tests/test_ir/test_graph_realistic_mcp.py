@@ -5,10 +5,11 @@ them: ``mcp-remote`` wrappers, ``cmd /c`` launchers, ``docker run -e`` secrets, 
 ``~/.claude.json`` whose projects share a directory name, Gemini ``httpUrl`` servers and
 disabled servers.
 
-Today the parser reads each server's ``command`` and ``args`` as written, so a wrapper hides the
-real package, a literal token passed with ``docker -e`` is missed, a remote server addressed with
-``httpUrl`` is not remote, and two projects that share a basename collapse into one node.
-Assertions that hold now run now; each one a later package delivers is its own pending test.
+The parser resolves each server's effective launch, so a wrapper does not hide the real package,
+a literal token passed with ``docker -e`` is found and redacted, a remote server addressed with
+``httpUrl`` is remote, two projects that share a basename keep separate nodes, and every config
+scope gets an ``mcp_agent`` node wired to its enabled servers.
+The one assertion that waits for the attack-path package is its own pending test.
 """
 
 from __future__ import annotations
@@ -43,14 +44,12 @@ class TestDesktopConfig:
         props = _servers(DESKTOP)["git"].properties  # type: ignore[attr-defined]
         assert props["package_unpinned"] is True
 
-    @pending("WP-2-6", "an mcp-remote wrapper lifts its URL, so the server is remote")
     def test_the_mcp_remote_wrapper_is_a_remote_server_in_the_internet_zone(self) -> None:
         graph = scan_real_shape(DESKTOP).graph
         props = graph.nodes["mcp_server.remote-docs"].properties
         assert props["is_remote"] is True
         assert_zone(graph, "mcp_server.remote-docs", "internet")
 
-    @pending("WP-2-6", "mcp-remote --allow-http over a plain http URL is plaintext transport")
     def test_the_http_bridge_uses_plaintext_transport(self) -> None:
         props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.legacy-http-bridge"].properties
         assert props["uses_plaintext_transport"] is True
@@ -59,22 +58,18 @@ class TestDesktopConfig:
         props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.windows-files"].properties
         assert props["broad_filesystem_access"] is True
 
-    @pending("WP-2-6", "cmd /c is unwrapped, so the npx package behind it is checked for pinning")
     def test_the_package_behind_the_cmd_launcher_is_unpinned(self) -> None:
         props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.windows-files"].properties
         assert props["package_unpinned"] is True
 
-    @pending("WP-2-6", "docker run -e KEY=value arguments are scanned for literal secrets")
     def test_the_docker_server_has_a_literal_token(self) -> None:
         props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.github"].properties
         assert props["has_literal_secret"] is True
 
-    @pending("WP-2-6", "secret-bearing arguments are redacted in properties['args']")
     def test_the_literal_token_is_not_stored_in_the_graph(self) -> None:
         props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.github"].properties
         assert "ghp_16C7e42F292c6912E7710c838347Ae178B4a" not in str(props)
 
-    @pending("WP-2-6", "each config scope gets an mcp_agent node with an edge to every server")
     def test_one_agent_node_is_connected_to_every_server(self) -> None:
         graph = scan_real_shape(DESKTOP).graph
         agents = [n for n in graph.nodes.values() if n.resource_type == "mcp_agent"]
@@ -87,16 +82,12 @@ class TestClaudeHome:
     def test_the_user_scoped_server_is_a_node(self) -> None:
         assert "memory" in _servers(HOME)
 
-    @pending(
-        "WP-2-6", "project-scoped addresses hash the full project path so basenames cannot collide"
-    )
     def test_two_projects_sharing_a_basename_keep_both_servers(self) -> None:
         graph = scan_real_shape(HOME).graph
         postgres = [n for n in graph.nodes.values() if n.name == "postgres"]
         assert len(postgres) == 2
         assert len({n.id for n in postgres}) == 2
 
-    @pending("WP-2-6", "a project's disabledMcpjsonServers mark servers disabled")
     def test_the_work_and_personal_servers_keep_their_own_connection_strings(self) -> None:
         graph = scan_real_shape(HOME).graph
         texts = sorted(
@@ -114,7 +105,6 @@ class TestGeminiSettings:
         props = _servers(GEMINI)["internal-search"].properties  # type: ignore[attr-defined]
         assert props["has_literal_secret"] is True
 
-    @pending("WP-2-6", "httpUrl is read like url, so the Gemini server is remote")
     def test_the_httpurl_server_is_remote_and_in_the_internet_zone(self) -> None:
         graph = scan_real_shape(GEMINI).graph
         assert graph.nodes["mcp_server.internal-search"].properties["is_remote"] is True
@@ -124,16 +114,14 @@ class TestGeminiSettings:
 class TestProjectConfig:
     def test_every_server_is_a_node_including_the_disabled_one(self) -> None:
         graph = scan_real_shape(PROJECT).graph
-        assert_nodes(
-            graph,
-            [
-                "mcp_server.fetch",
-                "mcp_server.filesystem-home",
-                "mcp_server.scratch",
-                "mcp_server.analytics",
-            ],
-            exact=True,
-        )
+        servers = {n.id for n in graph.nodes.values() if n.resource_type == "mcp_server"}
+        assert servers == {
+            "mcp_server.fetch",
+            "mcp_server.filesystem-home",
+            "mcp_server.scratch",
+            "mcp_server.analytics",
+        }
+        assert_nodes(graph, [*sorted(servers), "mcp_agent.config"], exact=True)
 
     def test_the_remote_server_is_in_the_internet_zone_and_the_others_are_private(self) -> None:
         graph = scan_real_shape(PROJECT).graph
@@ -145,13 +133,11 @@ class TestProjectConfig:
         props = scan_real_shape(PROJECT).graph.nodes["mcp_server.fetch"].properties
         assert props["package_unpinned"] is False
 
-    @pending("WP-2-6", "disabled servers keep a node with disabled true and rules skip them")
     def test_the_disabled_server_is_marked_and_raises_no_finding(self) -> None:
         result = scan_real_shape(PROJECT)
         assert result.graph.nodes["mcp_server.scratch"].properties["disabled"] is True
         assert not result.threats_for("mcp_server.scratch")
 
-    @pending("WP-2-6", "each config scope gets an mcp_agent node with an edge to enabled servers")
     def test_the_agent_is_connected_to_the_enabled_servers_only(self) -> None:
         graph = scan_real_shape(PROJECT).graph
         agents = [n for n in graph.nodes.values() if n.resource_type == "mcp_agent"]
@@ -166,3 +152,106 @@ class TestProjectConfig:
         graph = scan_real_shape(PROJECT).graph
         path = assert_path(graph, "internet", "mcp_server.filesystem-home")
         assert "mcp_server.fetch" in path
+
+
+class TestWrappedServersInTheGraph:
+    """The wrapper forms of the desktop config, read through their effective launch."""
+
+    def test_the_mcp_remote_wrapper_keeps_its_header_as_configured_auth_without_a_secret(
+        self,
+    ) -> None:
+        props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.remote-docs"].properties
+        assert props["bridge"] == "mcp-remote"
+        assert props["has_configured_auth"] is True
+        assert props["has_literal_secret"] is False
+        assert props["uses_plaintext_transport"] is False
+
+    def test_the_plain_http_bridge_has_no_auth_and_is_unpinned(self) -> None:
+        props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.legacy-http-bridge"].properties
+        assert props["bridge_allow_http"] is True
+        assert props["remote_without_configured_auth"] is True
+        assert props["package_unpinned"] is True
+
+    def test_the_docker_token_is_redacted_in_place(self) -> None:
+        props = scan_real_shape(DESKTOP).graph.nodes["mcp_server.github"].properties
+        assert "GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED]" in props["args"]
+        assert props["literal_secret_keys"] == ["arg:GITHUB_PERSONAL_ACCESS_TOKEN"]
+        assert props["package_unpinned"] is False
+
+    def test_the_findings_match_the_wrappers(self) -> None:
+        result = scan_real_shape(DESKTOP)
+        assert result.fired("MCP_SECRET_IN_CONFIG", "mcp_server.github")
+        assert result.fired("MCP_PLAINTEXT_TRANSPORT", "mcp_server.legacy-http-bridge")
+        assert result.fired("MCP_UNPINNED_PACKAGE", "mcp_server.windows-files")
+        assert result.fired("MCP_BROAD_FILESYSTEM", "mcp_server.windows-files")
+        assert result.rule_ids_for("mcp_server.remote-docs") == set()
+
+    def test_the_agent_node_has_an_edge_pair_for_every_server(self) -> None:
+        graph = scan_real_shape(DESKTOP).graph
+        for name in ("remote-docs", "legacy-http-bridge", "windows-files", "github", "git"):
+            assert_edge(graph, "mcp_agent.config", f"mcp_server.{name}")
+            assert_edge(graph, f"mcp_server.{name}", "mcp_agent.config")
+
+
+class TestScopesInTheGraph:
+    def test_the_project_servers_have_distinct_hashed_ids_and_agents(self) -> None:
+        graph = scan_real_shape(HOME).graph
+        postgres = [n for n in graph.nodes.values() if n.name == "postgres"]
+        assert all(n.id.startswith("mcp_server.api-") for n in postgres)
+        assert graph.duplicate_count == 0
+        agents = [n for n in graph.nodes.values() if n.resource_type == "mcp_agent"]
+        assert len(agents) == 3  # the user scope and the two projects
+        for agent in agents:
+            assert agent.properties["enabled_server_count"] == 1
+
+    def test_each_project_agent_is_wired_to_its_own_server_only(self) -> None:
+        graph = scan_real_shape(HOME).graph
+        for node in graph.nodes.values():
+            if node.resource_type != "mcp_agent" or not node.id.startswith("mcp_agent.api-"):
+                continue
+            targets = graph.successors(node.id)
+            assert len(targets) == 1
+            assert targets[0].endswith(".postgres")
+            assert targets[0].split(".")[1] == node.id.split(".")[1]
+
+    def test_the_personal_project_literal_password_is_found_and_redacted_in_place(self) -> None:
+        graph = scan_real_shape(HOME).graph
+        personal = next(
+            n
+            for n in graph.nodes.values()
+            if n.name == "postgres" and "localhost" in str(n.properties["args"])
+        )
+        assert personal.properties["has_literal_secret"] is True
+        assert "postgresql://postgres:[REDACTED]@localhost/api" in personal.properties["args"]
+
+    def test_the_work_project_has_no_secret(self) -> None:
+        graph = scan_real_shape(HOME).graph
+        work = next(
+            n
+            for n in graph.nodes.values()
+            if n.name == "postgres" and "db.work" in str(n.properties["args"])
+        )
+        assert work.properties["has_literal_secret"] is False
+
+    def test_the_nodes_carry_source_lines(self) -> None:
+        graph = scan_real_shape(HOME).graph
+        lines = {
+            n.id: n.start_line for n in graph.nodes.values() if n.resource_type == "mcp_server"
+        }
+        assert len(set(lines.values())) == len(lines)
+        assert all(line and line > 1 for line in lines.values())
+
+
+class TestDisabledAndTrifectaInTheGraph:
+    def test_the_disabled_server_has_no_edges(self) -> None:
+        graph = scan_real_shape(PROJECT).graph
+        assert graph.edges_from("mcp_server.scratch") == []
+        assert graph.edges_to("mcp_server.scratch") == []
+
+    def test_the_project_config_is_a_trifecta(self) -> None:
+        # fetch (untrusted content and egress) + the home directory (private data)
+        result = scan_real_shape(PROJECT)
+        assert result.fired("MCP_LETHAL_TRIFECTA", "mcp_agent.config")
+
+    def test_the_gemini_config_is_not(self) -> None:
+        assert not scan_real_shape(GEMINI).fired("MCP_LETHAL_TRIFECTA")

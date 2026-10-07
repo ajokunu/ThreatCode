@@ -1,0 +1,30 @@
+[
+  {
+    "resource_address": "mcp_server.tickets",
+    "rule_id": "MCP_PLAINTEXT_TRANSPORT",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040",
+      "T1557"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.tickets",
+    "rule_id": "MCP_REMOTE_NO_AUTH",
+    "severity": "low",
+    "stride": "spoofing",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.shell",
+    "rule_id": "MCP_SHELL_EXEC",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1059"
+    ]
+  }
+]

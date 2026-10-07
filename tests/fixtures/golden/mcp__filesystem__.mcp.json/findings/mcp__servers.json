@@ -1,0 +1,49 @@
+[
+  {
+    "resource_address": "mcp_server.custom-name",
+    "rule_id": "MCP_BROAD_FILESYSTEM",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1005"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.env-home",
+    "rule_id": "MCP_BROAD_FILESYSTEM",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1005"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.windows-home",
+    "rule_id": "MCP_BROAD_FILESYSTEM",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1005"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.etc",
+    "rule_id": "MCP_SENSITIVE_PATHS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1005",
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.ssh-dir",
+    "rule_id": "MCP_SENSITIVE_PATHS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1005",
+      "T1552.001"
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "mcp_server.python-tools",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

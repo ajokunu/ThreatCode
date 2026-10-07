@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "./notes"]
+    },
+    "web": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch==2025.4.7"]
+    }
+  }
+}
