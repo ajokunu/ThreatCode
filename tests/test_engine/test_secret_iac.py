@@ -303,9 +303,9 @@ class TestSingleFileForm:
         found = find_secrets_in_file(
             path, path.read_text(encoding="utf-8"), parsed, graph, FIXTURES
         )
-        assert sorted(t.location_file for t in found) == [
-            "helm/chart/templates/deployment.yaml",
-            "helm/chart/values.yaml",
+        assert sorted((t.location_file, t.resource_address) for t in found) == [
+            ("helm/chart/templates/deployment.yaml", LEGACY_CONFIG_MAP),
+            ("helm/chart/values.yaml", ""),
         ]
 
 
