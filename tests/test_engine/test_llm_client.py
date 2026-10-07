@@ -774,6 +774,7 @@ class TestFactoryKeyResolution:
         assert client._temperature == 0.4
         assert client._timeout == 7
         assert client._attempts == 3
+        assert client.provider == "local"  # the report names the configured provider
 
     def test_the_factory_passes_every_setting_to_the_anthropic_client(
         self, sdk: SdkProbe, monkeypatch: pytest.MonkeyPatch

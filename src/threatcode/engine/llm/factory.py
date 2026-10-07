@@ -115,6 +115,7 @@ def build_client(settings: ResolvedSettings) -> BaseLLMClient | None:
             # Config validation already limits this to ollama, local and anthropic.
             allow_local_network=llm.allow_local_network,
             max_retries=llm.max_retries,
+            provider=llm.provider,
         )
 
     logger.warning(

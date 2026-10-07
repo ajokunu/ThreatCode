@@ -428,8 +428,11 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
         temperature: float | None = None,
         allow_local_network: bool = False,
         max_retries: int = DEFAULT_LLM_MAX_RETRIES,
+        provider: str = "openai",
     ) -> None:
         _validate_base_url(base_url, allow_local_network=allow_local_network)
+        # The name the report shows: "ollama" or "local" for a self-hosted server.
+        self.provider = provider
         # "not-needed" was the placeholder an older version sent; it still means no key.
         self._api_key = "" if api_key == "not-needed" else api_key
         if urlparse(base_url).scheme == "http" and self._api_key:
