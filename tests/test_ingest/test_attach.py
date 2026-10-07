@@ -399,3 +399,17 @@ resource "aws_s3_bucket" "second" {
   bucket = "second"
 }
 """
+
+
+class TestHelmChart:
+    def test_an_image_in_a_rendered_chart_attaches_to_its_workload(self) -> None:
+        chart = REPO.parent.parent / "helm" / "two-deployments"
+        graph = build_graph(chart)
+        index = NodeIndex(graph, chart)
+        assert attached(index, image_refs=("registry.example.com/shop/web:3.4.0",)) == [
+            "kubernetes_deployment.shop.web-frontend"
+        ]
+        assert attached(index, image_refs=("registry.example.com/shop/worker:3.4.0",)) == [
+            "kubernetes_deployment.shop.worker-backend"
+        ]
+        assert attached(index, image_refs=("registry.example.com/shop/web:3.4.1",)) == []
