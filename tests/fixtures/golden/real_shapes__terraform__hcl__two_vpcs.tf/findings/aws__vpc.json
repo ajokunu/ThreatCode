@@ -4,17 +4,13 @@
     "rule_id": "VPC_NO_FLOW_LOGS",
     "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "aws_vpc.prod",
     "rule_id": "VPC_NO_FLOW_LOGS",
     "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   }
 ]

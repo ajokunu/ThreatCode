@@ -1,29 +1,9 @@
 [
   {
     "resource_address": "aws_lambda_function.order_processor",
-    "rule_id": "LAMBDA_NO_DLQ",
-    "severity": "low",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1499"
-    ]
-  },
-  {
-    "resource_address": "aws_lambda_function.order_processor",
     "rule_id": "LAMBDA_NO_VPC",
-    "severity": "medium",
-    "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1190"
-    ]
-  },
-  {
-    "resource_address": "aws_lambda_function.order_processor",
-    "rule_id": "LAMBDA_OVERPERMISSIVE_ROLE",
-    "severity": "high",
-    "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1078.004"
-    ]
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
   }
 ]

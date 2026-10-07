@@ -1,71 +1,86 @@
+# CloudFront distributions.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: CLOUDFRONT_NO_HTTPS
-    title: CloudFront distribution without HTTPS
+    title: CloudFront cache behavior allows plain HTTP from viewers
     description: >
-      The CloudFront distribution does not enforce HTTPS.
+      The default cache behavior, or one of the ordered cache behaviors, sets
+      viewer_protocol_policy to allow-all, so viewers can fetch content and send cookies over
+      HTTP.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: traffic-not-encrypted-in-transit
     resource_type: aws_cloudfront_distribution
     condition:
       any_of:
-        - default_cache_behavior.0.viewer_protocol_policy:
+        - default_cache_behavior.viewer_protocol_policy:
             equals: "allow-all"
-        - default_cache_behavior:
-            not_exists: true
+        - ordered_cache_behavior.viewer_protocol_policy:
+            equals: "allow-all"
     mitigation: >
-      Set viewer_protocol_policy to redirect-to-https or https-only.
+      Set viewer_protocol_policy to redirect-to-https or https-only on every cache behavior.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
 
   - id: CLOUDFRONT_NO_WAF
-    title: CloudFront without WAF
+    title: CloudFront distribution without a web ACL
     description: >
-      No WAF web ACL is associated with the CloudFront distribution.
+      No WAF web ACL is associated with the distribution (web_acl_id is not set).
+      Requests reach the origin without inspection by managed rules or rate limits.
+      A web ACL id that the scan cannot resolve leaves the finding out.
     stride_category: tampering
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: waf-not-attached
     resource_type: aws_cloudfront_distribution
     condition:
       web_acl_id:
         not_exists: true
     mitigation: >
-      Associate a WAF web ACL with the distribution.
+      Create an aws_wafv2_web_acl with scope CLOUDFRONT in us-east-1 and set web_acl_id to its ARN.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: CLOUDFRONT_NO_LOGGING
-    title: CloudFront without access logging
+    title: CloudFront distribution without access logging
     description: >
-      Access logging is not enabled for the CloudFront distribution.
+      Access logging is not enabled for the distribution.
+      Requests cannot be reviewed after an incident.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: logging-not-enabled
     resource_type: aws_cloudfront_distribution
     condition:
       logging_config:
         not_exists: true
     mitigation: >
-      Enable access logging.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add a logging_config block with an S3 bucket, or enable standard logging to CloudWatch Logs.
+    metadata: {}
 
   - id: CLOUDFRONT_NO_GEO_RESTRICTION
-    title: CloudFront without geo restriction
+    title: CloudFront distribution without geo restriction
     description: >
-      No geographic restrictions are configured.
+      The distribution serves every country (restrictions.geo_restriction.restriction_type is
+      none).
+      This is a posture choice that suits global services, so it is reported at the lowest severity
+      for services that only have customers in some regions.
     stride_category: information_disclosure
     severity: low
+    confidence: heuristic
     resource_type: aws_cloudfront_distribution
     condition:
-      restrictions:
-        not_exists: true
+      restrictions.geo_restriction.restriction_type:
+        equals: "none"
     mitigation: >
-      Configure geo restrictions as appropriate.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+      Set restriction_type to whitelist or blacklist with the countries that apply, if the service
+      has a regional audience.
+    metadata: {}

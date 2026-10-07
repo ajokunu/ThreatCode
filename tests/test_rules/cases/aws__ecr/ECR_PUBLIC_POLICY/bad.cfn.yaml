@@ -1,0 +1,15 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  App:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: app
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: pull
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage

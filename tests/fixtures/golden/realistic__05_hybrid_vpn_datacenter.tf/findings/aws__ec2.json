@@ -1,17 +1,17 @@
 [
   {
     "resource_address": "aws_instance.vpn_concentrator",
-    "rule_id": "EC2_NO_MONITORING",
-    "severity": "low",
-    "stride": "repudiation",
+    "rule_id": "EC2_IMDSV1",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
     "techniques": [
-      "T1562.008"
+      "T1552.005"
     ]
   },
   {
     "resource_address": "aws_instance.vpn_concentrator",
     "rule_id": "EC2_PUBLIC_IP",
-    "severity": "high",
+    "severity": "medium",
     "stride": "information_disclosure",
     "techniques": [
       "T1190"

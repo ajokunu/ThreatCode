@@ -1,62 +1,109 @@
+# Lambda functions and function URLs.
+#
+# LAMBDA_OVERPERMISSIVE_ROLE reads the facts threatcode.ir.enrichment.relations copies from the
+# execution role onto the function: the managed policies attached to the role
+# (derived.role_attached_policy_arns) and the statements of its inline and customer managed
+# policies (derived.role_policy_statements).
+# The name of a role says nothing about its permissions and is never read.
+# A role the scan cannot see (a variable, a module output, a role of another stack) makes both
+# facts unknown, and an unknown fact never produces a finding.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+#
+# Removed: LAMBDA_NO_DLQ, because a dead letter queue is a reliability setting and a missing one
+# is no attacker technique.
+
 rules:
   - id: LAMBDA_NO_VPC
-    title: Lambda function not attached to VPC
+    title: Lambda function runs outside a VPC
     description: >
-      The Lambda function runs outside a VPC, meaning it has
-      direct internet access and cannot leverage VPC security
-      controls like security groups and NACLs.
-    stride_category: elevation_of_privilege
-    severity: medium
+      The function has no vpc_config, so its network traffic is not subject to the security groups,
+      network ACLs, flow logs and endpoint policies of a VPC.
+      A function that handles sensitive data can then send it to any host on the internet.
+      Many functions do not need a VPC, and attaching one has a cost, so this is a heuristic.
+    stride_category: information_disclosure
+    severity: low
+    confidence: heuristic
     resource_type: aws_lambda_function
     condition:
       vpc_config:
         not_exists: true
     mitigation: >
-      Attach the Lambda function to a VPC with appropriate
-      security groups. Use VPC endpoints for AWS service access.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+      Attach the function to private subnets with a security group that allows only the egress it
+      needs, and use VPC endpoints for AWS services.
+    metadata: {}
 
   - id: LAMBDA_OVERPERMISSIVE_ROLE
-    title: Lambda function with broad execution role
+    title: Lambda function runs with an administrator role
     description: >
-      The Lambda function's execution role may have overly
-      broad permissions, allowing it to access resources
-      beyond its intended scope.
+      The execution role of the function has AdministratorAccess, PowerUserAccess or
+      IAMFullAccess attached, or a policy that allows every action on every resource, or iam:*
+      on every resource.
+      Any code injection in the function then gives the attacker the whole account.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: definitive
+    root_cause: administrator-role-on-workload
     resource_type: aws_lambda_function
     condition:
-      role:
-        contains: "admin"
+      any_of:
+        - derived.role_attached_policy_arns:
+            any_item:
+              _value:
+                matches_any:
+                  - "arn:aws:iam::aws:policy/AdministratorAccess"
+                  - "arn:aws:iam::aws:policy/PowerUserAccess"
+                  - "arn:aws:iam::aws:policy/IAMFullAccess"
+                  - "arn:aws-us-gov:iam::aws:policy/AdministratorAccess"
+                  - "arn:aws-us-gov:iam::aws:policy/PowerUserAccess"
+                  - "arn:aws-us-gov:iam::aws:policy/IAMFullAccess"
+                  - "arn:aws-cn:iam::aws:policy/AdministratorAccess"
+                  - "arn:aws-cn:iam::aws:policy/PowerUserAccess"
+                  - "arn:aws-cn:iam::aws:policy/IAMFullAccess"
+        - derived.role_policy_statements:
+            any_item:
+              all_of:
+                - effect:
+                    equals: "Allow"
+                - resources:
+                    contains: "*"
+                - any_of:
+                    - actions:
+                        contains: "*"
+                    - actions:
+                        contains: "iam:*"
     mitigation: >
-      Apply the principle of least privilege to the Lambda
-      execution role. Use separate roles per function with
-      only the permissions needed for that function's purpose.
+      Give the function its own role with the actions and resources it uses, for example read
+      access to one queue and write access to one table.
     metadata:
       mitre:
         techniques: ["T1078.004"]
-        tactics: ["TA0001", "TA0003", "TA0004", "TA0005"]
 
-  - id: LAMBDA_NO_DLQ
-    title: Lambda function without dead letter queue
+  - id: LAMBDA_URL_NO_AUTH
+    title: Lambda function URL needs no authentication
     description: >
-      The Lambda function does not have a dead letter queue
-      configured. Failed invocations may be silently lost,
-      affecting reliability and making it difficult to
-      diagnose processing failures.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: aws_lambda_function
+      The function URL has authorization_type NONE, so anyone who knows the URL can invoke the
+      function without credentials.
+      Public webhooks use this on purpose, and then the function has to authenticate the caller
+      itself.
+    stride_category: spoofing
+    severity: high
+    confidence: definitive
+    root_cause: unauthenticated-public-endpoint
+    resource_type: aws_lambda_function_url
     condition:
-      dead_letter_config:
-        not_exists: true
+      authorization_type:
+        equals: "NONE"
     mitigation: >
-      Configure a dead letter queue (SQS or SNS) to capture
-      failed invocations for retry or investigation.
+      Set authorization_type to AWS_IAM and sign requests, or put the function behind API Gateway or
+      CloudFront with an authorizer.
+      If the URL has to stay public, verify a signature or token inside the function.
     metadata:
       mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+        techniques: ["T1190"]
+
+deprecated_ids:
+  - LAMBDA_NO_DLQ

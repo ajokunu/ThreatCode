@@ -1,0 +1,106 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_api_gateway_stage.prod",
+          "mode": "managed",
+          "type": "aws_api_gateway_stage",
+          "name": "prod",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "stage_name": "prod",
+            "xray_tracing_enabled": false,
+            "access_log_settings": [],
+            "canary_settings": []
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_api_gateway_stage.prod",
+      "mode": "managed",
+      "type": "aws_api_gateway_stage",
+      "name": "prod",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "stage_name": "prod",
+          "xray_tracing_enabled": false,
+          "access_log_settings": [],
+          "canary_settings": []
+        },
+        "after_unknown": {
+          "invoke_url": true,
+          "execution_arn": true,
+          "id": true,
+          "arn": true,
+          "rest_api_id": true,
+          "deployment_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_api_gateway_stage.prod",
+          "mode": "managed",
+          "type": "aws_api_gateway_stage",
+          "name": "prod",
+          "provider_config_key": "aws",
+          "expressions": {
+            "stage_name": {
+              "constant_value": "prod"
+            },
+            "xray_tracing_enabled": {
+              "constant_value": false
+            },
+            "access_log_settings": {
+              "constant_value": []
+            },
+            "canary_settings": {
+              "constant_value": []
+            },
+            "rest_api_id": {
+              "references": [
+                "aws_api_gateway_rest_api.api.id",
+                "aws_api_gateway_rest_api.api"
+              ]
+            },
+            "deployment_id": {
+              "references": [
+                "aws_api_gateway_deployment.api.id",
+                "aws_api_gateway_deployment.api"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

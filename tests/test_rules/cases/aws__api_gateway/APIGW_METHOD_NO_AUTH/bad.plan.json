@@ -1,0 +1,104 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_api_gateway_method.items",
+          "mode": "managed",
+          "type": "aws_api_gateway_method",
+          "name": "items",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "http_method": "GET",
+            "authorization": "NONE",
+            "api_key_required": false,
+            "request_models": null,
+            "request_parameters": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_api_gateway_method.items",
+      "mode": "managed",
+      "type": "aws_api_gateway_method",
+      "name": "items",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "http_method": "GET",
+          "authorization": "NONE",
+          "api_key_required": false,
+          "request_models": null,
+          "request_parameters": null
+        },
+        "after_unknown": {
+          "authorizer_id": true,
+          "id": true,
+          "arn": true,
+          "rest_api_id": true,
+          "resource_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_api_gateway_method.items",
+          "mode": "managed",
+          "type": "aws_api_gateway_method",
+          "name": "items",
+          "provider_config_key": "aws",
+          "expressions": {
+            "http_method": {
+              "constant_value": "GET"
+            },
+            "authorization": {
+              "constant_value": "NONE"
+            },
+            "api_key_required": {
+              "constant_value": false
+            },
+            "rest_api_id": {
+              "references": [
+                "aws_api_gateway_rest_api.api.id",
+                "aws_api_gateway_rest_api.api"
+              ]
+            },
+            "resource_id": {
+              "references": [
+                "aws_api_gateway_resource.items.id",
+                "aws_api_gateway_resource.items"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

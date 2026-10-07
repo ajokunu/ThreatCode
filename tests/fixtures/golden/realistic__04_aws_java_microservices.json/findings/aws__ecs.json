@@ -1,0 +1,36 @@
+[
+  {
+    "resource_address": "aws_ecs_task_definition.notification_service",
+    "rule_id": "ECS_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_ecs_task_definition.notification_service",
+    "rule_id": "ECS_NO_READONLY_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "aws_ecs_task_definition.payment_service",
+    "rule_id": "ECS_NO_READONLY_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "aws_ecs_task_definition.user_service",
+    "rule_id": "ECS_NO_READONLY_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  }
+]

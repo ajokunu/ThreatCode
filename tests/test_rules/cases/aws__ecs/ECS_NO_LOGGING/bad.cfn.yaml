@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  App:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: app
+      RequiresCompatibilities: [EC2]
+      NetworkMode: awsvpc
+      ContainerDefinitions:
+        - Name: app
+          Image: 111122223333.dkr.ecr.us-east-1.amazonaws.com/app:1.4.2
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          ReadonlyRootFilesystem: true

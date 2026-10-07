@@ -1,11 +1,18 @@
 [
   {
+    "resource_address": "WebSecurityGroup",
+    "rule_id": "SG_WEB_PORT_OPEN_TO_WORLD",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
     "resource_address": "Vpc",
     "rule_id": "VPC_NO_FLOW_LOGS",
     "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   }
 ]

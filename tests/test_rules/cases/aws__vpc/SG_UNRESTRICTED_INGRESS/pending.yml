@@ -1,3 +1,0 @@
-hcl:
-  package: WP-3-2
-  reason: the rule reads ingress blocks as a list of mappings with world-open CIDRs

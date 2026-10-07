@@ -1,0 +1,385 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_wafv2_web_acl.edge",
+          "mode": "managed",
+          "type": "aws_wafv2_web_acl",
+          "name": "edge",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "edge",
+            "scope": "REGIONAL",
+            "default_action": [
+              {
+                "allow": [
+                  {
+                    "custom_request_handling": []
+                  }
+                ],
+                "block": []
+              }
+            ],
+            "rule": [
+              {
+                "name": "AWSManagedRulesCommonRuleSet",
+                "priority": 2,
+                "action": [],
+                "override_action": [
+                  {
+                    "count": [],
+                    "none": [
+                      {}
+                    ]
+                  }
+                ],
+                "statement": [
+                  {
+                    "and_statement": [],
+                    "asn_match_statement": [],
+                    "byte_match_statement": [],
+                    "geo_match_statement": [],
+                    "ip_set_reference_statement": [],
+                    "label_match_statement": [],
+                    "managed_rule_group_statement": [
+                      {
+                        "name": "AWSManagedRulesCommonRuleSet",
+                        "vendor_name": "AWS",
+                        "rule_action_override": [],
+                        "scope_down_statement": [],
+                        "version": "",
+                        "managed_rule_group_configs": []
+                      }
+                    ],
+                    "not_statement": [],
+                    "or_statement": [],
+                    "rate_based_statement": [],
+                    "regex_match_statement": [],
+                    "regex_pattern_set_reference_statement": [],
+                    "rule_group_reference_statement": [],
+                    "size_constraint_statement": [],
+                    "sqli_match_statement": [],
+                    "xss_match_statement": []
+                  }
+                ],
+                "visibility_config": [
+                  {
+                    "cloudwatch_metrics_enabled": true,
+                    "metric_name": "AWSManagedRulesCommonRuleSet",
+                    "sampled_requests_enabled": true
+                  }
+                ],
+                "captcha_config": [],
+                "rule_label": []
+              }
+            ],
+            "visibility_config": [
+              {
+                "cloudwatch_metrics_enabled": true,
+                "metric_name": "edge",
+                "sampled_requests_enabled": true
+              }
+            ],
+            "custom_response_body": [],
+            "token_domains": null,
+            "association_config": [],
+            "captcha_config": [],
+            "challenge_config": []
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_wafv2_web_acl.edge",
+      "mode": "managed",
+      "type": "aws_wafv2_web_acl",
+      "name": "edge",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "edge",
+          "scope": "REGIONAL",
+          "default_action": [
+            {
+              "allow": [
+                {
+                  "custom_request_handling": []
+                }
+              ],
+              "block": []
+            }
+          ],
+          "rule": [
+            {
+              "name": "AWSManagedRulesCommonRuleSet",
+              "priority": 2,
+              "action": [],
+              "override_action": [
+                {
+                  "count": [],
+                  "none": [
+                    {}
+                  ]
+                }
+              ],
+              "statement": [
+                {
+                  "and_statement": [],
+                  "asn_match_statement": [],
+                  "byte_match_statement": [],
+                  "geo_match_statement": [],
+                  "ip_set_reference_statement": [],
+                  "label_match_statement": [],
+                  "managed_rule_group_statement": [
+                    {
+                      "name": "AWSManagedRulesCommonRuleSet",
+                      "vendor_name": "AWS",
+                      "rule_action_override": [],
+                      "scope_down_statement": [],
+                      "version": "",
+                      "managed_rule_group_configs": []
+                    }
+                  ],
+                  "not_statement": [],
+                  "or_statement": [],
+                  "rate_based_statement": [],
+                  "regex_match_statement": [],
+                  "regex_pattern_set_reference_statement": [],
+                  "rule_group_reference_statement": [],
+                  "size_constraint_statement": [],
+                  "sqli_match_statement": [],
+                  "xss_match_statement": []
+                }
+              ],
+              "visibility_config": [
+                {
+                  "cloudwatch_metrics_enabled": true,
+                  "metric_name": "AWSManagedRulesCommonRuleSet",
+                  "sampled_requests_enabled": true
+                }
+              ],
+              "captcha_config": [],
+              "rule_label": []
+            }
+          ],
+          "visibility_config": [
+            {
+              "cloudwatch_metrics_enabled": true,
+              "metric_name": "edge",
+              "sampled_requests_enabled": true
+            }
+          ],
+          "custom_response_body": [],
+          "token_domains": null,
+          "association_config": [],
+          "captcha_config": [],
+          "challenge_config": []
+        },
+        "after_unknown": {
+          "capacity": true,
+          "lock_token": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_wafv2_web_acl.edge",
+          "mode": "managed",
+          "type": "aws_wafv2_web_acl",
+          "name": "edge",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "edge"
+            },
+            "scope": {
+              "constant_value": "REGIONAL"
+            },
+            "default_action": [
+              {
+                "allow": [
+                  {
+                    "custom_request_handling": {
+                      "constant_value": []
+                    }
+                  }
+                ],
+                "block": {
+                  "constant_value": []
+                }
+              }
+            ],
+            "rule": [
+              {
+                "name": {
+                  "constant_value": "AWSManagedRulesCommonRuleSet"
+                },
+                "priority": {
+                  "constant_value": 2
+                },
+                "action": {
+                  "constant_value": []
+                },
+                "override_action": [
+                  {
+                    "count": {
+                      "constant_value": []
+                    },
+                    "none": [
+                      {}
+                    ]
+                  }
+                ],
+                "statement": [
+                  {
+                    "and_statement": {
+                      "constant_value": []
+                    },
+                    "asn_match_statement": {
+                      "constant_value": []
+                    },
+                    "byte_match_statement": {
+                      "constant_value": []
+                    },
+                    "geo_match_statement": {
+                      "constant_value": []
+                    },
+                    "ip_set_reference_statement": {
+                      "constant_value": []
+                    },
+                    "label_match_statement": {
+                      "constant_value": []
+                    },
+                    "managed_rule_group_statement": [
+                      {
+                        "name": {
+                          "constant_value": "AWSManagedRulesCommonRuleSet"
+                        },
+                        "vendor_name": {
+                          "constant_value": "AWS"
+                        },
+                        "rule_action_override": {
+                          "constant_value": []
+                        },
+                        "scope_down_statement": {
+                          "constant_value": []
+                        },
+                        "version": {
+                          "constant_value": ""
+                        },
+                        "managed_rule_group_configs": {
+                          "constant_value": []
+                        }
+                      }
+                    ],
+                    "not_statement": {
+                      "constant_value": []
+                    },
+                    "or_statement": {
+                      "constant_value": []
+                    },
+                    "rate_based_statement": {
+                      "constant_value": []
+                    },
+                    "regex_match_statement": {
+                      "constant_value": []
+                    },
+                    "regex_pattern_set_reference_statement": {
+                      "constant_value": []
+                    },
+                    "rule_group_reference_statement": {
+                      "constant_value": []
+                    },
+                    "size_constraint_statement": {
+                      "constant_value": []
+                    },
+                    "sqli_match_statement": {
+                      "constant_value": []
+                    },
+                    "xss_match_statement": {
+                      "constant_value": []
+                    }
+                  }
+                ],
+                "visibility_config": [
+                  {
+                    "cloudwatch_metrics_enabled": {
+                      "constant_value": true
+                    },
+                    "metric_name": {
+                      "constant_value": "AWSManagedRulesCommonRuleSet"
+                    },
+                    "sampled_requests_enabled": {
+                      "constant_value": true
+                    }
+                  }
+                ],
+                "captcha_config": {
+                  "constant_value": []
+                },
+                "rule_label": {
+                  "constant_value": []
+                }
+              }
+            ],
+            "visibility_config": [
+              {
+                "cloudwatch_metrics_enabled": {
+                  "constant_value": true
+                },
+                "metric_name": {
+                  "constant_value": "edge"
+                },
+                "sampled_requests_enabled": {
+                  "constant_value": true
+                }
+              }
+            ],
+            "custom_response_body": {
+              "constant_value": []
+            },
+            "association_config": {
+              "constant_value": []
+            },
+            "captcha_config": {
+              "constant_value": []
+            },
+            "challenge_config": {
+              "constant_value": []
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

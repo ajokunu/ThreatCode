@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "BankingApi",
+    "rule_id": "APIGW_PUBLIC_POLICY",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

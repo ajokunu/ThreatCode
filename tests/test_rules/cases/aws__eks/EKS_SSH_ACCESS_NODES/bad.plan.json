@@ -1,0 +1,154 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_eks_node_group.workers",
+          "mode": "managed",
+          "type": "aws_eks_node_group",
+          "name": "workers",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "node_group_name": "workers",
+            "subnet_ids": [
+              "subnet-0a1b2c3d",
+              "subnet-4e5f6a7b"
+            ],
+            "scaling_config": [
+              {
+                "desired_size": 2,
+                "max_size": 3,
+                "min_size": 1
+              }
+            ],
+            "remote_access": [
+              {
+                "ec2_ssh_key": "ops",
+                "source_security_group_ids": null
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_eks_node_group.workers",
+      "mode": "managed",
+      "type": "aws_eks_node_group",
+      "name": "workers",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "node_group_name": "workers",
+          "subnet_ids": [
+            "subnet-0a1b2c3d",
+            "subnet-4e5f6a7b"
+          ],
+          "scaling_config": [
+            {
+              "desired_size": 2,
+              "max_size": 3,
+              "min_size": 1
+            }
+          ],
+          "remote_access": [
+            {
+              "ec2_ssh_key": "ops",
+              "source_security_group_ids": null
+            }
+          ]
+        },
+        "after_unknown": {
+          "status": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true,
+          "cluster_name": true,
+          "node_role_arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_eks_node_group.workers",
+          "mode": "managed",
+          "type": "aws_eks_node_group",
+          "name": "workers",
+          "provider_config_key": "aws",
+          "expressions": {
+            "node_group_name": {
+              "constant_value": "workers"
+            },
+            "subnet_ids": {
+              "constant_value": [
+                "subnet-0a1b2c3d",
+                "subnet-4e5f6a7b"
+              ]
+            },
+            "scaling_config": [
+              {
+                "desired_size": {
+                  "constant_value": 2
+                },
+                "max_size": {
+                  "constant_value": 3
+                },
+                "min_size": {
+                  "constant_value": 1
+                }
+              }
+            ],
+            "remote_access": [
+              {
+                "ec2_ssh_key": {
+                  "constant_value": "ops"
+                },
+                "source_security_group_ids": {
+                  "constant_value": null
+                }
+              }
+            ],
+            "cluster_name": {
+              "references": [
+                "aws_eks_cluster.main.name",
+                "aws_eks_cluster.main"
+              ]
+            },
+            "node_role_arn": {
+              "references": [
+                "aws_iam_role.node.arn",
+                "aws_iam_role.node"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

@@ -1,24 +1,6 @@
 [
   {
     "resource_address": "aws_instance.dev",
-    "rule_id": "EC2_NO_MONITORING",
-    "severity": "low",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_instance.prod",
-    "rule_id": "EC2_NO_MONITORING",
-    "severity": "low",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_instance.dev",
     "rule_id": "EC2_UNENCRYPTED_EBS",
     "severity": "medium",
     "stride": "information_disclosure",

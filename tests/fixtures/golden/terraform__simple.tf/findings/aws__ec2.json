@@ -1,11 +1,11 @@
 [
   {
     "resource_address": "aws_instance.web",
-    "rule_id": "EC2_NO_MONITORING",
-    "severity": "low",
-    "stride": "repudiation",
+    "rule_id": "EC2_IMDSV1",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
     "techniques": [
-      "T1562.008"
+      "T1552.005"
     ]
   },
   {

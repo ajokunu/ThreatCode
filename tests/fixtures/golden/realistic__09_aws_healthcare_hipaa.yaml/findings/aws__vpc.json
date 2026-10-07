@@ -4,8 +4,6 @@
     "rule_id": "VPC_NO_FLOW_LOGS",
     "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   }
 ]

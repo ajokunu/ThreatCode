@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Lab:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties:
+      NotebookInstanceName: lab
+      InstanceType: ml.t3.medium
+      RoleArn: arn:aws:iam::111122223333:role/notebook
+      SubnetId: subnet-0a1b2c3d
+      SecurityGroupIds: [sg-0a1b2c3d4e]
+      DirectInternetAccess: Disabled
+      RootAccess: Disabled

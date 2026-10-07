@@ -1,0 +1,160 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lambda_function.worker",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "worker",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "function_name": "worker",
+            "handler": "index.handler",
+            "runtime": "python3.12",
+            "package_type": "Zip",
+            "filename": "worker.zip",
+            "vpc_config": [
+              {
+                "subnet_ids": [
+                  "subnet-0a1b2c3d"
+                ],
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e"
+                ],
+                "ipv6_allowed_for_dual_stack": false
+              }
+            ],
+            "dead_letter_config": [],
+            "environment": [],
+            "timeout": 30
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_lambda_function.worker",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "worker",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "function_name": "worker",
+          "handler": "index.handler",
+          "runtime": "python3.12",
+          "package_type": "Zip",
+          "filename": "worker.zip",
+          "vpc_config": [
+            {
+              "subnet_ids": [
+                "subnet-0a1b2c3d"
+              ],
+              "security_group_ids": [
+                "sg-0a1b2c3d4e"
+              ],
+              "ipv6_allowed_for_dual_stack": false
+            }
+          ],
+          "dead_letter_config": [],
+          "environment": [],
+          "timeout": 30
+        },
+        "after_unknown": {
+          "invoke_arn": true,
+          "version": true,
+          "qualified_arn": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true,
+          "role": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lambda_function.worker",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "worker",
+          "provider_config_key": "aws",
+          "expressions": {
+            "function_name": {
+              "constant_value": "worker"
+            },
+            "handler": {
+              "constant_value": "index.handler"
+            },
+            "runtime": {
+              "constant_value": "python3.12"
+            },
+            "package_type": {
+              "constant_value": "Zip"
+            },
+            "filename": {
+              "constant_value": "worker.zip"
+            },
+            "vpc_config": [
+              {
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d"
+                  ]
+                },
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e"
+                  ]
+                },
+                "ipv6_allowed_for_dual_stack": {
+                  "constant_value": false
+                }
+              }
+            ],
+            "dead_letter_config": {
+              "constant_value": []
+            },
+            "environment": {
+              "constant_value": []
+            },
+            "timeout": {
+              "constant_value": 30
+            },
+            "role": {
+              "references": [
+                "aws_iam_role.worker.arn",
+                "aws_iam_role.worker"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}
