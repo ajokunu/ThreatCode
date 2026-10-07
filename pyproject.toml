@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Security",
     "Typing :: Typed",
 ]
@@ -58,10 +59,12 @@ dev = [
     "hypothesis>=6.0",
     "build>=1.0",
 ]
+# mkdocs.yml enables the search plugin only and no page uses a mkdocstrings directive, so the
+# docs build needs MkDocs and the Material theme. Both are capped below their next major: the
+# theme's own build warns that MkDocs 2.0 drops plugins and theme overrides.
 docs = [
-    "mkdocs-material>=9.0",
-    "mkdocs-autorefs",
-    "mkdocstrings[python]",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
 ]
 
 [project.scripts]
