@@ -12,6 +12,11 @@
     },
     {
       "severity": "medium",
+      "source": "aws_lambda_function.order_processor",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
       "source": "aws_lb.storefront",
       "stride": "tampering"
     },

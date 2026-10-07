@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_instance.worker",
+    "rule_id": "EC2_UNENCRYPTED_EBS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

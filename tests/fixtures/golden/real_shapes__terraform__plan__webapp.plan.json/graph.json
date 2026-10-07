@@ -1,0 +1,628 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_instance.orders",
+      "target": "aws_db_subnet_group.db",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_instance.orders",
+      "target": "aws_security_group.db",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_subnet_group.db",
+      "target": "aws_subnet.private[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_subnet_group.db",
+      "target": "aws_subnet.private[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_subnet_group.db",
+      "target": "aws_subnet.private[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_subnet_group.db",
+      "target": "aws_subnet.private[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_instance_profile.app",
+      "target": "aws_iam_role.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_instance_profile.app",
+      "target": "aws_iam_role.app",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.app",
+      "target": "data.aws_iam_policy_document.assume",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy.app_data",
+      "target": "aws_iam_role.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy.app_data",
+      "target": "aws_iam_role.app",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role_policy.app_data",
+      "target": "aws_s3_bucket.data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role_policy.app_data",
+      "target": "aws_secretsmanager_secret.db",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.app[0]",
+      "target": "aws_iam_instance_profile.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.app[0]",
+      "target": "aws_iam_instance_profile.app",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[0]",
+      "target": "aws_security_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[0]",
+      "target": "aws_subnet.private[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[0]",
+      "target": "aws_subnet.private[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[0]",
+      "target": "aws_subnet.private[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[0]",
+      "target": "aws_subnet.private[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.app[1]",
+      "target": "aws_iam_instance_profile.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.app[1]",
+      "target": "aws_iam_instance_profile.app",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[1]",
+      "target": "aws_security_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[1]",
+      "target": "aws_subnet.private[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[1]",
+      "target": "aws_subnet.private[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[1]",
+      "target": "aws_subnet.private[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.app[1]",
+      "target": "aws_subnet.private[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_internet_gateway.gw",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_internet_gateway.gw",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_iam_role.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_iam_role.app",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_security_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_subnet.private[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_subnet.private[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_subnet.private[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.worker",
+      "target": "aws_subnet.private[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb.front",
+      "target": "aws_security_group.alb",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb.front",
+      "target": "aws_subnet.public[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb.front",
+      "target": "aws_subnet.public[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb.front",
+      "target": "aws_subnet.public[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb.front",
+      "target": "aws_subnet.public[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb_listener.https",
+      "target": "aws_lb.front",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb_listener.https",
+      "target": "aws_lb_target_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb_target_group.app",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb_target_group.app",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb_target_group_attachment.app[0]",
+      "target": "aws_instance.app[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb_target_group_attachment.app[0]",
+      "target": "aws_instance.app[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb_target_group_attachment.app[0]",
+      "target": "aws_lb_target_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb_target_group_attachment.app[1]",
+      "target": "aws_instance.app[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb_target_group_attachment.app[1]",
+      "target": "aws_instance.app[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lb_target_group_attachment.app[1]",
+      "target": "aws_lb_target_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table.public",
+      "target": "aws_internet_gateway.gw",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.public",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.public",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.public[0]",
+      "target": "aws_route_table.public",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[0]",
+      "target": "aws_subnet.public[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[0]",
+      "target": "aws_subnet.public[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[0]",
+      "target": "aws_subnet.public[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[0]",
+      "target": "aws_subnet.public[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.public[1]",
+      "target": "aws_route_table.public",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[1]",
+      "target": "aws_subnet.public[0]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[1]",
+      "target": "aws_subnet.public[0]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[1]",
+      "target": "aws_subnet.public[1]",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.public[1]",
+      "target": "aws_subnet.public[1]",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_public_access_block.data",
+      "target": "aws_s3_bucket.data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_server_side_encryption_configuration.data",
+      "target": "aws_s3_bucket.data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_versioning.data",
+      "target": "aws_s3_bucket.data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.alb",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.alb",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.app",
+      "target": "aws_security_group.alb",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.app",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.app",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.db",
+      "target": "aws_security_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.db",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.db",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private[0]",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private[0]",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private[1]",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private[1]",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public[0]",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public[0]",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public[1]",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public[1]",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_db_instance.orders": {
+      "category": "database",
+      "zone": "private"
+    },
+    "aws_db_subnet_group.db": {
+      "category": "database",
+      "zone": "private"
+    },
+    "aws_iam_instance_profile.app": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.app": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role_policy.app_data": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.app[0]": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_instance.app[1]": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_internet_gateway.gw": {
+      "category": "network",
+      "zone": "internet"
+    },
+    "aws_lambda_function.worker": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lb.front": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_lb_listener.https": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_lb_target_group.app": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_lb_target_group_attachment.app[0]": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_lb_target_group_attachment.app[1]": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_route_table.public": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.public[0]": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.public[1]": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_s3_bucket.data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_public_access_block.data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_server_side_encryption_configuration.data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_versioning.data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_secretsmanager_secret.db": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_security_group.alb": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.app": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.db": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.private[0]": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.private[1]": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.public[0]": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_subnet.public[1]": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_vpc.main": {
+      "category": "network",
+      "zone": "private"
+    },
+    "data.aws_iam_policy_document.assume": {
+      "category": "iam",
+      "zone": "management"
+    }
+  }
+}

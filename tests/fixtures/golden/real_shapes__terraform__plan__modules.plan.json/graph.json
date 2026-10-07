@@ -1,0 +1,194 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_flow_log.main",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_flow_log.main",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_flow_log.main",
+      "target": "module.logging.aws_s3_bucket.this",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.worker",
+      "target": "aws_security_group.internal",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.worker",
+      "target": "module.subnets[0].aws_subnet.this",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.worker",
+      "target": "module.subnets[0].aws_subnet.this",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.internal",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.internal",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group_rule.ingress[\"https\"]",
+      "target": "aws_security_group.internal",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group_rule.ingress[\"https\"]",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group_rule.ingress[\"ssh\"]",
+      "target": "aws_security_group.internal",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group_rule.ingress[\"ssh\"]",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[0].aws_network_acl.this",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[0].aws_network_acl.this",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[0].aws_network_acl.this",
+      "target": "module.subnets[0].aws_subnet.this",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[0].aws_network_acl.this",
+      "target": "module.subnets[0].aws_subnet.this",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[0].aws_subnet.this",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[0].aws_subnet.this",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[1].aws_network_acl.this",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[1].aws_network_acl.this",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[1].aws_network_acl.this",
+      "target": "module.subnets[1].aws_subnet.this",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[1].aws_network_acl.this",
+      "target": "module.subnets[1].aws_subnet.this",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[1].aws_subnet.this",
+      "target": "aws_vpc.main",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.subnets[1].aws_subnet.this",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_flow_log.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_instance.worker": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_security_group.internal": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group_rule.ingress[\"https\"]": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group_rule.ingress[\"ssh\"]": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpc.main": {
+      "category": "network",
+      "zone": "private"
+    },
+    "module.logging.aws_s3_bucket.this": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "module.subnets[0].aws_network_acl.this": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "module.subnets[0].aws_subnet.this": {
+      "category": "network",
+      "zone": "private"
+    },
+    "module.subnets[1].aws_network_acl.this": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "module.subnets[1].aws_subnet.this": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

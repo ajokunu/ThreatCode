@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_lambda_function.worker",
+    "rule_id": "LAMBDA_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  }
+]

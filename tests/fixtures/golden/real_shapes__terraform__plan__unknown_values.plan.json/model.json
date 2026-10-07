@@ -1,0 +1,24 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_cloudtrail.encrypted",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_cloudtrail.plain",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "module.audit.aws_cloudtrail.bare",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "module.audit.aws_cloudtrail.this",
+      "stride": "tampering"
+    }
+  ]
+}
