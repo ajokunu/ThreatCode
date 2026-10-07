@@ -43,7 +43,7 @@ rules:
                 equals: SYMMETRIC_DEFAULT
     mitigation: >
       Set enable_key_rotation to true.
-      Rotation is free to turn on and keeps old key material for decrypting existing data.
+      AWS keeps the old key material, so data encrypted before a rotation stays readable.
 
   - id: KMS_KEY_EXPOSED
     title: KMS key policy allows every principal
