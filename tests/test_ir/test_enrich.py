@@ -1665,3 +1665,84 @@ class TestPartialAddressCollision:
         for address in ("aws_s3_bucket.x", "aws_s3_bucket.y"):
             value = _derived(graph, address)["versioning_enabled"]
             assert value is not False, address
+
+
+class TestLiteralLinkScaling:
+    BUCKETS = 2000
+
+    def _plan_graph(self) -> InfraGraph:
+        resources: list[ParsedResource] = []
+        for i in range(self.BUCKETS):
+            resources.append(_resource("aws_s3_bucket", f"b{i}", bucket=f"bucket-{i}"))
+            resources.append(
+                _resource(
+                    "aws_s3_bucket_versioning",
+                    f"v{i}",
+                    bucket=f"bucket-{i}",
+                    versioning_configuration=[{"status": "Enabled"}],
+                )
+            )
+            resources.append(
+                _resource(
+                    "aws_s3_bucket_logging", f"l{i}", bucket=f"bucket-{i}", target_bucket="logs"
+                )
+            )
+            resources.append(
+                _resource(
+                    "aws_s3_bucket_public_access_block",
+                    f"p{i}",
+                    bucket=f"bucket-{i}",
+                    block_public_acls=True,
+                )
+            )
+        return _graph(*resources)
+
+    def test_thousands_of_literal_linked_companions_enrich_in_linear_time(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import time
+
+        builds = {"group": 0}
+        original = enrich_module.EnrichContext._group
+
+        def counting(self: Any, prefix: str, resource_type: str) -> Any:
+            builds["group"] += 1
+            return original(self, prefix, resource_type)
+
+        monkeypatch.setattr(enrich_module.EnrichContext, "_group", counting)
+        started = time.perf_counter()
+        graph = self._plan_graph()
+        elapsed = time.perf_counter() - started
+
+        # Quadratic resolution took about 6 s here, the indexed lookup well under one second
+        assert elapsed < 4.0, f"enrichment took {elapsed:.1f}s for {len(graph.nodes)} nodes"
+        # Candidate lists and literal indexes are built once per type, never once per companion
+        assert builds["group"] < 100
+        for i in (0, self.BUCKETS // 2, self.BUCKETS - 1):
+            derived = _derived(graph, f"aws_s3_bucket.b{i}")
+            assert derived["versioning_enabled"] is True
+            assert derived["logging_enabled"] is True
+
+    def test_the_index_keeps_ambiguity_at_scale(self) -> None:
+        resources = [_resource("aws_s3_bucket", f"b{i}", bucket=f"bucket-{i}") for i in range(500)]
+        resources.append(_resource("aws_s3_bucket", "twin", bucket="bucket-7"))
+        resources.append(
+            _resource(
+                "aws_s3_bucket_versioning",
+                "ambiguous",
+                bucket="bucket-7",
+                versioning_configuration=[{"status": "Enabled"}],
+            )
+        )
+        resources.append(
+            _resource(
+                "aws_s3_bucket_versioning",
+                "orphan",
+                bucket="no-such-bucket",
+                versioning_configuration=[{"status": "Enabled"}],
+            )
+        )
+        graph = _graph(*resources)
+        assert is_unknown(_derived(graph, "aws_s3_bucket.b7")["versioning_enabled"])
+        assert is_unknown(_derived(graph, "aws_s3_bucket.twin")["versioning_enabled"])
+        assert is_unknown(_derived(graph, "aws_s3_bucket.b8")["versioning_enabled"])

@@ -309,6 +309,13 @@ class EnrichContext:
             self._by_type.setdefault(node.resource_type, []).append(node)
         self._scoped: dict[str, ReferenceIndex] = {}
         self._by_prefix: dict[str, dict[str, InfraNode]] = {}
+        # Candidate lists and literal indexes are built once per (unit, type set) and reused,
+        # so a companion's literal link is an O(1) lookup instead of a scan of every parent.
+        self._groups: dict[str, dict[str, list[InfraNode]]] = {}
+        self._peer_cache: dict[tuple[str | None, tuple[str, ...]], tuple[InfraNode, ...]] = {}
+        self._literal_cache: dict[
+            tuple[str, tuple[str, ...], tuple[str, ...]], dict[str, list[InfraNode]]
+        ] = {}
         for node in self.nodes:
             prefix = _unit_prefix(node.id)
             if prefix:
@@ -335,9 +342,22 @@ class EnrichContext:
     def resolve(self, node: InfraNode, raw: Any, matcher: TypeMatcher) -> Resolution:
         return self.index_for(node).resolve_detailed(raw, node.module, required_type=matcher)
 
+    def _matching_types(self, matcher: TypeMatcher) -> tuple[str, ...]:
+        return tuple(t for t in self._by_type if matcher(t))
+
+    def _group(self, prefix: str, resource_type: str) -> list[InfraNode]:
+        """Enrichable nodes of one type that belong to the unit labelled `prefix`."""
+        if prefix not in self._groups:
+            by_type: dict[str, list[InfraNode]] = {}
+            for node in self.nodes:
+                if _unit_prefix(node.id) == prefix:
+                    by_type.setdefault(node.resource_type, []).append(node)
+            self._groups[prefix] = by_type
+        return self._groups[prefix].get(resource_type, [])
+
     def peers(
         self, node: InfraNode, matcher: TypeMatcher, *, any_input: bool = False
-    ) -> list[InfraNode]:
+    ) -> Sequence[InfraNode]:
         """Enrichable nodes of the same input as `node` whose type matches.
 
         With ``any_input`` the nodes of every input.
@@ -346,15 +366,50 @@ class EnrichContext:
         together.
         Marking candidates Unknown therefore uses every input: a link that cannot be resolved
         must never leave a parent in another scope looking confidently unconfigured.
+        The result is cached per unit and set of matching types, and must not be modified.
         """
+        return self._peers_of(None if any_input else _unit_prefix(node.id), matcher)
+
+    def _peers_of(self, prefix: str | None, matcher: TypeMatcher) -> tuple[InfraNode, ...]:
+        types = self._matching_types(matcher)
+        key = (prefix, types)
+        found = self._peer_cache.get(key)
+        if found is None:
+            if prefix is None:
+                found = tuple(n for t in types for n in self._by_type[t])
+            else:
+                found = tuple(n for t in types for n in self._group(prefix, t))
+            self._peer_cache[key] = found
+        return found
+
+    def _literal_index(
+        self, prefix: str, resource_type: str, keys: tuple[str, ...]
+    ) -> dict[str, list[InfraNode]]:
+        """For one unit and type: literal value of any of `keys` -> the nodes carrying it."""
+        cache_key = (prefix, (resource_type,), keys)
+        index = self._literal_cache.get(cache_key)
+        if index is None:
+            index = {}
+            for candidate in self._group(prefix, resource_type):
+                seen: set[str] = set()
+                for key in keys:
+                    value = candidate.properties.get(key)
+                    if isinstance(value, str) and not is_unknown(value) and value not in seen:
+                        seen.add(value)
+                        index.setdefault(value, []).append(candidate)
+            self._literal_cache[cache_key] = index
+        return index
+
+    def literal_hits(
+        self, node: InfraNode, literal: str, matcher: TypeMatcher, keys: Sequence[str]
+    ) -> list[InfraNode]:
+        """Peers of `node` whose id, name or ARN (any of `keys`) equals `literal`."""
         prefix = _unit_prefix(node.id)
-        return [
-            n
-            for resource_type, group in self._by_type.items()
-            if matcher(resource_type)
-            for n in group
-            if any_input or _unit_prefix(n.id) == prefix
-        ]
+        key_tuple = tuple(keys)
+        hits: list[InfraNode] = []
+        for resource_type in self._matching_types(matcher):
+            hits.extend(self._literal_index(prefix, resource_type, key_tuple).get(literal, ()))
+        return hits
 
     def contribute(self, node: InfraNode, values: Mapping[str, Any]) -> None:
         derived = node.properties.get(DERIVED)
@@ -397,13 +452,8 @@ class EnrichContext:
         unresolved = False
         orphan = False
         reference = ""
-        candidates: list[InfraNode] | None = None
         for value in values:
-            if candidates is None and _needs_candidates(value):
-                candidates = self.peers(node, matcher)
-            found, status, ref = self._resolve_value(
-                node, value, matcher, candidates or [], literal_keys
-            )
+            found, status, ref = self._resolve_value(node, value, matcher, literal_keys)
             for target in found:
                 resolved.setdefault(target.id, target)
             if status == "unresolved" and not unresolved:
@@ -418,7 +468,6 @@ class EnrichContext:
         node: InfraNode,
         value: Any,
         matcher: TypeMatcher,
-        candidates: list[InfraNode],
         literal_keys: Sequence[str],
     ) -> tuple[list[InfraNode], str, str]:
         """Return (nodes, status, reference) with status 'ok', 'orphan', 'unresolved' or 'none'."""
@@ -443,7 +492,7 @@ class EnrichContext:
             if resolution.rejected:
                 return [], "orphan", label
         if isinstance(raw, str) and "${" not in raw and not is_unknown(value):
-            hits = _literal_hits(raw, candidates, literal_keys)
+            hits = self.literal_hits(node, raw, matcher, literal_keys)
             if len(hits) == 1:
                 return hits, "ok", label
             if len(hits) > 1:
@@ -453,26 +502,8 @@ class EnrichContext:
         return [], "unresolved", label
 
 
-def _needs_candidates(value: Any) -> bool:
-    """Only a plain string can be a literal name, which is matched against the candidates."""
-    return isinstance(value, str) and not is_unknown(value) and "${" not in value
-
-
 def _excluding(matcher: TypeMatcher, excluded: str) -> TypeMatcher:
     return lambda candidate: candidate != excluded and matcher(candidate)
-
-
-def _literal_hits(
-    literal: str, candidates: Sequence[InfraNode], keys: Sequence[str]
-) -> list[InfraNode]:
-    hits = []
-    for candidate in candidates:
-        for key in keys:
-            value = candidate.properties.get(key)
-            if isinstance(value, str) and not is_unknown(value) and value == literal:
-                hits.append(candidate)
-                break
-    return hits
 
 
 def _looks_like_reference(value: str) -> bool:
