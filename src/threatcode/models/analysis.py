@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from threatcode.ir.graph import InfraGraph
+    from threatcode.models.attack_path import AttackPath
     from threatcode.models.report import ThreatReport
 
 
@@ -17,7 +18,12 @@ class AnalysisResult:
     graph: InfraGraph
     report: ThreatReport
 
+    @property
+    def attack_paths(self) -> list[AttackPath]:
+        return self.report.attack_paths
+
     def to_dict(self) -> dict[str, Any]:
+        # The report already serializes attack_paths when it has any.
         result = self.report.to_dict()
         result["graph"] = self.graph.to_dict()
         return result
