@@ -177,9 +177,11 @@ def looks_random(text: str) -> bool:
 
 @lru_cache(maxsize=1)
 def _provider_rules() -> tuple[SecretRule, ...]:
-    # The connection-string rule is left out: URLs are judged by their userinfo password
-    # and query parameters, so a URL with no password is not a secret.
-    return tuple(r for r in get_builtin_rules() if r.id != "SECRET_DB_CONNECTION_STRING")
+    # Only rules for a distinctive provider token run here. URLs are judged by their userinfo
+    # password and query parameters, headers by their own scoring, and generic key = value
+    # assignments by ``key_strength`` and ``looks_random``, so the structural and generic rules of
+    # the scanner are left out.
+    return tuple(r for r in get_builtin_rules() if r.kind == "provider")
 
 
 def provider_pattern_hit(key: str, value: str) -> bool:
@@ -187,10 +189,10 @@ def provider_pattern_hit(key: str, value: str) -> bool:
     line = f"{key}={value}"
     lowered = line.lower()
     for rule in _provider_rules():
-        if rule.keywords and not any(kw.lower() in lowered for kw in rule.keywords):
+        if rule.keywords and not any(kw in lowered for kw in rule.keywords):
             continue
         match = rule.regex.search(line)
-        if match and not rule.is_allowed(match.group(0)):
+        if match and rule.accepts(rule.secret_of(match)[0]):
             return True
     return False
 
