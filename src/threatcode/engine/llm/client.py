@@ -169,7 +169,9 @@ class AnthropicLLMClient(BaseLLMClient):
         try:
             import anthropic
         except ImportError as e:
-            raise LLMError("anthropic package required: pip install anthropic") from e
+            raise LLMError(
+                "The anthropic SDK is not installed. Install it with: pip install 'threatcode[llm]'"
+            ) from e
 
         # Validate max_tokens range
         if not 1 <= max_tokens <= 8192:
