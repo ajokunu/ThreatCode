@@ -8,10 +8,14 @@ from threatcode.ir.catalog.types import NodeCategory, TrustZone
 
 CATEGORIES: dict[str, NodeCategory] = {
     "mcp_server": NodeCategory.COMPUTE,
+    # The synthetic node for the AI agent a config scope starts. The agent runs on the
+    # user's machine, so it is private whatever its servers are
+    "mcp_agent": NodeCategory.COMPUTE,
 }
 
 ZONES: dict[str, TrustZone] = {
     "mcp_server": TrustZone.PRIVATE,
+    "mcp_agent": TrustZone.PRIVATE,
 }
 
 
