@@ -30,7 +30,6 @@ Ratchets are optional: ``expected/ratchet.yml`` with ``min_recall``, ``max_viola
 from __future__ import annotations
 
 import difflib
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cache
@@ -40,6 +39,7 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.helpers.kinds import KIND_PATTERNS
 from tests.helpers.scan import ScanResult, scan_files
 
 HERE = Path(__file__).parent
@@ -49,29 +49,6 @@ REALISTIC_DIR = HERE.parent / "fixtures" / "realistic"
 # The report a test leaves on the pytest config; conftest.py prints it in the terminal summary as
 # (table, detail). The detail lists every missed issue and violation and prints only with -v.
 REPORT_KEY: pytest.StashKey[tuple[str, str]] = pytest.StashKey()
-
-# Classes of finding, matched against "<rule id> <title> <description>" case-insensitively.
-KIND_PATTERNS: dict[str, re.Pattern[str]] = {
-    name: re.compile(pattern, re.IGNORECASE)
-    for name, pattern in {
-        "open_ingress": (
-            r"ingress|inbound|any source|0\.0\.0\.0/0|open to the (internet|world)|allow[- ]?all"
-        ),
-        "wildcard_iam": (
-            r"wildcard|admin|full access|overpermissive|over-permissive|excessive|\*:\*"
-        ),
-        "public_access": r"public",
-        "public_ip": r"public ip|public address|publicly addressable",
-        "unencrypted_storage": r"encrypt",
-        "imdsv1": r"imds|instance metadata|http_tokens|metadata (service|options)",
-        "hardcoded_secret": r"secret|password|credential|hard-?coded",
-        "rbac_disabled": r"rbac",
-        "registry_admin_enabled": r"admin (user|account|enabled)|admin_enabled",
-        "https_not_enforced": r"https|tls|plaintext|unencrypted transport",
-        "no_vpc": r"\bvpc\b",
-        "secrets_read": r"secrets?.*(read|get|list|access)|(read|get|list|access).*secrets?",
-    }.items()
-}
 
 _MUST_FIND_KEYS = {"resource", "rule_ids", "kind", "why"}
 _MUST_NOT_FIND_KEYS = {"resource", "rule_ids", "why"}

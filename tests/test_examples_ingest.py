@@ -16,14 +16,14 @@ from typing import Any
 import pytest
 
 from tests.helpers.cli import find_key, run_cli, scan_json
-from tests.helpers.pending import pending
-from tests.test_examples_paths import (
+from tests.helpers.examples import (
     EXAMPLES_DIR,
     expected_for,
     is_subsequence,
     path_node_ids,
     scan_example,
 )
+from tests.helpers.pending import pending
 
 WEBAPP = EXAMPLES_DIR / "aws-webapp"
 TRIVY = WEBAPP / "scanner" / "trivy-app-image.json"
