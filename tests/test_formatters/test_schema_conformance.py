@@ -103,7 +103,8 @@ GENERATED_INPUTS = {
 
 ALL_INPUTS = FILE_INPUTS + sorted(GENERATED_INPUTS)
 # The fixed MCP config yields no finding, so a per-result lint over it checks nothing
-EMPTY_INPUTS = {"mcp/fixed/.mcp.json"}
+# multi_service_secure only ever produced the false internet-gateway-to-VPC boundary threat (WP-3-1)
+EMPTY_INPUTS = {"mcp/fixed/.mcp.json", "terraform/multi_service_secure.plan.json"}
 LINT_INPUTS = [i for i in ALL_INPUTS if i not in EMPTY_INPUTS]
 
 

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from threatcode.ir import catalog
+from threatcode.ir.catalog import tri_state
 from threatcode.ir.nodes import (
     CATEGORY_MAP,
     CONTAINER_TYPES,
@@ -111,7 +112,8 @@ LEGACY_CATEGORIES: dict[str, str] = {
     "kubernetes_service": "network",
     "kubernetes_ingress": "network",
     "kubernetes_config_map": "storage",
-    "kubernetes_secret": "storage",
+    # deliberate change (WP-3-1): a Secret is its own category, not generic storage
+    "kubernetes_secret": "secret",
     "kubernetes_network_policy": "network",
     "kubernetes_service_account": "iam",
     "kubernetes_role": "iam",
@@ -172,6 +174,12 @@ LEGACY_ZONES: dict[str, str] = {
 # Zones that WP-2-4 deliberately made depend on properties (a Service by its type, an Ingress
 # by its rules); the legacy table cannot describe them, so they have their own tests.
 PROPERTY_DRIVEN_ZONES = frozenset({"kubernetes_service", "kubernetes_ingress"})
+
+
+PUBLIC_FLAGS = ("map_public_ip_on_launch", "associate_public_ip_address", "publicly_accessible")
+
+# deliberate changes (WP-3-1): a subnet group is network plumbing, not a database
+DELIBERATE_CATEGORY_CHANGES = {"aws_db_subnet_group": "network"}
 
 
 def _legacy_categorize(resource_type: str) -> str:
@@ -255,12 +263,13 @@ class TestCatalogParity:
         "resource_type",
         [
             "aws_instance",
-            "azurerm_sql_server",
             "google_compute_instance",
             "mcp_server",
             "x_unknown",
         ],
     )
+    # azurerm_sql_server is left out on purpose (WP-3-1): a publicly accessible data store stays
+    # in the DATA zone and its exposure is recorded on the node instead
     def test_property_heuristics_apply_to_every_type_as_before(
         self, resource_type: str, properties: dict[str, Any]
     ) -> None:
@@ -277,9 +286,19 @@ class TestCatalogParity:
         for rtype, props in resources:
             if _legacy_categorize(rtype) != "unknown":
                 categorized += 1
-                assert categorize_resource(rtype).value == _legacy_categorize(rtype), rtype
+                expected = DELIBERATE_CATEGORY_CHANGES.get(rtype, _legacy_categorize(rtype))
+                assert categorize_resource(rtype).value == expected, rtype
             if rtype in PROPERTY_DRIVEN_ZONES:
                 continue
+            if infer_trust_zone(rtype, {}) == TrustZone.DATA:
+                # WP-3-1: a public data store stays DATA; its exposure is recorded on the node
+                props = {k: v for k, v in props.items() if k != "publicly_accessible"}
+            # WP-3-1: the string "false" and an unresolved value are no longer read as public
+            props = {
+                k: v
+                for k, v in props.items()
+                if k not in PUBLIC_FLAGS or tri_state(v, "config") == "true"
+            }
             if _legacy_zone_is_decided(rtype, props):
                 zoned += 1
                 assert infer_trust_zone(rtype, props).value == _legacy_zone(rtype, props), rtype

@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.pending import pending
 from tests.test_quality.harness import (
     EXPECTED_DIR,
     REALISTIC_DIR,
@@ -122,20 +121,7 @@ class TestBenchmarkRuns:
 
 
 class TestFindingIntegrity:
-    @pytest.mark.parametrize(
-        "fixture",
-        [
-            pytest.param(
-                f,
-                marks=pending(
-                    "WP-3-1", "boundary threat ids hash the pair and edge types, so unique"
-                )
-                if f == "01_aws_ecommerce_platform.json"
-                else (),
-            )
-            for f in FIXTURES
-        ],
-    )
+    @pytest.mark.parametrize("fixture", FIXTURES)
     def test_no_two_threats_share_an_id(self, fixture: str) -> None:
         counts = Counter(t.id for t in scan_fixture(fixture).threats)
         dupes = {tid: n for tid, n in counts.items() if n > 1}

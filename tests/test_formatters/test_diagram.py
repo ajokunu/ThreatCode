@@ -986,7 +986,8 @@ class TestEdgeLabelPlacement:
         svg = _fixture_svg()
         texts = re.findall(r'class="edge-label">(.*?)</text>', svg)
         assert texts.count("INTERNET → PRIVATE") == 1
-        assert texts.count("DMZ → PRIVATE") == 2  # public_db and public subnet
+        # public_db is a data store (exposure internet, WP-3-1), so only the public subnet remains
+        assert texts.count("DMZ → PRIVATE") == 1
 
         root = ElementTree.fromstring(_skip_lane_svg())
         assert len(_label_boxes(root)) == 1

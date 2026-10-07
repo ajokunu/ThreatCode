@@ -16,6 +16,7 @@ from threatcode.ir.nodes import InfraNode
 from threatcode.models.attack_path import AttackPath
 from threatcode.models.report import ThreatReport
 from threatcode.models.threat import Severity, Threat, ThreatSource
+from threatcode.parsers.base import ParsedEdge, ParsedOutput
 
 
 class TestHybridEngine:
@@ -158,10 +159,13 @@ class TestPhaseOrder:
         assert calls == ["rules", "boundaries", "severity", "paths", "llm"]
 
     def test_secret_findings_land_between_rule_and_boundary_threats(
-        self, simple_s3_graph: InfraGraph
+        self, simple_s3_parsed: ParsedOutput
     ) -> None:
+        # only a declared flow across zones yields a boundary threat (WP-3-1), so declare one
+        simple_s3_parsed.edges.append(ParsedEdge("aws_instance.web", "aws_db_instance.main"))
+        graph = InfraGraph.from_parsed(simple_s3_parsed)
         ctx = AnalysisContext(secret_findings=[_threat("s1", ThreatSource.SECRET)])
-        report = HybridEngine().analyze(simple_s3_graph, context=ctx)
+        report = HybridEngine().analyze(graph, context=ctx)
 
         sources = [t.source for t in report.threats]
         first_secret = sources.index(ThreatSource.SECRET)
