@@ -837,3 +837,38 @@ def test_the_module_registers_its_diagnostic_code() -> None:
 
     assert "graph.iam_fanout_capped" in DIAGNOSTIC_CODES
     assert iam.MAX_WILDCARD_TARGETS == MAX_WILDCARD_TARGETS
+
+
+class TestSeveralInputs:
+    """A repository graph holds several inputs; roles, policies and resources stay in their own."""
+
+    def _unit(self, label: str, bucket: str) -> ParsedOutput:
+        return ParsedOutput(
+            resources=[
+                *_role_with(_statement("s3:GetObject", f"arn:aws:s3:::{bucket}/*")),
+                _bucket("data", bucket),
+                _pr("aws_lambda_function", "fn", properties={"role": "app"}),
+            ],
+            source_path=label,
+            format_type="terraform_plan",
+        )
+
+    def test_a_role_reaches_only_the_bucket_of_its_own_input(self) -> None:
+        graph = InfraGraph.from_units([self._unit("a", "bucket-a"), self._unit("b", "bucket-b")])
+        grants = {
+            (e.source, e.target)
+            for e in graph.edges
+            if e.edge_type is EdgeType.IAM_BINDING and e.relation == "permission"
+        }
+        assert grants == {
+            ("a::aws_iam_role.app", "a::aws_s3_bucket.data"),
+            ("b::aws_iam_role.app", "b::aws_s3_bucket.data"),
+        }
+
+    def test_a_function_assumes_the_role_of_its_own_input(self) -> None:
+        graph = InfraGraph.from_units([self._unit("a", "bucket-a"), self._unit("b", "bucket-b")])
+        assert _edges(graph, "assumes") >= {
+            ("a::aws_lambda_function.fn", "a::aws_iam_role.app"),
+            ("b::aws_lambda_function.fn", "b::aws_iam_role.app"),
+        }
+        assert ("a::aws_lambda_function.fn", "b::aws_iam_role.app") not in _edges(graph, "assumes")

@@ -1072,7 +1072,8 @@ class TestTwoVpcPlacement:
         graph = InfraGraph.from_parsed(self._vpcs(subnet))
         assert graph.edges == []
         (diag,) = [d for d in graph.diagnostics if d.code == "graph.ambiguous_reference"]
-        assert diag.level == "warning"
+        # Most likely a VPC outside the input, so information and not a coverage gap
+        assert diag.level == "info"
         assert "vpc-0unknown" in diag.message
         assert "aws_vpc.prod" in diag.message and "aws_vpc.dev" in diag.message
         assert "no edge was added" in diag.message
@@ -1144,6 +1145,8 @@ class TestTwoVpcPlacement:
         (message,) = self._ambiguous(graph)
         assert "matches several nodes" in message
         assert "aws_vpc.a" in message and "aws_vpc.b" in message
+        (diag,) = [d for d in graph.diagnostics if d.code == "graph.ambiguous_reference"]
+        assert diag.level == "warning"
 
     def test_a_dangling_address_is_not_an_ambiguity(self) -> None:
         subnet = _pr("aws_subnet", "a", properties={"vpc_id": "aws_vpc.gone"})
@@ -1872,6 +1875,16 @@ class TestPassOrder:
 
 def _default_route(gateway: str) -> dict[str, str]:
     return {"cidr_block": "0.0.0.0/0", "gateway_id": f"aws_internet_gateway.{gateway}"}
+
+
+class TestFlowEdgeTypes:
+    def test_flow_edges_are_the_traffic_carrying_types_only(self) -> None:
+        from threatcode.ir.edges import FLOW_EDGE_TYPES
+
+        assert FLOW_EDGE_TYPES == {EdgeType.NETWORK_FLOW, EdgeType.DATA_FLOW}
+        assert FLOW_EDGE_TYPES <= REACHABILITY
+        assert not FLOW_EDGE_TYPES & STRUCTURAL
+        assert EdgeType.IAM_BINDING not in FLOW_EDGE_TYPES
 
 
 class TestNodeBookkeeping:

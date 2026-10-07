@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -236,6 +236,8 @@ class _Targets:
         self._by_type: dict[str, list[InfraNode]] = {}
         for node in ctx.nodes:
             self._by_type.setdefault(node.resource_type, []).append(node)
+        self._sorted: dict[str, list[InfraNode]] = {}
+        self._patterns: dict[tuple[str, str], list[InfraNode]] = {}
         self._names: dict[str, dict[str, list[InfraNode]]] = {}
         for service, spec in SERVICES.items():
             names: dict[str, list[InfraNode]] = {}
@@ -247,9 +249,13 @@ class _Targets:
                             names.setdefault(value, []).append(node)
             self._names[service] = names
 
-    def of_service(self, service: str) -> list[InfraNode]:
-        found = [n for t in SERVICES[service].types for n in self._by_type.get(t, ())]
-        return sorted(found, key=lambda n: n.id)
+    def of_type(self, resource_type: str) -> list[InfraNode]:
+        """The nodes of one type, sorted by id; computed once."""
+        found = self._sorted.get(resource_type)
+        if found is None:
+            found = sorted(self._by_type.get(resource_type, ()), key=lambda n: n.id)
+            self._sorted[resource_type] = found
+        return found
 
     def of_arn(self, arn: ArnParts, full: str) -> tuple[list[InfraNode], bool]:
         """The nodes an ARN names, and whether the match came from a wildcard in the ARN."""
@@ -262,17 +268,26 @@ class _Targets:
         if not name:
             return self._by_arn_property(service, full), False
         if "*" in name or "?" in name:
-            matched = {
-                node.id: node
-                for known, nodes in names.items()
-                if fnmatch.fnmatchcase(known, name)
-                for node in nodes
-            }
-            return [matched[k] for k in sorted(matched)], True
+            return self._matching(service, name), True
         hits = list(names.get(name, ()))
         if not hits and service == "ssm":
             hits = list(names.get(name.lstrip("/"), ()))
         return hits or self._by_arn_property(service, full), False
+
+    def _matching(self, service: str, pattern: str) -> list[InfraNode]:
+        """The nodes of a service whose name matches a pattern, sorted by id; computed once."""
+        key = (service, pattern)
+        found = self._patterns.get(key)
+        if found is None:
+            matched = {
+                node.id: node
+                for known, nodes in self._names[service].items()
+                if fnmatch.fnmatchcase(known, pattern)
+                for node in nodes
+            }
+            found = [matched[k] for k in sorted(matched)]
+            self._patterns[key] = found
+        return found
 
     def _by_arn_property(self, service: str, full: str) -> list[InfraNode]:
         exact = full.rstrip("/*") if full.endswith("/*") else full
@@ -465,11 +480,11 @@ def _link_permissions(
     graph: InfraGraph, ctx: EnrichContext, targets: _Targets, role: InfraNode
 ) -> None:
     derived = ctx.derived(role)
-    statements: list[Any] = []
+    raw_statements: list[Any] = []
     for key in ("inline_policy_statements", "attached_policy_statements"):
         found = derived.get(key)
         if isinstance(found, list):
-            statements.extend(found)
+            raw_statements.extend(found)
     # A policy the role holds in this graph contributes its own statements as well: enrichment
     # reads an attachment only when its policy_arn is an ARN or a reference, and the edges also
     # join a literal address. A statement read twice merges into one grant
@@ -478,14 +493,13 @@ def _link_permissions(
             policy = graph.get_node(edge.target)
             found = ctx.derived(policy).get("policy_statements") if policy else None
             if isinstance(found, list):
-                statements.extend(found)
+                raw_statements.extend(found)
     grants: dict[str, _Grant] = {}
-    # Nodes reached through a wildcard: each is linked only while the role's budget lasts
+    # Nodes an ARN pattern reaches: each is linked only while the role's budget lasts
     pool: dict[str, list[_Statement]] = {}
-    for raw in statements:
-        statement = _read_statement(raw)
-        if statement is None:
-            continue
+    # The types a `*` resource reaches, with the statements that reach them
+    everywhere: dict[str, list[_Statement]] = {}
+    for statement in _statements(raw_statements):
         for node, wildcard in _concrete_targets(ctx, targets, role, statement):
             if node.id == role.id:
                 continue
@@ -494,9 +508,11 @@ def _link_permissions(
             else:
                 _record(grants, node.id, statement, False)
         if statement.wants_everything:
-            for node in _fan_out(targets, statement):
-                if node.id != role.id:
-                    pool.setdefault(node.id, []).append(statement)
+            for service in _statement_services(statement):
+                for resource_type in SERVICES[service].types:
+                    covering = everywhere.setdefault(resource_type, [])
+                    if statement not in covering:
+                        covering.append(statement)
     budget = MAX_WILDCARD_TARGETS
     skipped = 0
     for node_id in sorted(pool, key=lambda i: (_rank(targets, i), i)):
@@ -507,14 +523,27 @@ def _link_permissions(
             budget -= 1
         for statement in pool[node_id]:
             _record(grants, node_id, statement, True)
+    # A `*` resource reaches every node of its services: the first ones, data stores first, are
+    # linked, and the rest are counted without being visited, so the cost is the budget
+    for resource_type in sorted(everywhere, key=lambda t: _TYPE_RANK.get(t, len(_TYPE_RANK))):
+        nodes = targets.of_type(resource_type)
+        for position, node in enumerate(nodes):
+            if node.id == role.id:
+                continue
+            if node.id not in grants:
+                if budget <= 0:
+                    skipped += len(nodes) - position
+                    break
+                budget -= 1
+            for statement in everywhere[resource_type]:
+                _record(grants, node.id, statement, True)
     if skipped:
         graph.diagnostics.append(
             Diagnostic(
                 "info",
                 "graph.iam_fanout_capped",
-                f"Role {role.id} has wildcard permissions that match "
-                f"{skipped + MAX_WILDCARD_TARGETS} more nodes than it is linked to; only the first "
-                f"{MAX_WILDCARD_TARGETS} are linked",
+                f"Role {role.id} has wildcard permissions that match at least {skipped} more "
+                f"nodes than it is linked to; only the first {MAX_WILDCARD_TARGETS} are linked",
                 role.source_file,
                 role.start_line or None,
             )
@@ -533,6 +562,21 @@ def _link_permissions(
             },
             relation="permission",
         )
+
+
+def _statements(raw_statements: list[Any]) -> list[_Statement]:
+    """The distinct Allow statements, in order; a statement read from two places counts once."""
+    found: list[_Statement] = []
+    seen: set[str] = set()
+    for raw in raw_statements:
+        key = repr(raw)
+        if key in seen:
+            continue
+        seen.add(key)
+        statement = _read_statement(raw)
+        if statement is not None:
+            found.append(statement)
+    return found
 
 
 def _rank(targets: _Targets, node_id: str) -> int:
@@ -630,12 +674,3 @@ def _statement_services(statement: _Statement) -> set[str]:
 def _service_matches(node: InfraNode, services: set[str]) -> bool:
     """Whether the statement's actions are of a service that owns this node's type."""
     return any(node.resource_type in SERVICES[s].types for s in services)
-
-
-def _fan_out(targets: _Targets, statement: _Statement) -> Sequence[InfraNode]:
-    """The nodes of the services a statement's actions name, for a `*` resource."""
-    found: dict[str, InfraNode] = {}
-    for service in sorted(_statement_services(statement), key=list(SERVICES).index):
-        for node in targets.of_service(service):
-            found.setdefault(node.id, node)
-    return list(found.values())

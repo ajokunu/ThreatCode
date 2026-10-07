@@ -406,11 +406,14 @@ class InfraGraph:
         return list(found)
 
     def _ensure_adjacency(self) -> None:
-        # Edges are only ever appended, so a changed length means a stale index
+        # Edges are only ever appended, so the index grows by the edges added since it was built
+        # (an IAM or exposure pass reads it between additions and must not rebuild it each time)
         if self._adjacency_size == len(self._edges):
             return
-        self._out, self._in = {}, {}
-        for edge in self._edges:
+        if self._adjacency_size < 0 or self._adjacency_size > len(self._edges):
+            self._out, self._in = {}, {}
+            self._adjacency_size = 0
+        for edge in self._edges[self._adjacency_size :]:
             self._out.setdefault(edge.source, []).append(edge)
             self._in.setdefault(edge.target, []).append(edge)
         self._adjacency_size = len(self._edges)
@@ -733,7 +736,13 @@ class InfraGraph:
         value: str,
         ambiguous: tuple[str, ...],
     ) -> None:
-        """Report a literal placement value that matched no single node, when it was a choice."""
+        """Report a literal placement value that matched no single node, when it was a choice.
+
+        A value that two or more nodes carry is a real ambiguity in the input (a warning).
+        A literal id that matches none of several candidates is most often a resource outside
+        the input, so it is information, not a gap: the build only says it did not choose.
+        """
+        level: Level = "warning"
         if ambiguous:
             detail = f"matches several nodes ({', '.join(ambiguous)})"
         elif (
@@ -747,10 +756,11 @@ class InfraGraph:
                 return
             shown = ", ".join(candidates[:5]) + (", ..." if len(candidates) > 5 else "")
             detail = f"names none of {len(candidates)} candidate nodes ({shown})"
+            level = "info"
         else:
             return
         self._diagnose(
-            "warning",
+            level,
             "graph.ambiguous_reference",
             f"Value '{value}' in {node.id} ({attribute}) {detail}; no edge was added",
             node.source_file,
