@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import pickle
 import re
 import subprocess
 import sys
@@ -1036,6 +1037,16 @@ class TestUnknownValues:
         assert is_unknown(unknown)
         assert not unknown
         assert str(unknown) == "(known after apply)"
+
+    def test_a_placed_unknown_stays_falsy_through_copy_and_pickle(self) -> None:
+        unknown = _unknown_plan({}, {"kms_key_id": True}).properties["kms_key_id"]
+        for clone in (
+            copy.copy(unknown),
+            copy.deepcopy(unknown),
+            pickle.loads(pickle.dumps(unknown)),
+        ):
+            assert is_unknown(clone)
+            assert not clone
 
     def test_unknowns_serialize_as_text(self) -> None:
         trail = _unknown_plan({"name": "t"}, {"kms_key_id": True})

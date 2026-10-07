@@ -91,6 +91,10 @@ class _PlannedUnknown(Unknown):
     def __bool__(self) -> bool:
         return False
 
+    def __reduce__(self) -> tuple[type[_PlannedUnknown], tuple[str]]:
+        # The inherited reduce rebuilds a plain, truthy Unknown
+        return (_PlannedUnknown, (self.reference,))
+
 
 @dataclass
 class _Counter:
