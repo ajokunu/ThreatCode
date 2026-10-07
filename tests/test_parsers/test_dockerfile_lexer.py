@@ -355,3 +355,30 @@ class TestShell:
         started = time.perf_counter()
         assert len(lex(text).instructions) == 2
         assert time.perf_counter() - started < 3.0
+
+    def test_unterminated_heredocs_are_linear(self) -> None:
+        text = "FROM debian\n" + "RUN <<EOF\nx\n" * 20_000
+        started = time.perf_counter()
+        result = lex(text)
+        assert time.perf_counter() - started < 1.0
+        assert len(result.instructions) == 20_001
+        assert all(not ins.heredoc_body for ins in result.instructions)
+
+    def test_a_far_terminator_with_a_missing_second_marker_is_linear(self) -> None:
+        text = "FROM debian\n" + "RUN <<A <<B\nx\n" * 20_000 + "A\n"
+        started = time.perf_counter()
+        result = lex(text)
+        assert time.perf_counter() - started < 1.0
+        assert all(not ins.heredoc_body for ins in result.instructions)
+
+    def test_many_distinct_unterminated_markers_are_linear(self) -> None:
+        text = "".join(f"RUN <<W{n}\nx\n" for n in range(20_000))
+        started = time.perf_counter()
+        lex(text)
+        assert time.perf_counter() - started < 1.0
+
+    def test_terminated_heredocs_still_read_their_bodies(self) -> None:
+        instructions = lex("RUN <<A <<-B\none\nA\n\ttwo\n\tB\nRUN <<C\n").instructions
+        assert instructions[0].heredoc_body == "one\ntwo"
+        assert instructions[0].end_line == 5
+        assert instructions[1].heredoc_body == ""

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+from bisect import bisect_left
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
@@ -152,28 +153,59 @@ def find_heredocs(args: str) -> list[tuple[str, bool]]:
     return found
 
 
+class _TerminatorIndex:
+    """Line numbers of every possible heredoc terminator, built once per ``lex`` call.
+
+    Looking a terminator up is a binary search, so a marker with no terminator costs
+    O(log n) however many such markers a hostile file repeats.
+    """
+
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
+        self._plain: dict[str, list[int]] | None = None
+        self._tabbed: dict[str, list[int]] | None = None
+
+    def _positions(self, strip_tabs: bool) -> dict[str, list[int]]:
+        table = self._tabbed if strip_tabs else self._plain
+        if table is None:
+            table = {}
+            for number, line in enumerate(self._lines):
+                key = (line.lstrip("\t") if strip_tabs else line).rstrip()
+                table.setdefault(key, []).append(number)
+            if strip_tabs:
+                self._tabbed = table
+            else:
+                self._plain = table
+        return table
+
+    def find(self, word: str, strip_tabs: bool, start: int) -> int | None:
+        """The first line at or after ``start`` that terminates ``word``, if any."""
+        found = self._positions(strip_tabs).get(word)
+        if not found:
+            return None
+        slot = bisect_left(found, start)
+        return found[slot] if slot < len(found) else None
+
+
 def _take_heredocs(
-    lines: list[str], index: int, markers: list[tuple[str, bool]]
+    lines: list[str], index: int, markers: list[tuple[str, bool]], terminators: _TerminatorIndex
 ) -> tuple[str, int] | None:
     """Read the bodies after line ``index``; return the text and the last line used.
 
     Returns None when any marker has no terminator, so nothing is consumed.
     """
-    bodies: list[str] = []
+    spans: list[tuple[int, int, bool]] = []
     cursor = index + 1
     for word, strip_tabs in markers:
-        body: list[str] = []
-        while cursor < len(lines):
-            line = lines[cursor]
-            candidate = line.lstrip("\t") if strip_tabs else line
-            if candidate.rstrip() == word:
-                break
-            body.append(line.lstrip("\t") if strip_tabs else line)
-            cursor += 1
-        else:
+        stop = terminators.find(word, strip_tabs, cursor)
+        if stop is None:
             return None
-        bodies.append("\n".join(body))
-        cursor += 1  # the terminator line
+        spans.append((cursor, stop, strip_tabs))
+        cursor = stop + 1  # the terminator line
+    bodies = [
+        "\n".join(line.lstrip("\t") if strip_tabs else line for line in lines[first:stop])
+        for first, stop, strip_tabs in spans
+    ]
     return "\n".join(bodies), cursor - 1
 
 
@@ -184,6 +216,7 @@ def lex(text: str) -> LexResult:
     result.escape, result.syntax = _read_directives(lines)
     escape = result.escape
     count = len(lines)
+    terminators = _TerminatorIndex(lines)
     i = 0
     while i < count:
         if _is_skippable(lines[i]):
@@ -241,7 +274,7 @@ def lex(text: str) -> LexResult:
         if name in HEREDOC_INSTRUCTIONS:
             markers = find_heredocs(args)
             if markers:
-                taken = _take_heredocs(lines, end, markers)
+                taken = _take_heredocs(lines, end, markers, terminators)
                 if taken is not None:
                     heredoc_body, end = taken
                     i = end + 1
