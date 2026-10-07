@@ -86,10 +86,9 @@ class TestBenchmarkRuns:
         results = _results()
         report = render_text(results)
         detail = missed_report(results)
-        full = report + ("\n\n" + detail if detail else "")
-        print("\n" + full)
+        print("\n" + report + ("\n\n" + detail if detail else ""))
         # Left on the config so the terminal summary shows it even when output is captured
-        pytestconfig.stash[REPORT_KEY] = full
+        pytestconfig.stash[REPORT_KEY] = (report, detail)
         output = capsys.readouterr().out
         assert "TOTAL: recall" in output
         for result in results:

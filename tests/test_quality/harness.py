@@ -46,8 +46,9 @@ HERE = Path(__file__).parent
 EXPECTED_DIR = HERE / "expected"
 REALISTIC_DIR = HERE.parent / "fixtures" / "realistic"
 
-# The report text a test leaves on the pytest config; conftest.py prints it in the terminal summary
-REPORT_KEY: pytest.StashKey[str] = pytest.StashKey()
+# The report a test leaves on the pytest config; conftest.py prints it in the terminal summary as
+# (table, detail). The detail lists every missed issue and violation and prints only with -v.
+REPORT_KEY: pytest.StashKey[tuple[str, str]] = pytest.StashKey()
 
 # Classes of finding, matched against "<rule id> <title> <description>" case-insensitively.
 KIND_PATTERNS: dict[str, re.Pattern[str]] = {
