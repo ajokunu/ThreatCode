@@ -53,6 +53,10 @@ class HybridEngine:
         llm_client: BaseLLMClient | None = None,
     ) -> None:
         self._rules = load_all_rules(extra_rule_paths)
+        self._indexed: list[Rule] | None = None
+        self._exact_rules: dict[str, list[tuple[int, Rule]]] = {}
+        self._glob_rules: list[tuple[int, Rule]] = []
+        self._ensure_index()
         self._llm_client = llm_client
         self._config = config
         # Rule ids are unique across built-in and extra files (the loader
@@ -79,7 +83,8 @@ class HybridEngine:
         )
 
         report = ThreatReport(
-            scanned_resources=graph.node_count,
+            # A looked-up data source gives context, it is not something the input deploys
+            scanned_resources=sum(1 for n in graph.nodes.values() if n.mode != "data"),
             input_file=input_file,
             version=__version__,
         )
@@ -129,11 +134,14 @@ class HybridEngine:
         recorded in ``report.rule_errors`` and logged once per rule. Built-in
         rules re-raise when ``THREATCODE_STRICT_RULES=1`` so tests catch them.
         """
+        self._ensure_index()
         strict = os.environ.get(STRICT_RULES_ENV) == "1"
         logged: set[str] = set()
         threats: list[Threat] = []
         for node in graph.nodes.values():
-            for rule in self._rules:
+            if node.mode == "data":
+                continue
+            for rule in self._rules_for(node.resource_type):
                 try:
                     matched = matches_rule(rule, node)
                 except Exception as e:
@@ -160,6 +168,24 @@ class HybridEngine:
                     threats.append(_rule_to_threat(rule, node))
         return threats
 
+    def _ensure_index(self) -> None:
+        """Index the rules once; rebuilt only if someone replaces the rule list."""
+        if self._indexed is not self._rules:
+            self._exact_rules, self._glob_rules = _index_rules(self._rules)
+            self._indexed = self._rules
+
+    def _rules_for(self, resource_type: str) -> list[Rule]:
+        """The rules whose declared types cover `resource_type`, in rule load order.
+
+        Equivalent to testing every rule, but a dict lookup plus the few glob rules instead of a
+        scan over all of them for every node.
+        """
+        exact = self._exact_rules.get(resource_type, ())
+        globs = [(i, r) for i, r in self._glob_rules if r.matches_type(resource_type)]
+        if not globs:
+            return [r for _i, r in exact]
+        return [r for _i, r in sorted([*exact, *globs], key=lambda entry: entry[0])]
+
     @staticmethod
     def _merge_context(report: ThreatReport, context: AnalysisContext) -> list[Threat]:
         """Add secret and scanner findings to the report, dropping repeated ids."""
@@ -172,6 +198,27 @@ class HybridEngine:
             report.add(threat)
             merged.append(threat)
         return merged
+
+
+def _index_rules(
+    rules: list[Rule],
+) -> tuple[dict[str, list[tuple[int, Rule]]], list[tuple[int, Rule]]]:
+    """Index rules by exact resource type; rules with a glob entry go to a short separate list.
+
+    Each entry carries the rule's position in the load order so merged candidates can be put back
+    in that order.
+    A rule that has both exact and glob entries is kept in the glob list only, so it is never
+    evaluated twice for one node.
+    """
+    exact: dict[str, list[tuple[int, Rule]]] = {}
+    globs: list[tuple[int, Rule]] = []
+    for position, rule in enumerate(rules):
+        if any(entry.endswith("*") for entry in rule.resource_types):
+            globs.append((position, rule))
+            continue
+        for entry in dict.fromkeys(rule.resource_types):
+            exact.setdefault(entry, []).append((position, rule))
+    return exact, globs
 
 
 def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
@@ -197,4 +244,7 @@ def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
         metadata=copy.deepcopy(rule.metadata),
         mitre_techniques=techniques,
         mitre_tactics=tactics,
+        location_file=node.source_file,
+        location_start_line=node.start_line,
+        location_end_line=node.end_line,
     )
