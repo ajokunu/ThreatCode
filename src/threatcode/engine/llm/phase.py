@@ -132,7 +132,7 @@ def _analyze(
         # Cap confidence if resource_address is not in the graph
         if address and address not in known_addresses:
             logger.debug(
-                "LLM threat references unknown resource '%s' — capping confidence at 0.5",
+                "LLM threat references unknown resource '%s' - capping confidence at 0.5",
                 address,
             )
             confidence = min(confidence, 0.5)

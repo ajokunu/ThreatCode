@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class AnalysisResult:
-    """Result of analyze() — wraps the infrastructure graph and threat report."""
+    """Result of analyze() - wraps the infrastructure graph and threat report."""
 
     graph: InfraGraph
     report: ThreatReport
