@@ -269,8 +269,8 @@ class TestRbacTypes:
 
     def test_a_role_rule_does_not_match_a_role_binding(self) -> None:
         found = _scan_manifests(yaml.safe_dump(self.ROLE), yaml.safe_dump(self.BINDING))
-        role = found["kubernetes_cluster_role.default.everything"]
-        binding = found["kubernetes_cluster_role_binding.default.everything"]
+        role = found["kubernetes_cluster_role.everything"]
+        binding = found["kubernetes_cluster_role_binding.everything"]
         assert {"K8S_WILDCARD_RBAC_VERBS", "K8S_WILDCARD_RBAC_RESOURCES"} <= role
         assert "K8S_CLUSTER_ADMIN_BINDING" not in role
         assert binding == {"K8S_CLUSTER_ADMIN_BINDING"}
@@ -292,7 +292,7 @@ class TestNamespaceLabels:
     def test_a_namespace_with_the_enforce_label_has_no_psa_finding(self) -> None:
         manifest = self._namespace({"pod-security.kubernetes.io/enforce": "restricted"})
         found = _scan_manifests(manifest)
-        assert "K8S_NO_PSA_LABELS" not in found["kubernetes_namespace.default.team-a"]
+        assert "K8S_NO_PSA_LABELS" not in found["kubernetes_namespace.team-a"]
 
     def test_a_namespace_without_it_has_exactly_one(self) -> None:
         graph = InfraGraph.from_parsed(KubernetesParser().parse(self._namespace({"team": "a"})))
@@ -303,9 +303,171 @@ class TestNamespaceLabels:
 
     def test_a_namespace_with_no_labels_at_all_has_one(self) -> None:
         found = _scan_manifests(self._namespace(None))
-        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.default.team-a"]
+        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.team-a"]
 
     def test_other_pod_security_labels_do_not_satisfy_the_enforce_check(self) -> None:
         manifest = self._namespace({"pod-security.kubernetes.io/warn": "restricted"})
         found = _scan_manifests(manifest)
-        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.default.team-a"]
+        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.team-a"]
+
+
+# ---------------------------------------------------------------------------------------
+# What the parser's effective properties do to the rules that read them
+# ---------------------------------------------------------------------------------------
+
+
+def _deployment_spec(*containers: dict[str, Any], **pod: Any) -> str:
+    return _workload("Deployment", {"containers": list(containers), **pod})
+
+
+def _fired(manifest: str) -> set[str]:
+    (rule_ids,) = _scan_manifests(manifest).values()
+    return rule_ids
+
+
+def _app(**fields: Any) -> dict[str, Any]:
+    return {"name": "app", "image": "registry.example.com/app:1.0.0", **fields}
+
+
+class TestEffectivePropertiesReachTheRules:
+    def test_a_weak_container_before_a_hardened_one_still_fires_the_container_rules(self) -> None:
+        bad = _app(
+            name="bad",
+            securityContext={"allowPrivilegeEscalation": True, "readOnlyRootFilesystem": False},
+        )
+        good = _app(
+            name="good",
+            securityContext={
+                "allowPrivilegeEscalation": False,
+                "readOnlyRootFilesystem": True,
+                "runAsNonRoot": True,
+            },
+        )
+        for containers in ((bad, good), (good, bad)):
+            fired = _fired(_deployment_spec(*containers))
+            assert {
+                "K8S_ALLOW_PRIVILEGE_ESCALATION",
+                "K8S_WRITABLE_ROOT_FS",
+                "K8S_RUN_AS_ROOT",
+            } <= fired
+
+    def test_pod_level_run_as_non_root_silences_the_run_as_root_rule(self) -> None:
+        fired = _fired(_deployment_spec(_app(), securityContext={"runAsNonRoot": True}))
+        assert "K8S_RUN_AS_ROOT" not in fired
+
+    def test_a_pod_level_non_zero_user_silences_it_too(self) -> None:
+        assert "K8S_RUN_AS_ROOT" not in _fired(
+            _deployment_spec(_app(), securityContext={"runAsUser": 1000})
+        )
+
+    def test_a_container_that_opts_out_of_run_as_non_root_fires_it_again(self) -> None:
+        fired = _fired(
+            _deployment_spec(
+                _app(securityContext={"runAsNonRoot": False}),
+                securityContext={"runAsNonRoot": True},
+            )
+        )
+        assert "K8S_RUN_AS_ROOT" in fired
+
+    @pytest.mark.parametrize(
+        ("image", "fires"),
+        [
+            ("registry:5000/app", True),
+            ("registry:5000/app:latest", True),
+            ("nginx", True),
+            ("registry:5000/app:1.2", False),
+            ("registry.example.com/app@sha256:" + "a" * 64, False),
+        ],
+    )
+    def test_the_latest_tag_rule_reads_the_image_reference(self, image: str, fires: bool) -> None:
+        fired = _fired(_deployment_spec(_app(image=image)))
+        assert ("K8S_LATEST_TAG" in fired) is fires
+
+    def test_the_resource_limit_rule_needs_both_cpu_and_memory(self) -> None:
+        memory_only = _fired(_deployment_spec(_app(resources={"limits": {"memory": "64Mi"}})))
+        both = _fired(_deployment_spec(_app(resources={"limits": {"cpu": "1", "memory": "64Mi"}})))
+        assert "K8S_NO_RESOURCE_LIMITS" in memory_only
+        assert "K8S_NO_RESOURCE_LIMITS" not in both
+
+    def test_a_pod_with_only_init_containers_gets_no_probe_findings(self) -> None:
+        manifest = _workload("Deployment", {"containers": [], "initContainers": [_app()]})
+        fired = _fired(manifest)
+        assert not fired & PROBE_RULES
+
+    def test_a_probeless_init_container_beside_a_probed_container_adds_no_probe_finding(
+        self,
+    ) -> None:
+        probes = {
+            "livenessProbe": {"httpGet": {"port": 80}},
+            "readinessProbe": {"httpGet": {"port": 80}},
+        }
+        fired = _fired(_deployment_spec(_app(**probes), initContainers=[_app(name="init")]))
+        assert not fired & PROBE_RULES
+
+    def test_a_privileged_ephemeral_container_fires_the_privileged_rule(self) -> None:
+        fired = _fired(
+            _deployment_spec(
+                _app(),
+                ephemeralContainers=[
+                    {
+                        "name": "dbg",
+                        "image": "busybox:1.36",
+                        "securityContext": {"privileged": True},
+                    }
+                ],
+            )
+        )
+        assert "K8S_PRIVILEGED_CONTAINER" in fired
+
+    @pytest.mark.parametrize(
+        "capability", ["ALL", "CAP_SYS_ADMIN", "BPF", "SYS_RAWIO", "net_admin"]
+    )
+    def test_added_capabilities_that_give_the_host_away_fire_the_dangerous_capability_rule(
+        self, capability: str
+    ) -> None:
+        fired = _fired(
+            _deployment_spec(_app(securityContext={"capabilities": {"add": [capability]}}))
+        )
+        assert "K8S_DANGEROUS_CAPABILITIES" in fired
+
+    def test_harmless_capabilities_do_not(self) -> None:
+        fired = _fired(
+            _deployment_spec(_app(securityContext={"capabilities": {"add": ["NET_BIND_SERVICE"]}}))
+        )
+        assert "K8S_DANGEROUS_CAPABILITIES" not in fired
+
+    def test_a_container_that_drops_all_capabilities_is_not_flagged_for_them(self) -> None:
+        dropped = _fired(
+            _deployment_spec(_app(securityContext={"capabilities": {"drop": ["ALL"]}}))
+        )
+        kept = _fired(_deployment_spec(_app()))
+        assert "K8S_CAPABILITIES_NOT_DROPPED" not in dropped
+        assert "K8S_CAPABILITIES_NOT_DROPPED" in kept
+
+    def test_the_ingress_tls_rule_reads_the_new_property(self) -> None:
+        def ingress(**spec: Any) -> str:
+            return yaml.safe_dump(
+                {
+                    "apiVersion": "networking.k8s.io/v1",
+                    "kind": "Ingress",
+                    "metadata": {"name": "i"},
+                    "spec": spec,
+                }
+            )
+
+        without = _scan_manifests(ingress(rules=[{"host": "x"}]))["kubernetes_ingress.default.i"]
+        with_tls = _scan_manifests(ingress(tls=[{"secretName": "t"}]))[
+            "kubernetes_ingress.default.i"
+        ]
+        assert "K8S_INGRESS_NO_TLS" in without
+        assert "K8S_INGRESS_NO_TLS" not in with_tls
+
+    def test_malformed_rbac_rules_do_not_stop_the_scan(self) -> None:
+        role = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": "odd"},
+            "rules": [None, "x", {"verbs": None, "resources": "*"}, {"verbs": ["*"]}],
+        }
+        found = _scan_manifests(yaml.safe_dump(role))
+        assert "K8S_WILDCARD_RBAC_VERBS" in found["kubernetes_cluster_role.odd"]

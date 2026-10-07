@@ -1,0 +1,24 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "kubernetes_service.stock.inventory",
+      "target": "kubernetes_deployment.stock.inventory",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "kubernetes_config_map.stock.inventory-config": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "kubernetes_deployment.stock.inventory": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_service.stock.inventory": {
+      "category": "network",
+      "zone": "dmz"
+    }
+  }
+}

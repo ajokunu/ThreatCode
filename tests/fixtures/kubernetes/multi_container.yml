@@ -1,0 +1,35 @@
+# A weak container ahead of a hardened one. The workload is as weak as its weakest container,
+# so the order of the containers must not matter.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sidecar-mix
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sidecar-mix
+  template:
+    metadata:
+      labels:
+        app: sidecar-mix
+    spec:
+      containers:
+        - name: bad
+          image: registry.example.com/apps/bad:1.0.0
+          securityContext:
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+        - name: good
+          image: registry.example.com/apps/good:1.0.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi

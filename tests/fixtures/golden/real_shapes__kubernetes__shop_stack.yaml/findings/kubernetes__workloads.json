@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.shop.web",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web",
+    "rule_id": "K8S_SECRET_ENV_VAR",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  }
+]

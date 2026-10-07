@@ -1,0 +1,14 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.edge.portal",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_ingress.edge.portal",
+      "stride": "tampering"
+    }
+  ]
+}

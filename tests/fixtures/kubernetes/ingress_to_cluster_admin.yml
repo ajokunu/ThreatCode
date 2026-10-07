@@ -1,0 +1,79 @@
+# The chain an attacker follows: an Ingress reaches a Service, which selects a Deployment, which
+# runs as a ServiceAccount that a ClusterRoleBinding ties to a ClusterRole with wildcard verbs.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portal
+  namespace: edge
+spec:
+  rules:
+    - host: portal.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: portal
+                port:
+                  number: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+  namespace: edge
+spec:
+  selector:
+    app: portal
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  namespace: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portal
+  template:
+    metadata:
+      labels:
+        app: portal
+    spec:
+      serviceAccountName: portal-admin
+      containers:
+        - name: portal
+          image: registry.example.com/edge/portal:1.0.0
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portal-admin
+  namespace: edge
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: portal-admin
+subjects:
+  - kind: ServiceAccount
+    name: portal-admin
+    namespace: edge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: everything
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: everything
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]

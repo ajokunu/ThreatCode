@@ -1,0 +1,9 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.apps.pod-level": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

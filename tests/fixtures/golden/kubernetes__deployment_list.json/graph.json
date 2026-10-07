@@ -1,0 +1,13 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.finance.billing": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_deployment.finance.ledger": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

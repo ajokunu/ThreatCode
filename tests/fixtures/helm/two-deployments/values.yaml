@@ -1,0 +1,9 @@
+web:
+  name: web-frontend
+  image: registry.example.com/shop/web
+  privileged: true
+worker:
+  name: worker-backend
+  image: registry.example.com/shop/worker
+service:
+  enabled: false

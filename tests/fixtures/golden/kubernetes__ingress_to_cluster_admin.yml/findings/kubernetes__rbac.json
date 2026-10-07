@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "kubernetes_cluster_role.everything",
+    "rule_id": "K8S_WILDCARD_RBAC_RESOURCES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cluster_role.everything",
+    "rule_id": "K8S_WILDCARD_RBAC_VERBS",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  }
+]

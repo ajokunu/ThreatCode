@@ -1,0 +1,19 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.shop.web",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.shop.web",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_ingress.shop.web",
+      "stride": "tampering"
+    }
+  ]
+}

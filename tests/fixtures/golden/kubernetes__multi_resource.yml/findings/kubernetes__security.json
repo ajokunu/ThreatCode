@@ -18,7 +18,7 @@
     ]
   },
   {
-    "resource_address": "kubernetes_namespace.default.test-ns",
+    "resource_address": "kubernetes_namespace.test-ns",
     "rule_id": "K8S_NO_PSA_LABELS",
     "severity": "medium",
     "stride": "elevation_of_privilege",

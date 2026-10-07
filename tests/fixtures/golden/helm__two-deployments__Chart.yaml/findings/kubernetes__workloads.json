@@ -1,0 +1,182 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1068"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1068"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_NO_LIVENESS_PROBE",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_NO_LIVENESS_PROBE",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_NO_READINESS_PROBE",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_NO_READINESS_PROBE",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1565.001"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1565.001"
+    ]
+  }
+]

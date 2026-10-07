@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "kubernetes_network_policy.shop.allow-ingress-to-web",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_network_policy.shop.default-deny",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_network_policy.shop.default-deny",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  }
+]

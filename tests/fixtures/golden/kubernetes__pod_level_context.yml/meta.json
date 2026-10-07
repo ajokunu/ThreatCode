@@ -1,0 +1,3 @@
+{
+  "input": "tests/fixtures/kubernetes/pod_level_context.yml"
+}

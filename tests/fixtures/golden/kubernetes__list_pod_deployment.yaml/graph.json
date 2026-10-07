@@ -1,0 +1,13 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.ops.metrics": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_pod.ops.debug-shell": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

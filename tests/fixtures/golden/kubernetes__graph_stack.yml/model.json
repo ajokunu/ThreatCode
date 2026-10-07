@@ -1,0 +1,29 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.default.api",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.default.web",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.default.web",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_service.default.web-lb",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_service.default.web-np",
+      "stride": "tampering"
+    }
+  ]
+}

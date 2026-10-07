@@ -1,0 +1,146 @@
+[
+  {
+    "resource_address": "kubernetes_cron_job.platform.nightly-report",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.platform.node-agent",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.platform.api",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.platform.reindex",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.platform.debug-shell",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.platform.legacy-worker",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.platform.queue",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.platform.nightly-report",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.platform.node-agent",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.platform.api",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.platform.reindex",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.platform.debug-shell",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.platform.queue",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.platform.node-agent",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.platform.debug-shell",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.platform.legacy-worker",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  }
+]

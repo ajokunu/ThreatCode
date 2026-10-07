@@ -1,0 +1,56 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.other.elsewhere",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.policy.exposed",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.policy.guarded",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.other.elsewhere",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.policy.exposed",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.policy.guarded",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  }
+]
