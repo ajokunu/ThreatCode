@@ -24,11 +24,13 @@ from threatcode.models.report import threat_severity
 from threatcode.models.threat import Severity, Threat
 
 if TYPE_CHECKING:
+    from threatcode.ir.graph import InfraGraph
     from threatcode.models.attack_path import AttackPath
     from threatcode.models.report import ThreatReport
 
 __all__ = [
     "attack_path_phrase",
+    "threat_source",
     "SEVERITY_ORDER",
     "STRIDE_ORDER",
     "collapse_whitespace",
@@ -271,3 +273,18 @@ def root_prefix(source_root: str | os.PathLike[str] | None) -> str:
     except ValueError:
         return ""
     return "" if str(relative) == "." else relative.as_posix()
+
+
+def threat_source(
+    threat: Threat, graph: InfraGraph | None = None
+) -> tuple[str, int | None, int | None]:
+    """The file and lines a finding sits on: its own location, else the node it is about.
+
+    Returns ``("", None, None)`` when neither knows.
+    """
+    if threat.location_file:
+        return threat.location_file, threat.location_start_line, threat.location_end_line
+    node = graph.get_node(threat.resource_address) if graph is not None else None
+    if node is not None and node.source_file:
+        return node.source_file, node.start_line, node.end_line
+    return "", None, None

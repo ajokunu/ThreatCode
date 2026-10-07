@@ -232,6 +232,18 @@ class TestTextReport:
         assert "..." in row[1]
         assert row[1].startswith("module.") and row[1].endswith("host_ssh")
 
+    def test_a_finding_without_a_location_takes_its_nodes(self) -> None:
+        scan = scan_files([FIXTURES / "terraform" / "simple.tf"])
+        address = sorted(scan.graph.nodes)[0]
+        node = scan.graph.nodes[address]
+        threat = make_threat(1, address=address, file="", line=None)
+        assert threat.location_file == ""
+        report = ThreatReport(threats=[threat])
+        text = format_text(
+            AnalysisResult(graph=scan.graph, report=report), RenderOptions(width=200)
+        )
+        assert f"simple.tf:{node.start_line}" in text
+
     def test_a_long_location_keeps_its_file_name(self) -> None:
         threat = make_threat(1, file="very/deep/directory/structure/with/main.tf", line=12)
         text = format_text(analysis_of(threat), RenderOptions(width=100))

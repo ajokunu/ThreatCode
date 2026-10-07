@@ -44,6 +44,7 @@ from threatcode.formatters._utils import (
     source_uri,
     stride_label,
     technique_url,
+    threat_source,
     truncate,
 )
 from threatcode.models.report import ThreatReport, threat_severity
@@ -156,15 +157,7 @@ class _Context:
         }
 
     def threat_location(self, threat: Threat) -> dict[str, Any]:
-        file, start, end = (
-            threat.location_file,
-            threat.location_start_line,
-            threat.location_end_line,
-        )
-        if not file:
-            node = self.node(threat.resource_address)
-            if node is not None and node.source_file:
-                file, start, end = node.source_file, node.start_line, node.end_line
+        file, start, end = threat_source(threat, self.graph)
         if not file:
             file, start, end = _input_file(self.report), None, None
         return self.location(source_uri(file, self.prefix), start, end)

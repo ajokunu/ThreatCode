@@ -28,6 +28,7 @@ from threatcode.formatters._utils import (
     collapse_whitespace,
     plural,
     severity_counts,
+    threat_source,
     truncate,
 )
 from threatcode.models.attack_path import AttackPath
@@ -35,6 +36,7 @@ from threatcode.models.report import ThreatReport, threat_severity
 from threatcode.models.threat import Threat
 
 if TYPE_CHECKING:
+    from threatcode.ir.graph import InfraGraph
     from threatcode.models.analysis import AnalysisResult
 
 __all__ = ["format_text", "plural"]
@@ -72,11 +74,11 @@ def _sort_key(threat: Threat) -> tuple[int, str, str, str]:
     return (-threat_severity(threat).rank, threat.resource_address, threat.rule_id, threat.id)
 
 
-def _location(threat: Threat) -> str:
-    if not threat.location_file:
+def _location(threat: Threat, graph: InfraGraph | None = None) -> str:
+    file, line, _end = threat_source(threat, graph)
+    if not file:
         return ""
-    line = f":{threat.location_start_line}" if threat.location_start_line else ""
-    return f"{threat.location_file}{line}"
+    return f"{file}:{line}" if line else file
 
 
 def terminal_width(options: RenderOptions | None = None) -> int:
@@ -129,7 +131,7 @@ def format_text(analysis: AnalysisResult, options: RenderOptions | None = None) 
 
     if report.threats:
         lines.append("")
-        lines.extend(_table(report.threats, paint, width))
+        lines.extend(_table(report.threats, paint, width, analysis.graph))
 
     lines.append("")
     lines.extend(_coverage_lines(report))
@@ -191,7 +193,9 @@ def _wrap(text: str, width: int, indent: str) -> list[str]:
 # ── findings table ────────────────────────────────────────────────────
 
 
-def _rows(threats: Sequence[Threat]) -> list[dict[str, str | Threat]]:
+def _rows(
+    threats: Sequence[Threat], graph: InfraGraph | None = None
+) -> list[dict[str, str | Threat]]:
     """One row per finding; findings with one root cause on one resource share a row."""
     groups: dict[tuple[str, str], list[Threat]] = {}
     ordered: list[list[Threat]] = []
@@ -224,7 +228,7 @@ def _rows(threats: Sequence[Threat]) -> list[dict[str, str | Threat]]:
                 "finding": title,
                 "stride": _STRIDE_SHORT.get(first.stride_category, first.stride_category),
                 "attck": ",".join(techniques),
-                "location": _location(first),
+                "location": _location(first, graph),
             }
         )
     return rows
@@ -239,8 +243,10 @@ def _middle(text: str, size: int) -> str:
     return f"{text[:head]}...{text[len(text) - tail :]}"
 
 
-def _table(threats: Sequence[Threat], paint: _Painter, width: int) -> list[str]:
-    rows = _rows(threats)
+def _table(
+    threats: Sequence[Threat], paint: _Painter, width: int, graph: InfraGraph | None = None
+) -> list[str]:
+    rows = _rows(threats, graph)
 
     def widest(column: str, head: str, cap: int | None = None) -> int:
         size = max([len(head), *(len(str(r[column])) for r in rows)])

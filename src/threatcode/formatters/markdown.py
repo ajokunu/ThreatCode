@@ -25,7 +25,7 @@ Severities are plain text labels such as ``[HIGH]``.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from threatcode.engine.mitre import TECHNIQUE_DB
@@ -38,6 +38,7 @@ from threatcode.formatters._utils import (
     severity_label,
     stride_label,
     technique_url,
+    threat_source,
     verdict_line,
 )
 from threatcode.formatters.mermaid import attack_path_flowchart
@@ -64,12 +65,17 @@ _SUB_BULLET_LIMIT = 300
 _RESERVE = 200
 
 
+# Where each finding sits: threat id -> (file, start line); "" when nothing knows.
+_Places = dict[str, tuple[str, int | None]]
+
+
 @dataclass
 class _Entry:
     """One finding, or the findings of one resource that share a root cause."""
 
     threats: list[Threat]
     grouped: bool = False
+    places: _Places = field(default_factory=dict)
 
     @property
     def first(self) -> Threat:
@@ -93,7 +99,11 @@ def format_markdown(
     top_risks: int = TOP_RISKS,
 ) -> str:
     """Format a report as Markdown for a pull request comment, at most ``max_chars`` long."""
-    entries = _entries(report.threats)
+    places: _Places = {}
+    for threat in report.threats:
+        file, line, _end = threat_source(threat, graph)
+        places[threat.id] = (file, line)
+    entries = _entries(report.threats, places)
     head = _head(report, entries, top_risks)
     tail = _coverage(report)
     budget = max_chars - len(head) - len(tail) - _RESERVE
@@ -114,7 +124,7 @@ def format_markdown(
 # ── grouping and selection ────────────────────────────────────────────
 
 
-def _entries(threats: Sequence[Threat]) -> list[_Entry]:
+def _entries(threats: Sequence[Threat], places: _Places) -> list[_Entry]:
     """Findings as entries, most severe first; a shared root cause on one resource is one entry."""
     groups: dict[tuple[str, str], list[Threat]] = {}
     singles: list[Threat] = []
@@ -123,10 +133,10 @@ def _entries(threats: Sequence[Threat]) -> list[_Entry]:
             groups.setdefault((threat.resource_address, threat.root_cause), []).append(threat)
         else:
             singles.append(threat)
-    entries = [_Entry([t]) for t in singles]
+    entries = [_Entry([t], places=places) for t in singles]
     for members in groups.values():
         ordered = sorted(members, key=lambda t: (-threat_severity(t).rank, t.title, t.id))
-        entries.append(_Entry(ordered, grouped=len(ordered) > 1))
+        entries.append(_Entry(ordered, grouped=len(ordered) > 1, places=places))
     entries.sort(key=lambda e: e.sort_key)
     return entries
 
@@ -312,13 +322,13 @@ def _entry_lines(entry: _Entry) -> list[str]:
             f"**Resource:** {md_code(first.resource_address)} | "
             f"**Findings:** {len(entry.threats)} sharing one root cause"
         )
-        lines += [facts + _location_part(first), ""]
+        lines += [facts + _location_part(first, entry.places), ""]
         for threat in entry.threats:
             lines.append(_sub_bullet(threat))
         lines.append("")
         return lines
 
-    lines += [_facts_line(first), ""]
+    lines += [_facts_line(first, entry.places), ""]
     techniques = _techniques(entry)
     if techniques:
         lines += [f"**MITRE ATT&CK:** {_technique_links(techniques)}", ""]
@@ -330,7 +340,7 @@ def _entry_lines(entry: _Entry) -> list[str]:
     return lines
 
 
-def _facts_line(threat: Threat) -> str:
+def _facts_line(threat: Threat, places: _Places) -> str:
     effective = threat_severity(threat)
     severity = effective.value.capitalize()
     if effective != threat.severity:
@@ -348,14 +358,15 @@ def _facts_line(threat: Threat) -> str:
     ]
     if threat.rule_id:
         parts.append(f"**Rule:** {md_code(threat.rule_id)}")
-    return " | ".join(parts) + _location_part(threat)
+    return " | ".join(parts) + _location_part(threat, places)
 
 
-def _location_part(threat: Threat) -> str:
-    if not threat.location_file:
+def _location_part(threat: Threat, places: _Places) -> str:
+    file, line = places.get(threat.id, (threat.location_file, threat.location_start_line))
+    if not file:
         return ""
-    line = f":{threat.location_start_line}" if threat.location_start_line else ""
-    return f" | **Location:** {md_code(threat.location_file + line)}"
+    where = f"{file}:{line}" if line else file
+    return f" | **Location:** {md_code(where)}"
 
 
 def _sub_bullet(threat: Threat) -> str:

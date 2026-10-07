@@ -31,6 +31,7 @@ from threatcode.formatters._utils import (
     plural,
     repo_path,
     root_prefix,
+    threat_source,
     truncate,
 )
 from threatcode.models.report import ThreatReport, threat_severity
@@ -156,11 +157,7 @@ def _annotations(
 
 
 def _threat_location(threat: Threat, graph: InfraGraph | None, fallback: str) -> tuple[str, int]:
-    file, line = threat.location_file, threat.location_start_line
-    if not file and graph is not None:
-        node = graph.get_node(threat.resource_address)
-        if node is not None and node.source_file:
-            file, line = node.source_file, node.start_line
+    file, line, _end = threat_source(threat, graph)
     if not file:
         return fallback, 1
     return file, max(line or 1, 1)

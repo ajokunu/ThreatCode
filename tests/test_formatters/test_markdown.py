@@ -116,6 +116,33 @@ class TestStructure:
         assert "**Source:** llm (advisory)" in format_markdown(report)
 
 
+class TestLocationFallback:
+    def test_a_finding_without_a_location_takes_its_nodes(self) -> None:
+        from threatcode.ir.graph import InfraGraph
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        graph = InfraGraph.from_parsed(
+            ParsedOutput(
+                source_path="net/main.tf",
+                format_type="terraform_hcl",
+                resources=[
+                    ParsedResource(
+                        resource_type="aws_s3_bucket",
+                        name="x",
+                        provider="aws",
+                        address="aws_s3_bucket.x",
+                        source_location="net/main.tf",
+                        start_line=12,
+                    )
+                ],
+            )
+        )
+        report = ThreatReport()
+        report.add(make_threat(1, address="aws_s3_bucket.x"))
+        assert "**Location:** `net/main.tf:12`" in format_markdown(report, graph)
+        assert "**Location:**" not in format_markdown(report)
+
+
 class TestStrideOrderAndLabels:
     def test_sections_follow_the_stride_order_with_readable_labels(self) -> None:
         report = ThreatReport()
