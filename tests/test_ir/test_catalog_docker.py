@@ -9,14 +9,15 @@ from threatcode.ir.nodes import NodeCategory, TrustZone, categorize_resource, in
 
 CASES = [
     ("dockerfile_image", NodeCategory.CONTAINER, TrustZone.PRIVATE),
+    ("dockerfile_stage", NodeCategory.CONTAINER, TrustZone.PRIVATE),
     ("dockerfile_from", NodeCategory.CONTAINER, TrustZone.PRIVATE),
     ("dockerfile_run", NodeCategory.COMPUTE, TrustZone.PRIVATE),
-    ("dockerfile_expose", NodeCategory.NETWORK, TrustZone.DMZ),
+    ("dockerfile_expose", NodeCategory.NETWORK, TrustZone.PRIVATE),
     ("dockerfile_env", NodeCategory.CONTAINER, TrustZone.PRIVATE),
     ("dockerfile_arg", NodeCategory.CONTAINER, TrustZone.PRIVATE),
     ("dockerfile_copy", NodeCategory.STORAGE, TrustZone.PRIVATE),
     ("dockerfile_add", NodeCategory.STORAGE, TrustZone.PRIVATE),
-    ("dockerfile_user", NodeCategory.IAM, TrustZone.MANAGEMENT),
+    ("dockerfile_user", NodeCategory.IAM, TrustZone.PRIVATE),
     ("dockerfile_healthcheck", NodeCategory.MONITORING, TrustZone.PRIVATE),
     ("dockerfile_workdir", NodeCategory.CONTAINER, TrustZone.PRIVATE),
     ("dockerfile_entrypoint", NodeCategory.CONTAINER, TrustZone.PRIVATE),
@@ -41,13 +42,20 @@ class TestDockerCatalog:
         assert keys
         assert all(key.startswith("dockerfile_") for key in keys)
 
-    def test_expose_is_public_and_no_other_listed_instruction_is(self) -> None:
-        public = [rtype for rtype, _, zone in CASES if zone == TrustZone.DMZ]
-        assert public == ["dockerfile_expose"]
+    def test_no_dockerfile_type_is_outside_the_private_zone(self) -> None:
+        # A Dockerfile is a build recipe, not a deployed endpoint
+        assert {zone for _rtype, _category, zone in CASES} == {TrustZone.PRIVATE}
 
-    def test_user_instruction_is_in_the_management_zone(self) -> None:
-        # A USER instruction decides which identity the container runs as
-        assert infer_trust_zone("dockerfile_user", {}) == TrustZone.MANAGEMENT
+    def test_a_declared_port_is_not_internet_exposure(self) -> None:
+        assert infer_trust_zone("dockerfile_expose", {"ports": [22, 80]}) == TrustZone.PRIVATE
+
+    def test_a_user_instruction_is_not_an_administrative_target(self) -> None:
+        assert infer_trust_zone("dockerfile_user", {"user": "root"}) == TrustZone.PRIVATE
+        assert infer_trust_zone("dockerfile_user", {}) != TrustZone.MANAGEMENT
+
+    def test_the_stage_node_is_a_container_in_the_private_zone(self) -> None:
+        assert docker.CATEGORIES["dockerfile_stage"] == NodeCategory.CONTAINER
+        assert docker.ZONES["dockerfile_stage"] == TrustZone.PRIVATE
 
     def test_has_no_zone_override(self) -> None:
         assert not hasattr(docker, "zone_override")
