@@ -99,6 +99,7 @@ _TEXT_KEYS = frozenset(
         "name", "id", "arn", "description", "password", "version", "value", "key", "prefix",
         "path", "domain", "identifier", "image", "command", "family", "alias", "cpu", "memory",
         "user_data", "comment", "text", "secret_string", "policy", "definition", "bucket",
+        "zip_file", "body", "template_body", "definition_string", "inline_code", "message",
         "endpoint", "schedule", "pattern", "tag", "label", "labels", "port_name", "username",
         "engine", "content", "template", "role", "type", "mode", "status", "state", "region",
         "zone", "availability_zone", "cidr_block", "protocol", "ip_protocol", "target",

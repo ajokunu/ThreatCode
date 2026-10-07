@@ -871,3 +871,87 @@ class TestLanguageExtensions:
         skipped = [d for d in output.diagnostics if d.code == "cfn.skipped_resource"]
         assert len(skipped) == 1
         assert "Fn::ForEach" in skipped[0].message and "not expanded" in skipped[0].message
+
+
+hypothesis = pytest.importorskip("hypothesis")
+
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+_INTRINSICS = [
+    "Ref",
+    "Fn::GetAtt",
+    "Fn::Sub",
+    "Fn::Join",
+    "Fn::If",
+    "Fn::Select",
+    "Fn::Split",
+    "Fn::FindInMap",
+    "Fn::Base64",
+    "Fn::ImportValue",
+    "Fn::Equals",
+    "Fn::Not",
+    "Condition",
+]
+_leaves = st.one_of(
+    st.none(),
+    st.booleans(),
+    st.integers(min_value=-(10**6), max_value=10**6),
+    st.floats(allow_nan=False, allow_infinity=False),
+    st.text(max_size=12),
+    st.sampled_from(["true", "false", "0", "AWS::NoValue", "Bucket", "Other", "${Bucket.Arn}"]),
+)
+_values = st.recursive(
+    _leaves,
+    lambda children: st.one_of(
+        st.lists(children, max_size=4),
+        st.dictionaries(st.text(max_size=8), children, max_size=4),
+        st.builds(lambda key, arg: {key: arg}, st.sampled_from(_INTRINSICS), children),
+    ),
+    max_leaves=14,
+)
+_TYPES = [
+    "AWS::S3::Bucket",
+    "AWS::EC2::SecurityGroup",
+    "AWS::EC2::Instance",
+    "AWS::IAM::Role",
+    "AWS::Lambda::Function",
+    "AWS::ECS::TaskDefinition",
+    "AWS::ElasticLoadBalancingV2::LoadBalancer",
+    "AWS::CloudFront::Distribution",
+    "AWS::DynamoDB::Table",
+    "AWS::Serverless::Function",
+    "AWS::Foo::Bar",
+    "Custom::Thing",
+]
+
+
+class TestPropertyBased:
+    @settings(max_examples=150, derandomize=True, deadline=None)
+    @given(
+        cfn_type=st.sampled_from(_TYPES),
+        properties=st.dictionaries(st.text(max_size=10), _values, max_size=6),
+        extra=st.dictionaries(st.text(max_size=6), _values, max_size=3),
+    )
+    def test_arbitrary_properties_never_crash_and_always_serialize(
+        self, cfn_type: str, properties: dict[str, Any], extra: dict[str, Any]
+    ) -> None:
+        template = {
+            "Parameters": {"P": {"Type": "String", "Default": "x"}},
+            "Conditions": extra,
+            "Resources": {
+                "Subject": {"Type": cfn_type, "Properties": properties},
+                "Bucket": {"Type": "AWS::S3::Bucket"},
+                "Other": {"Type": "AWS::SQS::Queue", "DependsOn": ["Bucket", 3]},
+            },
+        }
+        output = CloudFormationParser().parse(template)
+        names = {r.name for r in output.resources}
+        assert {"Subject", "Bucket", "Other"} <= names
+        for resource in output.resources:
+            translated = {k: v for k, v in resource.properties.items() if k != "_cfn"}
+            json.dumps(translated)
+            assert set(resource.dependencies) <= names
+            for targets in resource.references.values():
+                assert set(targets) <= names
+        InfraGraph.from_parsed(output)
