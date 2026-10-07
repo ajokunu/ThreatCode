@@ -18,6 +18,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -653,9 +654,19 @@ class TestTheScanStepRuns:
         assert runner.outputs()["exit-code"] == "0"
 
     def test_a_clean_threshold_leaves_exit_code_zero(self, runner: Runner) -> None:
-        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format="json", fail_on="critical")
+        # The aws-webapp example carries a critical attack path, so it is not a clean input at any
+        # threshold. A lone SNS topic has no finding and no path.
+        clean = runner.workspace / "clean"
+        clean.mkdir()
+        (clean / "main.tf").write_text('resource "aws_sns_topic" "t" {\n  name = "t"\n}\n')
+        proc = runner.run(path=str(clean), format="json", fail_on="high")
         assert proc.returncode == 0, proc.stderr
         assert runner.outputs()["exit-code"] == "0"
+
+    def test_a_critical_attack_path_trips_a_critical_threshold(self, runner: Runner) -> None:
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format="json", fail_on="critical")
+        assert proc.returncode == 0, proc.stderr
+        assert runner.outputs()["exit-code"] == "1"
 
     def test_an_error_fails_the_step_at_once_with_the_message(self, runner: Runner) -> None:
         proc = runner.run(path=str(runner.workspace / "does-not-exist"), format="sarif")
@@ -804,7 +815,30 @@ class TestTheScanStepRuns:
         body = Path(runner.outputs()["comment-file"]).read_text(encoding="utf-8")
         assert len(body) <= 60000
         assert body.startswith(COMMENT_MARKER)
-        assert len((runner.workspace / "threatcode-results.md").read_text()) > 60000
+        # The Markdown formatter caps itself at 60,000 characters and says what it left out, so
+        # the report file is already within GitHub's limit.
+        report = (runner.workspace / "threatcode-results.md").read_text(encoding="utf-8")
+        assert len(report) <= 60000
+        assert "more threats omitted" in report
+        assert "more threats omitted" in body
+
+    def test_the_comment_backstop_cuts_a_body_the_formatter_left_too_long(
+        self, tmp_path: Path
+    ) -> None:
+        pattern = (
+            r"python3 - \"\$markdown_file\" \"\$scratch/threatcode-comment.md\""
+            r" <<'PY'\n(.*?)\n\s*PY\n"
+        )
+        match = re.search(pattern, scan_script(), re.S)
+        assert match, "the comment backstop heredoc moved"
+        code = textwrap.dedent(match.group(1))
+        source = tmp_path / "in.md"
+        source.write_text("x" * 70000, encoding="utf-8")
+        out = tmp_path / "out.md"
+        subprocess.run([sys.executable, "-c", code, str(source), str(out)], check=True)
+        body = out.read_text(encoding="utf-8")
+        assert len(body) <= 60000
+        assert body.startswith(COMMENT_MARKER + "\n\n")
         assert body.endswith("The full report is the report-file output of the action step._\n")
 
 
