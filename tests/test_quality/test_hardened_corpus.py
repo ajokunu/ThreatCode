@@ -6,8 +6,9 @@ entry carries the reason the finding is right. A rule that fires on these inputs
 them, which is how the pod-level security context, a default-deny NetworkPolicy, a multi-stage
 build and an environment-referenced secret were all reported as problems.
 
-Today the scans do report findings, all false positives. The zero-finding tests are pending on the
-package that owns each format's rules and parser, so each fix is proven by the same fixture.
+Where a scan still reports findings they are all false positives. The zero-finding tests are pending
+on the package that owns each remaining format's rules and parser, so each fix is proven by the same
+fixture. A format whose package has delivered carries no marker and runs for real.
 """
 
 from __future__ import annotations
@@ -22,18 +23,15 @@ from threatcode.engine.rules.loader import load_builtin_rules
 
 HARDENED_DIR = REAL_SHAPES_DIR / "hardened"
 
-# format -> (file, package that makes the scan clean, why the scan is not clean today)
-CORPUS: dict[str, tuple[str, str, str]] = {
+# format -> (file, package that makes the scan clean or None once it is clean, why it is not
+# clean today)
+CORPUS: dict[str, tuple[str, str | None, str]] = {
     "kubernetes": (
         "kubernetes/hardened_workloads.yaml",
         "WP-3-6",
         "rules read pod-level security context, probes on the right containers and NetworkPolicy",
     ),
-    "docker": (
-        "docker/hardened.Dockerfile",
-        "WP-2-5",
-        "COPY without --chown is judged on the build stage, not the final stage",
-    ),
+    "docker": ("docker/hardened.Dockerfile", None, ""),
     "mcp": (
         "mcp/.mcp.json",
         "WP-2-6",
@@ -113,7 +111,7 @@ class TestHardenedInputsScanClean:
     @pytest.mark.parametrize(
         "fmt",
         [
-            pytest.param(fmt, marks=pending(package, why))
+            pytest.param(fmt, marks=pending(package, why) if package else ())
             for fmt, (_relative, package, why) in CORPUS.items()
         ],
     )
@@ -124,7 +122,9 @@ class TestHardenedInputsScanClean:
 
     def test_the_pending_markers_are_honest_the_scans_are_not_clean_today(self) -> None:
         """If this fails, a scan is already clean: remove its pending marker."""
-        for fmt, (relative, _package, _why) in CORPUS.items():
+        for fmt, (relative, package, _why) in CORPUS.items():
+            if package is None:
+                continue
             assert unexpected(relative), f"{fmt}: {relative} already scans clean"
 
     def test_a_finding_on_a_synthetic_bad_input_is_not_masked_by_the_allowlist(

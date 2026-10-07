@@ -97,9 +97,6 @@ class TestPendingParserFixes:
         assert outcome.status == "error"
         assert outcome.threatcode_error, f"raised {outcome.exception}, which the CLI cannot report"
 
-    @pending(
-        "WP-2-5", "the pipe-to-shell check splits RUN arguments instead of backtracking a regex"
-    )
     def test_a_line_of_repeated_curl_commands_is_scanned_in_linear_time(
         self, tmp_path: Path
     ) -> None:

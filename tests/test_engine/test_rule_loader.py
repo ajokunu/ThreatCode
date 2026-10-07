@@ -137,8 +137,46 @@ class TestBuiltinRules:
         for rule in load_builtin_rules():
             assert all(not t.endswith("*") for t in rule.resource_types), rule.id
 
-    def test_builtin_rules_declare_a_default_confidence(self) -> None:
-        assert {r.confidence for r in load_builtin_rules()} == {"definitive"}
+    def test_builtin_rules_declare_a_known_confidence(self) -> None:
+        rules = load_builtin_rules()
+        assert {r.confidence for r in rules} <= {"definitive", "heuristic", "absence"}
+
+    def test_docker_rules_declare_calibrated_confidence(self) -> None:
+        by_id = {r.id: r for r in load_builtin_rules()}
+        expected = {
+            "definitive": {
+                "DOCKER_ROOT_USER",
+                "DOCKER_LATEST_TAG",
+                "DOCKER_ADD_INSTEAD_OF_COPY",
+                "DOCKER_RUN_SUDO",
+                "DOCKER_RUN_CURL_PIPE",
+                "DOCKER_APT_NO_RECOMMENDS",
+                "DOCKER_ADD_FROM_URL",
+            },
+            "heuristic": {
+                "DOCKER_NON_MINIMAL_BASE",
+                "DOCKER_EXPOSED_SSH",
+                "DOCKER_ENV_SECRET",
+                "DOCKER_ARG_SECRET",
+                "DOCKER_SENSITIVE_FILE_COPY",
+                "DOCKER_SENSITIVE_FILE_ADD",
+                "DOCKER_COPY_NO_CHOWN",
+            },
+            "absence": {
+                "DOCKER_NO_USER",
+                "DOCKER_NO_DIGEST_PIN",
+                "DOCKER_NO_HEALTHCHECK",
+                "DOCKER_MISSING_WORKDIR",
+                "DOCKER_APT_NO_CLEAN",
+            },
+        }
+        for confidence, ids in expected.items():
+            for rule_id in ids:
+                assert by_id[rule_id].confidence == confidence, rule_id
+        docker_ids = {r.id for r in by_id.values() if r.id.startswith("DOCKER_")}
+        assert docker_ids == set().union(*expected.values())
+        # the docker rules are no longer uniformly definitive
+        assert {by_id[i].confidence for i in docker_ids} == {"definitive", "heuristic", "absence"}
 
     def test_the_loader_uses_libyaml_when_it_is_available(self) -> None:
         if not getattr(yaml, "__with_libyaml__", False):
