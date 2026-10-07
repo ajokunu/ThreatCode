@@ -262,6 +262,34 @@ class TestVariablesDriveRules:
         assert set(found) == {"aws_db_instance.on"}
 
 
+class TestExposureFlagsFromVariables:
+    """The zone of a node follows the value a variable gives its exposure flag."""
+
+    @staticmethod
+    def zones() -> dict[str, str]:
+        graph = InfraGraph.from_parsed(detect_and_parse(HCL_FIXTURES / "var_driven.tf"))
+        return {address: node.trust_zone.value for address, node in graph.nodes.items()}
+
+    def test_a_default_of_false_leaves_the_subnet_private(self) -> None:
+        assert self.zones()["aws_subnet.private"] == "private"
+
+    def test_a_literal_true_puts_the_subnet_in_the_dmz(self) -> None:
+        assert self.zones()["aws_subnet.literal_true"] == "dmz"
+
+    def test_a_negated_variable_is_evaluated(self) -> None:
+        assert self.zones()["aws_subnet.inverted"] == "dmz"
+
+    def test_a_database_that_a_false_variable_keeps_private_is_not_in_the_dmz(self) -> None:
+        assert self.zones()["aws_db_instance.orders"] != "dmz"
+
+    def test_the_database_is_not_reported_as_public_or_unencrypted(self) -> None:
+        found = _scan(HCL_FIXTURES / "var_driven.tf")
+        assert not found.get("aws_db_instance.orders", set()) & {
+            "RDS_PUBLIC_ACCESS",
+            "RDS_NO_ENCRYPTION",
+        }
+
+
 class TestPolicyRules:
     def test_every_spelling_of_an_admin_policy_fires_the_wildcard_rule(self) -> None:
         found = _scan(HCL_FIXTURES / "iam_policies.tf")
