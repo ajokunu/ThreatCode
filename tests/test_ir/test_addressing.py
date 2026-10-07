@@ -6,6 +6,7 @@ import pytest
 
 from threatcode.ir.addressing import (
     base_address,
+    components,
     module_of,
     split_location,
     strip_attribute_suffix,
@@ -40,6 +41,22 @@ class TestBaseAddress:
     def test_unterminated_bracket_is_left_in_place(self) -> None:
         assert base_address("aws_instance.app[0") == "aws_instance.app[0"
         assert base_address('aws_instance.app["x') == 'aws_instance.app["x'
+
+
+class TestComponents:
+    @pytest.mark.parametrize(
+        ("address", "expected"),
+        [
+            ("aws_vpc.main", ["aws_vpc", "main"]),
+            ("module.net[0].aws_vpc.main", ["module", "net[0]", "aws_vpc", "main"]),
+            ('aws_s3_bucket.b["x.y"].arn', ["aws_s3_bucket", 'b["x.y"]', "arn"]),
+            ("MyBucket", ["MyBucket"]),
+            ("", [""]),
+            ("aws_instance.app[0", ["aws_instance", "app[0"]),
+        ],
+    )
+    def test_splits_at_dots_outside_brackets(self, address: str, expected: list[str]) -> None:
+        assert components(address) == expected
 
 
 class TestModuleOf:

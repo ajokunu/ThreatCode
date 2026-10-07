@@ -63,8 +63,11 @@ def base_address(address: str) -> str:
     return "".join(out)
 
 
-def _components(address: str) -> list[str]:
-    """Split an address at the dots that are outside brackets, keeping indexes."""
+def components(address: str) -> list[str]:
+    """Split an address at the dots that are outside brackets, keeping indexes.
+
+    `module.net[0].aws_vpc.main` gives `module`, `net[0]`, `aws_vpc` and `main`.
+    """
     parts: list[str] = []
     current: list[str] = []
     i = 0
@@ -113,7 +116,7 @@ def strip_attribute_suffix(address: str, known: Container[str] | None = None) ->
     whatever follows is an attribute.
     Indexes stay on the components they were written on.
     """
-    parts = _components(address)
+    parts = components(address)
     if known is not None:
         for count in range(len(parts), 0, -1):
             candidate = ".".join(parts[:count])
