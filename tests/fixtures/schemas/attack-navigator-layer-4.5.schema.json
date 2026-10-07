@@ -1,0 +1,302 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ajokunu/ThreatCode/tests/fixtures/schemas/attack-navigator-layer-4.5.schema.json",
+  "title": "ATT&CK Navigator layer file format 4.5 (derived from the layer format document)",
+  "description": "Hand-derived from the property tables of layerformat.md v4.5 in mitre-attack/attack-navigator (see README.md). MITRE publishes no JSON Schema for layer 4.5. Structure only: valid values that depend on the ATT&CK release (tactic shortnames, platforms, a full Navigator version) are checked by the semantic checks in test_schema_conformance.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "domain"
+  ],
+  "definitions": {
+    "metadataOrDivider": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "value"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "divider"
+          ],
+          "properties": {
+            "divider": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "linkOrDivider": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "label",
+            "url"
+          ],
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "divider"
+          ],
+          "properties": {
+            "divider": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "technique": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "techniqueID"
+      ],
+      "properties": {
+        "techniqueID": {
+          "type": "string",
+          "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"
+        },
+        "tactic": {
+          "type": "string"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "number"
+        },
+        "color": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/metadataOrDivider"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/linkOrDivider"
+          }
+        },
+        "showSubtechniques": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "properties": {
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "navigator",
+        "layer"
+      ],
+      "properties": {
+        "attack": {
+          "type": "string"
+        },
+        "navigator": {
+          "type": "string"
+        },
+        "layer": {
+          "type": "string",
+          "enum": [
+            "4.5"
+          ]
+        }
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "enterprise-attack",
+        "mobile-attack",
+        "ics-attack"
+      ]
+    },
+    "customDataURL": {
+      "type": "string"
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sorting": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "type": "string",
+          "enum": [
+            "side",
+            "flat",
+            "mini"
+          ]
+        },
+        "showID": {
+          "type": "boolean"
+        },
+        "showName": {
+          "type": "boolean"
+        },
+        "showAggregateScores": {
+          "type": "boolean"
+        },
+        "countUnscored": {
+          "type": "boolean"
+        },
+        "aggregateFunction": {
+          "type": "string",
+          "enum": [
+            "average",
+            "min",
+            "max",
+            "sum"
+          ]
+        },
+        "expandedSubtechniques": {
+          "type": "string",
+          "enum": [
+            "none",
+            "all",
+            "annotated"
+          ]
+        }
+      }
+    },
+    "hideDisabled": {
+      "type": "boolean"
+    },
+    "techniques": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/technique"
+      }
+    },
+    "gradient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "colors",
+        "minValue",
+        "maxValue"
+      ],
+      "properties": {
+        "colors": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string"
+          }
+        },
+        "minValue": {
+          "type": "number"
+        },
+        "maxValue": {
+          "type": "number"
+        }
+      }
+    },
+    "legendItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "color"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "showTacticRowBackground": {
+      "type": "boolean"
+    },
+    "tacticRowBackground": {
+      "type": "string"
+    },
+    "selectTechniquesAcrossTactics": {
+      "type": "boolean"
+    },
+    "selectSubtechniquesWithParent": {
+      "type": "boolean"
+    },
+    "selectVisibleTechniques": {
+      "type": "boolean"
+    },
+    "metadata": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/metadataOrDivider"
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/linkOrDivider"
+      }
+    }
+  }
+}
