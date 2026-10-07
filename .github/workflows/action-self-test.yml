@@ -1,0 +1,42 @@
+name: Action self-test
+
+# Proves the other way to install the action: from PyPI, with the version input. ci.yml already
+# runs the action from this checkout on every pull request. Run this by hand after a release is
+# published, with the version that was released, to prove that `pip install threatcode==VERSION`
+# resolves and that the action works with it. It fails until the package is on PyPI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version to install from PyPI, for example 0.9.1"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  released-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Scan with the released package
+        id: scan
+        uses: ./.github/actions/threatcode
+        with:
+          path: examples/aws-webapp
+          format: json
+          version: ${{ inputs.version }}
+          upload: "false"
+      - name: The released package reports its own version
+        env:
+          EXPECTED: ${{ inputs.version }}
+          THREATS: ${{ steps.scan.outputs.threat-count }}
+          REPORT: ${{ steps.scan.outputs.report-file }}
+        run: |
+          installed="$(python3 -c 'import importlib.metadata as m; print(m.version("threatcode"))')"
+          test "$installed" = "$EXPECTED" || { echo "installed $installed, expected $EXPECTED" >&2; exit 1; }
+          test "$THREATS" -gt 0
+          python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["version"] == sys.argv[2]' "$REPORT" "$EXPECTED"
