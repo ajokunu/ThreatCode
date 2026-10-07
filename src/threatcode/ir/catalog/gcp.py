@@ -65,6 +65,8 @@ CATEGORIES: dict[str, NodeCategory] = {
     "google_organization_iam": NodeCategory.IAM,
     "google_org_policy": NodeCategory.IAM,
     "google_folder_iam": NodeCategory.IAM,
+    "google_compute_image_iam": NodeCategory.IAM,
+    "google_sourcerepo_repository_iam": NodeCategory.IAM,
     # DNS, messaging and monitoring
     "google_dns": NodeCategory.DNS,
     "google_pubsub": NodeCategory.MESSAGING,
