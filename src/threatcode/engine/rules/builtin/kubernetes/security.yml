@@ -24,7 +24,7 @@ rules:
       may have overly broad permissions in some cluster configurations.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       service_account_name:
         equals: "default"
@@ -42,7 +42,7 @@ rules:
       Container-level settings may be inconsistent or missing.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       pod_run_as_non_root:
         not_exists: true
@@ -78,7 +78,7 @@ rules:
       System calls are not restricted, expanding the attack surface.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_security_context:
         equals: true

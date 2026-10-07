@@ -1,0 +1,9 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public_a",
+      "stride": "tampering"
+    }
+  ]
+}

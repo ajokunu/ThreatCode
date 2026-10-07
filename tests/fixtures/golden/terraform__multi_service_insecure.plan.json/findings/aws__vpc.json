@@ -1,0 +1,49 @@
+[
+  {
+    "resource_address": "aws_security_group.ipv6_open",
+    "rule_id": "SG_UNRESTRICTED_INGRESS",
+    "severity": "high",
+    "stride": "spoofing",
+    "techniques": [
+      "T1046",
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "aws_security_group.wide_open",
+    "rule_id": "SG_UNRESTRICTED_INGRESS",
+    "severity": "high",
+    "stride": "spoofing",
+    "techniques": [
+      "T1046",
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "aws_default_security_group.default_open",
+    "rule_id": "VPC_DEFAULT_SG_OPEN",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "aws_vpc.main",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "aws_vpc.secondary",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  }
+]

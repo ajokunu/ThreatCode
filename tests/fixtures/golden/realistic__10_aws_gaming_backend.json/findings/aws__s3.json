@@ -1,0 +1,93 @@
+[
+  {
+    "resource_address": "aws_s3_bucket.game_assets",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.player_data",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.replay_storage",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.game_assets",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.player_data",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.replay_storage",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.game_assets",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.player_data",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.replay_storage",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket_acl.game_assets",
+    "rule_id": "S3_PUBLIC_ACCESS",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190",
+      "T1530"
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "azurerm_virtual_network.main",
+    "rule_id": "AZURE_VNET_NO_DDOS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  }
+]

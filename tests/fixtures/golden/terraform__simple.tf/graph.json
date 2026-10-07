@@ -1,0 +1,13 @@
+{
+  "edges": [],
+  "nodes": {
+    "aws_instance.web": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_s3_bucket.test": {
+      "category": "storage",
+      "zone": "data"
+    }
+  }
+}

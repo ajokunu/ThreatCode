@@ -1,0 +1,148 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "HIPAACloudTrail",
+      "target": "CloudTrailBucketPolicy",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "AuditLogsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "AuroraCluster": {
+      "category": "database",
+      "zone": "data"
+    },
+    "AuroraInstanceA": {
+      "category": "database",
+      "zone": "private"
+    },
+    "AuroraInstanceB": {
+      "category": "database",
+      "zone": "private"
+    },
+    "CacheSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "CloudTrailBucketPolicy": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "CloudTrailCWRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "CloudTrailLogGroup": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "DatabaseSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "DatabaseSubnetGroup": {
+      "category": "database",
+      "zone": "data"
+    },
+    "EmergencyAdminRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "HIPAAAlertsSubscription": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "HIPAAAlertsTopic": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "HIPAACloudTrail": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "HL7ProcessorDLQ": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "HL7ProcessorFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "HL7ProcessorRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "LambdaSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "MedVaultKMSKey": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "MedVaultKMSKeyAlias": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "MedVaultVPC": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PatientRecordsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "PrivateSubnetA": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PrivateSubnetB": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PrivateSubnetC": {
+      "category": "network",
+      "zone": "private"
+    },
+    "RDSMonitoringRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "RecordsApiDLQ": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "RecordsApiFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "RecordsApiRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "ReportGeneratorFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ReportGeneratorRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "SessionCacheTable": {
+      "category": "database",
+      "zone": "data"
+    },
+    "TempUploadsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "UnauthorizedAPICallsAlarm": {
+      "category": "monitoring",
+      "zone": "management"
+    }
+  }
+}

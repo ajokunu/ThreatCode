@@ -1,0 +1,220 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.game_server_1",
+      "target": "aws_security_group.game_server_sg",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.game_server_1",
+      "target": "aws_security_group.game_server_test_sg",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.game_server_1",
+      "target": "aws_subnet.public_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.game_server_sg",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.game_server_test_sg",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.lambda_sg",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.redis_sg",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private_a",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private_b",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public_a",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public_b",
+      "target": "aws_vpc.stormforge",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "aws_api_gateway_rest_api.game_api": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_cloudfront_distribution.game_cdn": {
+      "category": "cdn",
+      "zone": "dmz"
+    },
+    "aws_cloudwatch_dashboard.game_operations": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_cloudwatch_log_group.game_services": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_dynamodb_table.leaderboards": {
+      "category": "database",
+      "zone": "data"
+    },
+    "aws_dynamodb_table.matches": {
+      "category": "database",
+      "zone": "data"
+    },
+    "aws_dynamodb_table.players": {
+      "category": "database",
+      "zone": "data"
+    },
+    "aws_elasticache_replication_group.session_cache": {
+      "category": "database",
+      "zone": "data"
+    },
+    "aws_iam_instance_profile.game_server": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_policy.game_server": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_policy.lambda_game_services": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.game_server": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.lambda_game_services": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role_policy_attachment.game_server": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.game_server_1": {
+      "category": "compute",
+      "zone": "dmz"
+    },
+    "aws_lambda_function.chat_handler": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lambda_function.leaderboard": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lambda_function.matchmaking": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lambda_function.player_stats": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_s3_bucket.game_assets": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.player_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.replay_storage": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_acl.game_assets": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_lifecycle_configuration.replay_storage": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_public_access_block.player_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_server_side_encryption_configuration.replay_storage": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_security_group.game_server_sg": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.game_server_test_sg": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.lambda_sg": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.redis_sg": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_sqs_queue.matchmaking_dlq": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "aws_sqs_queue.matchmaking_queue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "aws_subnet.private_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.private_b": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.public_a": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_subnet.public_b": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_vpc.stormforge": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

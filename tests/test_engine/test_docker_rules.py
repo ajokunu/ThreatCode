@@ -50,7 +50,7 @@ class TestDockerRulesInsecure:
         fired = set()
         for rule in docker_rules:
             for resource in insecure_resources:
-                if resource.resource_type == rule.resource_type:
+                if rule.matches_type(resource.resource_type):
                     if evaluate_rule(rule.condition, resource.properties):
                         fired.add(rule.id)
         # Key rules should fire on insecure Dockerfile
@@ -68,7 +68,7 @@ class TestDockerRulesSecure:
         fired = set()
         for rule in docker_rules:
             for resource in secure_resources:
-                if resource.resource_type == rule.resource_type:
+                if rule.matches_type(resource.resource_type):
                     if evaluate_rule(rule.condition, resource.properties):
                         fired.add(rule.id)
         # Secure Dockerfile should not fire critical/high rules
@@ -78,3 +78,16 @@ class TestDockerRulesSecure:
             if any(r.id == rid and r.severity in ("high", "critical") for r in docker_rules)
         }
         assert len(high_critical_fired) == 0
+
+
+class TestDockerRuleTyping:
+    def test_instruction_rules_bind_to_their_own_instruction_type(self, docker_rules) -> None:
+        by_id = {r.id: r for r in docker_rules}
+        assert by_id["DOCKER_ENV_SECRET"].matches_type("dockerfile_env")
+        assert not by_id["DOCKER_ENV_SECRET"].matches_type("dockerfile_arg")
+        assert not by_id["DOCKER_NO_USER"].matches_type("dockerfile_user")
+        assert by_id["DOCKER_NO_USER"].matches_type("dockerfile_image")
+
+    def test_no_docker_rule_matches_by_prefix(self, docker_rules) -> None:
+        for rule in docker_rules:
+            assert not any(t.endswith("*") for t in rule.resource_types), rule.id

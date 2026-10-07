@@ -1,0 +1,83 @@
+[
+  {
+    "resource_address": "AuditLogTable",
+    "rule_id": "DYNAMODB_NO_AUTOSCALING",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "TransactionsTable",
+    "rule_id": "DYNAMODB_NO_AUTOSCALING",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "UsersTable",
+    "rule_id": "DYNAMODB_NO_AUTOSCALING",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "AuditLogTable",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "TransactionsTable",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "UsersTable",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "AuditLogTable",
+    "rule_id": "DYNAMODB_NO_PITR",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "TransactionsTable",
+    "rule_id": "DYNAMODB_NO_PITR",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "UsersTable",
+    "rule_id": "DYNAMODB_NO_PITR",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  }
+]

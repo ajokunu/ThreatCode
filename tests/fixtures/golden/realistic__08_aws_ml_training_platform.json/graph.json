@@ -1,0 +1,178 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.gpu_experiment_box",
+      "target": "aws_security_group.notebook_debug",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.gpu_experiment_box",
+      "target": "aws_subnet.ml_private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_sagemaker_notebook_instance.research",
+      "target": "aws_security_group.sagemaker_notebook",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_sagemaker_notebook_instance.research",
+      "target": "aws_subnet.ml_private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.notebook_debug",
+      "target": "aws_vpc.ml_platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.sagemaker_notebook",
+      "target": "aws_vpc.ml_platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.training_jobs",
+      "target": "aws_vpc.ml_platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.ml_private_a",
+      "target": "aws_vpc.ml_platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.ml_private_b",
+      "target": "aws_vpc.ml_platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.ml_private_c",
+      "target": "aws_vpc.ml_platform",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "aws_cloudwatch_dashboard.ml_platform": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_ecr_repository.inference_images": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_ecr_repository.training_images": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_iam_policy.lambda_model_deploy": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_policy.sagemaker_execution": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.lambda_model_deploy": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.sagemaker_execution": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role_policy_attachment.sagemaker_execution": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.gpu_experiment_box": {
+      "category": "compute",
+      "zone": "dmz"
+    },
+    "aws_kms_key.ml_data_key": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_lambda_function.experiment_tracker": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lambda_function.model_deployer": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_s3_bucket.model_artifacts": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.notebook_outputs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.training_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_acl.notebook_outputs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_logging.training_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_public_access_block.training_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_server_side_encryption_configuration.training_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_versioning.training_data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_sagemaker_notebook_instance.research": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_security_group.notebook_debug": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.sagemaker_notebook": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.training_jobs": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.ml_private_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.ml_private_b": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.ml_private_c": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpc.ml_platform": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

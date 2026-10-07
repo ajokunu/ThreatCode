@@ -1,0 +1,56 @@
+[
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_EXPOSED_PRIVILEGED_PORT",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_EXPOSED_SSH",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1021"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_MISSING_WORKDIR",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1565.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NO_HEALTHCHECK",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NO_USER",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  }
+]

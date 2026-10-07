@@ -1,0 +1,93 @@
+{
+  "edges": [],
+  "nodes": {
+    "azurerm_application_insights.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_key_vault.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_key_vault_access_policy.app_service": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_key_vault_access_policy.dba_team": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_key_vault_access_policy.terraform": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_linux_web_app.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_log_analytics_workspace.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_mssql_database.hr_portal": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_mssql_database.reporting": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_mssql_server.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_network_security_group.app": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_redis_cache.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_resource_group.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_service_plan.main": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_storage_account.main": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "azurerm_storage_container.documents": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "azurerm_storage_container.payslips": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "azurerm_subnet.app_service": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_subnet.management": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_subnet.private_endpoints": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_subnet_network_security_group_association.app_service": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_virtual_network.main": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

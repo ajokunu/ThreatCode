@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "aws_cloudfront_distribution.game_cdn",
+    "rule_id": "CLOUDFRONT_NO_LOGGING",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "aws_cloudfront_distribution.game_cdn",
+    "rule_id": "CLOUDFRONT_NO_WAF",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

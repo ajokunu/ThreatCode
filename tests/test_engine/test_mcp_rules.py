@@ -32,7 +32,7 @@ _ASI_ID_RE = re.compile(r"^ASI(0[1-9]|10)$")
 
 @pytest.fixture(scope="module")
 def mcp_rules() -> list[Rule]:
-    return [r for r in load_all_rules() if r.resource_type == "mcp_server"]
+    return [r for r in load_all_rules() if r.matches_type("mcp_server")]
 
 
 def _fired(relpath: str) -> set[tuple[str, str]]:

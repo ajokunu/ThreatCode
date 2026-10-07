@@ -28,7 +28,7 @@ rules:
       This can lead to data exposure or unauthorized data modification.
     stride_category: information_disclosure
     severity: critical
-    resource_type: aws_s3_bucket
+    resource_types: [aws_s3_bucket, aws_s3_bucket_acl]
     condition:
       any_of:
         - acl:

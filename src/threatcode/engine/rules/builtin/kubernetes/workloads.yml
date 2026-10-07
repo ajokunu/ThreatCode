@@ -6,7 +6,7 @@ rules:
       access to the host. This effectively disables all container isolation.
     stride_category: elevation_of_privilege
     severity: critical
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       privileged:
         equals: true
@@ -25,7 +25,7 @@ rules:
       This can lead to resource exhaustion and denial of service.
     stride_category: denial_of_service
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_resource_limits:
         equals: false
@@ -42,7 +42,7 @@ rules:
       runAsNonRoot is not set to true, allowing the container to run as root.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       run_as_root:
         equals: true
@@ -60,7 +60,7 @@ rules:
       container filesystem. This increases the attack surface.
     stride_category: tampering
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       writable_root_fs:
         equals: true
@@ -79,7 +79,7 @@ rules:
       interfaces and can bypass network policies.
     stride_category: information_disclosure
     severity: high
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       host_network:
         equals: true
@@ -97,7 +97,7 @@ rules:
       all processes on the host.
     stride_category: information_disclosure
     severity: high
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       host_pid:
         equals: true
@@ -115,7 +115,7 @@ rules:
       Compromised pods can use the token to access the Kubernetes API.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       automount_sa_token:
         equals: true
@@ -133,7 +133,7 @@ rules:
       This makes deployments non-reproducible.
     stride_category: tampering
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       uses_latest_tag:
         equals: true
@@ -151,7 +151,7 @@ rules:
       Unnecessary capabilities increase the attack surface.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       capabilities_dropped:
         equals: false
@@ -169,7 +169,7 @@ rules:
       The container adds dangerous capabilities like NET_ADMIN or SYS_ADMIN.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       dangerous_capabilities:
         is_empty: false
@@ -187,7 +187,7 @@ rules:
       Security defaults may be too permissive.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_security_context:
         equals: false
@@ -205,7 +205,7 @@ rules:
       This allows processes to gain more privileges than the parent.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       allow_privilege_escalation:
         equals: true
@@ -222,7 +222,7 @@ rules:
       A container port is bound to a host port, exposing it directly on the node.
     stride_category: information_disclosure
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_host_port:
         equals: true
@@ -240,7 +240,7 @@ rules:
       Env vars are less secure as they may appear in logs and crash dumps.
     stride_category: information_disclosure
     severity: low
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       secret_env_vars:
         is_empty: false
@@ -257,7 +257,7 @@ rules:
       No livenessProbe configured. Kubernetes cannot detect deadlocked containers.
     stride_category: denial_of_service
     severity: low
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_long_running"
     condition:
       has_liveness_probe:
         equals: false
@@ -274,7 +274,7 @@ rules:
       No readinessProbe configured. Traffic may be sent to containers that are not ready.
     stride_category: denial_of_service
     severity: low
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_long_running"
     condition:
       has_readiness_probe:
         equals: false
@@ -292,7 +292,7 @@ rules:
       which can lead to host compromise.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_host_path_volume:
         equals: true
@@ -346,7 +346,7 @@ rules:
       A container can fill the node's disk, causing node failure.
     stride_category: denial_of_service
     severity: medium
-    resource_type: kubernetes_deployment
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_resource_limits:
         equals: false

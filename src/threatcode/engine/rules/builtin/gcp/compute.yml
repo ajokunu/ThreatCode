@@ -22,7 +22,7 @@ rules:
       The instance uses the default compute service account.
     stride_category: elevation_of_privilege
     severity: medium
-    resource_type: google_compute_instance
+    resource_types: [google_compute_instance, google_compute_instance_template]
     condition:
       service_account:
         not_exists: true
@@ -42,7 +42,7 @@ rules:
     resource_type: google_compute_instance
     condition:
       metadata.serial-port-enable:
-        equals: "true"
+        equals_ci: "true"
     mitigation: >
       Disable serial port access.
     metadata:

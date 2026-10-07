@@ -1,0 +1,101 @@
+[
+  {
+    "resource_address": "dockerfile.add.6",
+    "rule_id": "DOCKER_ADD_INSTEAD_OF_COPY",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.add.7",
+    "rule_id": "DOCKER_ADD_INSTEAD_OF_COPY",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.3",
+    "rule_id": "DOCKER_APT_NO_RECOMMENDS",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.arg.1",
+    "rule_id": "DOCKER_ARG_SECRET",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.copy.8",
+    "rule_id": "DOCKER_COPY_NO_CHOWN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.copy.9",
+    "rule_id": "DOCKER_COPY_NO_CHOWN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.env.2",
+    "rule_id": "DOCKER_ENV_SECRET",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.4",
+    "rule_id": "DOCKER_RUN_CURL_PIPE",
+    "severity": "high",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.5",
+    "rule_id": "DOCKER_RUN_SUDO",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.add.7",
+    "rule_id": "DOCKER_SENSITIVE_FILE_ADD",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.copy.8",
+    "rule_id": "DOCKER_SENSITIVE_FILE_COPY",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  }
+]

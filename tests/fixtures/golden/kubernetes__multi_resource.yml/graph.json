@@ -1,0 +1,29 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_cluster_role.default.overly-permissive": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_cluster_role_binding.default.test-admin-binding": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_deployment.test-ns.test-app": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_namespace.default.test-ns": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_network_policy.test-ns.allow-all": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_service_account.test-ns.test-sa": {
+      "category": "iam",
+      "zone": "management"
+    }
+  }
+}

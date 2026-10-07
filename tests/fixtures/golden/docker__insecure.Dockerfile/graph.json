@@ -1,0 +1,69 @@
+{
+  "edges": [],
+  "nodes": {
+    "dockerfile.add.6": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "dockerfile.add.7": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "dockerfile.arg.1": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.cmd.14": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.copy.8": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "dockerfile.copy.9": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "dockerfile.entrypoint.13": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.env.2": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.expose.10": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "dockerfile.expose.11": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "dockerfile.expose.12": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "dockerfile.from.0": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.image.summary": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.run.3": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "dockerfile.run.4": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "dockerfile.run.5": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

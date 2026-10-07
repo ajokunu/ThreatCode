@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_vpc.hub",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  }
+]
