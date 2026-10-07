@@ -2024,9 +2024,10 @@ class TestDynamicBlockLimits:
     """Dynamic blocks nested in each other must not multiply without a total per resource."""
 
     LIMIT = terraform_hcl.MAX_DYNAMIC_BLOCKS
+    WIDTH = 30
 
     @staticmethod
-    def nested_dynamic(levels: int, width: int = 30, wrap: bool = False) -> str:
+    def nested_dynamic(levels: int, width: int = WIDTH, wrap: bool = False) -> str:
         """``levels`` dynamic blocks inside each other, each over ``width`` elements."""
         items = ", ".join(str(i) for i in range(width))
         lines = ['resource "a" "b" {']
@@ -2102,7 +2103,7 @@ class TestDynamicBlockLimits:
         assert time.monotonic() - started < 1.0
         properties = only_resource(result).properties
         # the first level is expanded in full; the total stops the multiplication below it
-        assert len(properties["d0"]) == terraform_hcl.MAX_DYNAMIC_EXPANSION - 2
+        assert len(properties["d0"]) == self.WIDTH
         assert self.dicts(properties) <= self.block_bound(levels)
         assert len(codes(result, "hcl.evaluation_limit")) == 1
 
@@ -2129,7 +2130,7 @@ class TestDynamicBlockLimits:
         assert all(isinstance(leaf, int) or is_unknown(leaf) for leaf in leaves)
         messages = [d.message for d in codes(result, "hcl.dynamic_block")]
         assert any("would generate more than" in m for m in messages)
-        assert any("became 30 block(s)" in m for m in messages)
+        assert any(f"became {self.WIDTH} block(s)" in m for m in messages)
 
     def test_the_cap_holds_for_dynamic_blocks_inside_a_static_block(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", self.nested_dynamic(6, wrap=True))
@@ -2137,7 +2138,7 @@ class TestDynamicBlockLimits:
         result = run_within(lambda: parse_dir(tmp_path))
         assert time.monotonic() - started < 1.0
         (outer,) = only_resource(result).properties["outer"]
-        assert len(outer["d0"]) == terraform_hcl.MAX_DYNAMIC_EXPANSION - 2
+        assert len(outer["d0"]) == self.WIDTH
         assert self.dicts(outer) <= self.block_bound(6)
         assert len(codes(result, "hcl.evaluation_limit")) == 1
 
