@@ -14,13 +14,6 @@
 # is not a terminal there, so the default format would be JSON.
 # To change the gate, add args to the hook in your config:  args: ["--fail-on", "critical"]
 - id: threatcode
-#
-# The hook builds one threat model across the whole repository, because an attack path can cross
-# files; pre-commit's changed-file list would hide half of it. It runs when a commit touches a
-# file type that can hold infrastructure code and fails on a finding or attack path at or above
-# high, and prints the text report, since pre-commit shows output only when a hook fails and standard
-# output is not a terminal there (the default would be JSON). Arguments can be added in the config:  args: ["--fail-on", "critical"].
-- id: threatcode
   name: ThreatCode threat model
   description: Build a STRIDE threat model of the repository and fail on high or critical findings.
   entry: threatcode scan . --fail-on high --format text
