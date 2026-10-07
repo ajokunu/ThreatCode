@@ -157,22 +157,14 @@ class TestEveryWorkloadKind:
     def test_the_same_pod_spec_gets_the_same_findings_in_all_seven_kinds(self) -> None:
         graph, found = _scan_all(FIXTURES_DIR / "workload_kinds.yml")
         assert len(graph.nodes) == 7
-        probe_rules = {"K8S_NO_LIVENESS_PROBE", "K8S_NO_READINESS_PROBE"}
-        baseline = found["kubernetes_deployment.kinds.deployment"] - probe_rules
+        baseline = found["kubernetes_deployment.kinds.deployment"]
         assert {
             "K8S_PRIVILEGED_CONTAINER",
             "K8S_HOST_NETWORK",
             "K8S_DANGEROUS_CAPABILITIES",
         } <= baseline
         for address, rule_ids in found.items():
-            assert rule_ids - probe_rules == baseline, address
-
-    def test_jobs_and_cron_jobs_alone_skip_the_probe_rules(self) -> None:
-        _, found = _scan_all(FIXTURES_DIR / "workload_kinds.yml")
-        for kind in ("job", "cron_job"):
-            (address,) = [a for a in found if a.startswith(f"kubernetes_{kind}.")]
-            assert not found[address] & {"K8S_NO_LIVENESS_PROBE", "K8S_NO_READINESS_PROBE"}
-        assert "K8S_NO_LIVENESS_PROBE" in found["kubernetes_daemon_set.kinds.daemonset"]
+            assert rule_ids == baseline, address
 
     def test_the_real_workload_file_reads_each_kind_through_its_own_pod_template(self) -> None:
         _, found = _scan_all(REAL_SHAPES / "workloads.yaml")

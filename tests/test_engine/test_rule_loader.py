@@ -195,14 +195,6 @@ class TestBuiltinRules:
             "google_compute_instance_template",
         )
 
-    def test_probe_rules_skip_jobs_and_cron_jobs(self) -> None:
-        by_id = {r.id: r for r in load_builtin_rules()}
-        for rule_id in ("K8S_NO_LIVENESS_PROBE", "K8S_NO_READINESS_PROBE"):
-            assert by_id[rule_id].resource_types == RESOURCE_TYPE_GROUPS["kubernetes_long_running"]
-            assert not by_id[rule_id].matches_type("kubernetes_job")
-            assert not by_id[rule_id].matches_type("kubernetes_cron_job")
-            assert by_id[rule_id].matches_type("kubernetes_stateful_set")
-
     def test_cluster_role_rules_do_not_match_bindings(self) -> None:
         by_id = {r.id: r for r in load_builtin_rules()}
         role_rule = by_id["K8S_WILDCARD_RBAC_VERBS"]

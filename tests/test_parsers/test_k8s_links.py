@@ -275,7 +275,7 @@ class TestAutomount:
             _account("web", automountServiceAccountToken=False),
             _deployment(serviceAccountName="web"),
         )
-        # K8S_AUTOMOUNT_SA_TOKEN still reads this one until the rules move to the effective value
+        # the rules read effective_automount_sa_token; this raw pod value stays as written
         assert _props(output, WEB)["automount_sa_token"] is True
 
 

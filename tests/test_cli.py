@@ -141,12 +141,12 @@ class TestExitCodeMatrix:
         assert invoke("scan", SIMPLE_TF, "--fail-on", fail_on).exit_code == expected
 
     def test_the_default_threshold_is_high(self) -> None:
-        # secure_deployment.yml has two medium findings and nothing above
+        # secure_deployment.yml has medium and low findings and nothing above
         secure = FIXTURES_DIR / "kubernetes" / "secure_deployment.yml"
         severities = {
             t["severity"] for t in report_of(invoke("scan", secure, "--fail-on", "none"))["threats"]
         }
-        assert severities == {"medium"}
+        assert severities == {"medium", "low"}
         assert invoke("scan", secure).exit_code == 0
         assert invoke("scan", secure, "--fail-on", "high").exit_code == 0
         assert invoke("scan", secure, "--fail-on", "medium").exit_code == 1

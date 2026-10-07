@@ -26,11 +26,7 @@ HARDENED_DIR = REAL_SHAPES_DIR / "hardened"
 # format -> (file, package that makes the scan clean or None once it is clean, why it is not
 # clean today)
 CORPUS: dict[str, tuple[str, str | None, str]] = {
-    "kubernetes": (
-        "kubernetes/hardened_workloads.yaml",
-        "WP-3-6",
-        "rules read pod-level security context, probes on the right containers and NetworkPolicy",
-    ),
+    "kubernetes": ("kubernetes/hardened_workloads.yaml", None, ""),
     "docker": ("docker/hardened.Dockerfile", None, ""),
     "mcp": ("mcp/.mcp.json", None, ""),
 }

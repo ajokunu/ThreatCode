@@ -57,6 +57,3 @@ key_findings:
   - resource: kubernetes_cluster_role.secret-reader
     kind: secrets_read
     why: get, list and watch on secrets in every namespace.
-    pending:
-      package: WP-3-6
-      reason: RBAC rules read has_secrets_read from the ClusterRole rules
