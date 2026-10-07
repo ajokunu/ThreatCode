@@ -3,8 +3,10 @@
 ``examples/aws-webapp/scanner/trivy-app-image.json`` is a real-shape Trivy image report with one
 critical CVE in the image the app instances run. The join key is the image reference, which the
 plan carries in plaintext in each instance's user_data. Today the tests check that the report has
-the shape the ingester will read and that the join key is there to find. Ingestion itself is pending
-on the package that builds it.
+the shape the ingester reads and that the join key is there to find, and that ingesting it puts the
+CVE on the workloads that run the image. Two expectations wait on other packages and are marked
+pending with the package that delivers them: the attack-path search (the CVE as an enabler of a hop)
+and the report writer (the ingested sources in the JSON report).
 """
 
 from __future__ import annotations
@@ -104,7 +106,6 @@ class TestTheJoinKey:
 
 
 class TestIngestion:
-    @pending("WP-4-2", "Trivy findings attach to the workloads whose image reference matches")
     def test_the_cve_becomes_a_finding_on_each_app_instance(self) -> None:
         run = scan_json([WEBAPP], ingest=[TRIVY])
         assert run.exit_code == 0, run.stderr[-300:]
@@ -113,7 +114,11 @@ class TestIngestion:
         assert sorted(t["resource_address"] for t in hits) == sorted(scanner_entry()["attaches_to"])
         assert all(t["severity"] == "critical" for t in hits)
 
-    @pending("WP-4-2", "an ingested finding counts as an enabler of the path it sits on")
+    @pending(
+        "WP-4-1",
+        "attack paths exist and list the findings that enable each hop, so the ingested CVE "
+        "(a threat on the instance the path crosses) shows up as an enabler",
+    )
     def test_the_cve_is_an_enabler_of_the_expected_path(self) -> None:
         run = scan_json([WEBAPP], ingest=[TRIVY])
         paths = find_key(run.json(), "attack_paths") or []
@@ -131,7 +136,9 @@ class TestIngestion:
         pytest.fail("the expected path is not in the report")
 
     @pending(
-        "WP-4-2", "the report lists each ingested file with its attached and unattached counts"
+        "WP-4-3",
+        "the JSON report writes ScanResult.ingest_sources (tool, file, attached and unattached "
+        "counts), which the ingestion already produces",
     )
     def test_the_report_lists_the_ingested_source(self) -> None:
         run = scan_json([WEBAPP], ingest=[TRIVY])
@@ -139,7 +146,6 @@ class TestIngestion:
         text = json.dumps(sources)
         assert "trivy" in text and "attached" in text
 
-    @pending("WP-4-2", "an unreadable or unrecognized ingest file is a usage error naming the file")
     def test_an_unrecognized_ingest_file_exits_2_and_names_the_file(self, tmp_path: Path) -> None:
         junk = tmp_path / "not-a-report.json"
         junk.write_text('{"hello": "world"}', encoding="utf-8")
@@ -149,7 +155,6 @@ class TestIngestion:
         assert run.exit_code == 2, run.stderr[-300:]
         assert "not-a-report.json" in run.stderr
 
-    @pending("WP-4-2", "a report that matches no workload is kept, counted and never dropped")
     def test_a_report_for_an_unrelated_image_is_kept_as_unattached(self, tmp_path: Path) -> None:
         report = trivy_report()
         report["ArtifactName"] = "registry.example.com/other/service:1.0.0"

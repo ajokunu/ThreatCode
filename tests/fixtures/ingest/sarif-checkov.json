@@ -1,0 +1,95 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Checkov",
+          "version": "3.2.2",
+          "informationUri": "https://github.com/bridgecrewio/checkov/",
+          "rules": [
+            {
+              "id": "CKV_AWS_18",
+              "name": "Ensure the S3 bucket has access logging enabled",
+              "shortDescription": {
+                "text": "Ensure the S3 bucket has access logging enabled"
+              },
+              "fullDescription": {
+                "text": "Ensure the S3 bucket has access logging enabled"
+              },
+              "help": {
+                "text": "Ensure the S3 bucket has access logging enabled\nResource: aws_s3_bucket.assets"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/s3-policies/s3-13-enable-logging"
+            },
+            {
+              "id": "CKV_AWS_135",
+              "name": "Ensure that EC2 is EBS optimized",
+              "shortDescription": {
+                "text": "Ensure that EC2 is EBS optimized"
+              },
+              "help": {
+                "text": "Ensure that EC2 is EBS optimized"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CKV_AWS_18",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Ensure the S3 bucket has access logging enabled"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/infra/main.tf"
+                },
+                "region": {
+                  "startLine": 1,
+                  "endLine": 3,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "aws_s3_bucket.assets"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "CKV_AWS_135",
+          "ruleIndex": 1,
+          "message": {
+            "text": "Ensure that EC2 is EBS optimized"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/infra/main.tf"
+                },
+                "region": {
+                  "startLine": 17,
+                  "endLine": 24
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

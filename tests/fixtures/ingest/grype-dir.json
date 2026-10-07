@@ -1,0 +1,94 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "GHSA-35jh-r3h4-6jhm",
+        "dataSource": "https://nvd.nist.gov/vuln/detail/GHSA-35jh-r3h4-6jhm",
+        "namespace": "github:language:javascript",
+        "severity": "High",
+        "urls": [
+          "https://nvd.nist.gov/vuln/detail/GHSA-35jh-r3h4-6jhm"
+        ],
+        "cvss": [],
+        "fix": {
+          "versions": [
+            "4.17.21"
+          ],
+          "state": "fixed"
+        },
+        "advisories": []
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2021-23337",
+          "dataSource": "x",
+          "namespace": "nvd:cpe",
+          "severity": "High",
+          "urls": [],
+          "cvss": [
+            {
+              "source": "nvd@nist.gov",
+              "type": "Primary",
+              "version": "3.1",
+              "vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+              "metrics": {
+                "baseScore": 7.2,
+                "exploitabilityScore": 3.9,
+                "impactScore": 5.9
+              },
+              "vendorMetadata": {}
+            }
+          ]
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "dpkg-matcher",
+          "searchedBy": {
+            "distro": {
+              "type": "debian",
+              "version": "12"
+            },
+            "namespace": "debian:distro:debian:12",
+            "package": {
+              "name": "lodash",
+              "version": "4.17.15"
+            }
+          },
+          "found": {
+            "versionConstraint": "< 4.17.21 (deb)"
+          }
+        }
+      ],
+      "artifact": {
+        "id": "9c3b1a6e5d4f7a80",
+        "name": "lodash",
+        "version": "4.17.15",
+        "type": "npm",
+        "locations": [
+          {
+            "path": "/services/api/package-lock.json"
+          }
+        ],
+        "language": "",
+        "licenses": [],
+        "cpes": [],
+        "purl": "pkg:npm/lodash@4.17.15",
+        "upstreams": []
+      }
+    }
+  ],
+  "source": {
+    "type": "directory",
+    "target": "/work/repo"
+  },
+  "distro": {},
+  "descriptor": {
+    "name": "grype",
+    "version": "0.74.7",
+    "configuration": {},
+    "db": {},
+    "timestamp": "2026-10-05T12:31:00+00:00"
+  }
+}

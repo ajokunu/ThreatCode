@@ -1,0 +1,283 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-10-05T12:20:00.000000Z",
+  "ArtifactName": ".",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "services/api/package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-23337",
+          "PkgID": "lodash@4.17.15",
+          "PkgName": "lodash",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/lodash@4.17.15",
+            "UID": "a1b2c3d4e5f60718"
+          },
+          "InstalledVersion": "4.17.15",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:2c4d6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-23337",
+          "Title": "nodejs-lodash: command injection via template",
+          "Description": "nodejs-lodash: command injection via template. See the advisory for affected configurations.",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "nvd": 3,
+            "debian": 2
+          },
+          "References": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2021-23337"
+          ],
+          "PublishedDate": "2023-10-03T17:15:10.1Z",
+          "LastModifiedDate": "2024-01-02T09:15:08.4Z",
+          "FixedVersion": "4.17.21",
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+              "V3Score": 7.2,
+              "V2Vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+              "V2Score": 7.5
+            }
+          },
+          "CweIDs": [
+            "CWE-787"
+          ]
+        },
+        {
+          "VulnerabilityID": "CVE-2020-8203",
+          "PkgID": "lodash@4.17.15",
+          "PkgName": "lodash",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/lodash@4.17.15",
+            "UID": "a1b2c3d4e5f60718"
+          },
+          "InstalledVersion": "4.17.15",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:2c4d6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2020-8203",
+          "Title": "nodejs-lodash: prototype pollution in zipObjectDeep function",
+          "Description": "nodejs-lodash: prototype pollution in zipObjectDeep function. See the advisory for affected configurations.",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "nvd": 3,
+            "debian": 2
+          },
+          "References": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2020-8203"
+          ],
+          "PublishedDate": "2023-10-03T17:15:10.1Z",
+          "LastModifiedDate": "2024-01-02T09:15:08.4Z",
+          "FixedVersion": "4.17.19",
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+              "V3Score": 7.4,
+              "V2Vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+              "V2Score": 7.5
+            }
+          },
+          "CweIDs": [
+            "CWE-787"
+          ]
+        }
+      ]
+    },
+    {
+      "Target": "go.mod",
+      "Class": "lang-pkgs",
+      "Type": "gomod",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-44487",
+          "PkgID": "golang.org/x/net@v0.10.0",
+          "PkgName": "golang.org/x/net",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/golang.org/x/net@v0.10.0",
+            "UID": "a1b2c3d4e5f60718"
+          },
+          "InstalledVersion": "v0.10.0",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:2c4d6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-44487",
+          "Title": "HTTP/2 rapid reset can cause excessive work in net/http",
+          "Description": "HTTP/2 rapid reset can cause excessive work in net/http. See the advisory for affected configurations.",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "nvd": 3,
+            "debian": 2
+          },
+          "References": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2023-44487"
+          ],
+          "PublishedDate": "2023-10-03T17:15:10.1Z",
+          "LastModifiedDate": "2024-01-02T09:15:08.4Z",
+          "FixedVersion": "v0.17.0",
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5,
+              "V2Vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+              "V2Score": 7.5
+            }
+          },
+          "CweIDs": [
+            "CWE-787"
+          ]
+        }
+      ]
+    },
+    {
+      "Target": "k8s/deployment.yaml",
+      "Class": "config",
+      "Type": "kubernetes",
+      "MisconfSummary": {
+        "Successes": 1,
+        "Failures": 1,
+        "Exceptions": 0
+      },
+      "Misconfigurations": [
+        {
+          "Type": "Kubernetes Security Check",
+          "ID": "KSV001",
+          "AVDID": "AVD-KSV-0001",
+          "Title": "Process can elevate its own privileges",
+          "Description": "Process can elevate its own privileges",
+          "Message": "Container 'api' of Deployment 'api' should set 'securityContext.allowPrivilegeEscalation' to false",
+          "Namespace": "builtin.kubernetes.KSV001",
+          "Query": "data.builtin.kubernetes.KSV001.deny",
+          "Resolution": "Set 'set containers[].securityContext.allowPrivilegeEscalation' to 'false'.",
+          "Severity": "MEDIUM",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-ksv-0001",
+          "References": [
+            "https://avd.aquasec.com/misconfig/avd-ksv-0001"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "Deployment/api",
+            "Provider": "Kubernetes",
+            "Service": "general",
+            "StartLine": 19,
+            "EndLine": 21
+          }
+        },
+        {
+          "Type": "Kubernetes Security Check",
+          "ID": "KSV014",
+          "AVDID": "AVD-KSV-0014",
+          "Title": "Root file system is not read-only",
+          "Description": "Root file system is not read-only",
+          "Message": "Container 'api' should set 'readOnlyRootFilesystem' to true",
+          "Namespace": "builtin.kubernetes.KSV014",
+          "Query": "data.builtin.kubernetes.KSV014.deny",
+          "Resolution": "",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-ksv-0014",
+          "References": [
+            "https://avd.aquasec.com/misconfig/avd-ksv-0014"
+          ],
+          "Status": "PASS",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "Deployment/api",
+            "Provider": "Kubernetes",
+            "Service": "general",
+            "StartLine": 19,
+            "EndLine": 21
+          }
+        }
+      ]
+    },
+    {
+      "Target": "infra/main.tf",
+      "Class": "config",
+      "Type": "terraform",
+      "Misconfigurations": [
+        {
+          "Type": "Terraform Security Check",
+          "ID": "AVD-AWS-0086",
+          "AVDID": "AVD-AWS-0086",
+          "Title": "S3 Access block should block public ACL",
+          "Description": "S3 Access block should block public ACL",
+          "Message": "No public access block so not blocking public acls",
+          "Namespace": "builtin.kubernetes.AVD-AWS-0086",
+          "Query": "data.builtin.kubernetes.AVD-AWS-0086.deny",
+          "Resolution": "Enable blocking any PUT calls with a public ACL specified",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-aws-0086",
+          "References": [
+            "https://avd.aquasec.com/misconfig/avd-aws-0086"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "aws_s3_bucket.assets",
+            "Provider": "Kubernetes",
+            "Service": "general",
+            "StartLine": 1,
+            "EndLine": 3
+          }
+        }
+      ]
+    },
+    {
+      "Target": "infra/main.tf",
+      "Class": "secret",
+      "Secrets": [
+        {
+          "RuleID": "aws-secret-access-key",
+          "Category": "AWS",
+          "Severity": "CRITICAL",
+          "Title": "AWS Secret Access Key",
+          "StartLine": 20,
+          "EndLine": 20,
+          "Match": "      echo ****************************************"
+        }
+      ]
+    },
+    {
+      "Target": "services/api/Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "Type": "Dockerfile Security Check",
+          "ID": "DS026",
+          "AVDID": "AVD-DS-0026",
+          "Title": "No HEALTHCHECK defined",
+          "Description": "No HEALTHCHECK defined",
+          "Message": "Add HEALTHCHECK instruction in your Dockerfile",
+          "Namespace": "builtin.kubernetes.DS026",
+          "Query": "data.builtin.kubernetes.DS026.deny",
+          "Resolution": "",
+          "Severity": "LOW",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/avd-ds-0026",
+          "References": [
+            "https://avd.aquasec.com/misconfig/avd-ds-0026"
+          ],
+          "Status": "FAIL",
+          "Layer": {},
+          "CauseMetadata": {
+            "Resource": "",
+            "Provider": "Kubernetes",
+            "Service": "general",
+            "StartLine": 9,
+            "EndLine": 9
+          }
+        }
+      ]
+    }
+  ]
+}
