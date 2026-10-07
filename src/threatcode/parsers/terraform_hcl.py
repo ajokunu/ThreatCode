@@ -1,15 +1,408 @@
-"""Terraform HCL parser for raw .tf, .tofu and .tf.json files and module directories."""
+"""Terraform HCL parser: a directory of .tf, .tofu and .tf.json files is one module.
+
+``parse_directory`` reads every Terraform file directly inside a directory as one module, so a
+reference from ``main.tf`` to a subnet in ``network.tf`` resolves.
+``parse_file`` and ``parse_text`` read one file with only that file's variables and locals.
+
+What the parser does with a module
+
+- Variables come from ``terraform.tfvars`` and ``*.auto.tfvars`` first, then the variable's
+  default, then (inside a followed module) the input the calling ``module`` block passes.
+  A variable with none of these is unknown, never absent, and never a guess.
+- Locals, simple interpolations and ternaries are evaluated when everything they use is known;
+  see ``_hcl_eval`` for what evaluates.
+  Every value that cannot be known is a :class:`~threatcode.values.Unknown`, including every
+  attribute of another resource, so a rule never reads ``${var.x}`` as text.
+- References become ``ParsedResource.references`` (attribute path to reference strings) and
+  ``depends_on`` becomes ``dependencies``.
+  Indexes and splats are dropped so a reference names every instance of a counted resource.
+- ``count``, ``for_each``, ``depends_on``, ``lifecycle`` and ``provider`` move to
+  ``ParsedResource.meta`` and are never rule-visible properties.
+  A literal ``count = 0`` resource creates nothing and is dropped; a ``count`` that is
+  not literal keeps one node flagged in ``meta``.
+- A ``dynamic`` block becomes the repeated block it generates.
+- ``module`` blocks with a local source (``./`` or ``../``) are followed with their inputs, and
+  their resources are addressed ``module.<name>.<type>.<name>``.
+  A remote module is not read: it is reported as ``hcl.module_call_skipped`` and the output is
+  marked ``metadata["incomplete"]``, so an unanalysed root never reads as clean.
+- ``data`` blocks become ``mode="data"`` nodes. A ``data.aws_iam_policy_document`` with literal
+  statements renders to policy JSON for the references to its ``.json``.
+- One unparseable file in a directory is a ``parse.failed`` error diagnostic and the other files
+  still parse. A single file that cannot be parsed raises ``ParseError``.
+"""
 
 from __future__ import annotations
 
-import json
+import logging
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from threatcode.constants import is_terraform_json_name, is_terraform_name
+from threatcode.diagnostics import Diagnostic, Level
 from threatcode.exceptions import ParseError
+from threatcode.parsers import _hcl_adapter
+from threatcode.parsers._hcl_adapter import HclBlock, HclDocument
+from threatcode.parsers._hcl_eval import (
+    NOT_BOUND,
+    Context,
+    IteratorContext,
+    evaluate_value,
+    string_references,
+)
 from threatcode.parsers._text import decode_input
 from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
+from threatcode.values import Unknown, is_unknown
+
+logger = logging.getLogger(__name__)
+
+# Followed modules: nesting depth and the total number of module instances read
+MAX_MODULE_DEPTH = 8
+MAX_MODULE_INSTANCES = 200
+# A dynamic block with a known collection is expanded up to this many blocks
+MAX_DYNAMIC_EXPANSION = 32
+# Keys of a known for_each recorded in resource meta
+MAX_RECORDED_KEYS = 50
+
+_META_ARGUMENTS = ("count", "for_each", "depends_on", "lifecycle", "provider")
+_MISSING = object()
+_POLICY_DOCUMENT = "aws_iam_policy_document"
+_POLICY_VERSION = "2012-10-17"
+_TFVARS_NAMES = ("terraform.tfvars", "terraform.tfvars.json")
+_AUTO_TFVARS_SUFFIXES = (".auto.tfvars", ".auto.tfvars.json")
+
+
+# --- per-run state -----------------------------------------------------------------------
+
+
+@dataclass
+class _Miss:
+    """A variable or local that had no value while an attribute was evaluated."""
+
+    scope: str
+    kind: str  # "var" or "local"
+    name: str
+    status: str  # "no_value" (declared, nothing supplied) or "undeclared"
+
+
+@dataclass
+class _Session:
+    """What one parse run shares: diagnostics, the module budget and evaluation counters."""
+
+    diagnostics: list[Diagnostic] = field(default_factory=list)
+    skipped_modules: list[dict[str, str]] = field(default_factory=list)
+    followed_modules: list[str] = field(default_factory=list)
+    instances: int = 0
+    documents: dict[str, list[tuple[str, HclDocument]]] = field(default_factory=dict)
+    # Counters reset around each attribute by begin() and read back by end()
+    misses: list[_Miss] = field(default_factory=list)
+    defaults: set[str] = field(default_factory=set)
+    lookups: int = 0
+
+    def begin(self) -> None:
+        self.misses = []
+        self.defaults = set()
+        self.lookups = 0
+
+    def diagnose(
+        self, level: Level, code: str, message: str, file: str = "", line: int | None = None
+    ) -> None:
+        self.diagnostics.append(Diagnostic(level, code, message, file, line))
+
+
+@dataclass
+class _Variable:
+    default: Any = None
+    has_default: bool = False
+
+
+class _Scope(Context):
+    """One module: its variables, locals, resources and the way values are looked up in it."""
+
+    def __init__(
+        self,
+        session: _Session,
+        path: str = "",
+        directory: Path | None = None,
+        parent: _Scope | None = None,
+        inputs: dict[str, Any] | None = None,
+        tfvars: dict[str, Any] | None = None,
+        directory_mode: bool = False,
+    ) -> None:
+        self.session = session
+        self.path = path
+        self.directory = directory
+        self.parent = parent
+        self.inputs: dict[str, Any] = inputs or {}
+        self.tfvars: dict[str, Any] = tfvars or {}
+        self.directory_mode = directory_mode
+        self.variables: dict[str, _Variable] = {}
+        self.locals_raw: dict[str, Any] = {}
+        self.outputs: dict[str, Any] = {}
+        self.blocks: list[tuple[str, HclBlock]] = []  # resources and data, with their file
+        self.calls: list[tuple[str, HclBlock]] = []
+        self.children: dict[str, _Scope] = {}
+        self.declared: set[tuple[str, str]] = set()
+        self.data_blocks: dict[tuple[str, str], HclBlock] = {}
+        self.module_instances_unknown = False
+        self._variable_cache: dict[str, Any] = {}
+        self._local_cache: dict[str, Any] = {}
+        self._active: set[tuple[str, str]] = set()
+
+    # -- building -------------------------------------------------------------------------
+
+    def add_document(self, label: str, document: HclDocument) -> None:
+        for block in document.blocks:
+            if block.kind in ("resource", "data"):
+                self.blocks.append((label, block))
+                if block.kind == "resource":
+                    self.declared.add((block.labels[0], block.labels[1]))
+                else:
+                    self.data_blocks[(block.labels[0], block.labels[1])] = block
+            elif block.kind == "module":
+                self.calls.append((label, block))
+            elif block.kind == "variable":
+                body = block.body
+                self.variables[block.labels[0]] = _Variable(body.get("default"), "default" in body)
+            elif block.kind == "locals":
+                self.locals_raw.update(block.body)
+            elif block.kind == "output":
+                if "value" in block.body:
+                    self.outputs[block.labels[0]] = block.body["value"]
+
+    # -- Context --------------------------------------------------------------------------
+
+    def reference(self, chain: str) -> str:
+        return f"{self.path}.{chain}" if self.path else chain
+
+    def declares(self, root: str, name: str) -> bool:
+        return (root, name) in self.declared
+
+    def declares_data(self, kind: str, name: str) -> bool:
+        return (kind, name) in self.data_blocks
+
+    def variable(self, name: str) -> Any:
+        self.session.lookups += 1
+        if name in self._variable_cache:
+            value, status = self._variable_cache[name]
+        else:
+            value, status = self._resolve_variable(name)
+            self._variable_cache[name] = (value, status)
+        if status == "default":
+            self.session.defaults.add(name)
+        elif status in ("no_value", "undeclared"):
+            self.session.misses.append(_Miss(self.path, "var", name, status))
+        return value
+
+    def _resolve_variable(self, name: str) -> tuple[Any, str]:
+        declared = self.variables.get(name)
+        if self.parent is None:
+            if name in self.tfvars:
+                return evaluate_value(self.tfvars[name]), "supplied"
+        elif name in self.inputs:
+            return evaluate_value(self.inputs[name], self.parent), "supplied"
+        if declared is not None and declared.has_default:
+            return evaluate_value(declared.default), "default"
+        status = "no_value" if declared is not None else "undeclared"
+        return Unknown(f"var.{name}"), status
+
+    def local(self, name: str) -> Any:
+        self.session.lookups += 1
+        if name not in self.locals_raw:
+            self.session.misses.append(_Miss(self.path, "local", name, "undeclared"))
+            return Unknown(f"local.{name}")
+        if name in self._local_cache:
+            return self._local_cache[name]
+        key = ("local", name)
+        if key in self._active:
+            return Unknown(f"local.{name}")
+        self._active.add(key)
+        try:
+            value = evaluate_value(self.locals_raw[name], self)
+        finally:
+            self._active.discard(key)
+        self._local_cache[name] = value
+        return value
+
+    def module_output(self, module: str, output: str) -> Any:
+        child = self.children.get(module)
+        if child is None or output not in child.outputs:
+            return Unknown(f"module.{module}.{output}")
+        key = ("output", f"{module}.{output}")
+        if key in self._active:
+            return Unknown(f"module.{module}.{output}")
+        self._active.add(key)
+        try:
+            return evaluate_value(child.outputs[output], child)
+        finally:
+            self._active.discard(key)
+
+    def data_value(self, kind: str, name: str, attribute: str) -> Any:
+        if kind != _POLICY_DOCUMENT or attribute != "json":
+            return NOT_BOUND
+        block = self.data_blocks.get((kind, name))
+        if block is None:
+            return NOT_BOUND
+        key = ("data", f"{kind}.{name}")
+        if key in self._active:
+            return NOT_BOUND
+        self._active.add(key)
+        try:
+            rendered = _render_policy_document(block.body, self)
+        finally:
+            self._active.discard(key)
+        return NOT_BOUND if rendered is None else rendered
+
+    def variable_references(self, name: str) -> list[str]:
+        if self.parent is None or name not in self.inputs:
+            return []
+        return self._guarded(("varref", name), self.inputs[name], self.parent)
+
+    def local_references(self, name: str) -> list[str]:
+        if name not in self.locals_raw:
+            return []
+        return self._guarded(("localref", name), self.locals_raw[name], self)
+
+    def module_references(self, module: str, output: str) -> list[str]:
+        child = self.children.get(module)
+        if child is None or output not in child.outputs:
+            return []
+        return self._guarded(("outref", f"{module}.{output}"), child.outputs[output], child)
+
+    def _guarded(self, key: tuple[str, str], raw: Any, scope: Context) -> list[str]:
+        if key in self._active:
+            return []
+        self._active.add(key)
+        try:
+            return raw_references(raw, scope)
+        finally:
+            self._active.discard(key)
+
+
+def raw_references(raw: Any, scope: Context, depth: int = 0) -> list[str]:
+    """Every reference in a raw value, in order and without repeats."""
+    found: list[str] = []
+    if depth > 64:
+        return found
+    if isinstance(raw, str):
+        found.extend(string_references(raw, scope))
+    elif isinstance(raw, dict):
+        for value in raw.values():
+            found.extend(raw_references(value, scope, depth + 1))
+    elif isinstance(raw, list):
+        for item in raw:
+            found.extend(raw_references(item, scope, depth + 1))
+    return list(dict.fromkeys(found))
+
+
+def _collect_references(
+    raw: Any, path: str, scope: Context, out: dict[str, list[str]], depth: int = 0
+) -> None:
+    """Record references by attribute path: ``.`` for nesting, ``[]`` for a list of blocks."""
+    if depth > 64:
+        return
+    if isinstance(raw, str):
+        refs = string_references(raw, scope)
+        if refs:
+            known = out.setdefault(path, [])
+            known.extend(r for r in refs if r not in known)
+    elif isinstance(raw, dict):
+        for key, value in raw.items():
+            _collect_references(value, f"{path}.{key}" if path else str(key), scope, out, depth + 1)
+    elif isinstance(raw, list):
+        child = f"{path}[]" if any(isinstance(item, dict) for item in raw) else path
+        for item in raw:
+            _collect_references(item, child, scope, out, depth + 1)
+
+
+# --- policy documents --------------------------------------------------------------------
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
+
+
+def _one_or_many(values: list[Any]) -> Any:
+    return values[0] if len(values) == 1 else values
+
+
+def _blocks(body: dict[str, Any], name: str) -> list[dict[str, Any]]:
+    return [b for b in _as_list(body.get(name)) if isinstance(b, dict)]
+
+
+def _principals(blocks: list[dict[str, Any]]) -> Any:
+    grouped: dict[str, list[Any]] = {}
+    for block in blocks:
+        kind = block.get("type")
+        if not isinstance(kind, str) or is_unknown(kind):
+            return None
+        grouped.setdefault(kind, []).extend(_as_list(block.get("identifiers")))
+    if grouped == {"*": ["*"]}:
+        return "*"
+    return {kind: _one_or_many(ids) for kind, ids in grouped.items()}
+
+
+def _render_policy_document(body: dict[str, Any], scope: Context) -> Any:
+    """The JSON a ``data.aws_iam_policy_document`` produces, or None when it cannot be known.
+
+    Only literal statements render: a ``dynamic`` statement, ``source_policy_documents`` and
+    ``override_policy_documents`` make the document unknowable. An attribute inside a statement
+    that is not known (a bucket ARN) is written as ``(known after apply)``.
+    """
+    if any(
+        key in body for key in ("dynamic", "source_policy_documents", "override_policy_documents")
+    ):
+        return None
+    evaluated = evaluate_value(body, scope)
+    if not isinstance(evaluated, dict):
+        return None
+    statements: list[dict[str, Any]] = []
+    for statement in _blocks(evaluated, "statement"):
+        item: dict[str, Any] = {}
+        sid = statement.get("sid")
+        if isinstance(sid, str) and sid:
+            item["Sid"] = sid
+        item["Effect"] = statement.get("effect") or "Allow"
+        for key, rendered in (
+            ("actions", "Action"),
+            ("not_actions", "NotAction"),
+            ("resources", "Resource"),
+            ("not_resources", "NotResource"),
+        ):
+            values = _as_list(statement.get(key))
+            if values:
+                item[rendered] = _one_or_many(values)
+        for key, rendered in (("principals", "Principal"), ("not_principals", "NotPrincipal")):
+            blocks = _blocks(statement, key)
+            if blocks:
+                principal = _principals(blocks)
+                if principal is None:
+                    return None
+                item[rendered] = principal
+        conditions: dict[str, dict[str, Any]] = {}
+        for condition in _blocks(statement, "condition"):
+            test, variable = condition.get("test"), condition.get("variable")
+            if not isinstance(test, str) or not isinstance(variable, str):
+                return None
+            conditions.setdefault(test, {})[variable] = _one_or_many(
+                _as_list(condition.get("values"))
+            )
+        if conditions:
+            item["Condition"] = conditions
+        statements.append(item)
+    document: dict[str, Any] = {"Version": evaluated.get("version") or _POLICY_VERSION}
+    if isinstance(evaluated.get("policy_id"), str) and evaluated["policy_id"]:
+        document["Id"] = evaluated["policy_id"]
+    document["Statement"] = statements
+    from threatcode.parsers._hcl_values import canonical_json
+
+    return canonical_json(document)
+
+
+# --- the parser --------------------------------------------------------------------------
 
 
 class TerraformHCLParser(BaseParser):
@@ -17,18 +410,20 @@ class TerraformHCLParser(BaseParser):
 
     A single file is one unit and a directory is one module: every ``.tf``, ``.tofu`` and
     ``.tf.json`` file directly inside it is read once and the resources are concatenated.
-    References between resources and expression evaluation are not resolved here.
+    See the module docstring for how variables, references and modules are handled.
     """
 
     def parse(self, data: Any, source_path: str = "") -> ParsedOutput:
+        """Parse a dictionary read from Terraform's JSON syntax."""
         if not isinstance(data, dict):
             raise ParseError("HCL parse result must be a dict")
-        return self._extract_resources(data, source_path)
+        document = _hcl_adapter.load_json_syntax(data)
+        return self._parse_single(document, source_path)
 
     def parse_text(self, text: str, source_path: str = "") -> ParsedOutput:
         """Parse text that was already decoded, so the file is read from disk once."""
-        data = self._load_text(text, Path(source_path).name or "<input>")
-        return self._extract_resources(data, source_path)
+        document = self._load_text(text, Path(source_path).name or "<input>")
+        return self._parse_single(document, source_path)
 
     def parse_file(self, path: Path) -> ParsedOutput:
         return self.parse_text(decode_input(path), str(path))
@@ -37,113 +432,547 @@ class TerraformHCLParser(BaseParser):
         """Parse the Terraform files directly inside ``path`` as one module.
 
         Files are read in name order. Symlinks are skipped and empty files are ignored,
-        because an empty ``outputs.tf`` is normal in a module.
+        because an empty ``outputs.tf`` is normal in a module. ``terraform.tfvars`` and
+        ``*.auto.tfvars`` supply variable values. A file that cannot be parsed is reported
+        as a ``parse.failed`` error and the others are still read; when none can be parsed
+        the error is raised.
         """
-        try:
-            files = sorted(
-                (
-                    entry
-                    for entry in path.iterdir()
-                    if is_terraform_name(entry.name) and entry.is_file() and not entry.is_symlink()
-                ),
-                key=lambda entry: entry.name,
-            )
-        except OSError as exc:
-            raise ParseError(f"Cannot read directory {path.name}: {exc.strerror or exc}") from exc
+        session = _Session()
+        files = _terraform_files(path)
         if not files:
             raise ParseError(f"No Terraform files (.tf, .tofu, .tf.json) in {path.name}")
-
-        resources: list[ParsedResource] = []
-        parsed_files: list[str] = []
-        for file in files:
-            text = decode_input(file, allow_empty=True)
-            if not text.strip():
-                continue
-            data = self._load_text(text, file.name)
-            resources.extend(self._extract_resources(data, str(file)).resources)
-            parsed_files.append(file.name)
-
-        return ParsedOutput(
-            resources=resources,
-            source_path=str(path),
-            format_type="terraform_hcl",
-            metadata={"files": parsed_files},
+        documents, failures = _read_documents(files, session)
+        if failures and not documents:
+            raise ParseError(failures[0])
+        tfvars, tfvars_files = _read_tfvars(path, session)
+        scope = _Scope(session, "", path, None, None, tfvars, directory_mode=True)
+        return self._finish(
+            scope,
+            documents,
+            session,
+            str(path),
+            {"files": [Path(label).name for label, _ in documents]},
+            tfvars_files,
         )
 
-    def _load_text(self, text: str, name: str) -> dict[str, Any]:
-        if is_terraform_json_name(name):
-            return self._load_json_syntax(text, name)
-        try:
-            from hcl2.api import loads as hcl2_loads
-        except ImportError as e:
-            raise ParseError("python-hcl2 required: pip install python-hcl2") from e
-
-        try:
-            data = hcl2_loads(text)
-        except Exception as e:
-            raise ParseError(_describe_hcl_error(e, name)) from e
-        return dict(data)
+    # -- internals ------------------------------------------------------------------------
 
     @staticmethod
-    def _load_json_syntax(text: str, name: str) -> dict[str, Any]:
-        """Load Terraform's JSON syntax (CDK for Terraform writes ``cdk.tf.json``)."""
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as e:
-            raise ParseError(f"Invalid JSON in {name}, line {e.lineno}: {e.msg}") from e
-        if not isinstance(data, dict):
-            raise ParseError(f"{name}: a Terraform JSON file must hold an object")
-        return data
+    def _load_text(text: str, name: str) -> HclDocument:
+        if is_terraform_json_name(name):
+            return _hcl_adapter.load_json_syntax(_load_json_syntax(text, name), text)
+        return _hcl_adapter.load(text, name)
 
-    def _extract_resources(self, data: dict[str, Any], source_path: str) -> ParsedOutput:
+    def _parse_single(self, document: HclDocument, source_path: str) -> ParsedOutput:
+        session = _Session()
+        file_path = Path(source_path) if source_path else None
+        directory = file_path.parent if file_path is not None and file_path.is_file() else None
+        scope = _Scope(session, "", directory, None, None, None, directory_mode=False)
+        label = source_path
+        return self._finish(scope, [(label, document)], session, source_path, {}, [])
+
+    def _finish(
+        self,
+        scope: _Scope,
+        documents: list[tuple[str, HclDocument]],
+        session: _Session,
+        source_path: str,
+        metadata: dict[str, Any],
+        tfvars_files: list[str],
+    ) -> ParsedOutput:
+        for label, document in documents:
+            scope.add_document(label, document)
+        _attach_modules(
+            scope, session, [os.path.realpath(scope.directory)] if scope.directory else []
+        )
         resources: list[ParsedResource] = []
-
-        blocks = data.get("resource", [])
-        if isinstance(blocks, dict):
-            # JSON syntax writes one object, {"aws_s3_bucket": {"name": {...}}}; HCL parses
-            # to a list of such objects.
-            blocks = [blocks]
-        for block in blocks:
-            if not isinstance(block, dict):
-                continue
-            for rtype, instances in block.items():
-                if not isinstance(instances, dict):
-                    continue
-                for name, config in instances.items():
-                    if isinstance(config, list) and config and isinstance(config[0], dict):
-                        config = config[0]  # JSON syntax allows a one-element array
-                    props = config if isinstance(config, dict) else {}
-                    resources.append(
-                        ParsedResource(
-                            resource_type=rtype,
-                            address=f"{rtype}.{name}",
-                            name=name,
-                            provider=_infer_provider(rtype),
-                            properties=props,
-                            source_location=source_path,
-                        )
-                    )
-
+        _emit(scope, resources, session)
+        if tfvars_files:
+            metadata["tfvars"] = tfvars_files
+        if session.followed_modules:
+            metadata["modules"] = list(session.followed_modules)
+        if session.skipped_modules:
+            metadata["incomplete"] = True
+            metadata["skipped_modules"] = list(session.skipped_modules)
         return ParsedOutput(
             resources=resources,
             source_path=source_path,
             format_type="terraform_hcl",
+            metadata=metadata,
+            diagnostics=session.diagnostics,
         )
 
 
-def _describe_hcl_error(exc: Exception, name: str) -> str:
-    """One-line message with the file and line, without the parser's token dump."""
-    line = getattr(exc, "line", None)
-    column = getattr(exc, "column", None)
-    if isinstance(line, int) and line > 0:
-        where = f"line {line}"
-        if isinstance(column, int) and column > 0:
-            where += f", column {column}"
-        return f"Invalid HCL in {name}, {where}: syntax error"
-    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
-    if "Token(" in detail or "Expected one of" in detail:
-        detail = "syntax error"  # the parser's token dump helps nobody
-    return f"Invalid HCL in {name}: {detail}"
+def _load_json_syntax(text: str, name: str) -> dict[str, Any]:
+    """Load Terraform's JSON syntax (CDK for Terraform writes ``cdk.tf.json``)."""
+    import json
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ParseError(f"Invalid JSON in {name}, line {e.lineno}: {e.msg}") from e
+    if not isinstance(data, dict):
+        raise ParseError(f"{name}: a Terraform JSON file must hold an object")
+    return data
+
+
+def _terraform_files(path: Path) -> list[Path]:
+    try:
+        return sorted(
+            (
+                entry
+                for entry in path.iterdir()
+                if is_terraform_name(entry.name) and entry.is_file() and not entry.is_symlink()
+            ),
+            key=lambda entry: entry.name,
+        )
+    except OSError as exc:
+        raise ParseError(f"Cannot read directory {path.name}: {exc.strerror or exc}") from exc
+
+
+def _read_documents(
+    files: list[Path], session: _Session
+) -> tuple[list[tuple[str, HclDocument]], list[str]]:
+    """Parse each file; a failure is a diagnostic and the other files still load."""
+    documents: list[tuple[str, HclDocument]] = []
+    failures: list[str] = []
+    for file in files:
+        label = str(file)
+        try:
+            text = decode_input(file, allow_empty=True)
+            if not text.strip():
+                continue
+            documents.append((label, TerraformHCLParser._load_text(text, file.name)))
+        except ParseError as exc:
+            failures.append(str(exc))
+            session.diagnose("error", "parse.failed", str(exc), label)
+    return documents, failures
+
+
+def _read_tfvars(path: Path, session: _Session) -> tuple[dict[str, Any], list[str]]:
+    """Variable values from terraform.tfvars and *.auto.tfvars, later files winning."""
+    try:
+        entries = [e for e in path.iterdir() if e.is_file() and not e.is_symlink()]
+    except OSError:
+        return {}, []
+    chosen = [e for name in _TFVARS_NAMES for e in entries if e.name == name]
+    chosen += sorted(
+        (e for e in entries if e.name.endswith(_AUTO_TFVARS_SUFFIXES)), key=lambda e: e.name
+    )
+    values: dict[str, Any] = {}
+    used: list[str] = []
+    for file in chosen:
+        try:
+            text = decode_input(file, allow_empty=True)
+            if not text.strip():
+                continue
+            if file.name.endswith(".json"):
+                values.update(_load_json_syntax(text, file.name))
+            else:
+                values.update(_hcl_adapter.load_attributes(text, file.name))
+            used.append(file.name)
+        except ParseError as exc:
+            session.diagnose("warning", "parse.failed", str(exc), str(file))
+    return values, used
+
+
+# --- modules -----------------------------------------------------------------------------
+
+
+def _is_local_source(source: Any) -> bool:
+    return isinstance(source, str) and (source.startswith(("./", "../")) or source in (".", ".."))
+
+
+def _child_directory(base: Path, source: str) -> Path | None:
+    """The directory a local ``source`` names, or None for a symlink or a missing path."""
+    current = base
+    for part in Path(source).parts:
+        if part == "..":
+            current = current.parent
+        elif part != ".":
+            current = current / part
+            if current.is_symlink():
+                return None
+    target = Path(os.path.normpath(base / source))
+    return target if target.is_dir() else None
+
+
+def _module_source(raw: Any) -> Any:
+    """The text of a module's ``source``; ``${path.module}`` is the module's own directory."""
+    if isinstance(raw, str):
+        raw = raw.replace("${path.module}", ".")
+    return evaluate_value(raw)
+
+
+def _attach_modules(scope: _Scope, session: _Session, stack: list[str]) -> None:
+    """Follow the local module calls of ``scope`` and report the ones that cannot be read."""
+    for label, block in scope.calls:
+        name = block.labels[0]
+        body = block.body
+        address = f"{scope.path}.module.{name}" if scope.path else f"module.{name}"
+        source = _module_source(body.get("source"))
+        shown = source if isinstance(source, str) and not is_unknown(source) else "(unknown)"
+        reason = _module_blocker(scope, source, stack)
+        child_dir = None
+        if reason is None and scope.directory is not None:
+            child_dir = _child_directory(scope.directory, source)
+            if child_dir is None:
+                reason = "the directory is missing or is reached through a symlink"
+            elif os.path.realpath(child_dir) in stack:
+                reason = "the module calls itself"
+        if reason is not None or child_dir is None:
+            _skip_module(session, address, shown, reason or "unreadable", label, block.start_line)
+            continue
+        instances = _instances(scope, body)
+        if instances.drop:
+            session.diagnose(
+                "info",
+                "hcl.count_zero",
+                f"{address} has {instances.reason}; it creates nothing and is not analysed",
+                label,
+                block.start_line,
+            )
+            continue
+        real = os.path.realpath(child_dir)
+        session.instances += 1
+        inputs = {
+            key: value
+            for key, value in body.items()
+            if key not in ("source", "version", "providers", "count", "for_each", "depends_on")
+        }
+        child = _Scope(session, address, child_dir, scope, inputs, None, scope.directory_mode)
+        if real not in session.documents:
+            session.documents[real], _ = _read_documents(_terraform_files(child_dir), session)
+        for file_label, document in session.documents[real]:
+            child.add_document(file_label, document)
+        child.module_instances_unknown = "count" in body or "for_each" in body
+        scope.children[name] = child
+        session.followed_modules.append(address)
+        _attach_modules(child, session, [*stack, real])
+
+
+def _module_blocker(scope: _Scope, source: Any, stack: list[str]) -> str | None:
+    if not isinstance(source, str) or is_unknown(source):
+        return "its source is not a known text"
+    if not _is_local_source(source):
+        return "it is not a local module, so it is not read"
+    if scope.directory is None:
+        return "the input has no directory to resolve a local source from"
+    if len(stack) >= MAX_MODULE_DEPTH:
+        return f"modules are nested more than {MAX_MODULE_DEPTH} levels deep"
+    if scope.session.instances >= MAX_MODULE_INSTANCES:
+        return f"more than {MAX_MODULE_INSTANCES} module calls were followed"
+    return None
+
+
+def _skip_module(
+    session: _Session, address: str, source: str, reason: str, file: str, line: int | None
+) -> None:
+    session.diagnose(
+        "warning",
+        "hcl.module_call_skipped",
+        f"{address} (source {source}) is not analysed: {reason}. "
+        "Scan `terraform show -json` output for full coverage",
+        file,
+        line,
+    )
+    session.skipped_modules.append({"module": address, "source": source, "reason": reason})
+
+
+# --- instances: count and for_each ---------------------------------------------------------
+
+
+@dataclass
+class _Instances:
+    drop: bool = False
+    reason: str = ""
+    note: str = ""
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+def _as_int(value: Any) -> int | None:
+    if isinstance(value, bool) or is_unknown(value):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value)
+    return None
+
+
+def _keys_of(value: Any) -> list[str] | None:
+    """The instance keys a ``for_each`` value produces, or None when they are not known."""
+    if isinstance(value, dict):
+        return [str(key) for key in value]
+    if isinstance(value, (list, tuple)):
+        if any(is_unknown(item) or isinstance(item, (dict, list)) for item in value):
+            return None
+        return [str(item) for item in value]
+    return None
+
+
+def _instances(scope: _Scope, body: dict[str, Any]) -> _Instances:
+    """What ``count`` and ``for_each`` say about how many instances a block creates.
+
+    A count of zero that comes from literals, locals or ``tfvars`` creates nothing and drops
+    the block. A zero that only a variable default produces keeps the block, because a value
+    supplied outside the repository may enable it. A count that is not known keeps one node,
+    flagged ``instances_unknown`` in ``meta``.
+    """
+    result = _Instances()
+    session = scope.session
+    for key in ("count", "for_each"):
+        if key not in body:
+            continue
+        session.begin()
+        value = evaluate_value(body[key], scope)
+        by_default = bool(session.defaults)
+        if key == "count":
+            number = _as_int(value)
+            empty = number == 0
+            known: Any = number
+        else:
+            keys = _keys_of(value)
+            empty = keys is not None and not keys
+            known = None if keys is None else keys[:MAX_RECORDED_KEYS]
+        if known is None:
+            result.meta["instances_unknown"] = True
+        elif empty and not by_default:
+            result.drop = True
+            result.reason = "count 0" if key == "count" else "an empty for_each"
+        else:
+            result.meta[key] = known
+            if by_default:
+                result.meta[f"{key}_from_default"] = True
+                if empty:
+                    shown = "0" if key == "count" else "empty"
+                    result.note = (
+                        f"{key} is {shown} with the variable default, so the block is kept: "
+                        "a value supplied outside the repository may enable it"
+                    )
+        break
+    return result
+
+
+# --- resources ---------------------------------------------------------------------------
+
+
+def _emit(scope: _Scope, out: list[ParsedResource], session: _Session) -> None:
+    for label, block in scope.blocks:
+        resource = _make_resource(scope, label, block, session)
+        if resource is not None:
+            out.append(resource)
+    for child in scope.children.values():
+        _emit(child, out, session)
+
+
+def _plain(value: Any) -> Any:
+    """``${aws_s3_bucket.data}`` as ``aws_s3_bucket.data``; other values unchanged."""
+    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+        inner = value[2:-1].strip()
+        if "${" not in inner:
+            return inner
+    if isinstance(value, list):
+        return [_plain(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    return value
+
+
+def _first_dict(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, list) and value:
+        value = value[0]
+    return value if isinstance(value, dict) else None
+
+
+def _iteration(collection: Any) -> list[tuple[Any, Any]] | None:
+    """The (key, value) pairs a ``dynamic`` block iterates, or None when not known."""
+    if isinstance(collection, dict):
+        return list(collection.items())
+    if isinstance(collection, (list, tuple)):
+        return list(enumerate(collection))
+    return None
+
+
+def _iterator_name(raw: Any, block_name: str) -> str:
+    name = _plain(raw)
+    return name if isinstance(name, str) and name and not is_unknown(name) else block_name
+
+
+@dataclass
+class _Notes:
+    """The unresolved variables seen per attribute, and the dynamic blocks expanded."""
+
+    unresolved: dict[str, list[_Miss]] = field(default_factory=dict)
+    dynamic: list[str] = field(default_factory=list)
+
+
+def _evaluate_body(
+    body: dict[str, Any],
+    ctx: Context,
+    scope: _Scope,
+    path: str,
+    references: dict[str, list[str]],
+    notes: _Notes,
+    top_level: bool,
+) -> dict[str, Any]:
+    """Evaluate a block body: attributes and nested blocks, with ``dynamic`` blocks expanded."""
+    session = scope.session
+    result: dict[str, Any] = {}
+    for key, raw in body.items():
+        if key == "dynamic":
+            continue
+        session.begin()
+        result[key] = evaluate_value(raw, ctx)
+        if top_level and session.misses:
+            notes.unresolved[key] = list(session.misses)
+        _collect_references(raw, f"{path}.{key}" if path else key, scope, references)
+    for entry in _as_list(body.get("dynamic")):
+        if not isinstance(entry, dict):
+            continue
+        for block_name, spec_raw in entry.items():
+            spec = _first_dict(spec_raw)
+            content = _first_dict(spec.get("content")) if spec is not None else None
+            if spec is None or content is None:
+                continue
+            _expand_dynamic(block_name, spec, content, ctx, scope, path, references, notes, result)
+    return result
+
+
+def _expand_dynamic(
+    name: str,
+    spec: dict[str, Any],
+    content: dict[str, Any],
+    ctx: Context,
+    scope: _Scope,
+    path: str,
+    references: dict[str, list[str]],
+    notes: _Notes,
+    result: dict[str, Any],
+) -> None:
+    session = scope.session
+    iterator = _iterator_name(spec.get("iterator"), name)
+    session.begin()
+    collection = evaluate_value(spec.get("for_each"), ctx)
+    by_default = bool(session.defaults)
+    items = _iteration(collection)
+    block_path = f"{path}.{name}[]" if path else f"{name}[]"
+    expanded: list[dict[str, Any]]
+    if items is not None and items and len(items) <= MAX_DYNAMIC_EXPANSION:
+        expanded = [
+            _evaluate_body(
+                content,
+                IteratorContext(ctx, iterator, key, value),
+                scope,
+                block_path,
+                references,
+                notes,
+                False,
+            )
+            for key, value in items
+        ]
+        notes.dynamic.append(f"dynamic block '{name}' became {len(expanded)} block(s)")
+    elif items is not None and not items and not by_default:
+        expanded = []
+        notes.dynamic.append(f"dynamic block '{name}' has an empty for_each and creates no block")
+    else:
+        unknown_ctx = IteratorContext(
+            ctx, iterator, Unknown(f"{iterator}.key"), Unknown(f"{iterator}.value")
+        )
+        expanded = [
+            _evaluate_body(content, unknown_ctx, scope, block_path, references, notes, False)
+        ]
+        notes.dynamic.append(
+            f"dynamic block '{name}' became one block; its for_each is not known here"
+        )
+    _collect_references(spec.get("for_each"), block_path, scope, references)
+    if expanded:
+        existing = result.get(name)
+        blocks = list(existing) if isinstance(existing, list) else ([existing] if existing else [])
+        result[name] = [*blocks, *expanded]
+
+
+def _make_resource(
+    scope: _Scope, label: str, block: HclBlock, session: _Session
+) -> ParsedResource | None:
+    rtype, name = block.labels
+    is_data = block.kind == "data"
+    prefix = f"{scope.path}." if scope.path else ""
+    address = f"{prefix}{'data.' if is_data else ''}{rtype}.{name}"
+    body = dict(block.body)
+
+    instances = _instances(scope, body)
+    if instances.drop:
+        session.diagnose(
+            "info",
+            "hcl.count_zero",
+            f"{address} has {instances.reason}; it creates no instances and is not modelled",
+            label,
+            block.start_line,
+        )
+        return None
+    if instances.note:
+        session.diagnose(
+            "info", "hcl.count_zero", f"{address}: {instances.note}", label, block.start_line
+        )
+    meta: dict[str, Any] = dict(instances.meta)
+    if scope.module_instances_unknown:
+        meta["module_instances"] = "unknown"
+
+    arguments = {key: body.pop(key) for key in _META_ARGUMENTS if key in body}
+    dependencies: list[str] = []
+    if "depends_on" in arguments:
+        dependencies = raw_references(arguments["depends_on"], scope)
+        meta["depends_on"] = [_plain(item) for item in _as_list(arguments["depends_on"])]
+    if "lifecycle" in arguments:
+        lifecycle = _first_dict(arguments["lifecycle"])
+        if lifecycle is not None:
+            meta["lifecycle"] = _plain(lifecycle)
+    if "provider" in arguments:
+        meta["provider"] = _plain(arguments["provider"])
+
+    references: dict[str, list[str]] = {}
+    notes = _Notes()
+    properties = _evaluate_body(body, scope, scope, "", references, notes, True)
+
+    for attribute, misses in notes.unresolved.items():
+        names = list(
+            dict.fromkeys(
+                (f"{m.scope}: " if m.scope != scope.path else "") + f"{m.kind}.{m.name}"
+                for m in misses
+            )
+        )
+        undeclared = any(m.status == "undeclared" for m in misses)
+        session.diagnose(
+            "warning" if undeclared and scope.directory_mode else "info",
+            "hcl.unresolved_reference",
+            f"{address}: '{attribute}' uses {', '.join(names)}, which has no value in this "
+            "input, so it is treated as unknown",
+            label,
+            block.start_line,
+        )
+    for message in notes.dynamic:
+        session.diagnose(
+            "info", "hcl.dynamic_block", f"{address}: {message}", label, block.start_line
+        )
+
+    return ParsedResource(
+        resource_type=rtype,
+        address=address,
+        name=name,
+        provider=_infer_provider(rtype),
+        properties=properties,
+        dependencies=dependencies,
+        module=scope.path,
+        source_location=label,
+        references=references,
+        start_line=block.start_line,
+        end_line=block.end_line,
+        mode="data" if is_data else "managed",
+        meta=meta,
+    )
 
 
 def _infer_provider(resource_type: str) -> str:
