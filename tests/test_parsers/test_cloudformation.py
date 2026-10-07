@@ -851,3 +851,23 @@ class TestHostileTemplates:
         }
         output = CloudFormationParser().parse({"Resources": resources})
         assert len(output.resources) == 2_000
+
+
+class TestLanguageExtensions:
+    def test_a_for_each_loop_is_reported_not_silently_dropped(self) -> None:
+        text = doc(
+            "Transform: AWS::LanguageExtensions",
+            "Resources:",
+            "  Fn::ForEach::Queues:",
+            "    - Name",
+            "    - [A, B]",
+            "    - 'Queue${Name}':",
+            "        Type: AWS::SQS::Queue",
+            "  Bucket:",
+            "    Type: AWS::S3::Bucket",
+        )
+        output = parse_text(text)
+        assert [r.name for r in output.resources] == ["Bucket"]
+        skipped = [d for d in output.diagnostics if d.code == "cfn.skipped_resource"]
+        assert len(skipped) == 1
+        assert "Fn::ForEach" in skipped[0].message and "not expanded" in skipped[0].message

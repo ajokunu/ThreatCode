@@ -253,7 +253,7 @@ class TestTypesZonesAndLines:
             assert node.start_line is not None and node.end_line is not None
             assert lines[node.start_line - 1].strip() == f"{name}:"
 
-    def test_the_implicit_api_is_an_api_gateway_type_and_policy_templates_are_reported(self) -> None:
+    def test_the_implicit_api_is_modelled_and_policy_templates_are_reported(self) -> None:
         result = scan_files([CFN_FIXTURES / "sam_function.yaml"])
         assert result.graph.nodes["ServerlessRestApi"].resource_type == "aws_api_gateway_rest_api"
         codes = {d.code for d in result.graph.diagnostics}

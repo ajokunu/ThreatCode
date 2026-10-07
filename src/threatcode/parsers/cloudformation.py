@@ -268,7 +268,7 @@ class _Run:
     def add_resource(self, logical_id: str, definition: Any) -> None:
         origin = self.expansion.origins.get(logical_id)
         span_id = origin.logical_id if origin is not None else logical_id
-        problem = _validate(definition)
+        problem = _for_each_problem(logical_id) or _validate(definition)
         if problem is not None:
             self.skipped += 1
             self.diagnose(
@@ -479,6 +479,16 @@ def _attachment_rules() -> Mapping[str, Callable[[str], bool]]:
     except (ImportError, AttributeError):  # pragma: no cover - a graph without the table
         return {}
     return table
+
+
+def _for_each_problem(logical_id: str) -> str | None:
+    """A Fn::ForEach loop of AWS::LanguageExtensions sits among the resources as one entry."""
+    if logical_id.startswith("Fn::ForEach::"):
+        return (
+            "it is an Fn::ForEach loop (AWS::LanguageExtensions), which is not expanded, "
+            "so the resources it creates are not analysed"
+        )
+    return None
 
 
 def _validate(definition: Any) -> str | None:
