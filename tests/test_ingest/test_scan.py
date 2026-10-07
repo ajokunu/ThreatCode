@@ -59,8 +59,11 @@ class TestPipeline:
         assert source["duplicates"] == 0
 
     def test_a_scanner_finding_gates_the_exit_code_like_any_other(self) -> None:
-        without = scan(WEBAPP, fail_on="critical")
-        with_report = scan(WEBAPP, ingest=[TRIVY], fail_on="critical")
+        # The example's own critical attack path already gates at critical, so the
+        # gate is proved on a tree whose native findings stay below the threshold.
+        osv = INGEST_FIXTURES / "osv-lockfile.json"
+        without = scan(REPO, fail_on="critical")
+        with_report = scan(REPO, ingest=[osv], fail_on="critical")
         assert without.exit_code == 0
         assert with_report.exit_code == 1
 
@@ -71,7 +74,8 @@ class TestPipeline:
         result = scan(webapp, ingest=[TRIVY], fail_on="critical")
         assert scanner_threats(result) == []
         assert result.coverage.suppressed == 2
-        assert result.exit_code == 0
+        # What still gates is the plan's own critical attack path, not the suppressed CVE.
+        assert result.exit_code == scan(webapp, fail_on="critical").exit_code
 
     def test_a_ghsa_alias_suppresses_a_finding_whichever_tool_reported_it(
         self, tmp_path: Path
@@ -168,9 +172,8 @@ class TestCommandLine:
         assert "does-not-exist.json" in run.stderr
 
     def test_the_gate_uses_the_ingested_severity(self) -> None:
-        run = run_cli(
-            ["scan", str(WEBAPP), "--ingest", str(TRIVY), "--fail-on", "critical", "-f", "json"]
-        )
+        osv = str(INGEST_FIXTURES / "osv-lockfile.json")
+        run = run_cli(["scan", str(REPO), "--ingest", osv, "--fail-on", "critical", "-f", "json"])
         assert run.exit_code == 1
-        run = run_cli(["scan", str(WEBAPP), "--fail-on", "critical", "-f", "json"])
+        run = run_cli(["scan", str(REPO), "--fail-on", "critical", "-f", "json"])
         assert run.exit_code == 0
