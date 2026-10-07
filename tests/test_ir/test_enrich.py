@@ -170,7 +170,9 @@ resource "aws_s3_bucket_versioning" "v" {
     def test_the_companion_node_stays_in_the_graph_and_is_not_rewritten(self) -> None:
         graph = _hcl(SECURE_BUCKET)
         companion = graph.nodes["aws_s3_bucket_versioning.v"]
-        assert companion.properties["bucket"] == "${aws_s3_bucket.b.id}"
+        bucket = companion.properties["bucket"]
+        assert is_unknown(bucket)
+        assert bucket.reference == "aws_s3_bucket.b.id"
         assert "versioning_enabled" not in companion.properties
         assert "versioning_enabled" not in graph.nodes["aws_s3_bucket.b"].properties
 
@@ -815,6 +817,25 @@ resource "aws_vpc_security_group_egress_rule" "ve" {
         unspecified = [r for r in derived["egress"] if r["from_port"] is None]
         assert unspecified[0]["protocol"] == "-1"
         assert len(unspecified[0]["source_security_groups"]) == 1
+
+    def test_a_source_that_is_not_a_scanned_group_stays_unknown(self) -> None:
+        graph = _hcl(
+            """
+resource "aws_security_group" "sg" {
+  name = "sg"
+}
+resource "aws_security_group_rule" "r" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.sg.id
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = var.upstream_group
+}
+"""
+        )
+        rule = _derived(graph, "aws_security_group.sg")["ingress"][0]
+        assert is_unknown(rule["source_security_groups"])
 
     def test_a_group_with_no_rules_has_empty_lists(self) -> None:
         derived = _derived(_hcl(self.SG), "aws_security_group.other")

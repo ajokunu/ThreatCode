@@ -594,6 +594,20 @@ def _references_node(companion: InfraNode, raw: Any, target: InfraNode, ctx: Enr
     return target.id in found.ids
 
 
+def _source_groups(companion: InfraNode, raw: Any, ctx: EnrichContext) -> Any:
+    """The source groups of a standalone rule that does not point back at its own group.
+
+    A reference to another security group of the scan is a known fact (some group is the
+    source) whose value the scan cannot compute, so it stays one list entry holding the
+    Unknown instead of turning the whole list Unknown.
+    """
+    if is_unknown(raw) and raw.reference:
+        found = ctx.resolve(companion, raw.reference, type_matcher(_SG))
+        if found.ids:
+            return [raw]
+    return _list_of(raw)
+
+
 def _standalone_rule() -> Any:
     def derive(companion: InfraNode, parent: InfraNode, ctx: EnrichContext) -> Facts:
         props = companion.properties
@@ -609,7 +623,7 @@ def _standalone_rule() -> Any:
             if _references_node(companion, source, parent, ctx):
                 points_back = True
             else:
-                groups = _list_of(source)
+                groups = _source_groups(companion, source, ctx)
         rule = _rule(
             _list_of(props.get("cidr_blocks")),
             _list_of(props.get("ipv6_cidr_blocks")),
@@ -634,7 +648,7 @@ def _vpc_rule(direction: str) -> Any:
             if _references_node(companion, referenced, parent, ctx):
                 points_back = True
             else:
-                groups = _list_of(referenced)
+                groups = _source_groups(companion, referenced, ctx)
         rule = _rule(
             _list_of(props.get("cidr_ipv4")),
             _list_of(props.get("cidr_ipv6")),
