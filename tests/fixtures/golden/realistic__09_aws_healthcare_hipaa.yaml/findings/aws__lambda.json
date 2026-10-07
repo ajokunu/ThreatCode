@@ -1,47 +1,11 @@
 [
   {
-    "resource_address": "HL7ProcessorFunction",
-    "rule_id": "LAMBDA_NO_DLQ",
-    "severity": "low",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1499"
-    ]
-  },
-  {
-    "resource_address": "RecordsApiFunction",
-    "rule_id": "LAMBDA_NO_DLQ",
-    "severity": "low",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1499"
-    ]
-  },
-  {
     "resource_address": "ReportGeneratorFunction",
     "rule_id": "LAMBDA_NO_DLQ",
     "severity": "low",
     "stride": "denial_of_service",
     "techniques": [
       "T1499"
-    ]
-  },
-  {
-    "resource_address": "HL7ProcessorFunction",
-    "rule_id": "LAMBDA_NO_VPC",
-    "severity": "medium",
-    "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1190"
-    ]
-  },
-  {
-    "resource_address": "RecordsApiFunction",
-    "rule_id": "LAMBDA_NO_VPC",
-    "severity": "medium",
-    "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1190"
     ]
   },
   {

@@ -1,0 +1,29 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "AdminFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AdminFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "OrdersFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "OrdersFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "OrdersFunctionRole",
+      "stride": "tampering"
+    }
+  ]
+}

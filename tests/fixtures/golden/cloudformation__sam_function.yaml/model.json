@@ -1,0 +1,24 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "AdminFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReaderFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReaderFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReaderFunctionRole",
+      "stride": "tampering"
+    }
+  ]
+}

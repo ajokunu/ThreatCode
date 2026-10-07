@@ -1,0 +1,54 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "ClickstreamFirehose",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ClickstreamFirehose",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "EventProcessorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "EventProcessorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "FirehoseRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "GlueCrawler",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "GlueCrawler",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ProcessingAlarm",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ProcessingAlarm",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "SessionAggregator",
+      "stride": "tampering"
+    }
+  ]
+}

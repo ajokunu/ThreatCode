@@ -1,0 +1,106 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditTrail",
+      "target": "DataKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "DataBucket",
+      "target": "DataKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "Database",
+      "target": "DataKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "OrdersQueue",
+      "target": "DataKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnet",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ProcessorFunction",
+      "target": "OrdersQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ProcessorFunction",
+      "target": "PrivateSubnet",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ProcessorFunction",
+      "target": "ProcessorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ProcessorFunction",
+      "target": "ProcessorSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ProcessorSecurityGroup",
+      "target": "Vpc",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "AuditTrail": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "DataBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "DataKey": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "Database": {
+      "category": "database",
+      "zone": "private"
+    },
+    "OrdersQueue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "PrivateSubnet": {
+      "category": "network",
+      "zone": "private"
+    },
+    "ProcessorFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ProcessorRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "ProcessorSecurityGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "Vpc": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

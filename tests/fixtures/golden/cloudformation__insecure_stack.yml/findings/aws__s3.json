@@ -52,5 +52,15 @@
     "techniques": [
       "T1485"
     ]
+  },
+  {
+    "resource_address": "PublicBucket",
+    "rule_id": "S3_PUBLIC_ACCESS",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190",
+      "T1530"
+    ]
   }
 ]

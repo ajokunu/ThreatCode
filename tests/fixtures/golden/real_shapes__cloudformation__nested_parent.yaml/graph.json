@@ -1,0 +1,20 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "AppInstance",
+      "target": "Network",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "AppInstance": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "Network": {
+      "category": "unknown",
+      "zone": "private"
+    }
+  }
+}

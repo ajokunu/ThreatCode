@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "AuditBucket",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "AuditBucket",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  }
+]

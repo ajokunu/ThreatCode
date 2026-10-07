@@ -16,5 +16,14 @@
     "techniques": [
       "T1530"
     ]
+  },
+  {
+    "resource_address": "PublicDatabase",
+    "rule_id": "RDS_PUBLIC_ACCESS",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
   }
 ]

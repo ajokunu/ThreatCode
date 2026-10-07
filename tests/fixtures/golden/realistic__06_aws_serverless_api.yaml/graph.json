@@ -1,6 +1,144 @@
 {
   "edges": [
     {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunction",
+      "target": "AccountsFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AccountsFunction",
+      "target": "LambdaSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunction",
+      "target": "StatementsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunction",
+      "target": "TransactionsTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunction",
+      "target": "UsersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunctionRole",
+      "target": "StatementsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunctionRole",
+      "target": "TransactionsTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AccountsFunctionRole",
+      "target": "UsersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogFunction",
+      "target": "AuditDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogFunction",
+      "target": "AuditLogAdminRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogFunction",
+      "target": "AuditLogTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogFunction",
+      "target": "LambdaSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthErrorRateAlarm",
+      "target": "AlertsTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthErrorRateAlarm",
+      "target": "AuthFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuthFunction",
+      "target": "AuthDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthFunction",
+      "target": "AuthFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuthFunction",
+      "target": "CustomerUserPool",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuthFunction",
+      "target": "CustomerUserPoolClient",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuthFunction",
+      "target": "LambdaSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthFunction",
+      "target": "UsersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthFunctionRole",
+      "target": "AuthDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthFunctionRole",
+      "target": "CustomerUserPool",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuthFunctionRole",
+      "target": "UsersTable",
+      "type": "dependency"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "BankingApiDeployment",
       "target": "AccountsFunction",
@@ -10,6 +148,186 @@
       "crosses_trust_boundary": false,
       "source": "BankingApiDeployment",
       "target": "AuthFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "BankingApiDeployment",
+      "target": "BankingApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "BankingApiStage",
+      "target": "ApiAccessLogGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "BankingApiStage",
+      "target": "BankingApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "BankingApiStage",
+      "target": "BankingApiDeployment",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CustomerUserPoolClient",
+      "target": "CustomerUserPool",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "NotificationQueueMapping",
+      "target": "NotificationQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "NotificationQueueMapping",
+      "target": "NotificationsFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "NotificationsFunction",
+      "target": "AlertsTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "NotificationsFunction",
+      "target": "NotificationsFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "NotificationsFunction",
+      "target": "UsersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "NotificationsFunctionRole",
+      "target": "AlertsTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "NotificationsFunctionRole",
+      "target": "NotificationQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "NotificationsFunctionRole",
+      "target": "UsersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PartnerDocsBucketPolicy",
+      "target": "PartnerDocsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransactionDLQAlarm",
+      "target": "AlertsTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransactionDLQAlarm",
+      "target": "TransactionDeadLetterQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "TransactionQueue",
+      "target": "TransactionDeadLetterQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "TransactionQueueMapping",
+      "target": "TransactionQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "TransactionQueueMapping",
+      "target": "TransfersFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunction",
+      "target": "AuditLogTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "TransfersFunction",
+      "target": "NotificationQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "TransfersFunction",
+      "target": "TransactionQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunction",
+      "target": "TransactionsTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunction",
+      "target": "TransfersFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunctionRole",
+      "target": "AuditLogTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunctionRole",
+      "target": "NotificationQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunctionRole",
+      "target": "TransactionQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersFunctionRole",
+      "target": "TransactionsTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersLatencyAlarm",
+      "target": "AlertsTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TransfersLatencyAlarm",
+      "target": "TransfersFunction",
       "type": "dependency"
     }
   ],
@@ -27,8 +345,8 @@
       "zone": "private"
     },
     "ApiAccessLogGroup": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     },
     "AuditDLQ": {
       "category": "messaging",
@@ -59,8 +377,8 @@
       "zone": "private"
     },
     "AuthFunctionLogGroup": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     },
     "AuthFunctionRole": {
       "category": "iam",
@@ -143,8 +461,8 @@
       "zone": "private"
     },
     "TransfersFunctionLogGroup": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     },
     "TransfersFunctionRole": {
       "category": "iam",

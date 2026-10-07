@@ -1,0 +1,20 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnet",
+      "target": "Vpc",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "PrivateSubnet": {
+      "category": "network",
+      "zone": "private"
+    },
+    "Vpc": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AppInstance",
+    "rule_id": "EC2_UNENCRYPTED_EBS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]
