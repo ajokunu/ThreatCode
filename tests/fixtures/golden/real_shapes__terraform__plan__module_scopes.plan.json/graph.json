@@ -43,13 +43,13 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "module.net.aws_flow_log.net",
       "target": "module.net.aws_vpc.main",
       "type": "containment"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "module.net.aws_flow_log.net",
       "target": "module.net.aws_vpc.main",
       "type": "dependency"
@@ -121,7 +121,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "module.net.module.leaf.aws_s3_bucket_server_side_encryption_configuration.logs",
       "target": "aws_kms_key.main",
       "type": "dependency"
@@ -167,8 +167,8 @@
       "zone": "private"
     },
     "aws_kms_key.main": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "secret",
+      "zone": "data"
     },
     "aws_security_group.shared": {
       "category": "network",
@@ -179,8 +179,8 @@
       "zone": "private"
     },
     "module.net.aws_flow_log.net": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     },
     "module.net.aws_instance.bastion": {
       "category": "compute",

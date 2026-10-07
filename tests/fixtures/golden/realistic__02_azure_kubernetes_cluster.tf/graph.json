@@ -7,7 +7,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "azurerm_key_vault.platform",
       "target": "azurerm_resource_group.platform",
       "type": "dependency"
@@ -55,7 +55,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "azurerm_mssql_server.platform",
       "target": "azurerm_resource_group.platform",
       "type": "dependency"
@@ -67,7 +67,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "azurerm_storage_account.data_lake",
       "target": "azurerm_resource_group.platform",
       "type": "dependency"
@@ -82,7 +82,7 @@
       "crosses_trust_boundary": false,
       "source": "azurerm_subnet.aks_nodes",
       "target": "azurerm_virtual_network.platform",
-      "type": "dependency"
+      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -94,7 +94,7 @@
       "crosses_trust_boundary": false,
       "source": "azurerm_subnet.aks_pods",
       "target": "azurerm_virtual_network.platform",
-      "type": "dependency"
+      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -106,7 +106,7 @@
       "crosses_trust_boundary": false,
       "source": "azurerm_subnet.db",
       "target": "azurerm_virtual_network.platform",
-      "type": "dependency"
+      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -117,15 +117,18 @@
   ],
   "nodes": {
     "azurerm_container_registry.platform": {
-      "category": "unknown",
+      "category": "container",
+      "exposure": "internet",
       "zone": "private"
     },
     "azurerm_key_vault.platform": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "secret",
+      "exposure": "internet",
+      "zone": "data"
     },
     "azurerm_kubernetes_cluster.platform": {
       "category": "container",
+      "exposure": "internet",
       "zone": "private"
     },
     "azurerm_kubernetes_cluster_node_pool.workloads": {
@@ -137,19 +140,21 @@
       "zone": "private"
     },
     "azurerm_mssql_database.inventory": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "zone": "data"
     },
     "azurerm_mssql_database.orders": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "zone": "data"
     },
     "azurerm_mssql_server.platform": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "exposure": "internet",
+      "zone": "data"
     },
     "azurerm_network_security_group.aks": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "azurerm_resource_group.platform": {
@@ -158,7 +163,8 @@
     },
     "azurerm_storage_account.data_lake": {
       "category": "storage",
-      "zone": "private"
+      "exposure": "internet",
+      "zone": "data"
     },
     "azurerm_subnet.aks_nodes": {
       "category": "network",

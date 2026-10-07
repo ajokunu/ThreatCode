@@ -49,6 +49,126 @@
       "type": "dependency"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AccountsFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogAdminRole",
+      "target": "AccountsFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AlertsTopic",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AuditDLQ",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AuditLogFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AuditLogTable",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AuthDLQ",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "AuthFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogAdminRole",
+      "target": "AuthFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "NotificationQueue",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "NotificationsFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogAdminRole",
+      "target": "NotificationsFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "PartnerDocsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "StatementsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "TransactionDeadLetterQueue",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "TransactionQueue",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "TransactionsTable",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "TransfersFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogAdminRole",
+      "target": "TransfersFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuditLogAdminRole",
+      "target": "UsersTable",
+      "type": "iam_binding"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "AuditLogFunction",
       "target": "AuditDLQ",
@@ -97,13 +217,13 @@
       "type": "iam_binding"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "AuthFunction",
       "target": "CustomerUserPool",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "AuthFunction",
       "target": "CustomerUserPoolClient",
       "type": "dependency"
@@ -139,13 +259,13 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "BankingApiDeployment",
       "target": "AccountsFunction",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "BankingApiDeployment",
       "target": "AuthFunction",
       "type": "dependency"
@@ -233,6 +353,12 @@
       "source": "PartnerDocsBucketPolicy",
       "target": "PartnerDocsBucket",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PartnerDocsBucketPolicy",
+      "target": "PartnerDocsBucket",
+      "type": "iam_binding"
     },
     {
       "crosses_trust_boundary": true,
@@ -385,24 +511,25 @@
       "zone": "management"
     },
     "BankingApi": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "api",
+      "exposure": "internet",
+      "zone": "dmz"
     },
     "BankingApiDeployment": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "api",
+      "zone": "dmz"
     },
     "BankingApiStage": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "api",
+      "zone": "dmz"
     },
     "CustomerUserPool": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "iam",
+      "zone": "dmz"
     },
     "CustomerUserPoolClient": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "iam",
+      "zone": "dmz"
     },
     "LambdaSecurityGroup": {
       "category": "network",
@@ -426,6 +553,7 @@
     },
     "PartnerDocsBucket": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "PartnerDocsBucketPolicy": {

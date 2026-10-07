@@ -162,7 +162,6 @@ class TestShopStackEdges:
 
 
 class TestShopStackExposureAndPaths:
-    @pending("WP-3-1", "an Ingress with rules has exposure internet")
     def test_the_ingress_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(SHOP).graph, INGRESS, "internet")
 
@@ -248,7 +247,6 @@ class TestKubectlLists:
             type="network_flow",
         )
 
-    @pending("WP-3-1", "a LoadBalancer Service has exposure internet")
     def test_the_load_balancer_service_is_exposed(self) -> None:
         assert_exposure(
             scan_real_shape(LIST_YAML).graph, "kubernetes_service.stock.inventory", "internet"

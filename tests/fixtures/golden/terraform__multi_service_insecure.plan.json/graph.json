@@ -1,7 +1,7 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_db_instance.no_backup_db",
       "target": "aws_vpc.main",
       "type": "dependency"
@@ -11,12 +11,6 @@
       "source": "aws_db_instance.public_db",
       "target": "aws_vpc.main",
       "type": "dependency"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_default_security_group.default_open",
-      "target": "aws_vpc.main",
-      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -40,19 +34,7 @@
       "crosses_trust_boundary": true,
       "source": "aws_internet_gateway.igw",
       "target": "aws_vpc.main",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": true,
-      "source": "aws_internet_gateway.igw",
-      "target": "aws_vpc.main",
       "type": "dependency"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_route_table.public_rt",
-      "target": "aws_vpc.main",
-      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -64,31 +46,13 @@
       "crosses_trust_boundary": false,
       "source": "aws_security_group.ipv6_open",
       "target": "aws_vpc.main",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_security_group.ipv6_open",
-      "target": "aws_vpc.main",
       "type": "dependency"
     },
     {
       "crosses_trust_boundary": false,
       "source": "aws_security_group.wide_open",
       "target": "aws_vpc.main",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_security_group.wide_open",
-      "target": "aws_vpc.main",
       "type": "dependency"
-    },
-    {
-      "crosses_trust_boundary": true,
-      "source": "aws_subnet.public",
-      "target": "aws_vpc.main",
-      "type": "containment"
     },
     {
       "crosses_trust_boundary": true,
@@ -100,14 +64,16 @@
   "nodes": {
     "aws_db_instance.no_backup_db": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "aws_db_instance.public_db": {
       "category": "database",
-      "zone": "dmz"
+      "exposure": "internet",
+      "zone": "data"
     },
     "aws_default_security_group.default_open": {
-      "category": "unknown",
+      "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_iam_policy.wildcard_policy": {
@@ -160,6 +126,7 @@
     },
     "aws_s3_bucket.public_bucket": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "aws_s3_bucket.unencrypted": {
@@ -168,14 +135,17 @@
     },
     "aws_security_group.ipv6_open": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_security_group.wide_open": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_subnet.public": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_vpc.main": {

@@ -1,22 +1,16 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_db_instance.orders",
       "target": "aws_security_group.db_sg",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
-      "source": "aws_db_instance.orders",
-      "target": "aws_security_group.db_sg",
-      "type": "network_flow"
-    },
-    {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_db_instance.sessions",
       "target": "aws_security_group.db_sg",
-      "type": "network_flow"
+      "type": "dependency"
     },
     {
       "crosses_trust_boundary": false,
@@ -33,12 +27,6 @@
     {
       "crosses_trust_boundary": false,
       "source": "aws_instance.web_a",
-      "target": "aws_security_group.app_sg",
-      "type": "network_flow"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_instance.web_a",
       "target": "aws_subnet.private_a",
       "type": "containment"
     },
@@ -53,12 +41,6 @@
       "source": "aws_instance.web_b",
       "target": "aws_security_group.app_sg",
       "type": "dependency"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_instance.web_b",
-      "target": "aws_security_group.app_sg",
-      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": false,
@@ -79,6 +61,24 @@
       "type": "containment"
     },
     {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.inventory_sync",
+      "target": "aws_security_group.app_sg",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.inventory_sync",
+      "target": "aws_subnet.private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.inventory_sync",
+      "target": "aws_subnet.private_b",
+      "type": "containment"
+    },
+    {
       "crosses_trust_boundary": true,
       "source": "aws_lambda_function.order_processor",
       "target": "aws_iam_role.ec2_app_role",
@@ -95,12 +95,6 @@
       "source": "aws_lb.storefront",
       "target": "aws_security_group.alb_sg",
       "type": "dependency"
-    },
-    {
-      "crosses_trust_boundary": true,
-      "source": "aws_lb.storefront",
-      "target": "aws_security_group.alb_sg",
-      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": false,
@@ -160,15 +154,16 @@
   "nodes": {
     "aws_cloudfront_distribution.storefront": {
       "category": "cdn",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_db_instance.orders": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "aws_db_instance.sessions": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "aws_iam_policy.s3_full_access": {
       "category": "iam",
@@ -204,6 +199,7 @@
     },
     "aws_lb.storefront": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_s3_bucket.app_logs": {
@@ -216,10 +212,12 @@
     },
     "aws_s3_bucket.product_images": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "aws_security_group.alb_sg": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_security_group.app_sg": {
@@ -240,10 +238,12 @@
     },
     "aws_subnet.public_a": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_subnet.public_b": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_vpc.ecommerce": {

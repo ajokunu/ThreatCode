@@ -28,6 +28,7 @@
     },
     "aws_security_group.lb": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     }
   }

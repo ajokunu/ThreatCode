@@ -1,9 +1,0 @@
-{
-  "boundary": [
-    {
-      "severity": "high",
-      "source": "PublicDatabase",
-      "stride": "tampering"
-    }
-  ]
-}

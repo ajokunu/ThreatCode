@@ -1,29 +1,16 @@
 {
   "boundary": [
     {
-      "severity": "medium",
-      "source": "kubernetes_deployment.default.api",
-      "stride": "tampering"
-    },
-    {
-      "severity": "medium",
-      "source": "kubernetes_deployment.default.web",
-      "stride": "tampering"
-    },
-    {
-      "severity": "medium",
-      "source": "kubernetes_deployment.default.web",
-      "stride": "tampering"
-    },
-    {
-      "severity": "medium",
+      "severity": "high",
       "source": "kubernetes_service.default.web-lb",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "kubernetes_deployment.default.web"
     },
     {
-      "severity": "medium",
+      "severity": "high",
       "source": "kubernetes_service.default.web-np",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "kubernetes_deployment.default.web"
     }
   ]
 }

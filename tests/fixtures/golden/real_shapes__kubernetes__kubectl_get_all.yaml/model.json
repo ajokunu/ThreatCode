@@ -1,9 +1,10 @@
 {
   "boundary": [
     {
-      "severity": "medium",
+      "severity": "high",
       "source": "kubernetes_service.stock.inventory",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "kubernetes_deployment.stock.inventory"
     }
   ]
 }

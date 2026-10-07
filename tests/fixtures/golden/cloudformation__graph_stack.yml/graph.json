@@ -144,18 +144,20 @@
     },
     "Database": {
       "category": "database",
-      "zone": "dmz"
+      "exposure": "internet",
+      "zone": "data"
     },
     "DatabaseSecurityGroup": {
       "category": "network",
       "zone": "private"
     },
     "DatabaseSubnets": {
-      "category": "database",
+      "category": "network",
       "zone": "private"
     },
     "Distribution": {
       "category": "cdn",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "GatewayAttachment": {
@@ -168,6 +170,7 @@
     },
     "LoadBalancer": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "OrdersTable": {
@@ -180,6 +183,7 @@
     },
     "PublicSubnet": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "Vpc": {
@@ -188,10 +192,12 @@
     },
     "WebInstance": {
       "category": "compute",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "WebSecurityGroup": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     }
   }

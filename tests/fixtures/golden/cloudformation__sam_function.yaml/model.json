@@ -1,24 +1,16 @@
 {
   "boundary": [
     {
-      "severity": "medium",
-      "source": "AdminFunction",
-      "stride": "tampering"
+      "severity": "high",
+      "source": "ServerlessHttpApi",
+      "stride": "tampering",
+      "target": "ReaderFunction"
     },
     {
-      "severity": "medium",
-      "source": "ReaderFunction",
-      "stride": "tampering"
-    },
-    {
-      "severity": "medium",
-      "source": "ReaderFunction",
-      "stride": "tampering"
-    },
-    {
-      "severity": "medium",
-      "source": "ReaderFunctionRole",
-      "stride": "tampering"
+      "severity": "high",
+      "source": "ServerlessRestApi",
+      "stride": "tampering",
+      "target": "AdminFunction"
     }
   ]
 }

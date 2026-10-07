@@ -62,6 +62,7 @@
     },
     "aws_subnet.public": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_vpc.main": {

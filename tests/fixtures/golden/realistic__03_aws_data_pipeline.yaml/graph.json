@@ -19,7 +19,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "ClickstreamFirehose",
       "target": "RawDataBucket",
       "type": "dependency"
@@ -55,7 +55,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "EventProcessorFunction",
       "target": "RedshiftCluster",
       "type": "dependency"
@@ -73,7 +73,7 @@
       "type": "iam_binding"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "GlueCrawler",
       "target": "GlueDatabase",
       "type": "dependency"
@@ -83,6 +83,66 @@
       "source": "GlueCrawler",
       "target": "RawDataBucket",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "AlertTopic",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "AthenaResultsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "ClickstreamStream",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "EventProcessorFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "LambdaProcessorRole",
+      "target": "FirehoseRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "LambdaProcessorRole",
+      "target": "GlueCrawlerRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "ProcessedDataBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "RawDataBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "RedshiftCluster",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LambdaProcessorRole",
+      "target": "SessionAggregator",
+      "type": "iam_binding"
     },
     {
       "crosses_trust_boundary": false,
@@ -109,13 +169,13 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "RedshiftCluster",
       "target": "AnalyticsSG",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "RedshiftCluster",
       "target": "RedshiftSubnetGroup",
       "type": "dependency"
@@ -150,15 +210,16 @@
     },
     "AthenaResultsBucket": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "ClickstreamFirehose": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "zone": "data"
     },
     "ClickstreamStream": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "zone": "data"
     },
     "ClickstreamVPC": {
       "category": "network",
@@ -173,7 +234,7 @@
       "zone": "management"
     },
     "GlueCrawler": {
-      "category": "unknown",
+      "category": "compute",
       "zone": "private"
     },
     "GlueCrawlerRole": {
@@ -181,8 +242,8 @@
       "zone": "management"
     },
     "GlueDatabase": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "zone": "data"
     },
     "LambdaProcessorRole": {
       "category": "iam",
@@ -209,11 +270,11 @@
       "zone": "data"
     },
     "RedshiftCluster": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "database",
+      "zone": "data"
     },
     "RedshiftSubnetGroup": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "SessionAggregator": {

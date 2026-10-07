@@ -1,13 +1,13 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_flow_log.main",
       "target": "aws_vpc.main",
       "type": "containment"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_flow_log.main",
       "target": "aws_vpc.main",
       "type": "dependency"
@@ -147,8 +147,8 @@
   ],
   "nodes": {
     "aws_flow_log.main": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     },
     "aws_instance.worker": {
       "category": "compute",
@@ -175,7 +175,7 @@
       "zone": "data"
     },
     "module.subnets[0].aws_network_acl.this": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "module.subnets[0].aws_subnet.this": {
@@ -183,7 +183,7 @@
       "zone": "private"
     },
     "module.subnets[1].aws_network_acl.this": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "module.subnets[1].aws_subnet.this": {

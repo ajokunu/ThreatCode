@@ -38,6 +38,30 @@
     },
     {
       "crosses_trust_boundary": false,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_iam_role_policy.vpn_mgmt",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_instance.internal_proxy",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_instance.vpn_concentrator",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_s3_bucket.vpn_logs",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
       "source": "aws_iam_role_policy.vpn_mgmt",
       "target": "aws_iam_role.vpn_mgmt",
       "type": "iam_binding"
@@ -97,7 +121,7 @@
       "type": "containment"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_nat_gateway.a",
       "target": "aws_eip.nat_a",
       "type": "dependency"
@@ -109,13 +133,13 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "aws_nat_gateway.a",
       "target": "aws_subnet.dmz_a",
       "type": "containment"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_route_table.app",
       "target": "aws_nat_gateway.a",
       "type": "dependency"
@@ -341,15 +365,15 @@
       "zone": "management"
     },
     "aws_customer_gateway.ashburn_dc": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "aws_ec2_transit_gateway.hub": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "aws_ec2_transit_gateway_vpc_attachment.hub": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "aws_eip.nat_a": {
@@ -374,6 +398,7 @@
     },
     "aws_instance.vpn_concentrator": {
       "category": "compute",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_internet_gateway.hub": {
@@ -382,7 +407,7 @@
     },
     "aws_nat_gateway.a": {
       "category": "network",
-      "zone": "private"
+      "zone": "dmz"
     },
     "aws_route_table.app": {
       "category": "network",
@@ -442,6 +467,7 @@
     },
     "aws_security_group.temp_debug": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_security_group.vpn_concentrator": {
@@ -450,26 +476,32 @@
     },
     "aws_subnet.app_a": {
       "category": "network",
+      "exposure": "internal",
       "zone": "private"
     },
     "aws_subnet.app_b": {
       "category": "network",
+      "exposure": "internal",
       "zone": "private"
     },
     "aws_subnet.data_a": {
       "category": "network",
+      "exposure": "internal",
       "zone": "private"
     },
     "aws_subnet.data_b": {
       "category": "network",
+      "exposure": "internal",
       "zone": "private"
     },
     "aws_subnet.dmz_a": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_subnet.dmz_b": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_vpc.hub": {
@@ -477,11 +509,11 @@
       "zone": "private"
     },
     "aws_vpn_connection.ashburn_primary": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "aws_vpn_gateway.hub": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     }
   }

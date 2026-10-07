@@ -2,21 +2,219 @@
   "edges": [
     {
       "crosses_trust_boundary": true,
+      "source": "aws_elasticache_replication_group.session_cache",
+      "target": "aws_security_group.redis_sg",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_instance_profile.game_server",
+      "target": "aws_iam_role.game_server",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_dynamodb_table.leaderboards",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_dynamodb_table.matches",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_dynamodb_table.players",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_elasticache_replication_group.session_cache",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_iam_policy.game_server",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_iam_role.lambda_game_services",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_instance.game_server_1",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_lambda_function.chat_handler",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_lambda_function.leaderboard",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_lambda_function.matchmaking",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_lambda_function.player_stats",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_s3_bucket.game_assets",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_s3_bucket.player_data",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_s3_bucket.replay_storage",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_sqs_queue.matchmaking_dlq",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.game_server",
+      "target": "aws_sqs_queue.matchmaking_queue",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy_attachment.game_server",
+      "target": "aws_iam_policy.game_server",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy_attachment.game_server",
+      "target": "aws_iam_role.game_server",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
       "source": "aws_instance.game_server_1",
       "target": "aws_security_group.game_server_sg",
-      "type": "network_flow"
+      "type": "dependency"
     },
     {
       "crosses_trust_boundary": true,
       "source": "aws_instance.game_server_1",
       "target": "aws_security_group.game_server_test_sg",
-      "type": "network_flow"
+      "type": "dependency"
     },
     {
       "crosses_trust_boundary": false,
       "source": "aws_instance.game_server_1",
       "target": "aws_subnet.public_a",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.chat_handler",
+      "target": "aws_iam_role.lambda_game_services",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.chat_handler",
+      "target": "aws_security_group.lambda_sg",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.chat_handler",
+      "target": "aws_subnet.private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.chat_handler",
+      "target": "aws_subnet.private_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.leaderboard",
+      "target": "aws_iam_role.lambda_game_services",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.leaderboard",
+      "target": "aws_security_group.lambda_sg",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.leaderboard",
+      "target": "aws_subnet.private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.leaderboard",
+      "target": "aws_subnet.private_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.matchmaking",
+      "target": "aws_iam_role.lambda_game_services",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.matchmaking",
+      "target": "aws_security_group.lambda_sg",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.matchmaking",
+      "target": "aws_subnet.private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.matchmaking",
+      "target": "aws_subnet.private_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.player_stats",
+      "target": "aws_iam_role.lambda_game_services",
+      "type": "iam_binding"
     },
     {
       "crosses_trust_boundary": false,
@@ -69,11 +267,13 @@
   ],
   "nodes": {
     "aws_api_gateway_rest_api.game_api": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "api",
+      "exposure": "internet",
+      "zone": "dmz"
     },
     "aws_cloudfront_distribution.game_cdn": {
       "category": "cdn",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_cloudwatch_dashboard.game_operations": {
@@ -126,6 +326,7 @@
     },
     "aws_instance.game_server_1": {
       "category": "compute",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_lambda_function.chat_handler": {
@@ -146,6 +347,7 @@
     },
     "aws_s3_bucket.game_assets": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "aws_s3_bucket.player_data": {
@@ -174,10 +376,12 @@
     },
     "aws_security_group.game_server_sg": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_security_group.game_server_test_sg": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_security_group.lambda_sg": {
@@ -206,10 +410,12 @@
     },
     "aws_subnet.public_a": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_subnet.public_b": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "aws_vpc.stormforge": {
