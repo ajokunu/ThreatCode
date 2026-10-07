@@ -40,6 +40,10 @@ class RenderOptions:
 
     # Use ANSI colors. The CLI sets it for a terminal when NO_COLOR is unset and --no-color is off.
     color: bool = False
+    # Terminal width for the text report; 0 means find it (COLUMNS, else the terminal, else 100).
+    width: int = 0
+    # Put the graph (nodes and edges, no properties) in the JSON report.
+    include_graph: bool = True
 
 
 class FormatterSpec(NamedTuple):
@@ -51,31 +55,37 @@ class FormatterSpec(NamedTuple):
 def _json(analysis: AnalysisResult, options: RenderOptions) -> str:
     from threatcode.formatters.json_out import format_json
 
-    return format_json(analysis.report)
+    return format_json(analysis, include_graph=options.include_graph)
 
 
 def _sarif(analysis: AnalysisResult, options: RenderOptions) -> str:
     from threatcode.formatters.sarif import format_sarif
 
-    return format_sarif(analysis.report)
+    return format_sarif(analysis.report, analysis.graph, source_root=analysis.root)
 
 
 def _markdown(analysis: AnalysisResult, options: RenderOptions) -> str:
     from threatcode.formatters.markdown import format_markdown
 
-    return format_markdown(analysis.report)
+    return format_markdown(analysis.report, analysis.graph)
 
 
 def _bitbucket(analysis: AnalysisResult, options: RenderOptions) -> str:
     from threatcode.formatters.bitbucket import format_bitbucket
 
-    return format_bitbucket(analysis.report)
+    return format_bitbucket(analysis.report, analysis.graph, source_root=analysis.root)
 
 
-def _matrix(analysis: AnalysisResult, options: RenderOptions) -> str:
+def _navigator(analysis: AnalysisResult, options: RenderOptions) -> str:
     from threatcode.formatters.attack_navigator import format_attack_navigator
 
     return format_attack_navigator(analysis.report)
+
+
+def _mermaid(analysis: AnalysisResult, options: RenderOptions) -> str:
+    from threatcode.formatters.mermaid import format_mermaid
+
+    return format_mermaid(analysis)
 
 
 def _diagram(analysis: AnalysisResult, options: RenderOptions) -> str:
@@ -91,13 +101,16 @@ def _text(analysis: AnalysisResult, options: RenderOptions) -> str:
 
 
 FORMATTERS: dict[str, FormatterSpec] = {
-    "json": FormatterSpec(_json, ".json", "Machine-readable report with coverage"),
+    "json": FormatterSpec(_json, ".json", "Machine-readable report with coverage and the graph"),
     "sarif": FormatterSpec(_sarif, ".sarif", "SARIF 2.1.0 for GitHub code scanning"),
     "markdown": FormatterSpec(_markdown, ".md", "Markdown for pull request comments"),
     "bitbucket": FormatterSpec(_bitbucket, ".json", "Bitbucket Code Insights report"),
-    "matrix": FormatterSpec(_matrix, ".json", "MITRE ATT&CK Navigator layer"),
+    "navigator": FormatterSpec(_navigator, ".json", "MITRE ATT&CK Navigator layer"),
+    "mermaid": FormatterSpec(_mermaid, ".mmd", "Mermaid flowchart by trust zone with attack paths"),
     "diagram": FormatterSpec(_diagram, ".svg", "SVG diagram of the infrastructure"),
     "text": FormatterSpec(_text, ".txt", "Human summary for a terminal"),
+    # The old name of "navigator", kept so scripts and configs that use it keep working.
+    "matrix": FormatterSpec(_navigator, ".json", "Deprecated alias of navigator"),
 }
 
 

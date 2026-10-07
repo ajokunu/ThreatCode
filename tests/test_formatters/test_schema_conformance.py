@@ -22,7 +22,6 @@ from typing import Any
 
 import pytest
 
-from tests.helpers.pending import pending
 from tests.helpers.scan import scan_files, scan_text
 
 jsonschema = pytest.importorskip("jsonschema")
@@ -396,8 +395,8 @@ def test_every_result_input_produces_findings_so_the_lints_are_not_vacuous() -> 
 # ---------------------------------------------------------------------------------------
 
 
-class TestGithubLintsPassCurrentOutput:
-    """Lints current output already satisfies stay regression guards, not pending."""
+class TestGithubLints:
+    """Every lint GitHub's ingestion applies, over every input the golden tests scan."""
 
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_a_rule_carries_at_most_ten_tags(self, name: str) -> None:
@@ -408,20 +407,17 @@ class TestGithubLintsPassCurrentOutput:
         assert lint_unique_rule_ids(sarif_for(name)) == []
 
 
-class TestGithubLintsPendingFormatterFixes:
-    @pending("WP-4-3", "results carry the source file and region.startLine, not a resource address")
+class TestGithubLintsOnLocationsFingerprintsAndSeverity:
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_every_result_has_a_physical_location_with_a_region(self, name: str) -> None:
         problems = lint_locations(sarif_for(name))
         assert not problems, f"{name}: {problems[:3]}"
 
-    @pending("WP-4-3", "results carry partialFingerprints {'threatcode/v1': fingerprint}")
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_every_result_has_a_partial_fingerprint(self, name: str) -> None:
         problems = lint_fingerprints(sarif_for(name))
         assert not problems, f"{name}: {problems[:3]}"
 
-    @pending("WP-4-3", "rules carry properties security-severity from the effective severity")
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_every_rule_has_a_security_severity(self, name: str) -> None:
         problems = lint_security_severity(sarif_for(name))
@@ -513,13 +509,6 @@ class TestGithubLintsSelfTest:
         rules.append(dict(rules[0]))
         assert self.lints(document)["ids"] == ["rule id A appears more than once"]
 
-    def test_current_output_fails_the_pending_lints_so_the_markers_are_honest(self) -> None:
-        """If this fails, a pending lint already passes and its marker should be removed."""
-        sarif = sarif_for("realistic/01_aws_ecommerce_platform.json")
-        assert lint_locations(sarif)
-        assert lint_fingerprints(sarif)
-        assert lint_security_severity(sarif)
-
 
 # ---------------------------------------------------------------------------------------
 # Navigator semantics
@@ -527,7 +516,6 @@ class TestGithubLintsSelfTest:
 
 
 class TestNavigatorSemantics:
-    @pending("WP-4-3", "one entry per (technique, tactic) using official tactic shortnames")
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_no_technique_has_an_empty_or_unknown_tactic(self, name: str) -> None:
         from threatcode.engine.mitre import TACTIC_DB, tactic_shortname
@@ -536,12 +524,10 @@ class TestNavigatorSemantics:
         problems = navigator_tactic_problems(navigator_for(name), valid)
         assert not problems, f"{name}: {problems[:3]}"
 
-    @pending("WP-4-3", "versions carry the pinned ATT&CK release and a full Navigator semver")
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_the_navigator_version_is_a_full_semver_of_at_least_4_9_0(self, name: str) -> None:
         assert navigator_version_problems(navigator_for(name)) == []
 
-    @pending("WP-4-3", "the IaaS platform filter is removed")
     @pytest.mark.parametrize("name", LINT_INPUTS)
     def test_platforms_are_names_the_format_lists(self, name: str) -> None:
         assert navigator_platform_problems(navigator_for(name)) == []
@@ -579,9 +565,3 @@ class TestNavigatorSemantics:
         assert navigator_platform_problems({"filters": {"platforms": ["IaaS"]}}) == [
             "unknown platform 'IaaS'"
         ]
-
-    def test_current_output_fails_the_pending_semantics_so_the_markers_are_honest(self) -> None:
-        layer = navigator_for("realistic/01_aws_ecommerce_platform.json")
-        assert navigator_tactic_problems(layer, {"initial-access"})
-        assert navigator_version_problems(layer)
-        assert navigator_platform_problems(layer)
