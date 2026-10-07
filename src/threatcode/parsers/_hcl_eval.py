@@ -1269,8 +1269,10 @@ def _scan_references(
         ):
             i += 1
             continue
-        segments, i = _read_chain(tokens, i, frames[-1], ctx, out, depth)
+        inner: list[str] = []
+        segments, i = _read_chain(tokens, i, frames[-1], ctx, inner, depth)
         _emit_chain(segments, ctx, out)
+        out.extend(inner)
 
 
 def _read_chain(

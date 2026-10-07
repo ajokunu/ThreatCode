@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ from typing import Any
 from threatcode.constants import is_terraform_json_name, is_terraform_name
 from threatcode.diagnostics import Diagnostic, Level
 from threatcode.exceptions import ParseError
+from threatcode.ir.addressing import strip_attribute_suffix
 from threatcode.parsers import _hcl_adapter
 from threatcode.parsers._hcl_adapter import HclBlock, HclDocument
 from threatcode.parsers._hcl_eval import (
@@ -146,8 +148,8 @@ class _Scope(Context):
         self.declared: set[tuple[str, str]] = set()
         self.data_blocks: dict[tuple[str, str], HclBlock] = {}
         self.module_instances_unknown = False
-        self._variable_cache: dict[str, Any] = {}
-        self._local_cache: dict[str, Any] = {}
+        self._variable_cache: dict[str, tuple[Any, str, list[_Miss], set[str]]] = {}
+        self._local_cache: dict[str, tuple[Any, list[_Miss], set[str]]] = {}
         self._active: set[tuple[str, str]] = set()
 
     # -- building -------------------------------------------------------------------------
@@ -182,47 +184,72 @@ class _Scope(Context):
     def declares_data(self, kind: str, name: str) -> bool:
         return (kind, name) in self.data_blocks
 
+    def _isolated(self, compute: Callable[[], Any]) -> tuple[Any, list[_Miss], set[str]]:
+        """Run ``compute`` and return its value with the misses and defaults it used.
+
+        The counters of the attribute being evaluated are put back afterwards, so a cached
+        value can report what it depended on every time it is used, not only the first time.
+        """
+        session = self.session
+        outer = (session.misses, session.defaults)
+        session.misses, session.defaults = [], set()
+        try:
+            return compute(), session.misses, session.defaults
+        finally:
+            session.misses, session.defaults = outer
+
+    def _replay(self, misses: list[_Miss], defaults: set[str]) -> None:
+        self.session.misses.extend(misses)
+        self.session.defaults.update(defaults)
+
     def variable(self, name: str) -> Any:
         self.session.lookups += 1
-        if name in self._variable_cache:
-            value, status = self._variable_cache[name]
-        else:
-            value, status = self._resolve_variable(name)
-            self._variable_cache[name] = (value, status)
+        cached = self._variable_cache.get(name)
+        if cached is None:
+            cached = self._resolve_variable(name)
+            self._variable_cache[name] = cached
+        value, status, misses, defaults = cached
+        self._replay(misses, defaults)
         if status == "default":
             self.session.defaults.add(name)
         elif status in ("no_value", "undeclared"):
             self.session.misses.append(_Miss(self.path, "var", name, status))
         return value
 
-    def _resolve_variable(self, name: str) -> tuple[Any, str]:
+    def _resolve_variable(self, name: str) -> tuple[Any, str, list[_Miss], set[str]]:
         declared = self.variables.get(name)
         if self.parent is None:
             if name in self.tfvars:
-                return evaluate_value(self.tfvars[name]), "supplied"
+                return evaluate_value(self.tfvars[name]), "supplied", [], set()
         elif name in self.inputs:
-            return evaluate_value(self.inputs[name], self.parent), "supplied"
+            parent = self.parent
+            raw = self.inputs[name]
+            value, misses, defaults = self._isolated(lambda: evaluate_value(raw, parent))
+            return value, "supplied", misses, defaults
         if declared is not None and declared.has_default:
-            return evaluate_value(declared.default), "default"
+            return evaluate_value(declared.default), "default", [], set()
         status = "no_value" if declared is not None else "undeclared"
-        return Unknown(f"var.{name}"), status
+        return Unknown(f"var.{name}"), status, [], set()
 
     def local(self, name: str) -> Any:
         self.session.lookups += 1
         if name not in self.locals_raw:
             self.session.misses.append(_Miss(self.path, "local", name, "undeclared"))
             return Unknown(f"local.{name}")
-        if name in self._local_cache:
-            return self._local_cache[name]
-        key = ("local", name)
-        if key in self._active:
-            return Unknown(f"local.{name}")
-        self._active.add(key)
-        try:
-            value = evaluate_value(self.locals_raw[name], self)
-        finally:
-            self._active.discard(key)
-        self._local_cache[name] = value
+        cached = self._local_cache.get(name)
+        if cached is None:
+            key = ("local", name)
+            if key in self._active:
+                return Unknown(f"local.{name}")
+            self._active.add(key)
+            try:
+                raw = self.locals_raw[name]
+                cached = self._isolated(lambda: evaluate_value(raw, self))
+            finally:
+                self._active.discard(key)
+            self._local_cache[name] = cached
+        value, misses, defaults = cached
+        self._replay(misses, defaults)
         return value
 
     def module_output(self, module: str, output: str) -> Any:
@@ -487,6 +514,7 @@ class TerraformHCLParser(BaseParser):
         )
         resources: list[ParsedResource] = []
         _emit(scope, resources, session)
+        _drop_shadowed_references(resources, session)
         if tfvars_files:
             metadata["tfvars"] = tfvars_files
         if session.followed_modules:
@@ -677,6 +705,41 @@ def _skip_module(
         line,
     )
     session.skipped_modules.append({"module": address, "source": source, "reason": reason})
+
+
+def _drop_shadowed_references(resources: list[ParsedResource], session: _Session) -> None:
+    """Remove a reference the graph would bind to the wrong resource.
+
+    The graph resolves a reference written inside a module against that module first.
+    A module input such as ``vpc_id = aws_vpc.main.id`` names the caller's VPC, and written
+    that way it would find a ``module.net.aws_vpc.main`` of the module's own instead.
+    Such a reference is dropped with a diagnostic rather than left to add an edge to the
+    wrong node. References inside a module are already qualified and never collide.
+    """
+    declared = {resource.address for resource in resources}
+    for resource in resources:
+        if not resource.module:
+            continue
+        for attribute, refs in resource.references.items():
+            kept: list[str] = []
+            for ref in refs:
+                intended = strip_attribute_suffix(ref, declared)
+                shadow = strip_attribute_suffix(f"{resource.module}.{ref}", declared)
+                if shadow in declared and shadow != intended:
+                    session.diagnose(
+                        "info",
+                        "hcl.unresolved_reference",
+                        f"{resource.address}: '{attribute}' refers to {intended} of the calling "
+                        f"module, which {shadow} shadows inside {resource.module}; "
+                        "no edge was added",
+                        resource.source_location,
+                        resource.start_line,
+                    )
+                else:
+                    kept.append(ref)
+            # An attribute whose references were all dropped keeps an empty entry, so the graph
+            # does not fall back to guessing an edge from the placeholder value
+            resource.references[attribute] = kept
 
 
 # --- instances: count and for_each ---------------------------------------------------------
@@ -937,7 +1000,10 @@ def _make_resource(
     notes = _Notes()
     properties = _evaluate_body(body, scope, scope, "", references, notes, True)
 
-    for attribute, misses in notes.unresolved.items():
+    if notes.unresolved:
+        misses = [
+            miss for attribute_misses in notes.unresolved.values() for miss in attribute_misses
+        ]
         names = list(
             dict.fromkeys(
                 (f"{m.scope}: " if m.scope != scope.path else "") + f"{m.kind}.{m.name}"
@@ -948,8 +1014,9 @@ def _make_resource(
         session.diagnose(
             "warning" if undeclared and scope.directory_mode else "info",
             "hcl.unresolved_reference",
-            f"{address}: '{attribute}' uses {', '.join(names)}, which has no value in this "
-            "input, so it is treated as unknown",
+            f"{address}: no value for {', '.join(names)} in this input, so "
+            f"{', '.join(repr(a) for a in notes.unresolved)} "
+            f"{'is' if len(notes.unresolved) == 1 else 'are'} treated as unknown",
             label,
             block.start_line,
         )
