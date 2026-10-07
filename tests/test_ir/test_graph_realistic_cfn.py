@@ -2,12 +2,12 @@
 
 ``web_stack.yaml`` is written with short-form intrinsics (``!Ref``, ``!GetAtt``, ``!Sub``),
 which is how almost every template in the wild is written. ``web_stack.json`` is the same
-template in long form, so the long-form path stays testable where the short-form loader is
-missing and the work to read references can be told apart from the work to load the tags.
+template in long form, so the long-form path stays testable apart from the short-form loader.
 
-Today a CloudFormation resource keeps its properties exactly as written (PascalCase), no
-intrinsic is read as a reference, and only ``DependsOn`` makes an edge. Assertions that hold
-now run now; each one a later package delivers is its own pending test.
+A CloudFormation resource is named after the Terraform type that models it, its properties
+have the names and shapes the rules read, and every ``Ref``, ``Fn::GetAtt`` and ``Fn::Sub``
+that names another resource is an edge.
+What later packages deliver (zones, exposure and attack paths) is its own pending test.
 """
 
 from __future__ import annotations
@@ -20,8 +20,10 @@ from tests.helpers.graph_assert import (
     assert_zone,
 )
 from tests.helpers.pending import pending
-from tests.helpers.scan import scan_real_shape
+from tests.helpers.scan import FIXTURES_DIR, scan_files, scan_real_shape
+from tests.helpers.scan import REAL_SHAPES_DIR as REAL_SHAPES
 
+CFN_FIXTURES = FIXTURES_DIR / "cloudformation"
 WEB_YAML = "cloudformation/web_stack.yaml"
 WEB_JSON = "cloudformation/web_stack.json"
 SAM = "cloudformation/sam_api.yaml"
@@ -81,51 +83,42 @@ class TestLongFormTemplate:
 
 
 class TestLongFormReferences:
-    """Ref and GetAtt in value positions are edges once WP-2-3 reads them."""
+    """Ref, GetAtt and Sub in value positions are edges."""
 
-    @pending("WP-2-3", "Ref and GetAtt of VpcId become containment edges")
     def test_subnets_are_contained_in_the_vpc(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         for node in ("PublicSubnet", "PrivateSubnet", "PrivateSubnetB"):
             assert_edge(graph, node, "Vpc", type="containment")
 
-    @pending("WP-2-3", "SourceSecurityGroupId GetAtt becomes a dependency edge")
     def test_the_app_group_depends_on_the_load_balancer_group(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "AppSecurityGroup", "LoadBalancerSecurityGroup", type="dependency")
 
-    @pending("WP-2-3", "SourceSecurityGroupId Ref becomes a dependency edge")
     def test_the_database_group_depends_on_the_app_group(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "DatabaseSecurityGroup", "AppSecurityGroup", type="dependency")
 
-    @pending("WP-2-3", "SubnetId and SecurityGroupIds references become edges")
     def test_the_instance_is_contained_in_the_private_subnet(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "AppInstance", "PrivateSubnet", type="containment")
 
-    @pending("WP-2-3", "SecurityGroupIds GetAtt becomes an attachment")
     def test_the_instance_uses_the_app_security_group(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "AppInstance", "AppSecurityGroup")
 
-    @pending("WP-2-3", "IamInstanceProfile Ref becomes an iam_binding edge")
     def test_the_instance_uses_its_instance_profile(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "AppInstance", "AppInstanceProfile", type="iam_binding")
 
-    @pending("WP-2-3", "DBSubnetGroupName and VPCSecurityGroups references become edges")
     def test_the_database_uses_its_subnet_group_and_security_group(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "Database", "DbSubnetGroup")
         assert_edge(graph, "Database", "DatabaseSecurityGroup")
 
-    @pending("WP-2-3", "Sub variables such as ${UploadsBucket.Arn} count as references")
     def test_the_role_policy_depends_on_the_bucket_named_in_its_sub(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "AppRole", "UploadsBucket")
 
-    @pending("WP-2-3", "load balancer, listener and target group references become edges")
     def test_the_listener_chain_is_connected(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         assert_edge(graph, "Listener", "LoadBalancer")
@@ -133,23 +126,19 @@ class TestLongFormReferences:
 
 
 class TestLongFormProperties:
-    @pending("WP-2-3", "properties are translated to the attributes rules read")
     def test_the_database_has_the_snake_case_attributes(self) -> None:
         props = scan_real_shape(WEB_JSON).graph.nodes["Database"].properties
         assert props["publicly_accessible"] is False
         assert props["storage_encrypted"] is True
 
-    @pending("WP-2-3", "BucketEncryption becomes server_side_encryption_configuration")
     def test_the_bucket_has_its_encryption_attribute(self) -> None:
         props = scan_real_shape(WEB_JSON).graph.nodes["UploadsBucket"].properties
         assert "server_side_encryption_configuration" in props
 
-    @pending("WP-2-3", "a Ref to a Parameter with a Default resolves to the default")
     def test_a_parameter_default_is_resolved(self) -> None:
         props = scan_real_shape(WEB_JSON).graph.nodes["Vpc"].properties
         assert props["cidr_block"] == "10.40.0.0/16"
 
-    @pending("WP-2-3", "an unresolved intrinsic becomes values.Unknown, not a dict")
     def test_an_unresolvable_intrinsic_is_unknown(self) -> None:
         from threatcode.values import is_unknown
 
@@ -158,27 +147,20 @@ class TestLongFormProperties:
 
 
 class TestShortFormTemplate:
-    @pending(
-        "WP-2-3",
-        "short-form tags load; the loader is WP-1-4, merged first, this package owns the inputs",
-    )
     def test_short_form_yaml_has_the_same_nodes_as_the_long_form(self) -> None:
         graph = scan_real_shape(WEB_YAML).graph
         assert_nodes(graph, WEB_NODES, exact=True)
 
-    @pending("WP-2-3", "a Resources-only template is claimed; the detector is WP-1-4, merged first")
     def test_a_resources_only_template_is_read(self) -> None:
         graph = scan_real_shape(RESOURCES_ONLY).graph
         assert_nodes(graph, ["AuditBucket", "AuditTopic", "AuditQueue"], exact=True)
 
-    @pending("WP-2-3", "short-form references become edges exactly as the long form does")
     def test_short_form_references_are_edges(self) -> None:
         graph = scan_real_shape(WEB_YAML).graph
         assert_edge(graph, "AppInstance", "PrivateSubnet", type="containment")
 
 
 class TestSam:
-    @pending("WP-2-3", "SAM Function expands to a Lambda function plus an implicit execution role")
     def test_the_function_and_its_implicit_role_are_nodes(self) -> None:
         graph = scan_real_shape(SAM).graph
         types = {n.id: n.resource_type for n in graph.nodes.values()}
@@ -187,7 +169,6 @@ class TestSam:
         roles = [n for n in graph.nodes.values() if n.resource_type == "aws_iam_role"]
         assert len(roles) == 2
 
-    @pending("WP-2-3", "the function depends on its implicit role through the generated reference")
     def test_the_admin_function_is_bound_to_a_role(self) -> None:
         graph = scan_real_shape(SAM).graph
         edges = [e for e in graph.edges if e.source == "AdminFunction"]
@@ -195,17 +176,110 @@ class TestSam:
 
 
 class TestNestedStacks:
-    @pending("WP-2-3", "AWS::CloudFormation::Stack keeps a node plus a cfn.nested_stack diagnostic")
     def test_the_nested_stack_is_reported_not_silently_flattened(self) -> None:
         result = scan_real_shape(NESTED_PARENT)
         assert "Network" in result.graph.nodes
         codes = {d.code for output in result.parsed for d in output.diagnostics}
         assert "cfn.nested_stack" in codes
 
-    @pending("WP-2-3", "GetAtt of a nested stack output is an edge to the nested stack node")
     def test_the_instance_depends_on_the_nested_stack_that_supplies_its_subnet(self) -> None:
         graph = scan_real_shape(NESTED_PARENT).graph
         assert_edge(graph, "AppInstance", "Network")
+
+
+class TestEdgesInTheShortFormTemplate:
+    def test_both_forms_draw_the_same_edges(self) -> None:
+        def edges(path: str) -> set[tuple[str, str, str]]:
+            graph = scan_real_shape(path).graph
+            return {(e.source, e.target, e.edge_type.value) for e in graph.edges}
+
+        assert edges(WEB_YAML) == edges(WEB_JSON)
+
+    def test_every_resource_that_names_another_has_an_edge_to_it(self) -> None:
+        graph = scan_real_shape(WEB_YAML).graph
+        targets = {n: {e.target for e in graph.edges_from(n)} for n in WEB_NODES}
+        assert targets["AppInstance"] >= {"PrivateSubnet", "AppSecurityGroup", "AppInstanceProfile"}
+        assert targets["LoadBalancer"] >= {
+            "LoadBalancerSecurityGroup",
+            "PublicSubnet",
+            "PrivateSubnetB",
+        }
+        assert targets["TargetGroup"] >= {"Vpc", "AppInstance"}
+        assert targets["PublicRoute"] >= {
+            "PublicRouteTable",
+            "InternetGateway",
+            "GatewayAttachment",
+        }
+        assert targets["GatewayAttachment"] >= {"Vpc", "InternetGateway"}
+
+    def test_the_vpc_and_the_bucket_depend_on_nothing(self) -> None:
+        graph = scan_real_shape(WEB_YAML).graph
+        assert graph.edges_from("Vpc") == []
+        assert graph.edges_from("UploadsBucket") == []
+
+    def test_parameters_and_pseudo_parameters_make_no_edge(self) -> None:
+        graph = scan_real_shape(WEB_YAML).graph
+        assert not {e.target for e in graph.edges} - set(WEB_NODES)
+
+    def test_the_typed_edges_have_their_relation(self) -> None:
+        graph = scan_real_shape(WEB_JSON).graph
+        assert_edge(graph, "AppInstance", "AppSecurityGroup", relation="security_group")
+        assert_edge(graph, "AppInstanceProfile", "AppRole", type="iam_binding", relation="assumes")
+        assert_edge(graph, "AppInstance", "AppInstanceProfile", relation="instance_profile")
+
+
+class TestTypesZonesAndLines:
+    def test_the_short_form_template_has_the_same_types(self) -> None:
+        short = {n: node.resource_type for n, node in scan_real_shape(WEB_YAML).graph.nodes.items()}
+        long = {n: node.resource_type for n, node in scan_real_shape(WEB_JSON).graph.nodes.items()}
+        assert short == long
+        assert short["Listener"] == "aws_lb_listener"
+        assert short["TargetGroup"] == "aws_lb_target_group"
+        assert short["PublicSubnetRouteTableAssociation"] == "aws_route_table_association"
+        assert short["PublicRoute"] == "aws_route"
+        assert short["DbSubnetGroup"] == "aws_db_subnet_group"
+        assert short["AppInstanceProfile"] == "aws_iam_instance_profile"
+
+    def test_a_public_subnet_is_in_the_dmz_and_a_private_one_is_not(self) -> None:
+        graph = scan_real_shape(WEB_JSON).graph
+        assert_zone(graph, "PublicSubnet", "dmz")
+        assert_zone(graph, "PrivateSubnet", "private")
+
+    def test_every_node_carries_the_lines_of_its_resource(self) -> None:
+        graph = scan_real_shape(WEB_YAML).graph
+        lines = (REAL_SHAPES / "cloudformation" / "web_stack.yaml").read_text().splitlines()
+        for name in WEB_NODES:
+            node = graph.nodes[name]
+            assert node.start_line is not None and node.end_line is not None
+            assert lines[node.start_line - 1].strip() == f"{name}:"
+
+    def test_the_implicit_api_is_an_api_gateway_type_and_policy_templates_are_reported(self) -> None:
+        result = scan_files([CFN_FIXTURES / "sam_function.yaml"])
+        assert result.graph.nodes["ServerlessRestApi"].resource_type == "aws_api_gateway_rest_api"
+        codes = {d.code for d in result.graph.diagnostics}
+        assert "cfn.sam_policy_template" in codes
+
+
+class TestSamGraph:
+    def test_the_api_reaches_the_function_and_the_function_its_role(self) -> None:
+        graph = scan_files([CFN_FIXTURES / "sam_function.yaml"]).graph
+        assert_edge(graph, "ServerlessRestApi", "AdminFunction", type="network_flow")
+        assert_edge(graph, "AdminFunction", "AdminFunctionRole", type="iam_binding")
+        assert_edge(graph, "ServerlessHttpApi", "ReaderFunction", type="network_flow")
+        assert_edge(graph, "WorkQueue", "ReaderFunction", type="data_flow")
+
+    def test_the_permission_depends_on_the_function_and_the_api(self) -> None:
+        graph = scan_files([CFN_FIXTURES / "sam_function.yaml"]).graph
+        assert_edge(graph, "AdminFunctionAdminPermission", "AdminFunction")
+        assert_edge(graph, "AdminFunctionAdminPermission", "ServerlessRestApi")
+
+    def test_a_function_with_its_own_role_has_no_role_node(self) -> None:
+        graph = scan_files([CFN_FIXTURES / "sam_function.yaml"]).graph
+        assert "PrivateFunctionRole" not in graph.nodes
+
+    def test_the_policy_template_makes_the_role_depend_on_the_table(self) -> None:
+        graph = scan_files([CFN_FIXTURES / "sam_function.yaml"]).graph
+        assert_edge(graph, "ReaderFunctionRole", "ItemsTable")
 
 
 class TestZonesExposureAndPaths:
