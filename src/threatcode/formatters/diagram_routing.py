@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections.abc import Hashable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -24,13 +25,23 @@ CYLINDER_RY = 6.0
 _PORT_SPACING = 20.0
 # Minimum distance between ports of different routes on facing sides of a column
 _FACING_PORT_SEP = 6.0
-_PORT_SPAN = {"rect": 0.6, "cylinder": 0.6, "diamond": 0.45}
+# Share of half the node width (or height) the ports of one side may use. Wide spans keep the
+# arrowheads of a busy node apart; a diamond narrows towards its tips, so it gets less
+_PORT_SPAN = {"rect": 0.8, "cylinder": 0.8, "diamond": 0.5}
 
 # Track spreading inside a channel
 _TRACK_SPACING = 10.0
 _TRACK_MIN_SEP = 30.0
 # Channels with more tracks than this keep greedy order instead of a full search
 _TRACK_SEARCH_MAX = 7
+# The full search costs permutations x runs squared, so a channel crowded with runs keeps the
+# greedy order as well
+_TRACK_SEARCH_RUNS_MAX = 24
+
+# Label placement: the most positions tried on one route, whatever its length
+MAX_CANDIDATES = 64
+# Edge of one cell of the spatial index, in pixels: a little under a node
+_INDEX_CELL = 64.0
 
 _CORNER_RADIUS = 6.0
 _NEST_KEY = 1e6
@@ -110,6 +121,63 @@ class Rect:
         return True
 
 
+class SpatialIndex:
+    """Uniform-grid index over rectangles and tagged segments.
+
+    A label candidate only needs the rectangles and route segments near it, so each item is
+    filed under the cells its bounding box covers and a query reads just the cells the candidate
+    covers.
+    That keeps placement near linear in the number of routes where a flat list made it quadratic.
+    Items come back in insertion order, so output never depends on hashing.
+    """
+
+    def __init__(self, cell: float = _INDEX_CELL) -> None:
+        self._cell = cell
+        self._rects: list[Rect] = []
+        self._segments: list[tuple[Point, Point, Hashable]] = []
+        self._rect_cells: dict[tuple[int, int], list[int]] = {}
+        self._segment_cells: dict[tuple[int, int], list[int]] = {}
+
+    def __len__(self) -> int:
+        return len(self._rects) + len(self._segments)
+
+    def _cells(self, x0: float, y0: float, x1: float, y1: float) -> Iterable[tuple[int, int]]:
+        c = self._cell
+        for cx in range(math.floor(x0 / c), math.floor(x1 / c) + 1):
+            for cy in range(math.floor(y0 / c), math.floor(y1 / c) + 1):
+                yield (cx, cy)
+
+    def add_rect(self, rect: Rect) -> None:
+        idx = len(self._rects)
+        self._rects.append(rect)
+        for cell in self._cells(rect.x, rect.y, rect.right, rect.bottom):
+            self._rect_cells.setdefault(cell, []).append(idx)
+
+    def add_segment(self, a: Point, b: Point, tag: Hashable = None) -> None:
+        idx = len(self._segments)
+        self._segments.append((a, b, tag))
+        for cell in self._cells(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])):
+            self._segment_cells.setdefault(cell, []).append(idx)
+
+    def add_route(self, points: Sequence[Point], tag: Hashable = None) -> None:
+        for a, b in zip(points, points[1:], strict=False):
+            self.add_segment(a, b, tag)
+
+    def rects_near(self, area: Rect) -> list[Rect]:
+        """Every indexed rectangle whose bounding box shares a cell with ``area``."""
+        found: set[int] = set()
+        for cell in self._cells(area.x, area.y, area.right, area.bottom):
+            found.update(self._rect_cells.get(cell, ()))
+        return [self._rects[i] for i in sorted(found)]
+
+    def segments_near(self, area: Rect) -> list[tuple[Point, Point, Hashable]]:
+        """Every indexed segment whose bounding box shares a cell with ``area``."""
+        found: set[int] = set()
+        for cell in self._cells(area.x, area.y, area.right, area.bottom):
+            found.update(self._segment_cells.get(cell, ()))
+        return [self._segments[i] for i in sorted(found)]
+
+
 @dataclass(frozen=True)
 class GridNode:
     """A node placed on the layout grid."""
@@ -157,6 +225,7 @@ def route_edges(grid: Grid, pairs: list[tuple[str, str]]) -> dict[tuple[str, str
     """Compute an orthogonal polyline for each (source, target) pair."""
     plans: dict[tuple[str, str], _Plan] = {}
     loops: dict[tuple[str, str], list[Point]] = {}
+    occupied = {(n.col, n.row) for n in grid.nodes.values()}
     for key in pairs:
         src = grid.nodes.get(key[0])
         tgt = grid.nodes.get(key[1])
@@ -165,7 +234,7 @@ def route_edges(grid: Grid, pairs: list[tuple[str, str]]) -> dict[tuple[str, str
         if src.id == tgt.id:
             loops[key] = _self_loop(src)
             continue
-        plans[key] = _plan(grid, src, tgt)
+        plans[key] = _plan(grid, src, tgt, occupied)
 
     _assign_ports(grid, plans)
     _assign_channel_tracks(grid, plans)
@@ -176,7 +245,7 @@ def route_edges(grid: Grid, pairs: list[tuple[str, str]]) -> dict[tuple[str, str
     return routes
 
 
-def _plan(grid: Grid, src: GridNode, tgt: GridNode) -> _Plan:
+def _plan(grid: Grid, src: GridNode, tgt: GridNode, occupied: set[tuple[int, int]]) -> _Plan:
     if src.row == tgt.row:
         if abs(src.col - tgt.col) == 1:
             if tgt.col > src.col:
@@ -193,9 +262,9 @@ def _plan(grid: Grid, src: GridNode, tgt: GridNode) -> _Plan:
     lo, hi = sorted((src.row, tgt.row))
     between = range(lo + 1, hi)
 
-    if _column_clear(grid, tgt.col, between):
+    if _column_clear(occupied, tgt.col, between):
         return _Plan(src, tgt, src_side, tgt_side, channel_1=near_src)
-    if _column_clear(grid, src.col, between):
+    if _column_clear(occupied, src.col, between):
         return _Plan(src, tgt, src_side, tgt_side, channel_1=near_tgt)
 
     if tgt.col > src.col:
@@ -207,8 +276,7 @@ def _plan(grid: Grid, src: GridNode, tgt: GridNode) -> _Plan:
     return _Plan(src, tgt, src_side, tgt_side, channel_1=near_src, gap=gap, channel_2=near_tgt)
 
 
-def _column_clear(grid: Grid, col: int, rows: range) -> bool:
-    occupied = {(n.col, n.row) for n in grid.nodes.values()}
+def _column_clear(occupied: set[tuple[int, int]], col: int, rows: range) -> bool:
     return all((col, r) not in occupied for r in rows)
 
 
@@ -375,7 +443,7 @@ def _least_crossing_order(runs: list[_Run], colors: list[int], slots: list[float
     """Map each track color to a slot so stubs cross as few runs as possible."""
     n = len(slots)
     identity = list(range(n))
-    if n < 2 or n > _TRACK_SEARCH_MAX:
+    if n < 2 or n > _TRACK_SEARCH_MAX or len(runs) > _TRACK_SEARCH_RUNS_MAX:
         return identity
 
     def crossings(order: tuple[int, ...] | list[int]) -> int:
@@ -557,35 +625,74 @@ def _sample(points: list[Point], s: float) -> tuple[Point, bool]:
 def place_on_route(
     points: list[Point],
     size: tuple[float, float],
-    obstacles: list[Rect],
+    obstacles: SpatialIndex | Sequence[Rect],
     bounds: Rect,
-    avoid: list[tuple[Point, Point]],
+    avoid: SpatialIndex | Sequence[tuple[Point, Point]],
     end_clearance: float = 14.0,
     step: float = 4.0,
     avoid_pad: float = 4.0,
+    skip_tag: Hashable = None,
+    max_candidates: int = MAX_CANDIDATES,
 ) -> Rect | None:
     """Find a spot on the route for a ``size`` box that clears every obstacle.
 
     Candidates are centered on the route. Among the collision-free ones the
     closest to the route's midpoint wins, with penalties for sitting on a
     vertical run or covering other routes' segments.
+
+    ``obstacles`` and ``avoid`` may be plain lists or ``SpatialIndex`` objects; the index lets a
+    candidate look at nearby items only.
+    Segments in ``avoid`` tagged ``skip_tag`` (the route being labelled) do not count.
+    At most ``max_candidates`` positions are tried however long the route is: a longer route
+    gets a coarser step.
     """
     w, h = size
     total = sum(math.dist(a, b) for a, b in route_segments(points))
     if total <= 0:
         return None
     mid = total / 2
+    obstacle_index = _rect_index(obstacles)
+    avoid_index = _segment_index(avoid)
+    lo = min(end_clearance, mid)
+    span = total - 2 * lo
+    if span > 0 and span / step > max_candidates:
+        step = span / max_candidates
     best: tuple[float, Rect] | None = None
-    s = min(end_clearance, mid)
-    while s <= total - min(end_clearance, mid) + 1e-6:
+    s = lo
+    while s <= total - lo + 1e-6:
         (px, py), vertical = _sample(points, s)
         rect = Rect(px - w / 2, py - h / 2, w, h)
+        here = s
         s += step
-        if not bounds.contains(rect) or any(rect.intersects(o) for o in obstacles):
+        if not bounds.contains(rect):
+            continue
+        if any(rect.intersects(o) for o in obstacle_index.rects_near(rect)):
             continue
         padded = rect.expand(avoid_pad)
-        covered = sum(1 for a, b in avoid if padded.intersects_segment(a, b))
-        score = abs(s - step - mid) + covered * 40.0 + (30.0 if vertical else 0.0)
+        covered = sum(
+            1
+            for a, b, tag in avoid_index.segments_near(padded)
+            if (skip_tag is None or tag != skip_tag) and padded.intersects_segment(a, b)
+        )
+        score = abs(here - mid) + covered * 40.0 + (30.0 if vertical else 0.0)
         if best is None or score < best[0]:
             best = (score, rect)
     return best[1] if best else None
+
+
+def _rect_index(obstacles: SpatialIndex | Sequence[Rect]) -> SpatialIndex:
+    if isinstance(obstacles, SpatialIndex):
+        return obstacles
+    index = SpatialIndex()
+    for rect in obstacles:
+        index.add_rect(rect)
+    return index
+
+
+def _segment_index(avoid: SpatialIndex | Sequence[tuple[Point, Point]]) -> SpatialIndex:
+    if isinstance(avoid, SpatialIndex):
+        return avoid
+    index = SpatialIndex()
+    for a, b in avoid:
+        index.add_segment(a, b)
+    return index
