@@ -1,0 +1,20 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_public_access_block.uploads",
+      "target": "aws_s3_bucket.uploads",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_s3_bucket.uploads": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_public_access_block.uploads": {
+      "category": "storage",
+      "zone": "data"
+    }
+  }
+}

@@ -1,5 +1,264 @@
 {
-  "edges": [],
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_application_insights.main",
+      "target": "azurerm_log_analytics_workspace.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_application_insights.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault.main",
+      "target": "azurerm_subnet.app_service",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault.main",
+      "target": "azurerm_subnet.private_endpoints",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault.main",
+      "target": "data.azurerm_client_config.current",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.app_service",
+      "target": "azurerm_key_vault.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.app_service",
+      "target": "azurerm_linux_web_app.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.app_service",
+      "target": "data.azurerm_client_config.current",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.dba_team",
+      "target": "azurerm_key_vault.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.dba_team",
+      "target": "data.azurerm_client_config.current",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.terraform",
+      "target": "azurerm_key_vault.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_key_vault_access_policy.terraform",
+      "target": "data.azurerm_client_config.current",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_application_insights.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_key_vault.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_mssql_database.hr_portal",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_mssql_server.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_redis_cache.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_service_plan.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_web_app.main",
+      "target": "azurerm_subnet.app_service",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_log_analytics_workspace.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_mssql_database.hr_portal",
+      "target": "azurerm_mssql_server.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_mssql_database.hr_portal",
+      "target": "azurerm_storage_account.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_mssql_database.reporting",
+      "target": "azurerm_mssql_server.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_mssql_server.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_network_security_group.app",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_redis_cache.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_service_plan.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_storage_account.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_storage_account.main",
+      "target": "azurerm_subnet.app_service",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_storage_account.main",
+      "target": "azurerm_subnet.private_endpoints",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_storage_container.documents",
+      "target": "azurerm_storage_account.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_storage_container.payslips",
+      "target": "azurerm_storage_account.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.app_service",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.app_service",
+      "target": "azurerm_virtual_network.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.management",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.management",
+      "target": "azurerm_virtual_network.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.private_endpoints",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.private_endpoints",
+      "target": "azurerm_virtual_network.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet_network_security_group_association.app_service",
+      "target": "azurerm_network_security_group.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet_network_security_group_association.app_service",
+      "target": "azurerm_subnet.app_service",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_virtual_network.main",
+      "target": "azurerm_resource_group.main",
+      "type": "dependency"
+    }
+  ],
   "nodes": {
     "azurerm_application_insights.main": {
       "category": "unknown",
@@ -87,6 +346,10 @@
     },
     "azurerm_virtual_network.main": {
       "category": "network",
+      "zone": "private"
+    },
+    "data.azurerm_client_config.current": {
+      "category": "unknown",
       "zone": "private"
     }
   }

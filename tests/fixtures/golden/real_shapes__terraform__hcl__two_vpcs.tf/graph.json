@@ -1,0 +1,86 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.dev",
+      "target": "aws_security_group.dev",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.dev",
+      "target": "aws_subnet.dev",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.prod",
+      "target": "aws_security_group.prod",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.prod",
+      "target": "aws_subnet.prod",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.dev",
+      "target": "aws_vpc.dev",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.prod",
+      "target": "aws_vpc.prod",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.dev",
+      "target": "aws_vpc.dev",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.prod",
+      "target": "aws_vpc.prod",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "aws_instance.dev": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_instance.prod": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_security_group.dev": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.prod": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.dev": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.prod": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpc.dev": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpc.prod": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}
