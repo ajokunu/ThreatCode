@@ -15,6 +15,8 @@ top of those edges is pending on the packages that deliver it.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from tests.helpers.graph_assert import (
@@ -259,6 +261,19 @@ def _types(path: str) -> set[str]:
 
 class TestHelmCharts:
     """Charts as ``helm create`` and real platform charts lay them out."""
+
+    @pytest.fixture(autouse=True)
+    def _fallback_renderer(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+        """Render with the fallback, so the result is the same on a machine that has helm.
+
+        ``scan_real_shape`` caches by argument for the whole session, so the cache is cleared
+        around each test: no result rendered by the binary is reused here, and none rendered by
+        the fallback leaks out.
+        """
+        monkeypatch.setenv("THREATCODE_HELM", "off")
+        scan_real_shape.cache_clear()
+        yield
+        scan_real_shape.cache_clear()
 
     def test_a_chart_without_include_helpers_renders_into_nodes(self) -> None:
         assert _types(REDIS_SUBCHART) >= {"kubernetes_stateful_set", "kubernetes_service"}

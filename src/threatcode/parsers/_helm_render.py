@@ -78,6 +78,11 @@ MAX_SUBCHART_DEPTH = 4
 MAX_CHARTS = 40
 MAX_VALUE_NODES = 100_000
 MAX_VALUE_DEPTH = 64
+# What one template value may grow to; a loop that doubles a string or a list stops here
+MAX_STRING_CHARS = 1_000_000
+MAX_COLLECTION_ITEMS = 100_000
+MAX_PRINT_NODES = 10_000
+MAX_INTEGER_BITS = 256
 DEFAULT_TIME_BUDGET_SECONDS = 20.0
 
 _WHITESPACE = " \t\r\n"
@@ -881,7 +886,14 @@ class Executor:
         return f"{PLACEHOLDER_PREFIX}{self.slug}-{self.document}-{number}"
 
     def printable(self, value: Any) -> str:
-        """The text a value prints as; an unknown value prints as its placeholder token."""
+        """The text a value prints as; an unknown value prints as its placeholder token.
+
+        A container prints at most ``MAX_PRINT_NODES`` values, then ``...``, so printing a value
+        that shares the same list many times over stays cheap.
+        """
+        return self._print(value, [MAX_PRINT_NODES], 0)
+
+    def _print(self, value: Any, budget: list[int], depth: int) -> str:
         if is_hole(value):
             return self.token()
         if value is None:
@@ -892,11 +904,15 @@ class Executor:
             return _format_number(value)
         if isinstance(value, str):
             return value
+        budget[0] -= 1
+        if budget[0] < 0 or depth > MAX_VALUE_DEPTH:
+            return "..."
         if isinstance(value, (list, tuple)):
-            return "[" + " ".join(self.printable(item) for item in value[:1000]) + "]"
+            return "[" + " ".join(self._print(item, budget, depth + 1) for item in value) + "]"
         if isinstance(value, dict):
-            pairs = sorted(value.items(), key=lambda pair: str(pair[0]))[:1000]
-            return "map[" + " ".join(f"{k}:{self.printable(v)}" for k, v in pairs) + "]"
+            pairs = sorted(value.items(), key=lambda pair: str(pair[0]))
+            body = " ".join(f"{k}:{self._print(v, budget, depth + 1)}" for k, v in pairs)
+            return "map[" + body + "]"
         return str(value)
 
     def resolved(self, value: Any, depth: int = 0) -> Any:
@@ -1142,14 +1158,79 @@ class Executor:
         function = FUNCTIONS.get(name)
         if function is None:
             return UNKNOWN
+        self._charge_for_size(name, arguments)
         try:
-            return function(self, *arguments)
+            result = function(self, *arguments)
         except (RenderAbortError, _BreakError, _ContinueError):
             raise
         except RecursionError:
             raise RenderAbortError("the template is nested too deeply") from None
         except (TypeError, ValueError, KeyError, IndexError, AttributeError, ArithmeticError):
             return UNKNOWN
+        if isinstance(result, str) and len(result) > MAX_STRING_CHARS:
+            raise RenderAbortError(f"a template built a string over {MAX_STRING_CHARS} characters")
+        if isinstance(result, (list, dict)) and len(result) > MAX_COLLECTION_ITEMS:
+            raise RenderAbortError(
+                f"a template built a collection over {MAX_COLLECTION_ITEMS} items"
+            )
+        return result
+
+    def _charge_for_size(self, name: str, arguments: list[Any]) -> None:
+        """Make a call cost steps in proportion to what it has to process.
+
+        A function that copies or walks its arguments would otherwise let a loop do
+        quadratic work for one step per iteration.
+        """
+        deep = name in _DEEP_FUNCTIONS
+        units = 0
+        for argument in arguments:
+            if isinstance(argument, str):
+                units += len(argument)
+            elif isinstance(argument, (list, tuple, dict)):
+                units += (_count_nodes(argument) if deep else len(argument)) * 8
+        if units > 512:
+            self.env.charge(units // 64)
+
+
+# Functions that walk or copy the whole structure they are given
+_DEEP_FUNCTIONS = frozenset(
+    {
+        "toYaml",
+        "mustToYaml",
+        "toJson",
+        "mustToJson",
+        "toPrettyJson",
+        "mustToPrettyJson",
+        "deepCopy",
+        "mustDeepCopy",
+        "merge",
+        "mustMerge",
+        "mergeOverwrite",
+        "mustMergeOverwrite",
+        "pick",
+        "omit",
+        "uniq",
+        "mustUniq",
+        "without",
+        "mustWithout",
+    }
+)
+
+
+def _count_nodes(value: Any) -> int:
+    """How many values a structure holds, counting a shared one every time, up to a cap."""
+    count = 0
+    stack = [value]
+    while stack:
+        count += 1
+        if count >= MAX_VALUE_NODES:
+            return count
+        item = stack.pop()
+        if isinstance(item, dict):
+            stack.extend(item.values())
+        elif isinstance(item, (list, tuple)):
+            stack.extend(item)
+    return count
 
 
 # ---------------------------------------------------------------------------------------
@@ -1195,17 +1276,35 @@ def _int(value: Any) -> int:
     if isinstance(value, bool):
         return int(value)
     if isinstance(value, (int, float)):
-        return int(value)
+        try:
+            return int(value)
+        except (ValueError, OverflowError):
+            return 0
     if isinstance(value, str):
+        if len(value) > 64:
+            return 0
         try:
             return int(float(value.strip()))
-        except ValueError:
+        except (ValueError, OverflowError):
             return 0
     return 0
 
 
 def _string(ex: Executor, value: Any) -> str:
     return ex.printable(value)
+
+
+def _checked_join(separator: str, parts: list[str]) -> str:
+    """Join strings, refusing a result over ``MAX_STRING_CHARS`` before building it."""
+    total = sum(len(part) for part in parts) + len(separator) * max(0, len(parts) - 1)
+    if total > MAX_STRING_CHARS:
+        raise RenderAbortError(f"a template built a string over {MAX_STRING_CHARS} characters")
+    return separator.join(parts)
+
+
+def _int_result(value: int) -> Any:
+    """An integer the arithmetic functions may return: an enormous one is unknown."""
+    return UNKNOWN if value.bit_length() > MAX_INTEGER_BITS else value
 
 
 # -- logic and comparison ---------------------------------------------------------------
@@ -1397,16 +1496,18 @@ def f_quote(ex: Executor, *values: Any) -> Any:
         if value is None:
             continue
         quoted.append(json.dumps(_string(ex, value), ensure_ascii=False))
-    return " ".join(quoted)
+    return _checked_join(" ", quoted)
 
 
 @_register("squote", strict=False)
 def f_squote(ex: Executor, *values: Any) -> Any:
-    return " ".join(f"'{_string(ex, value)}'" for value in values if value is not None)
+    return _checked_join(" ", [f"'{_string(ex, v)}'" for v in values if v is not None])
 
 
 def _indent(amount: int, text: str) -> str:
     padding = " " * max(0, min(amount, 1000))
+    if (text.count("\n") + 1) * len(padding) + len(text) > MAX_STRING_CHARS:
+        raise RenderAbortError(f"a template built a string over {MAX_STRING_CHARS} characters")
     return padding + text.replace("\n", "\n" + padding)
 
 
@@ -1482,7 +1583,11 @@ def f_substr(ex: Executor, start: Any, end: Any, text: Any) -> Any:
 
 @_register("replace")
 def f_replace(ex: Executor, old: Any, new: Any, text: Any) -> Any:
-    return str(text).replace(str(old), str(new))
+    value, before, after = str(text), str(old), str(new)
+    occurrences = value.count(before) if before else len(value) + 1
+    if len(value) + occurrences * len(after) > MAX_STRING_CHARS:
+        raise RenderAbortError(f"a template built a string over {MAX_STRING_CHARS} characters")
+    return value.replace(before, after)
 
 
 @_register("contains")
@@ -1502,7 +1607,10 @@ def f_has_suffix(ex: Executor, suffix: Any, text: Any) -> Any:
 
 @_register("repeat")
 def f_repeat(ex: Executor, count: Any, text: Any) -> Any:
-    return str(text) * max(0, min(_int(count), 1000))
+    value, times = str(text), max(0, min(_int(count), 1000))
+    if len(value) * times > MAX_STRING_CHARS:
+        raise RenderAbortError(f"a template built a string over {MAX_STRING_CHARS} characters")
+    return value * times
 
 
 @_register("nospace")
@@ -1518,17 +1626,17 @@ def f_abbrev(ex: Executor, width: Any, text: Any) -> Any:
 
 @_register("cat")
 def f_cat(ex: Executor, *values: Any) -> Any:
-    return " ".join(ex.printable(v) for v in values if v is not None)
+    return _checked_join(" ", [ex.printable(v) for v in values if v is not None])
 
 
 @_register("print")
 def f_print(ex: Executor, *values: Any) -> Any:
-    return "".join(ex.printable(v) for v in values)
+    return _checked_join("", [ex.printable(v) for v in values])
 
 
 @_register("println")
 def f_println(ex: Executor, *values: Any) -> Any:
-    return " ".join(ex.printable(v) for v in values) + "\n"
+    return _checked_join(" ", [ex.printable(v) for v in values]) + "\n"
 
 
 _PRINTF = re.compile(
@@ -1539,13 +1647,14 @@ _PRINTF = re.compile(
 @_register("printf")
 def f_printf(ex: Executor, template: Any, *values: Any) -> Any:
     arguments = list(values)
+    produced = [0]
 
     def substitute(match: re.Match[str]) -> str:
         verb = match.group("verb")
         if verb == "%":
             return "%"
         value = arguments.pop(0)
-        width = int(match.group("width") or 0)
+        width = min(int(match.group("width") or 0), 1000)
         flags = match.group("flags")
         if verb in ("s", "v"):
             text = ex.printable(value)
@@ -1560,9 +1669,15 @@ def f_printf(ex: Executor, template: Any, *values: Any) -> Any:
             text = f"{float(value):.{precision}f}"
         else:
             raise ValueError(f"unsupported printf verb %{verb}")
-        if "-" in flags:
-            return text.ljust(width)
-        return text.rjust(width, "0" if "0" in flags and verb in ("d", "f") else " ")
+        padded = (
+            text.ljust(width)
+            if "-" in flags
+            else text.rjust(width, "0" if "0" in flags and verb in ("d", "f") else " ")
+        )
+        produced[0] += len(padded)
+        if produced[0] > MAX_STRING_CHARS:
+            raise RenderAbortError(f"a template built a string over {MAX_STRING_CHARS} characters")
+        return padded
 
     return _PRINTF.sub(substitute, str(template))
 
@@ -1629,7 +1744,7 @@ def f_split_list(ex: Executor, separator: Any, text: Any) -> Any:
 
 @_register("join")
 def f_join(ex: Executor, separator: Any, values: Any) -> Any:
-    return str(separator).join(ex.printable(v) for v in values)
+    return _checked_join(str(separator), [ex.printable(v) for v in values])
 
 
 # -- numbers ----------------------------------------------------------------------------
@@ -1650,17 +1765,17 @@ def f_float(ex: Executor, value: Any) -> Any:
 
 @_register("add")
 def f_add(ex: Executor, *values: Any) -> Any:
-    return sum(_int(v) for v in values)
+    return _int_result(sum(_int(v) for v in values))
 
 
 @_register("add1")
 def f_add1(ex: Executor, value: Any) -> Any:
-    return _int(value) + 1
+    return _int_result(_int(value) + 1)
 
 
 @_register("sub")
 def f_sub(ex: Executor, left: Any, right: Any) -> Any:
-    return _int(left) - _int(right)
+    return _int_result(_int(left) - _int(right))
 
 
 @_register("mul")
@@ -1668,12 +1783,14 @@ def f_mul(ex: Executor, *values: Any) -> Any:
     result = 1
     for value in values:
         result *= _int(value)
+        if result.bit_length() > MAX_INTEGER_BITS:
+            return UNKNOWN
     return result
 
 
 @_register("div")
 def f_div(ex: Executor, left: Any, right: Any) -> Any:
-    return _int(left) // _int(right)
+    return _int_result(_int(left) // _int(right))
 
 
 @_register("mod")
@@ -1845,6 +1962,8 @@ def f_concat(ex: Executor, *lists: Any) -> Any:
 
 @_register("uniq", "mustUniq")
 def f_uniq(ex: Executor, values: Any) -> Any:
+    if len(values) > 5_000:
+        return UNKNOWN
     seen: list[Any] = []
     for item in values:
         if item not in seen:
@@ -1854,6 +1973,8 @@ def f_uniq(ex: Executor, values: Any) -> Any:
 
 @_register("without", "mustWithout")
 def f_without(ex: Executor, values: Any, *excluded: Any) -> Any:
+    if len(values) * max(1, len(excluded)) > 1_000_000:
+        return UNKNOWN
     return [item for item in values if item not in excluded]
 
 

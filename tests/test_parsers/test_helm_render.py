@@ -1385,6 +1385,98 @@ class TestLimits:
         assert any("more than 4 template files" in w for w in result.warnings)
 
 
+class TestValuesThatGrow:
+    """A template can build values in a loop, so no function may let one grow without a limit."""
+
+    @staticmethod
+    def _run(tmp_path: Path, source: str) -> tuple[ChartRender, float]:
+        started = time.monotonic()
+        result = render_all(tmp_path, {"t.yaml": "kind: A\n" + source})
+        return result, time.monotonic() - started
+
+    def test_printing_a_list_that_contains_itself_twice_at_every_level_is_cut_off(
+        self, tmp_path: Path
+    ) -> None:
+        result, seconds = self._run(
+            tmp_path, "{{ $x := list 1 }}{{ range 40 }}{{ $x = list $x $x }}{{ end }}{{ $x }}"
+        )
+        assert seconds < 5
+        assert "..." in result.files[0].text
+        assert not result.aborted
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            '{{ $s := "xxxxxxxxxx" }}{{ range 40 }}{{ $s = cat $s $s }}{{ end }}',
+            '{{ $s := "x" }}{{ range 6 }}{{ $s = repeat 1000 $s }}{{ end }}',
+            '{{ $s := repeat 1000 "line\\n" }}{{ range 10 }}{{ $s = indent 1000 $s }}{{ end }}',
+            '{{ replace "a" (repeat 1000 "bbbbbbbbbb") (repeat 1000 "aaaaaaaaaa") }}',
+            '{{ $s := "x" }}{{ range 30 }}{{ $s = printf "%s%s" $s $s }}{{ end }}',
+            '{{ $s := repeat 1000 "xxxxxxxxxx" }}{{ $l := list }}'
+            '{{ range 5000 }}{{ $l = append $l $s }}{{ end }}{{ join "," $l }}',
+            '{{ $s := "x" }}{{ range 25 }}{{ $s = print $s $s }}{{ end }}',
+        ],
+    )
+    def test_a_loop_that_doubles_a_string_is_stopped(self, tmp_path: Path, source: str) -> None:
+        result, seconds = self._run(tmp_path, source)
+        assert seconds < 10
+        assert result.aborted is True
+        assert any("characters" in w or "steps" in w for w in result.warnings)
+
+    def test_a_huge_printf_width_is_capped(self, tmp_path: Path) -> None:
+        result, seconds = self._run(tmp_path, '{{ printf "%99999999999s" "a" }}')
+        assert seconds < 2
+        assert len(result.files[0].text) < 2000
+
+    def test_arithmetic_that_grows_without_bound_becomes_unknown(self, tmp_path: Path) -> None:
+        result, seconds = self._run(
+            tmp_path, "{{ $x := 99999999 }}{{ range 100 }}{{ $x = mul $x $x }}{{ end }}{{ $x }}"
+        )
+        assert seconds < 2
+        assert "placeholder-" in result.files[0].text
+
+    def test_a_loop_that_copies_a_growing_list_runs_out_of_steps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(hr, "MAX_STEPS", 200_000)
+        result, seconds = self._run(
+            tmp_path,
+            "{{ $l := list }}{{ range 5000 }}{{ range 5000 }}"
+            "{{ $l = append $l . }}{{ end }}{{ end }}",
+        )
+        assert seconds < 10
+        assert result.aborted is True
+        assert any("evaluation steps" in w for w in result.warnings)
+
+    def test_quadratic_list_functions_refuse_large_inputs(self, tmp_path: Path) -> None:
+        result, seconds = self._run(
+            tmp_path, '{{ splitList "," (repeat 1000 "a,a,a,a,a,a,") | uniq | len }}'
+        )
+        assert seconds < 5
+        assert "placeholder-" in result.files[0].text
+
+    def test_a_loop_that_deep_copies_a_big_structure_runs_out_of_steps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(hr, "MAX_STEPS", 100_000)
+        values = {"big": {f"k{n}": list(range(20)) for n in range(2000)}}
+        result = render_all(
+            tmp_path,
+            {"t.yaml": "kind: A\n{{ range 100000 }}{{ $c := deepCopy $.Values.big }}{{ end }}"},
+            values,
+        )
+        assert result.aborted is True
+
+    def test_functions_that_are_cheap_stay_cheap(self, tmp_path: Path) -> None:
+        values = {"big": {f"k{n}": n for n in range(50)}}
+        result = render_all(
+            tmp_path,
+            {"t.yaml": 'kind: A\n{{ range 3000 }}{{ index $.Values.big "k1" }}{{ end }}'},
+            values,
+        )
+        assert result.aborted is False
+
+
 # ---------------------------------------------------------------------------------------
 # Mapping output back to the template
 # ---------------------------------------------------------------------------------------

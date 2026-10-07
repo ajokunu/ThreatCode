@@ -39,6 +39,7 @@ from threatcode.parsers._k8s_security import (
     as_str_list,
     pod_properties,
     pod_template,
+    scalar_or_none,
     security_properties,
     string_map,
 )
@@ -311,7 +312,7 @@ class KubernetesParser(BaseParser):
 
         props: dict[str, Any] = {
             "kind": kind,
-            "apiVersion": str(doc.get("apiVersion", "")),
+            "apiVersion": _text(doc.get("apiVersion")),
             "name": name,
             "namespace": None if cluster_scoped else namespace,
             "labels": as_dict(metadata.get("labels")),
@@ -575,6 +576,8 @@ def _binding_properties(doc: Mapping[str, Any], spec: Mapping[str, Any]) -> dict
         if not isinstance(subject, dict) or subject.get("kind") not in ("User", "Group"):
             continue
         name = subject.get("name")
+        if not isinstance(name, str):
+            continue
         anonymous = anonymous or name in _ANONYMOUS_SUBJECTS
         authenticated = authenticated or name == _AUTHENTICATED_SUBJECT
     return {
@@ -598,7 +601,7 @@ def _service_properties(spec: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(service_type, str) and service_type
         else "ClusterIP",
         "ports": as_list(spec.get("ports")),
-        "selector": string_map(spec.get("selector")),
+        "selector": string_map(spec.get("selector"), all_or_nothing=True),
     }
 
 
@@ -616,9 +619,9 @@ def _ingress_properties(spec: Mapping[str, Any]) -> dict[str, Any]:
         backends.append(
             {
                 "service_name": name,
-                "port": number
-                if number is not None
-                else port.get("name", fields.get("servicePort")),
+                "port": scalar_or_none(
+                    number if number is not None else port.get("name", fields.get("servicePort"))
+                ),
             }
         )
 

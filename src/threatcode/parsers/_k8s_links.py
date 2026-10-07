@@ -25,6 +25,7 @@ from threatcode.parsers._k8s_security import (
     as_list,
     as_str_list,
     container_views,
+    is_scalar,
     label_text,
 )
 from threatcode.parsers.base import ParsedEdge, ParsedResource
@@ -81,7 +82,7 @@ def selector_matches(selector: object, labels: Mapping[str, str]) -> bool:
         if not isinstance(match_labels, dict):
             return False
         for key, value in match_labels.items():
-            if labels.get(str(key)) != label_text(value):
+            if not is_scalar(value) or labels.get(str(key)) != label_text(value):
                 return False
     expressions = selector.get("matchExpressions")
     if expressions is not None:
@@ -99,7 +100,7 @@ def _expression_matches(expression: object, labels: Mapping[str, str]) -> bool:
     key = expression.get("key")
     if not isinstance(key, str):
         return False
-    values = [label_text(v) for v in as_list(expression.get("values"))]
+    values = [label_text(v) for v in as_list(expression.get("values")) if is_scalar(v)]
     present = key in labels
     operator = expression.get("operator")
     if operator == "In":
@@ -207,7 +208,9 @@ class _PodIndex:
         required: Mapping[str, str] = {}
         if isinstance(selector, dict) and isinstance(selector.get("matchLabels"), dict):
             required = {
-                str(k): label_text(v) for k, v in as_dict(selector.get("matchLabels")).items()
+                str(k): label_text(v)
+                for k, v in as_dict(selector.get("matchLabels")).items()
+                if is_scalar(v)
             }
         return [w for w in self.with_labels(required) if _labels_of(w, selector)]
 
@@ -267,7 +270,7 @@ class ManifestSet:
         index = self.pod_index.get(service.namespace)
         if not selector or index is None:
             return []
-        return index.with_labels({str(k): label_text(v) for k, v in selector.items()})
+        return index.with_labels(dict(selector))
 
 
 # ---------------------------------------------------------------------------------------

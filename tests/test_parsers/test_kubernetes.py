@@ -821,3 +821,142 @@ class TestNameSource:
     ) -> None:
         (resource,) = parser.parse(_object("Job", metadata, "batch/v1")).resources
         assert resource.meta == {"name_source": source}
+
+
+def _anchors(levels: int = 12, fanout: int = 9) -> str:
+    """Anchors ``x-a0`` to ``x-a11``; each is ``fanout`` aliases of the one before it."""
+    lines = ["x-a0: &a0 [x, x, x, x, x, x, x, x, x]"]
+    for level in range(1, levels):
+        refs = ", ".join([f"*a{level - 1}"] * fanout)
+        lines.append(f"x-a{level}: &a{level} [{refs}]")
+    return "\n".join(lines)
+
+
+class TestAliasBombsInScalarFields:
+    """A field a parser turns into text must not expand a bomb: str() of a list walks it all."""
+
+    BOMB = "*a11"
+
+    def _parse(self, body: str) -> ParsedOutput:
+        started = time.monotonic()
+        output = KubernetesParser().parse(body)
+        assert time.monotonic() - started < 5
+        return output
+
+    def test_bombs_in_labels_selectors_limits_and_ids(self) -> None:
+        text = f"""
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: d
+  namespace: n
+{_anchors()}
+spec:
+  template:
+    metadata:
+      labels: {{app: {self.BOMB}, ok: fine}}
+    spec:
+      serviceAccountName: {self.BOMB}
+      securityContext: {{runAsUser: {self.BOMB}, runAsNonRoot: {self.BOMB}}}
+      containers:
+        - name: c
+          image: {self.BOMB}
+          resources: {{limits: {{cpu: {self.BOMB}, memory: {self.BOMB}}}}}
+          securityContext: {{privileged: {self.BOMB}, capabilities: {{add: {self.BOMB}}}}}
+"""
+        (resource,) = self._parse(text).resources
+        props = resource.properties
+        assert props["pod_labels"] == {"ok": "fine"}
+        assert props["pod_run_as_user"] is None
+        assert props["pod_run_as_non_root"] is None
+        assert props["has_resource_limits"] is False
+        assert props["privileged"] is False
+        assert props["images"] == []
+        assert props["service_account_name"] == "default"
+
+    def test_bombs_in_a_service_selector_and_ports_select_nothing(self) -> None:
+        text = f"""
+apiVersion: v1
+kind: Service
+metadata: {{name: s}}
+{_anchors()}
+spec:
+  selector: {{app: web, tier: {self.BOMB}}}
+  ports: {self.BOMB}
+"""
+        (resource,) = self._parse(text).resources
+        assert resource.properties["selector"] == {}
+        assert resource.properties["ports"] == []
+
+    def test_bombs_in_a_network_policy_selector_cover_nothing(self) -> None:
+        text = f"""
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {{name: p}}
+{_anchors()}
+spec:
+  podSelector:
+    matchLabels: {{app: {self.BOMB}}}
+    matchExpressions: [{{key: app, operator: In, values: {self.BOMB}}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {{name: d}}
+spec: {{template: {{metadata: {{labels: {{app: web}}}}, spec: {{containers: []}}}}}}
+"""
+        output = self._parse(text)
+        deployment = next(r for r in output.resources if r.resource_type == "kubernetes_deployment")
+        assert deployment.properties["ingress_policy_covered"] is False
+        assert output.edges == []
+
+    def test_bombs_in_ids_and_names_of_rbac_and_ingress(self) -> None:
+        text = f"""
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {{name: b}}
+{_anchors()}
+roleRef: {{kind: {self.BOMB}, name: {self.BOMB}}}
+subjects:
+  - {{kind: User, name: {self.BOMB}}}
+  - {{kind: Group, name: system:authenticated}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {{name: i}}
+{_anchors()}
+spec:
+  rules:
+    - http:
+        paths:
+          - backend: {{service: {{name: s, port: {{number: {self.BOMB}}}}}}}
+"""
+        output = self._parse(text)
+        binding = next(r for r in output.resources if "binding" in r.resource_type)
+        assert binding.properties["role_ref_name"] == ""
+        assert binding.properties["binds_authenticated_group"] is True
+        assert binding.properties["binds_unauthenticated_group"] is False
+        ingress = next(r for r in output.resources if r.resource_type == "kubernetes_ingress")
+        assert ingress.properties["ingress_backends"] == [{"service_name": "s", "port": None}]
+
+    def test_an_api_version_or_namespace_that_is_a_bomb_is_text_free(self) -> None:
+        text = f"""
+{_anchors()}
+apiVersion: {self.BOMB}
+kind: ConfigMap
+metadata: {{name: c, namespace: {self.BOMB}}}
+"""
+        (resource,) = self._parse(text).resources
+        assert resource.properties["apiVersion"] == ""
+        assert resource.address == "kubernetes_config_map.default.c"
+
+    @pytest.mark.parametrize("name", [["a"], {"a": 1}, None, 7, True])
+    def test_a_subject_name_that_is_not_text_does_not_crash_the_binding(self, name: Any) -> None:
+        doc = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRoleBinding",
+            "metadata": {"name": "b"},
+            "roleRef": {"kind": "ClusterRole", "name": "x"},
+            "subjects": [{"kind": "Group", "name": name}],
+        }
+        (resource,) = KubernetesParser().parse(doc).resources
+        assert resource.properties["binds_unauthenticated_group"] is False

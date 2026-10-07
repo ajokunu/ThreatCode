@@ -75,18 +75,48 @@ def as_str_list(value: object) -> list[str]:
     return []
 
 
+def is_scalar(value: object) -> bool:
+    """True for text, numbers and booleans: the only values a label, a limit or an id can be."""
+    return isinstance(value, (str, int, float, bool))
+
+
+def scalar_or_none(value: object) -> Any:
+    """The value when it is a scalar, else None.
+
+    Anything that is not a scalar is dropped rather than kept or converted to text: ``str()`` of
+    a list that YAML aliases expand would build billions of characters.
+    """
+    return value if is_scalar(value) else None
+
+
 def label_text(value: object) -> str:
-    """A label value as text, so ``version: 1`` and ``version: "1"`` compare equal."""
+    """A label value as text, so ``version: 1`` and ``version: "1"`` compare equal.
+
+    Only scalars have a text; anything else gives the empty string.
+    """
     if isinstance(value, bool):
         return "true" if value else "false"
-    return str(value)
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    return ""
 
 
-def string_map(value: object) -> dict[str, str]:
-    """A label or selector mapping with every key and value as text."""
+def string_map(value: object, *, all_or_nothing: bool = False) -> dict[str, str]:
+    """A label or selector mapping with every key and value as text.
+
+    An entry whose value is not a scalar is dropped, or with ``all_or_nothing`` the whole mapping
+    is, so a selector that cannot be read in full never matches more than it says.
+    """
     if not isinstance(value, dict):
         return {}
-    return {str(key): label_text(item) for key, item in value.items() if item is not None}
+    result: dict[str, str] = {}
+    for key, item in value.items():
+        if not is_scalar(item):
+            if all_or_nothing:
+                return {}
+            continue
+        result[str(key)] = label_text(item)
+    return result
 
 
 # ---------------------------------------------------------------------------------------
@@ -276,7 +306,9 @@ def uses_floating_tag(image: str) -> bool:
 
 def _limit_set(limits: dict[str, Any], resource: str) -> bool:
     value = limits.get(resource)
-    return value is not None and str(value).strip() != ""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return False
+    return str(value).strip() != ""
 
 
 def _has_secret_env(container: dict[str, Any]) -> list[str]:
@@ -438,6 +470,6 @@ def pod_properties(pod_spec: dict[str, Any]) -> dict[str, Any]:
         for volume in as_list(pod_spec.get("volumes"))
     )
     pod_context = as_dict(pod_spec.get("securityContext"))
-    props["pod_run_as_non_root"] = pod_context.get("runAsNonRoot")
-    props["pod_run_as_user"] = pod_context.get("runAsUser")
+    props["pod_run_as_non_root"] = scalar_or_none(pod_context.get("runAsNonRoot"))
+    props["pod_run_as_user"] = scalar_or_none(pod_context.get("runAsUser"))
     return props

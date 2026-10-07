@@ -24,6 +24,12 @@ from tests.hostile.support import DEFAULT_BUDGET_SECONDS, scan_in_child
 FAST_SECONDS = 5.0
 
 
+@pytest.fixture(autouse=True)
+def _fallback_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the fallback renderer; the child process inherits this setting."""
+    monkeypatch.setenv("THREATCODE_HELM", "off")
+
+
 class TestUnterminatedActionsAreBounded:
     @pytest.mark.parametrize("shape", ["braces", "if_blocks"])
     def test_a_scan_ends_quickly_with_a_graph_or_the_tools_own_error(
