@@ -1,0 +1,45 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "DeploymentList",
+  "metadata": {"resourceVersion": "48211973"},
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {"name": "billing", "namespace": "finance"},
+      "spec": {
+        "replicas": 2,
+        "selector": {"matchLabels": {"app": "billing"}},
+        "template": {
+          "metadata": {"labels": {"app": "billing"}},
+          "spec": {
+            "containers": [
+              {
+                "name": "billing",
+                "image": "registry.example.com/finance/billing:7.2.0",
+                "securityContext": {"privileged": true}
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {"name": "ledger", "namespace": "finance"},
+      "spec": {
+        "replicas": 1,
+        "selector": {"matchLabels": {"app": "ledger"}},
+        "template": {
+          "metadata": {"labels": {"app": "ledger"}},
+          "spec": {
+            "containers": [
+              {"name": "ledger", "image": "registry.example.com/finance/ledger:7.2.0"}
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

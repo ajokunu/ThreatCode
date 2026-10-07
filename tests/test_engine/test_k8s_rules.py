@@ -269,8 +269,8 @@ class TestRbacTypes:
 
     def test_a_role_rule_does_not_match_a_role_binding(self) -> None:
         found = _scan_manifests(yaml.safe_dump(self.ROLE), yaml.safe_dump(self.BINDING))
-        role = found["kubernetes_cluster_role.default.everything"]
-        binding = found["kubernetes_cluster_role_binding.default.everything"]
+        role = found["kubernetes_cluster_role.everything"]
+        binding = found["kubernetes_cluster_role_binding.everything"]
         assert {"K8S_WILDCARD_RBAC_VERBS", "K8S_WILDCARD_RBAC_RESOURCES"} <= role
         assert "K8S_CLUSTER_ADMIN_BINDING" not in role
         assert binding == {"K8S_CLUSTER_ADMIN_BINDING"}
@@ -292,7 +292,7 @@ class TestNamespaceLabels:
     def test_a_namespace_with_the_enforce_label_has_no_psa_finding(self) -> None:
         manifest = self._namespace({"pod-security.kubernetes.io/enforce": "restricted"})
         found = _scan_manifests(manifest)
-        assert "K8S_NO_PSA_LABELS" not in found["kubernetes_namespace.default.team-a"]
+        assert "K8S_NO_PSA_LABELS" not in found["kubernetes_namespace.team-a"]
 
     def test_a_namespace_without_it_has_exactly_one(self) -> None:
         graph = InfraGraph.from_parsed(KubernetesParser().parse(self._namespace({"team": "a"})))
@@ -303,9 +303,9 @@ class TestNamespaceLabels:
 
     def test_a_namespace_with_no_labels_at_all_has_one(self) -> None:
         found = _scan_manifests(self._namespace(None))
-        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.default.team-a"]
+        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.team-a"]
 
     def test_other_pod_security_labels_do_not_satisfy_the_enforce_check(self) -> None:
         manifest = self._namespace({"pod-security.kubernetes.io/warn": "restricted"})
         found = _scan_manifests(manifest)
-        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.default.team-a"]
+        assert "K8S_NO_PSA_LABELS" in found["kubernetes_namespace.team-a"]

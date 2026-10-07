@@ -1,0 +1,13 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_config_map.mixed.settings": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "kubernetes_pod.mixed.probe": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

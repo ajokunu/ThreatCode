@@ -1,0 +1,33 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_cron_job.kinds.cronjob": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_daemon_set.kinds.daemonset": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_deployment.kinds.deployment": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_job.kinds.job": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_pod.kinds.pod": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_replica_set.kinds.replicaset": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_stateful_set.kinds.statefulset": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+{
+  "input": "tests/fixtures/kubernetes/ingress_to_cluster_admin.yml"
+}
