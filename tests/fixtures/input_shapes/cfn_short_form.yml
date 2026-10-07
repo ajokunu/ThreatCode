@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Every short-form intrinsic family, as a hand-written template would use them
+
+Parameters:
+  Env:
+    Type: String
+    Default: prod
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      Ami: ami-0abcdef1234567890
+
+Conditions:
+  IsProd: !Equals [!Ref Env, prod]
+  NotProd: !Not [!Condition IsProd]
+  IsStagingOrProd: !Or [!Condition IsProd, !Equals [!Ref Env, staging]]
+  IsProdAndNamed: !And [!Condition IsProd, !Condition IsStagingOrProd]
+
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-data"
+      AccessControl: !If [IsProd, Private, PublicRead]
+      Tags:
+        - Key: Name
+          Value: !Join ["-", [!Ref Env, bucket]]
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", Ami]
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      SubnetId: !ImportValue SharedSubnetId
+      SecurityGroupIds: !Split [",", !ImportValue SharedSecurityGroups]
+      UserData: !Base64 "#!/bin/bash\nyum update -y\n"
+      Tags:
+        - Key: Greeting
+          Value: !Sub
+            - "hello ${Name}"
+            - Name: !Ref Env
+        - Key: Vendor
+          Value: !Vendor::Embed ./snippet.txt
+
+  Subnets:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !ImportValue SharedVpcId
+      CidrBlock: !Select [0, !Cidr [!GetAtt Bucket.Arn, 6, 8]]
+
+Outputs:
+  BucketArn:
+    Value: !GetAtt Bucket.Arn
+  BucketDomain:
+    Value: !GetAtt [Bucket, DomainName]
