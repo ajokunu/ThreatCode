@@ -461,7 +461,7 @@
           "schema_version": 0,
           "values": {
             "name": "app-data",
-            "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-orders-customer-data/*\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-*\"}],\"Version\":\"2012-10-17\"}"
+            "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-orders-customer-data/*\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-a1B2c3\"}],\"Version\":\"2012-10-17\"}"
           },
           "sensitive_values": {}
         },
@@ -1442,7 +1442,7 @@
         "before": null,
         "after": {
           "name": "app-data",
-          "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-orders-customer-data/*\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-*\"}],\"Version\":\"2012-10-17\"}"
+          "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-orders-customer-data/*\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-a1B2c3\"}],\"Version\":\"2012-10-17\"}"
         },
         "after_unknown": {
           "id": true,
@@ -2391,7 +2391,7 @@
               "constant_value": "app-data"
             },
             "policy": {
-              "constant_value": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-orders-customer-data/*\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-*\"}],\"Version\":\"2012-10-17\"}"
+              "constant_value": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-orders-customer-data/*\"},{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-a1B2c3\"}],\"Version\":\"2012-10-17\"}"
             },
             "role": {
               "references": [

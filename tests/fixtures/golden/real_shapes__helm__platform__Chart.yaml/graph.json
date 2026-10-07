@@ -35,6 +35,12 @@
       "source": "kubernetes_service.default.release-redis",
       "target": "kubernetes_stateful_set.default.release-redis",
       "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service_account.default.platform-api",
+      "target": "kubernetes_role.default.release-platform-secrets",
+      "type": "iam_binding"
     }
   ],
   "nodes": {

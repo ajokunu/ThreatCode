@@ -13,6 +13,12 @@
       "type": "dependency"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "AppInstance",
+      "target": "Database",
+      "type": "network_flow"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "AppInstance",
       "target": "PrivateSubnet",
@@ -101,6 +107,12 @@
       "source": "Listener",
       "target": "TargetGroup",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LoadBalancer",
+      "target": "AppInstance",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -209,6 +221,12 @@
       "source": "TargetGroup",
       "target": "Vpc",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "LoadBalancer",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -299,6 +317,11 @@
     "Vpc": {
       "category": "network",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

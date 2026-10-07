@@ -1,0 +1,28 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_s3_bucket.public_bucket"
+      ],
+      "severity": "critical",
+      "target": "aws_s3_bucket.public_bucket"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "aws_s3_bucket.public_bucket",
+      "stride": "tampering"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_s3_bucket.public_bucket",
+      "rule_id": "S3_NO_ENCRYPTION"
+    }
+  ]
+}

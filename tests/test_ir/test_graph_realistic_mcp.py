@@ -9,14 +9,22 @@ The parser resolves each server's effective launch, so a wrapper does not hide t
 a literal token passed with ``docker -e`` is found and redacted, a remote server addressed with
 ``httpUrl`` is remote, two projects that share a basename keep separate nodes, and every config
 scope gets an ``mcp_agent`` node wired to its enabled servers.
-The one assertion that waits for the attack-path package is its own pending test.
+A server that fetches untrusted content, and a remote one, are entered from the synthetic
+internet node, and the agent carries that content to the servers that read private data.
 """
 
 from __future__ import annotations
 
-from tests.helpers.graph_assert import assert_edge, assert_nodes, assert_path, assert_zone
-from tests.helpers.pending import pending
+from tests.helpers.graph_assert import (
+    assert_edge,
+    assert_no_edge,
+    assert_no_path,
+    assert_nodes,
+    assert_path,
+    assert_zone,
+)
 from tests.helpers.scan import scan_real_shape
+from threatcode.ir.nodes import INTERNET_ID
 
 DESKTOP = "mcp/desktop/claude_desktop_config.json"
 HOME = "mcp/claude_home/.claude.json"
@@ -121,7 +129,8 @@ class TestProjectConfig:
             "mcp_server.scratch",
             "mcp_server.analytics",
         }
-        assert_nodes(graph, [*sorted(servers), "mcp_agent.config"], exact=True)
+        # The remote server and the one that fetches content are entered from the internet
+        assert_nodes(graph, [*sorted(servers), "mcp_agent.config", INTERNET_ID], exact=True)
 
     def test_the_remote_server_is_in_the_internet_zone_and_the_others_are_private(self) -> None:
         graph = scan_real_shape(PROJECT).graph
@@ -145,13 +154,17 @@ class TestProjectConfig:
         for name in ("fetch", "filesystem-home", "analytics"):
             assert_edge(graph, agents[0].id, f"mcp_server.{name}")
 
-    @pending(
-        "WP-4-1", "internet to an untrusted-content server, through the agent, to private data"
-    )
     def test_untrusted_content_can_reach_the_home_directory_through_the_agent(self) -> None:
         graph = scan_real_shape(PROJECT).graph
-        path = assert_path(graph, "internet", "mcp_server.filesystem-home")
-        assert "mcp_server.fetch" in path
+        assert_edge(graph, "internet", "mcp_server.fetch", type="data_flow", source="agent")
+        path = assert_path(graph, "mcp_server.fetch", "mcp_server.filesystem-home")
+        assert path == ["mcp_server.fetch", "mcp_agent.config", "mcp_server.filesystem-home"]
+        assert_path(graph, "internet", "mcp_server.filesystem-home")
+
+    def test_a_disabled_server_is_never_entered_from_the_internet(self) -> None:
+        graph = scan_real_shape(PROJECT).graph
+        assert_no_edge(graph, "internet", "mcp_server.scratch")
+        assert_no_path(graph, "internet", "mcp_server.scratch")
 
 
 class TestWrappedServersInTheGraph:

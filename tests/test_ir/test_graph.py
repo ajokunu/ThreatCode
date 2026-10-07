@@ -67,7 +67,8 @@ class TestInfraGraph:
         data = simple_s3_graph.to_dict()
         assert "nodes" in data
         assert "edges" in data
-        assert len(data["nodes"]) == 7
+        # Seven resources and the internet node the public bucket adds
+        assert len(data["nodes"]) == 8
 
     def test_nodes_by_zone(self, simple_s3_graph: InfraGraph) -> None:
         zones = simple_s3_graph.nodes_by_zone()

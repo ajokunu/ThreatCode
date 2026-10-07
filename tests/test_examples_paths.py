@@ -5,10 +5,11 @@ lists what a scan must show: the nodes it models, the attack paths from the inte
 (entry, target and nodes in between) and the key findings. The claims in the demo, the docs and the
 pitch are those lines, so they are tested here and nowhere else.
 
-Today the tests assert that every example parses, models the nodes it names, has the structure its
+The tests assert that every example parses, models the nodes it names, has the structure its
 paths depend on (a world-open load balancer, an app group reachable from it only, a privileged
-DaemonSet, a literal token over plain http) and reports the findings that current rules produce.
-Attack paths and findings that later packages add are pending on those packages.
+DaemonSet, a literal token over plain http), reports the findings that the rules produce and, run
+through the command line, reports every attack path the expectation file lists.
+Findings that later packages add are pending on those packages.
 """
 
 from __future__ import annotations
@@ -27,7 +28,6 @@ from tests.helpers.examples import (
     finding_present,
     input_paths,
     is_subsequence,
-    path_node_ids,
     scan_example,
 )
 from tests.helpers.graph_assert import assert_nodes
@@ -230,16 +230,14 @@ def test_the_key_finding_a_later_package_adds(name: str, entry: dict[str, Any]) 
     assert finding_present(scan_example(name), entry), f"{name}: no finding for {entry['resource']}"
 
 
+def path_node_ids(path: dict[str, Any]) -> list[str]:
+    """The node ids an attack path of the JSON report visits, in order."""
+    return [hop["node_id"] for hop in path["hops"]]
+
+
 def _path_params() -> list[Any]:
     return [
-        pytest.param(
-            name,
-            entry,
-            id=f"{name}-{entry['id']}",
-            marks=pending(
-                "WP-4-1", f"attack path {entry['id']} from the internet to {entry['target']}"
-            ),
-        )
+        pytest.param(name, entry, id=f"{name}-{entry['id']}")
         for name in EXAMPLES
         for entry in expected_for(name)["attack_paths"]
     ]
@@ -265,7 +263,6 @@ def test_the_attack_path_is_found(name: str, entry: dict[str, Any]) -> None:
     pytest.fail(f"{name}/{entry['id']}: no path matches; paths found: {seen}")
 
 
-@pending("WP-4-1", "every hop of a path lists the findings that enable it")
 @pytest.mark.parametrize("name", EXAMPLES)
 def test_every_path_has_an_enabling_finding_on_at_least_one_hop(name: str) -> None:
     run = scan_json([EXAMPLES_DIR / name])

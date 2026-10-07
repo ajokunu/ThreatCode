@@ -1,0 +1,16 @@
+{
+  "effective_severity": [
+    {
+      "base": "high",
+      "effective": "critical",
+      "resource_address": "azurerm_storage_account.main",
+      "rule_id": "AZURE_STORAGE_NO_HTTPS"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "azurerm_storage_account.main",
+      "rule_id": "AZURE_STORAGE_PUBLIC_ACCESS"
+    }
+  ]
+}

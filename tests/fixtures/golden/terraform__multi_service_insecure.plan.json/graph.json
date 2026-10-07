@@ -59,6 +59,12 @@
       "source": "aws_subnet.public",
       "target": "aws_vpc.main",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_s3_bucket.public_bucket",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -155,6 +161,11 @@
     "aws_vpc.secondary": {
       "category": "network",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

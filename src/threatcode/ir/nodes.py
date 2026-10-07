@@ -34,6 +34,8 @@ __all__ = [
     "CATEGORY_MAP",
     "CONTAINER_TYPES",
     "DATA_CATEGORIES",
+    "INTERNET_ID",
+    "INTERNET_TYPE",
     "TRUST_ZONE_MAP",
     "Exposure",
     "InfraNode",
@@ -52,6 +54,12 @@ __all__ = [
 # Whether a node can be reached from the internet: "internal" is a finding of
 # the exposure analysis, "unknown" means it has not been (or cannot be) decided
 Exposure = Literal["internet", "internal", "unknown"]
+
+# The synthetic node the reachability pass adds for the internet, only when an edge needs it.
+# It is a context node, not something the input deploys, so it carries mode "data": the engine
+# runs no rules on it and does not count it in `scanned_resources`
+INTERNET_ID = "internet"
+INTERNET_TYPE = "internet"
 
 # Resource types that hold other resources (networks and namespaces). A path
 # does not end at a container, and a trust crossing into one is its members'
@@ -118,6 +126,20 @@ class InfraNode:
     @property
     def stride_element(self) -> str:
         return self.category.stride_element
+
+    @property
+    def is_internet(self) -> bool:
+        """Whether this node stands for the internet: the synthetic node or one the input names so.
+
+        A design input may declare its own external entity with the id `internet`; reachability
+        and attack paths then start there and the graph adds no second node.
+        """
+        return self.id == INTERNET_ID
+
+    @property
+    def is_synthetic(self) -> bool:
+        """Whether the graph builder added this node: it is context, not something the input has."""
+        return self.is_internet and self.resource_type == INTERNET_TYPE
 
     @property
     def is_container(self) -> bool:

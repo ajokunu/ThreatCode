@@ -6,7 +6,7 @@ import difflib
 import logging
 import os
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -14,11 +14,20 @@ import networkx as nx
 
 from threatcode.diagnostics import Diagnostic, Level
 from threatcode.exceptions import ConfigError, ThreatCodeError
-from threatcode.ir import exposure, iam
+from threatcode.ir import exposure, iam, reachability
 from threatcode.ir.addressing import split_location
-from threatcode.ir.edges import COMPUTED_METADATA_KEYS, REACHABILITY, EdgeType, InfraEdge
+from threatcode.ir.edges import (
+    COMPUTED_METADATA_KEYS,
+    REACHABILITY,
+    EdgeType,
+    InfraEdge,
+    port_list,
+    port_sort_key,
+)
 from threatcode.ir.enrich import enrich
 from threatcode.ir.nodes import (
+    INTERNET_ID,
+    INTERNET_TYPE,
     InfraNode,
     NodeCategory,
     TrustZone,
@@ -44,6 +53,10 @@ MAX_NODES = 10_000
 MAX_EDGES = 50_000
 MAX_NODES_ENV = "THREATCODE_MAX_NODES"
 MAX_EDGES_ENV = "THREATCODE_MAX_EDGES"
+# How many edges one reachability rule may add (a security group rule between two large groups
+# is quadratic in their members); see `threatcode.ir.reachability`
+MAX_FANOUT = 500
+MAX_FANOUT_ENV = "THREATCODE_MAX_FANOUT"
 
 # Containment hints registered at run time with register_containment_hint
 _custom_containment_hints: list[tuple[str, str]] = []
@@ -238,6 +251,7 @@ class InfraGraph:
         max_nodes: int | None = None,
         max_edges: int | None = None,
         strict_edges: bool = True,
+        max_fanout: int | None = None,
     ) -> None:
         self._graph: nx.DiGraph[str] = nx.DiGraph()
         self._nodes: dict[str, InfraNode] = {}
@@ -245,6 +259,7 @@ class InfraGraph:
         self._edge_index: dict[tuple[str, str, str], InfraEdge] = {}  # (source, target, type)
         self.max_nodes = _limit(max_nodes, MAX_NODES_ENV, MAX_NODES, "max_nodes")
         self.max_edges = _limit(max_edges, MAX_EDGES_ENV, MAX_EDGES, "max_edges")
+        self.max_fanout = _limit(max_fanout, MAX_FANOUT_ENV, MAX_FANOUT, "max_fanout")
         # False turns a declared edge to an unknown node from an error into a warning
         self.strict_edges = strict_edges
         # What the build skipped, approximated or renamed; see threatcode.diagnostics
@@ -269,10 +284,15 @@ class InfraGraph:
         max_nodes: int | None = None,
         max_edges: int | None = None,
         strict_edges: bool = True,
+        max_fanout: int | None = None,
     ) -> InfraGraph:
         """Build graph from parsed IaC output."""
         return cls.from_units(
-            [parsed], max_nodes=max_nodes, max_edges=max_edges, strict_edges=strict_edges
+            [parsed],
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+            strict_edges=strict_edges,
+            max_fanout=max_fanout,
         )
 
     @classmethod
@@ -283,6 +303,7 @@ class InfraGraph:
         max_nodes: int | None = None,
         max_edges: int | None = None,
         strict_edges: bool = True,
+        max_fanout: int | None = None,
     ) -> InfraGraph:
         """Build one graph from several parse outputs, such as a repository's files.
 
@@ -293,7 +314,12 @@ class InfraGraph:
         References, dependencies and declared edges resolve inside their own
         unit; a unit's diagnostics are carried into `graph.diagnostics`.
         """
-        graph = cls(max_nodes=max_nodes, max_edges=max_edges, strict_edges=strict_edges)
+        graph = cls(
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+            strict_edges=strict_edges,
+            max_fanout=max_fanout,
+        )
         graph._build(list(units))
         return graph
 
@@ -322,10 +348,12 @@ class InfraGraph:
         # Passes that need the finished edges and the derived facts, in this order:
         # enrichment computes policy documents, rules and settings; IAM links roles, policies
         # and the resources they reach; exposure decides what faces the internet and the final
-        # zones. The crossings are marked last because they compare the final zones
+        # zones; reachability adds the directed edges an attacker follows from the internet.
+        # The crossings are marked last because they compare the final zones
         enrich(self, ReferenceIndex(self._nodes))
         iam.link(self)
         exposure.apply(self)
+        reachability.apply(self)
         self._mark_trust_boundary_crossings()
         self._flush_edge_cap()
 
@@ -339,7 +367,9 @@ class InfraGraph:
 
     @property
     def node_count(self) -> int:
-        return len(self._nodes)
+        """How many nodes the input defines: the synthetic internet node is not one of them."""
+        node = self._nodes.get(INTERNET_ID)
+        return len(self._nodes) - (1 if node is not None and node.is_synthetic else 0)
 
     @property
     def duplicate_of(self) -> dict[str, str]:
@@ -517,9 +547,84 @@ class InfraGraph:
         """The graph of the edges an attacker can follow: network flows, data flows and bindings.
 
         This is the edge set attack paths walk.
-        The synthetic internet node is not part of it yet.
+        It is a `MultiDiGraph` (a subclass of `DiGraph`) over every node of the graph, and the
+        synthetic `internet` node is one of them whenever some edge needed it, so
+        `nx.has_path(view, "internet", node_id)` says whether the internet reaches a node.
+        Containment and dependency edges are never part of it.
         """
         return self.subgraph(REACHABILITY)
+
+    @property
+    def internet_node(self) -> InfraNode | None:
+        """The node that stands for the internet: the synthetic one when some edge needed it.
+
+        A node the input declares with the id `internet` is that node instead.
+        """
+        return self._nodes.get(INTERNET_ID)
+
+    def ensure_internet_node(self) -> InfraNode:
+        """Add the synthetic internet node if the graph does not have it yet and return it.
+
+        The node is a context node (mode `data`, zone `internet`, category `network`): the engine
+        runs no rules on it and does not count it as a scanned resource.
+        It is not subject to the node limit, because it is one node and never the input's.
+        """
+        existing = self._nodes.get(INTERNET_ID)
+        if existing is not None:
+            return existing
+        node = InfraNode(
+            id=INTERNET_ID,
+            resource_type=INTERNET_TYPE,
+            name=INTERNET_ID,
+            category=NodeCategory.NETWORK,
+            trust_zone=TrustZone.INTERNET,
+            mode="data",
+            exposure="internet",
+        )
+        self._nodes[INTERNET_ID] = node
+        self._graph.add_node(INTERNET_ID)
+        return node
+
+    def add_reachability_edge(
+        self,
+        source: str,
+        target: str,
+        edge_type: EdgeType,
+        *,
+        kind: str,
+        relation: str = "",
+        via: Iterable[str] = (),
+        protocol: str = "",
+        ports: Iterable[Any] = (),
+        world_open: bool = False,
+        definite: bool = True,
+        extra: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Add a directed edge an attacker can follow, or merge the facts into the one that exists.
+
+        A second fact about a pair that already has an edge of this type (a security group rule
+        and a load balancer target both reaching one instance, two rules with different ports)
+        merges into it: ports and `via` are unions in a stable order, `world_open` is true if
+        either is, `definite` is false if either is, the first `source` stays the `source` and
+        every contributing one is listed in `sources`.
+        What a parser stated on the edge (a protocol, `authenticated`) is never overwritten, and
+        neither is a key of `extra` that the edge already has.
+        """
+        if source not in self._nodes or target not in self._nodes:
+            raise ThreatCodeError(f"Cannot add edge {source} -> {target}: unknown node")
+        existing = self._edge_index.get((source, target, edge_type.value))
+        merged = _merge_reachability(
+            existing.attributes if existing is not None else {},
+            kind=kind,
+            via=via,
+            protocol=protocol,
+            ports=ports,
+            world_open=world_open,
+            definite=definite,
+        )
+        for key, value in (extra or {}).items():
+            merged.setdefault(key, value)
+        self._add_edge(source, target, edge_type, merged, relation=relation)
 
     def add_edge(
         self,
@@ -1005,6 +1110,56 @@ def _plain_data(value: Any, depth: int = 0) -> Any:
 
 def _without_computed(attributes: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in attributes.items() if k not in COMPUTED_METADATA_KEYS}
+
+
+def _merge_reachability(
+    current: dict[str, Any],
+    *,
+    kind: str,
+    via: Iterable[str],
+    protocol: str,
+    ports: Iterable[Any],
+    world_open: bool,
+    definite: bool,
+) -> dict[str, Any]:
+    """The attributes of a reachability edge after one more fact about it.
+
+    See `InfraGraph.add_reachability_edge` for the merge rules.
+    """
+    merged = dict(current)
+    sources = [s for s in current.get("sources", ()) if isinstance(s, str)]
+    first = current.get("source")
+    if isinstance(first, str) and first and first not in sources:
+        sources.insert(0, first)
+    if kind not in sources:
+        sources.append(kind)
+    merged["source"] = sources[0]
+    if len(sources) > 1:
+        merged["sources"] = sources
+    joined_via = [v for v in current.get("via", ()) if isinstance(v, str)]
+    for node_id in via:
+        if node_id not in joined_via:
+            joined_via.append(node_id)
+    if joined_via:
+        merged["via"] = joined_via
+    merged_ports = sorted(
+        {*port_list(current.get("ports")), *port_list(list(ports))}, key=port_sort_key
+    )
+    if merged_ports:
+        merged["ports"] = merged_ports
+    protocols = [p for p in port_list(current.get("protocols")) if p]
+    old = current.get("protocol")
+    if isinstance(old, str) and old and old not in protocols:
+        protocols.append(old)
+    if protocol and protocol not in protocols:
+        protocols.append(protocol)
+    if protocols:
+        merged["protocol"] = protocols[0]
+        if len(protocols) > 1:
+            merged["protocols"] = protocols
+    merged["world_open"] = bool(current.get("world_open")) or world_open
+    merged["definite"] = current.get("definite") is not False and definite
+    return merged
 
 
 def _edge_type(edge: ParsedEdge) -> EdgeType:

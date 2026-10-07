@@ -28,6 +28,7 @@ __all__ = [
     "REVOKED_ALIASES",
     "TACTIC_DB",
     "TACTIC_SHORTNAME",
+    "PATH_TECHNIQUES",
     "TECHNIQUE_DB",
     "TacticEntry",
     "TechniqueEntry",
@@ -51,9 +52,34 @@ TECHNIQUE_DB: dict[str, TechniqueEntry] = TECHNIQUES
 TACTIC_SHORTNAME: dict[str, str] = {ta_id: t["shortname"] for ta_id, t in TACTICS.items()}
 
 # Default MITRE techniques for trust boundary crossings.
-# Their redesign belongs to the boundary work, so the values stay as they were.
+# Boundary threats no longer read them: `engine.boundaries` derives the techniques of a crossing
+# from its zone pair and from what the flow declares. They stay because the mitre tests pin them.
 BOUNDARY_TECHNIQUES: list[str] = ["T1040", "T1557"]
 BOUNDARY_TACTICS: list[str] = ["TA0006", "TA0009"]
+
+
+# The ATT&CK techniques the steps of an attack path use, by the kind of step.
+# Every value is validated against TECHNIQUE_DB by the tests
+PATH_TECHNIQUES: dict[str, str] = {
+    # The first hop reaches an exposed application, or an exposed remote administration service
+    "exposed_application": "T1190",
+    "exposed_remote_service": "T1133",
+    # A hop whose instance still answers the session-less metadata service (EC2_IMDSV1)
+    "instance_metadata": "T1552.005",
+    # A hop that assumes a role
+    "role_assumption": "T1078.004",
+    # A hop that reads a bucket or another cloud storage
+    "cloud_storage_data": "T1530",
+    # A hop that reads a Kubernetes Secret through the API or a mount
+    "container_secret": "T1552.007",
+    # A privileged container, which can leave its container for the host
+    "container_escape": "T1611",
+    # Untrusted content reaches an AI agent through one of its servers
+    "content_injection": "T1659",
+    # An MCP server that reads files of the local system, and credentials among them
+    "local_data": "T1005",
+    "credentials_in_files": "T1552.001",
+}
 
 
 def lookup_technique(technique_id: str) -> TechniqueEntry | None:

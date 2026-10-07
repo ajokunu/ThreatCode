@@ -2,6 +2,12 @@
   "edges": [
     {
       "crosses_trust_boundary": true,
+      "source": "aws_cloudfront_distribution.game_cdn",
+      "target": "aws_s3_bucket.game_assets",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
       "source": "aws_elasticache_replication_group.session_cache",
       "target": "aws_security_group.redis_sg",
       "type": "dependency"
@@ -123,6 +129,12 @@
     {
       "crosses_trust_boundary": true,
       "source": "aws_instance.game_server_1",
+      "target": "aws_elasticache_replication_group.session_cache",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.game_server_1",
       "target": "aws_security_group.game_server_sg",
       "type": "dependency"
     },
@@ -141,6 +153,12 @@
     {
       "crosses_trust_boundary": true,
       "source": "aws_lambda_function.chat_handler",
+      "target": "aws_elasticache_replication_group.session_cache",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.chat_handler",
       "target": "aws_iam_role.lambda_game_services",
       "type": "iam_binding"
     },
@@ -165,6 +183,12 @@
     {
       "crosses_trust_boundary": true,
       "source": "aws_lambda_function.leaderboard",
+      "target": "aws_elasticache_replication_group.session_cache",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.leaderboard",
       "target": "aws_iam_role.lambda_game_services",
       "type": "iam_binding"
     },
@@ -185,6 +209,12 @@
       "source": "aws_lambda_function.leaderboard",
       "target": "aws_subnet.private_b",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.matchmaking",
+      "target": "aws_elasticache_replication_group.session_cache",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -263,6 +293,30 @@
       "source": "aws_subnet.public_b",
       "target": "aws_vpc.stormforge",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_api_gateway_rest_api.game_api",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_cloudfront_distribution.game_cdn",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_instance.game_server_1",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_s3_bucket.game_assets",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -421,6 +475,11 @@
     "aws_vpc.stormforge": {
       "category": "network",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

@@ -5,8 +5,7 @@ list them in ``after_unknown`` and put relationships in ``configuration.expressi
 as real plans do. Hand-shaped plans store addresses as attribute values, which hides how rarely
 containment and security-group inference fire on real input.
 
-Assertions that hold on the current tree run now. Each assertion a later package delivers is its
-own test marked ``pending(package, deliverable)``, so one switch turns one expectation on.
+The reachability tests follow directed edges from the synthetic ``internet`` node.
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ from tests.helpers.graph_assert import (
     assert_path,
     assert_zone,
 )
-from tests.helpers.pending import pending
 from tests.helpers.plan_shape import plan_shape_problems
 from tests.helpers.scan import REAL_SHAPES_DIR, scan_real_shape
 from threatcode.ir.graph import InfraGraph
@@ -326,7 +324,6 @@ class TestWebappAttackSurface:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_iam_instance_profile.app", "aws_iam_role.app", type="iam_binding")
 
-    @pending("WP-4-1", "reachability: internet to the load balancer, app tier and database")
     def test_the_internet_reaches_the_database_through_the_app_tier(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         path = assert_path(
@@ -334,7 +331,6 @@ class TestWebappAttackSurface:
         )
         assert "aws_lb.front" in path
 
-    @pending("WP-4-1", "reachability follows security group references, so nothing runs backwards")
     def test_reachability_never_runs_from_the_database_back_to_the_internet(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         # Positive control: the walk reaches the app tier, so the absence below is meaningful
@@ -369,7 +365,6 @@ class TestTwoVpcs:
         graph = scan_real_shape(TWO_VPCS).graph
         assert_edge(graph, "aws_instance.dev", "aws_subnet.dev", type="containment")
 
-    @pending("WP-4-1", "attack paths never cross between two VPCs with no connection")
     def test_there_is_no_path_between_the_vpcs(self) -> None:
         graph = scan_real_shape(TWO_VPCS).graph
         # Positive control: each instance is wired into its own VPC, so the walk has edges
@@ -599,7 +594,10 @@ class TestUnknownIsNeverALiteral:
 class TestWebappDataSources:
     def test_a_data_source_is_not_counted_as_a_scanned_resource(self) -> None:
         result = scan_real_shape(WEBAPP)
-        data_nodes = [n for n in result.graph.nodes.values() if n.mode == "data"]
+        # The synthetic internet node is a context node too, but it is not a data source
+        data_nodes = [
+            n for n in result.graph.nodes.values() if n.mode == "data" and not n.is_internet
+        ]
         assert len(data_nodes) == 1
         assert result.report.scanned_resources == result.graph.node_count - len(data_nodes)
 

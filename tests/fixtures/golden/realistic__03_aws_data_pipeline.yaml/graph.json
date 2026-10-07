@@ -197,6 +197,12 @@
       "source": "SessionAggregator",
       "target": "LambdaProcessorRole",
       "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "AthenaResultsBucket",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -280,6 +286,11 @@
     "SessionAggregator": {
       "category": "serverless",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

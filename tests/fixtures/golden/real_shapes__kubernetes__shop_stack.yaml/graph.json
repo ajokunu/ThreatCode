@@ -1,10 +1,22 @@
 {
   "edges": [
     {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "kubernetes_ingress.shop.web",
+      "type": "network_flow"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "kubernetes_deployment.shop.web",
       "target": "kubernetes_config_map.shop.web-config",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "kubernetes_deployment.shop.web",
+      "target": "kubernetes_secret.shop.web-db",
+      "type": "data_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -53,9 +65,20 @@
       "source": "kubernetes_service.shop.web",
       "target": "kubernetes_deployment.shop.web",
       "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service_account.shop.web",
+      "target": "kubernetes_role.shop.web-config-reader",
+      "type": "iam_binding"
     }
   ],
   "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
     "kubernetes_config_map.shop.web-config": {
       "category": "storage",
       "zone": "private"

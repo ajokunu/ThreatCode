@@ -10,7 +10,7 @@ Manifests make nodes and the parser connects them: an Ingress routes to its Serv
 selects its workloads, a workload runs as its ServiceAccount and reads its Secrets and ConfigMaps,
 bindings grant roles and a NetworkPolicy selects the workloads it covers. A ``List`` expands to one
 node per item and a chart renders without the helm binary. What exposure and reachability add on
-top of those edges is pending on the packages that deliver it.
+top of those edges is asserted in ``TestShopStackExposureAndPaths``.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from tests.helpers.graph_assert import (
     assert_path,
     assert_zone,
 )
-from tests.helpers.pending import pending
 from tests.helpers.scan import scan_real_shape
+from threatcode.ir.nodes import INTERNET_ID
 
 SHOP = "kubernetes/shop_stack.yaml"
 WORKLOADS = "kubernetes/workloads.yaml"
@@ -165,7 +165,6 @@ class TestShopStackExposureAndPaths:
     def test_the_ingress_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(SHOP).graph, INGRESS, "internet")
 
-    @pending("WP-4-1", "reachability: internet to the Ingress, Service, workload and Secret")
     def test_the_internet_reaches_the_secret_through_the_workload(self) -> None:
         graph = scan_real_shape(SHOP).graph
         path = assert_path(graph, "internet", SECRET)
@@ -225,6 +224,8 @@ class TestKubectlLists:
                 "kubernetes_deployment.stock.inventory",
                 "kubernetes_service.stock.inventory",
                 "kubernetes_config_map.stock.inventory-config",
+                # The Service is a LoadBalancer, so the internet reaches it
+                INTERNET_ID,
             ],
             exact=True,
         )
@@ -236,7 +237,7 @@ class TestKubectlLists:
         yaml_nodes = set(scan_real_shape(LIST_YAML).graph.nodes)
         json_nodes = set(scan_real_shape(LIST_JSON).graph.nodes)
         assert json_nodes == yaml_nodes
-        assert len(json_nodes) == 3
+        assert len(json_nodes) == 4  # three objects and the internet
 
     def test_the_service_selects_the_deployment_inside_the_list(self) -> None:
         graph = scan_real_shape(LIST_YAML).graph

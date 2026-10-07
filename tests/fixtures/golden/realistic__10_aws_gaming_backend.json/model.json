@@ -1,0 +1,123 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_instance.game_server_1",
+        "aws_elasticache_replication_group.session_cache"
+      ],
+      "severity": "high",
+      "target": "aws_elasticache_replication_group.session_cache"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_cloudfront_distribution.game_cdn",
+        "aws_s3_bucket.game_assets"
+      ],
+      "severity": "critical",
+      "target": "aws_s3_bucket.game_assets"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_s3_bucket.game_assets"
+      ],
+      "severity": "critical",
+      "target": "aws_s3_bucket.game_assets"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_api_gateway_rest_api.game_api",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_cloudfront_distribution.game_cdn",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_cloudfront_distribution.game_cdn",
+      "stride": "tampering",
+      "target": "aws_s3_bucket.game_assets"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.game_server_1",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_instance.game_server_1",
+      "stride": "tampering",
+      "target": "aws_elasticache_replication_group.session_cache"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.chat_handler",
+      "stride": "tampering",
+      "target": "aws_elasticache_replication_group.session_cache"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.leaderboard",
+      "stride": "tampering",
+      "target": "aws_elasticache_replication_group.session_cache"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.matchmaking",
+      "stride": "tampering",
+      "target": "aws_elasticache_replication_group.session_cache"
+    },
+    {
+      "severity": "high",
+      "source": "aws_s3_bucket.game_assets",
+      "stride": "tampering"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_cloudfront_distribution.game_cdn",
+      "rule_id": "CLOUDFRONT_NO_GEO_RESTRICTION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_cloudfront_distribution.game_cdn",
+      "rule_id": "CLOUDFRONT_NO_WAF"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.game_server_1",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.game_server_1",
+      "rule_id": "EC2_UNENCRYPTED_EBS"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_elasticache_replication_group.session_cache",
+      "rule_id": "ELASTICACHE_NO_AUTH"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_s3_bucket.game_assets",
+      "rule_id": "S3_NO_ENCRYPTION"
+    }
+  ]
+}

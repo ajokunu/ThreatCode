@@ -11,6 +11,12 @@
       "source": "kubernetes_network_policy.test-ns.allow-all",
       "target": "kubernetes_deployment.test-ns.test-app",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service_account.test-ns.test-sa",
+      "target": "kubernetes_cluster_role_binding.test-admin-binding",
+      "type": "iam_binding"
     }
   ],
   "nodes": {

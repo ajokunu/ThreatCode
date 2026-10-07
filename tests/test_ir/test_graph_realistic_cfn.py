@@ -7,7 +7,8 @@ template in long form, so the long-form path stays testable apart from the short
 A CloudFormation resource is named after the Terraform type that models it, its properties
 have the names and shapes the rules read, and every ``Ref``, ``Fn::GetAtt`` and ``Fn::Sub``
 that names another resource is an edge.
-What later packages deliver (zones, exposure and attack paths) is its own pending test.
+An internet-facing load balancer is entered from the synthetic internet node, and the chain of
+security groups carries that reach through the application tier to the database.
 """
 
 from __future__ import annotations
@@ -19,9 +20,9 @@ from tests.helpers.graph_assert import (
     assert_path,
     assert_zone,
 )
-from tests.helpers.pending import pending
 from tests.helpers.scan import FIXTURES_DIR, scan_files, scan_real_shape
 from tests.helpers.scan import REAL_SHAPES_DIR as REAL_SHAPES
+from threatcode.ir.nodes import INTERNET_ID
 
 CFN_FIXTURES = FIXTURES_DIR / "cloudformation"
 WEB_YAML = "cloudformation/web_stack.yaml"
@@ -53,12 +54,14 @@ WEB_NODES = {
     "Database",
     "UploadsBucket",
 }
+# The internet-facing load balancer adds the synthetic node for the internet
+WEB_NODES_WITH_INTERNET = {*WEB_NODES, INTERNET_ID}
 
 
 class TestLongFormTemplate:
     def test_every_logical_id_is_a_node(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
-        assert_nodes(graph, WEB_NODES, exact=True)
+        assert_nodes(graph, WEB_NODES_WITH_INTERNET, exact=True)
 
     def test_logical_ids_map_to_the_resource_types_rules_match_on(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
@@ -149,7 +152,7 @@ class TestLongFormProperties:
 class TestShortFormTemplate:
     def test_short_form_yaml_has_the_same_nodes_as_the_long_form(self) -> None:
         graph = scan_real_shape(WEB_YAML).graph
-        assert_nodes(graph, WEB_NODES, exact=True)
+        assert_nodes(graph, WEB_NODES_WITH_INTERNET, exact=True)
 
     def test_a_resources_only_template_is_read(self) -> None:
         graph = scan_real_shape(RESOURCES_ONLY).graph
@@ -289,7 +292,6 @@ class TestZonesExposureAndPaths:
     def test_the_internet_facing_load_balancer_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(WEB_JSON).graph, "LoadBalancer", "internet")
 
-    @pending("WP-4-1", "reachability: internet to the load balancer, the instance and the database")
     def test_the_internet_reaches_the_database_through_the_app_tier(self) -> None:
         graph = scan_real_shape(WEB_JSON).graph
         path = assert_path(graph, "internet", "Database", edge_types=["network_flow"])

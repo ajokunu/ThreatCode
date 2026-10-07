@@ -14,8 +14,11 @@ import json
 
 from tests.helpers.graph_assert import assert_edge, assert_zone
 from tests.helpers.scan import scan_real_shape
+from threatcode.engine import paths
+from threatcode.ir.edges import REACHABILITY
 
 SUMMARY = "dockerfile.image.summary"
+REACHABILITY_VALUES = {t.value for t in REACHABILITY}
 
 # Node types a Dockerfile may legitimately produce: every instruction keyword, the image summary
 # and the stage node. Anything else means body text was read as an instruction.
@@ -296,3 +299,31 @@ class TestEveryRealShape:
         copy = _nodes_of(nodes, "dockerfile_copy")[0]
         assert "listen" in copy.properties["heredoc_body"]
         assert copy.properties["sources"] == []
+
+
+class TestNoReachability:
+    """A Dockerfile says how an image is built, not who can reach it."""
+
+    FILES = (
+        "docker/continuations.Dockerfile",
+        "docker/lowercase.Dockerfile",
+        "docker/heredoc.Dockerfile",
+        "docker/multistage.Dockerfile",
+        "docker/onbuild.Dockerfile",
+        "docker/Containerfile",
+    )
+
+    def test_an_exposed_port_is_not_an_entry_from_the_internet(self) -> None:
+        for relative in self.FILES:
+            graph = scan_real_shape(relative).graph
+            assert graph.internet_node is None, relative
+            assert not [e for e in graph.edges if e.edge_type.value in REACHABILITY_VALUES], (
+                relative
+            )
+
+    def test_no_instruction_is_a_crown_jewel_or_part_of_a_path(self) -> None:
+        for relative in self.FILES:
+            result = scan_real_shape(relative)
+            assert result.report.attack_paths == [], relative
+            for node in result.graph.nodes.values():
+                assert paths.crown_jewel_kind(result.graph, node) == "", node.id

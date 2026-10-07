@@ -1,6 +1,12 @@
 {
   "edges": [
     {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.search",
+      "type": "data_flow"
+    },
+    {
       "crosses_trust_boundary": true,
       "source": "mcp_agent.config",
       "target": "mcp_server.search",
@@ -26,6 +32,11 @@
     }
   ],
   "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
     "mcp_agent.config": {
       "category": "compute",
       "zone": "private"

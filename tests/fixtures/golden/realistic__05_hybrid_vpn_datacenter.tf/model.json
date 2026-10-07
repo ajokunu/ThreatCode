@@ -1,0 +1,56 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_instance.vpn_concentrator",
+        "aws_iam_instance_profile.vpn_mgmt",
+        "aws_iam_role.vpn_mgmt",
+        "aws_s3_bucket.vpn_logs"
+      ],
+      "severity": "high",
+      "target": "aws_s3_bucket.vpn_logs"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_instance.vpn_concentrator",
+        "aws_instance.internal_proxy",
+        "aws_iam_instance_profile.vpn_mgmt",
+        "aws_iam_role.vpn_mgmt",
+        "aws_s3_bucket.vpn_logs"
+      ],
+      "severity": "high",
+      "target": "aws_s3_bucket.vpn_logs"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_instance.vpn_concentrator",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_instance.vpn_concentrator",
+      "stride": "tampering",
+      "target": "aws_instance.internal_proxy"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.vpn_concentrator",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.vpn_concentrator",
+      "rule_id": "EC2_UNENCRYPTED_EBS"
+    }
+  ]
+}

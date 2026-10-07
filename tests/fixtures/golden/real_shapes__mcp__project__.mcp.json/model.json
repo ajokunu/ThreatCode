@@ -1,4 +1,28 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.analytics",
+        "mcp_agent.config",
+        "mcp_server.filesystem-home"
+      ],
+      "severity": "high",
+      "target": "mcp_server.filesystem-home"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.fetch",
+        "mcp_agent.config",
+        "mcp_server.filesystem-home"
+      ],
+      "severity": "high",
+      "target": "mcp_server.filesystem-home"
+    }
+  ],
   "boundary": [
     {
       "severity": "medium",

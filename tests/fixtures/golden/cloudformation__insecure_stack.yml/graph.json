@@ -5,6 +5,12 @@
       "source": "PublicDatabase",
       "target": "UnencryptedBucket",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "PublicBucket",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -29,6 +35,11 @@
     "WildcardPolicy": {
       "category": "iam",
       "zone": "management"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

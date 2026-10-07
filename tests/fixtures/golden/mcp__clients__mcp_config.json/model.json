@@ -1,4 +1,17 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.tickets",
+        "mcp_agent.config",
+        "mcp_server.shell"
+      ],
+      "severity": "high",
+      "target": "mcp_server.shell"
+    }
+  ],
   "boundary": [
     {
       "severity": "high",

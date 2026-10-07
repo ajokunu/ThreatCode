@@ -77,6 +77,18 @@
       "source": "ServerlessRestApi",
       "target": "OrdersFunction",
       "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessHttpApi",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessRestApi",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -121,6 +133,11 @@
       "category": "api",
       "exposure": "internet",
       "zone": "dmz"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

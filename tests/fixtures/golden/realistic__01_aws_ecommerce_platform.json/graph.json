@@ -19,6 +19,18 @@
       "type": "containment"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.web_a",
+      "target": "aws_db_instance.orders",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.web_a",
+      "target": "aws_db_instance.sessions",
+      "type": "network_flow"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "aws_instance.web_a",
       "target": "aws_security_group.app_sg",
@@ -35,6 +47,18 @@
       "source": "aws_instance.web_a",
       "target": "aws_subnet.private_a",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.web_b",
+      "target": "aws_db_instance.orders",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.web_b",
+      "target": "aws_db_instance.sessions",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": false,
@@ -59,6 +83,18 @@
       "source": "aws_internet_gateway.main",
       "target": "aws_vpc.ecommerce",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.inventory_sync",
+      "target": "aws_db_instance.orders",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.inventory_sync",
+      "target": "aws_db_instance.sessions",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": false,
@@ -89,6 +125,18 @@
       "source": "aws_lambda_function.order_processor",
       "target": "aws_iam_role.ec2_app_role",
       "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb.storefront",
+      "target": "aws_instance.web_a",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb.storefront",
+      "target": "aws_instance.web_b",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -149,6 +197,24 @@
       "source": "aws_subnet.public_b",
       "target": "aws_vpc.ecommerce",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_cloudfront_distribution.storefront",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_lb.storefront",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_s3_bucket.product_images",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -249,6 +315,11 @@
     "aws_vpc.ecommerce": {
       "category": "network",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

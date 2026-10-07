@@ -23,7 +23,6 @@ from tests.helpers.graph_assert import (
     assert_path,
     assert_zone,
 )
-from tests.helpers.pending import pending
 from tests.helpers.scan import real_shape, scan_real_shape
 
 MODULE_DIR = "terraform/hcl/module_app"
@@ -192,7 +191,6 @@ class TestZonesExposureAndPaths:
     def test_the_load_balancer_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(*MODULE_FILES).graph, "aws_lb.front", "internet")
 
-    @pending("WP-4-1", "reachability: internet to the load balancer, app tier and database")
     def test_the_internet_reaches_the_database_through_the_app_tier(self) -> None:
         graph = scan_real_shape(MODULE_DIR).graph
         path = assert_path(graph, "internet", "aws_db_instance.orders", ["network_flow"])
