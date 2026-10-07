@@ -1,0 +1,97 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_policy.app",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "description": null,
+            "name": "app-access",
+            "name_prefix": null,
+            "path": "/",
+            "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}",
+            "tags": null
+          },
+          "sensitive_values": {
+            "tags_all": {}
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_iam_policy.app",
+      "mode": "managed",
+      "type": "aws_iam_policy",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "description": null,
+          "name": "app-access",
+          "name_prefix": null,
+          "path": "/",
+          "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}",
+          "tags": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "policy_id": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "tags_all": {}
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_policy.app",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "app",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "app-access"
+            },
+            "path": {
+              "constant_value": "/"
+            },
+            "policy": {
+              "constant_value": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

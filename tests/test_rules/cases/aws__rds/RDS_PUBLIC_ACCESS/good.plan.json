@@ -1,0 +1,111 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_db_instance.orders",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "allocated_storage": 50,
+            "engine": "postgres",
+            "identifier": "orders",
+            "instance_class": "db.t3.medium",
+            "publicly_accessible": false,
+            "backup_retention_period": 7,
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "tags_all": {}
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.orders",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "allocated_storage": 50,
+          "engine": "postgres",
+          "identifier": "orders",
+          "instance_class": "db.t3.medium",
+          "publicly_accessible": false,
+          "backup_retention_period": 7,
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "address": true,
+          "arn": true,
+          "endpoint": true,
+          "id": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "tags_all": {}
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_db_instance.orders",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "orders",
+          "provider_config_key": "aws",
+          "expressions": {
+            "allocated_storage": {
+              "constant_value": 50
+            },
+            "engine": {
+              "constant_value": "postgres"
+            },
+            "identifier": {
+              "constant_value": "orders"
+            },
+            "instance_class": {
+              "constant_value": "db.t3.medium"
+            },
+            "publicly_accessible": {
+              "constant_value": false
+            },
+            "backup_retention_period": {
+              "constant_value": 7
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

@@ -1,0 +1,3 @@
+hcl:
+  package: WP-2-2
+  reason: jsonencode policies are normalized to compact JSON text the rule can read
