@@ -1,42 +1,104 @@
-name: 'ThreatCode STRIDE Threat Model'
-description: 'Generate STRIDE threat models from IaC and upload as SARIF to GitHub Code Scanning'
+name: 'ThreatCode'
+description: 'Build a STRIDE threat model and ATT&CK attack paths from infrastructure code and AI-agent configs, gate the build on severity and upload SARIF to GitHub Code Scanning'
+
+# Permissions the calling job needs:
+#   contents: read           to check out the code
+#   security-events: write   when upload is true (the default) and format is sarif
+#   pull-requests: write     when comment is true on a pull_request event
+#
+# Exit codes of the underlying command, exposed in the exit-code output:
+#   0  clean, or fail-on is none
+#   1  a finding or attack path at or above fail-on remains: the report is still written and
+#      uploaded, then the last step fails the job
+#   2  or more: a usage or input error. The job fails at once with the message from stderr.
 
 inputs:
+  path:
+    description: >-
+      What to scan: a file (Terraform plan JSON, .tf, CloudFormation, Kubernetes, Dockerfile,
+      MCP config) or a directory of them. Several paths go on separate lines.
+    required: false
+    default: ''
   input-file:
-    description: 'Path to terraform plan JSON file'
-    required: true
+    description: 'Deprecated alias of path, kept so existing workflows keep working.'
+    required: false
+    default: ''
   format:
-    description: 'Output format (sarif, json, markdown)'
+    description: 'Output format (sarif, json, markdown, text, bitbucket, matrix, diagram)'
     required: false
     default: 'sarif'
+  fail-on:
+    description: >-
+      Fail the job when a finding or attack path at or above this severity remains after
+      suppressions and the baseline (critical, high, medium, low, info). none never fails on
+      findings, which is the default so that adopting the action does not break a build.
+    required: false
+    default: 'none'
   min-severity:
-    description: 'Minimum severity to report (critical, high, medium, low, info)'
+    description: >-
+      Hide findings below this severity (critical, high, medium, low, info). Display only: it does
+      not change the gate. Empty means the CLI default.
     required: false
-    default: 'info'
-  no-llm:
-    description: 'Disable LLM analysis'
-    required: false
-    default: 'true'
+    default: ''
   config-file:
-    description: 'Path to .threatcode.yml config file'
+    description: 'Path to a .threatcode.yml config file. Only an explicit config can set fail_on.'
     required: false
     default: ''
   extra-rules:
-    description: 'Comma-separated paths to additional rule files'
+    description: 'Additional rule files, one per line (commas also separate)'
+    required: false
+    default: ''
+  ingest:
+    description: >-
+      Scanner results to join to the graph (Trivy JSON, Grype JSON, OSV-Scanner JSON or SARIF),
+      one file per line.
+    required: false
+    default: ''
+  baseline:
+    description: 'Baseline file: findings already in it are hidden from the gate and the report'
+    required: false
+    default: ''
+  comment:
+    description: >-
+      Post the Markdown report as a sticky pull request comment (needs pull-requests: write).
+      Skipped with a notice on forks, read-only tokens and events other than pull_request.
+    required: false
+    default: 'false'
+  github-token:
+    description: 'Token used to post the comment'
+    required: false
+    default: ${{ github.token }}
+  upload:
+    description: 'Upload the SARIF file to GitHub Code Scanning (needs security-events: write)'
+    required: false
+    default: 'true'
+  version:
+    description: >-
+      Install this released version from PyPI (threatcode==VERSION) instead of the code at the
+      ref the action was called with.
     required: false
     default: ''
   python-version:
     description: 'Python version to use'
     required: false
-    default: '3.11'
+    default: '3.12'
 
 outputs:
-  sarif-file:
-    description: 'Path to generated SARIF file'
-    value: ${{ steps.scan.outputs.sarif-file }}
+  exit-code:
+    description: 'Exit code of the scan: 0 clean, 1 gate tripped, 2 or more an error'
+    value: ${{ steps.scan.outputs.exit-code }}
   threat-count:
-    description: 'Total number of threats found'
+    description: 'Number of findings in the report, whatever the format'
     value: ${{ steps.scan.outputs.threat-count }}
+  path-count:
+    description: 'Number of attack paths in the report, whatever the format'
+    value: ${{ steps.scan.outputs.path-count }}
+  report-file:
+    description: 'Path of the written report, relative to the workspace'
+    value: ${{ steps.scan.outputs.report-file }}
+  sarif-file:
+    description: 'Path of the SARIF report when format is sarif, else empty'
+    value: ${{ steps.scan.outputs.sarif-file }}
 
 runs:
   using: 'composite'
@@ -48,57 +110,228 @@ runs:
 
     - name: Install ThreatCode
       shell: bash
-      run: pip install threatcode
+      # The default installs the checkout this action was loaded from, so the action at a ref
+      # always runs the code at that ref. GITHUB_ACTION_PATH is .github/actions/threatcode.
+      env:
+        TC_VERSION: ${{ inputs.version }}
+      run: |
+        if [ -n "$TC_VERSION" ]; then
+          case "$TC_VERSION" in
+            *[!0-9A-Za-z.+!_-]*)
+              echo "::error title=Invalid version::the version input may hold only letters, digits and . + ! _ -"
+              exit 2
+              ;;
+          esac
+          python3 -m pip install --disable-pip-version-check --quiet "threatcode==$TC_VERSION"
+        else
+          python3 -m pip install --disable-pip-version-check --quiet "$GITHUB_ACTION_PATH/../../.."
+        fi
 
     - name: Run ThreatCode scan
       id: scan
       shell: bash
-      # Use environment variables to prevent shell injection from inputs
+      # Inputs reach the script only through the environment, never through ${{ }} in the script.
       env:
+        TC_PATH: ${{ inputs.path }}
         TC_INPUT_FILE: ${{ inputs.input-file }}
         TC_FORMAT: ${{ inputs.format }}
+        TC_FAIL_ON: ${{ inputs.fail-on }}
         TC_MIN_SEVERITY: ${{ inputs.min-severity }}
-        TC_NO_LLM: ${{ inputs.no-llm }}
         TC_CONFIG_FILE: ${{ inputs.config-file }}
         TC_EXTRA_RULES: ${{ inputs.extra-rules }}
+        TC_INGEST: ${{ inputs.ingest }}
+        TC_BASELINE: ${{ inputs.baseline }}
+        TC_COMMENT: ${{ inputs.comment }}
+        TC_EVENT_NAME: ${{ github.event_name }}
       run: |
-        ARGS="--format $TC_FORMAT --min-severity $TC_MIN_SEVERITY"
+        # Not set -e: the exit code of the scan is data here. No set -u either: an empty array
+        # expands to an unbound variable in bash 3.2 on macOS runners.
+        scratch="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+        stderr_file="$scratch/threatcode-stderr.txt"
+        counts_file="$scratch/threatcode-counts.json"
 
-        if [ "$TC_NO_LLM" = "true" ]; then
-          ARGS="$ARGS --no-llm"
+        # One item per non-blank line; a trailing carriage return is dropped.
+        scan_paths=()
+        while IFS= read -r line; do
+          line="${line%$'\r'}"
+          if [ -n "${line//[[:space:]]/}" ]; then scan_paths+=("$line"); fi
+        done <<< "$TC_PATH"
+        if [ "${#scan_paths[@]}" -eq 0 ]; then
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            if [ -n "${line//[[:space:]]/}" ]; then scan_paths+=("$line"); fi
+          done <<< "$TC_INPUT_FILE"
+        fi
+        if [ "${#scan_paths[@]}" -eq 0 ]; then
+          echo "exit-code=2" >> "$GITHUB_OUTPUT"
+          echo "::error title=ThreatCode::the path input is empty: say what to scan"
+          exit 2
         fi
 
-        if [ -n "$TC_CONFIG_FILE" ]; then
-          ARGS="$ARGS --config $TC_CONFIG_FILE"
+        # Options shared by every run of the scan: the report, the counts and the comment must
+        # describe the same findings.
+        shared=()
+        if [ -n "$TC_MIN_SEVERITY" ]; then shared+=(--min-severity "$TC_MIN_SEVERITY"); fi
+        if [ -n "$TC_CONFIG_FILE" ]; then shared+=(--config "$TC_CONFIG_FILE"); fi
+        if [ -n "$TC_BASELINE" ]; then shared+=(--baseline "$TC_BASELINE"); fi
+        # The rule list takes commas or lines.
+        while IFS= read -r rule; do
+          rule="${rule%$'\r'}"
+          if [ -n "${rule//[[:space:]]/}" ]; then shared+=(--rules "$rule"); fi
+        done <<< "${TC_EXTRA_RULES//,/$'\n'}"
+        while IFS= read -r ingest_file; do
+          ingest_file="${ingest_file%$'\r'}"
+          if [ -n "${ingest_file//[[:space:]]/}" ]; then shared+=(--ingest "$ingest_file"); fi
+        done <<< "$TC_INGEST"
+
+        case "$TC_FORMAT" in
+          sarif) ext=sarif ;;
+          markdown) ext=md ;;
+          text) ext=txt ;;
+          diagram) ext=svg ;;
+          *) ext=json ;;
+        esac
+        report="threatcode-results.$ext"
+        rm -f "$report"
+
+        # The tool prints file names from the scanned tree on stderr. A line starting with two
+        # colons would be a workflow command, so the log shows stderr between stop-commands.
+        show_stderr() {
+          if [ -s "$stderr_file" ]; then
+            stop_token="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+            echo "::stop-commands::$stop_token"
+            cat "$stderr_file" >&2
+            echo "::$stop_token::"
+          fi
+        }
+
+        threatcode scan "${scan_paths[@]}" --format "$TC_FORMAT" --fail-on "$TC_FAIL_ON" \
+          "${shared[@]}" -o "$report" 2> "$stderr_file"
+        rc=$?
+        show_stderr
+        echo "exit-code=$rc" >> "$GITHUB_OUTPUT"
+
+        if [ "$rc" -gt 1 ]; then
+          # A usage or input error: no report is trustworthy. Fail now with the reason.
+          message="$(grep -v '^[[:space:]]*$' "$stderr_file" | tail -n 1)"
+          message="${message:-threatcode exited with status $rc}"
+          message="${message//'%'/%25}"
+          message="${message//$'\r'/%0D}"
+          message="${message//$'\n'/%0A}"
+          echo "::error title=ThreatCode failed (exit $rc)::$message"
+          exit "$rc"
         fi
 
-        if [ -n "$TC_EXTRA_RULES" ]; then
-          IFS=',' read -ra RULES <<< "$TC_EXTRA_RULES"
-          for rule in "${RULES[@]}"; do
-            ARGS="$ARGS --rules $rule"
-          done
-        fi
+        echo "report-file=$report" >> "$GITHUB_OUTPUT"
+        if [ "$TC_FORMAT" = "sarif" ]; then echo "sarif-file=$report" >> "$GITHUB_OUTPUT"; fi
 
-        SARIF_FILE="threatcode-results.sarif"
-
-        if [ "$TC_FORMAT" = "sarif" ]; then
-          ARGS="$ARGS -o $SARIF_FILE"
-        fi
-
-        threatcode scan "$TC_INPUT_FILE" $ARGS || true
-
-        echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
-
-        if [ -f "$SARIF_FILE" ]; then
-          COUNT=$(python -c "import json, sys; d=json.load(open(sys.argv[1])); print(len(d.get('runs',[{}])[0].get('results',[])))" "$SARIF_FILE")
-          echo "threat-count=$COUNT" >> "$GITHUB_OUTPUT"
+        # Counts come from the JSON report, so they mean the same for every format.
+        if [ "$TC_FORMAT" = "json" ]; then
+          cp "$report" "$counts_file"
         else
-          echo "threat-count=0" >> "$GITHUB_OUTPUT"
+          threatcode scan "${scan_paths[@]}" --format json --fail-on none \
+            "${shared[@]}" -o "$counts_file" 2> "$stderr_file"
+          counts_rc=$?
+          if [ "$counts_rc" -ne 0 ]; then
+            show_stderr
+            echo "::error title=ThreatCode failed (exit $counts_rc)::could not count the findings"
+            exit "$counts_rc"
+          fi
         fi
+        python3 - "$counts_file" >> "$GITHUB_OUTPUT" <<'PY'
+        import json
+        import sys
+
+        with open(sys.argv[1], encoding="utf-8") as fh:
+            report = json.load(fh)
+        print(f"threat-count={len(report.get('threats', []))}")
+        print(f"path-count={len(report.get('attack_paths', []))}")
+        PY
+
+        # The comment body: the report in Markdown behind a hidden marker, under GitHub's limit.
+        if [ "$TC_COMMENT" = "true" ] && [ "$TC_EVENT_NAME" = "pull_request" ]; then
+          markdown_file="$report"
+          if [ "$TC_FORMAT" != "markdown" ]; then
+            markdown_file="$scratch/threatcode-comment-source.md"
+            threatcode scan "${scan_paths[@]}" --format markdown --fail-on none \
+              "${shared[@]}" -o "$markdown_file" 2> "$stderr_file"
+            markdown_rc=$?
+            if [ "$markdown_rc" -ne 0 ]; then
+              show_stderr
+              echo "::error title=ThreatCode failed (exit $markdown_rc)::could not render the comment"
+              exit "$markdown_rc"
+            fi
+          fi
+          python3 - "$markdown_file" "$scratch/threatcode-comment.md" <<'PY'
+        import sys
+
+        limit = 60000
+        marker = "<!-- threatcode-report -->\n\n"
+        note = "\n\n_The report was cut to fit GitHub's comment limit. The full report is the report-file output of the action step._\n"
+        with open(sys.argv[1], encoding="utf-8") as fh:
+            body = fh.read()
+        if len(marker) + len(body) > limit:
+            body = body[: limit - len(marker) - len(note)] + note
+        with open(sys.argv[2], "w", encoding="utf-8") as out:
+            out.write(marker + body)
+        PY
+          echo "comment-file=$scratch/threatcode-comment.md" >> "$GITHUB_OUTPUT"
+        fi
+        exit 0
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request' && steps.scan.outputs.comment-file != ''
+      shell: bash
+      # The token, the repository, the pull request number and the body file all arrive through the
+      # environment. Nothing from the scanned tree or the inputs is placed in the command line.
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TC_REPO: ${{ github.repository }}
+        TC_PR_NUMBER: ${{ github.event.pull_request.number }}
+        TC_IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        TC_BODY_FILE: ${{ steps.scan.outputs.comment-file }}
+      run: |
+        if [ "$TC_IS_FORK" = "true" ]; then
+          echo "::notice title=ThreatCode::skipping the pull request comment: a pull request from a fork has a read-only token"
+          exit 0
+        fi
+        if ! command -v gh > /dev/null 2>&1; then
+          echo "::notice title=ThreatCode::skipping the pull request comment: the gh command is not installed"
+          exit 0
+        fi
+
+        existing="$(gh api --paginate "repos/$TC_REPO/issues/$TC_PR_NUMBER/comments" \
+          --jq '.[] | select(.body | startswith("<!-- threatcode-report -->")) | .id' 2> /dev/null)"
+        lookup_rc=$?
+        comment_id="${existing%%$'\n'*}"
+
+        if [ "$lookup_rc" -eq 0 ] && [ -n "$comment_id" ]; then
+          gh api --method PATCH "repos/$TC_REPO/issues/comments/$comment_id" \
+            -F "body=@$TC_BODY_FILE" > /dev/null
+        else
+          gh api --method POST "repos/$TC_REPO/issues/$TC_PR_NUMBER/comments" \
+            -F "body=@$TC_BODY_FILE" > /dev/null
+        fi
+        post_rc=$?
+        if [ "$post_rc" -ne 0 ]; then
+          echo "::notice title=ThreatCode::the pull request comment was not posted: the token may be read-only. Grant pull-requests: write to post it."
+        fi
+        exit 0
 
     - name: Upload SARIF to GitHub Code Scanning
-      if: inputs.format == 'sarif'
-      uses: github/codeql-action/upload-sarif@ea9e4e37992a54ee68a9571ad585ae0e9ce4e12b # v3.28.13
+      if: always() && inputs.upload == 'true' && inputs.format == 'sarif' && hashFiles(steps.scan.outputs.sarif-file) != ''
+      uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
       with:
         sarif_file: ${{ steps.scan.outputs.sarif-file }}
         category: threatcode
+
+    - name: Enforce the gate
+      if: always() && steps.scan.outputs.exit-code == '1'
+      shell: bash
+      env:
+        TC_FAIL_ON: ${{ inputs.fail-on }}
+        TC_THREATS: ${{ steps.scan.outputs.threat-count }}
+        TC_PATHS: ${{ steps.scan.outputs.path-count }}
+      run: |
+        echo "::error title=ThreatCode gate::a finding or attack path at or above '$TC_FAIL_ON' remains ($TC_THREATS findings and $TC_PATHS attack paths in the report)"
+        exit 1
