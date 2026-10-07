@@ -1,90 +1,124 @@
+# Key Vault.
+#
+# Soft delete is mandatory on every vault, so there is no rule for its absence. Purge protection
+# and public network access fall back to the provider defaults (false and true) for Terraform
+# HCL, which omits them.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # Soft delete cannot be turned off on a Key Vault, so a missing soft_delete_retention_days
+  # means the default of 90 days. KEYVAULT_SHORT_SOFT_DELETE_RETENTION replaces it.
+  - KEYVAULT_NO_SOFT_DELETE
+
 rules:
-  - id: KEYVAULT_NO_SOFT_DELETE
-    title: Key Vault without soft delete
+  - id: KEYVAULT_SHORT_SOFT_DELETE_RETENTION
+    title: Key Vault keeps deleted objects for fewer than 90 days
     description: >
-      Soft delete is not enabled on the Key Vault. Deleted secrets,
-      keys, and certificates cannot be recovered.
+      The vault's soft delete retention is shorter than the 90 day default.
+      A deleted secret, key or certificate can be recovered only inside that window, and a
+      short window leaves little time to notice an attacker's deletion.
     stride_category: denial_of_service
-    severity: high
+    severity: low
+    confidence: definitive
+    root_cause: no-recovery-window
     resource_type: azurerm_key_vault
     condition:
       soft_delete_retention_days:
-        not_exists: true
+        less_than: 90
     mitigation: >
-      Enable soft delete with a retention period of at least 7 days.
+      Set soft_delete_retention_days to 90, or remove the attribute to use the default.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
 
   - id: KEYVAULT_NO_PURGE_PROTECTION
     title: Key Vault without purge protection
     description: >
-      Purge protection is not enabled. Deleted Key Vault objects can be
-      permanently removed before the retention period expires.
+      Purge protection is off, so a user with delete permission can permanently remove a vault
+      or its objects before the soft delete retention period ends.
+      The provider default is false, so a vault that never sets the attribute has it off.
     stride_category: denial_of_service
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: no-recovery-window
     resource_type: azurerm_key_vault
     condition:
       purge_protection_enabled:
         equals: false
     mitigation: >
-      Enable purge protection to prevent premature permanent deletion.
+      Set purge_protection_enabled to true.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
 
   - id: KEYVAULT_NO_NETWORK_ACLS
-    title: Key Vault without network restrictions
+    title: Key Vault without a network ACL
     description: >
-      The Key Vault does not have network ACLs configured.
-      It is accessible from all networks by default.
+      The vault has no network_acls block, so its firewall allows every network.
+      The check is skipped when public network access is turned off.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: absence
+    root_cause: keyvault-network-open
     resource_type: azurerm_key_vault
     condition:
-      network_acls:
-        not_exists: true
+      all_of:
+        - network_acls:
+            not_exists: true
+        - public_network_access_enabled:
+            not_equals: false
     mitigation: >
-      Configure network ACLs to restrict Key Vault access to specific networks.
+      Add network_acls with default_action Deny and the subnets and addresses that need access,
+      or disable public network access and use private endpoints.
     metadata:
       mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+        techniques: ["T1555.006"]
 
   - id: KEYVAULT_PUBLIC_ACCESS
-    title: Key Vault allows public network access
+    title: Key Vault reachable from the internet
     description: >
-      The Key Vault allows public network access. Secrets and keys
-      are potentially accessible from the internet.
+      Public network access is on and the vault's firewall does not deny by default (there is no
+      network_acls block, or its default_action is Allow).
+      Secrets and keys are then reachable by any client on the internet that can authenticate.
+      The provider default for public network access is true.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: keyvault-network-open
     resource_type: azurerm_key_vault
     condition:
-      public_network_access_enabled:
-        equals: true
+      all_of:
+        - public_network_access_enabled:
+            equals: true
+        - any_of:
+            - network_acls:
+                not_exists: true
+            - network_acls.default_action:
+                equals_ci: "Allow"
     mitigation: >
-      Disable public network access and use private endpoints.
+      Disable public network access and use private endpoints, or set network_acls default_action
+      to Deny.
     metadata:
       mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+        techniques: ["T1555.006"]
 
   - id: KEYVAULT_NO_DIAGNOSTICS
     title: Key Vault without diagnostic settings
     description: >
-      The Key Vault does not have diagnostic settings enabled.
-      Access to secrets and keys is not being audited.
+      No azurerm_monitor_diagnostic_setting targets the vault, so reads and changes of its
+      secrets and keys leave no audit trail outside the platform's short-lived activity log.
     stride_category: repudiation
     severity: medium
+    confidence: absence
+    root_cause: no-audit-logging
     resource_type: azurerm_key_vault
     condition:
-      diagnostic_settings:
-        not_exists: true
+      derived.has_diagnostic_settings:
+        equals: false
     mitigation: >
-      Enable diagnostic settings to log Key Vault operations.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add an azurerm_monitor_diagnostic_setting for the vault that sends the AuditEvent log
+      category to a Log Analytics workspace or a storage account.

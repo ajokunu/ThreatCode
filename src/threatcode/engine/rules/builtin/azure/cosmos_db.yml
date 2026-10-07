@@ -1,72 +1,80 @@
+# Cosmos DB accounts.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # Analytical storage is a workload feature, not an access control, and its absence gives an
+  # attacker nothing.
+  - COSMOS_NO_ANALYTICAL_STORAGE
+
 rules:
   - id: COSMOS_PUBLIC_ACCESS
-    title: Cosmos DB allows public network access
+    title: Cosmos DB account open to the public network
     description: >
-      The Cosmos DB account allows public network access.
-      Data is potentially accessible from the internet.
+      Public network access is enabled (the provider default is true) and the account has no
+      IP range filter and no virtual network filter, so every client on the internet that holds
+      a key or token can reach it.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: cosmos-network-open
     resource_type: azurerm_cosmosdb_account
     condition:
-      public_network_access_enabled:
-        equals: true
+      all_of:
+        - public_network_access_enabled:
+            equals: true
+        - ip_range_filter:
+            not_exists: true
+        - is_virtual_network_filter_enabled:
+            not_equals: true
     mitigation: >
-      Disable public network access and use private endpoints.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
-
-  - id: COSMOS_NO_VNET_RULES
-    title: Cosmos DB without VNET service endpoint rules
-    description: >
-      No VNET rules are configured for the Cosmos DB account.
-      Access is not restricted to specific virtual networks.
-    stride_category: information_disclosure
-    severity: medium
-    resource_type: azurerm_cosmosdb_account
-    condition:
-      virtual_network_rule:
-        not_exists: true
-    mitigation: >
-      Add VNET rules to restrict access to specific virtual networks.
+      Set public_network_access_enabled to false and use private endpoints, or restrict the
+      account with ip_range_filter or virtual network rules.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
-  - id: COSMOS_NO_CMK
-    title: Cosmos DB without customer-managed encryption key
+  - id: COSMOS_NO_VNET_RULES
+    title: Cosmos DB without virtual network rules
     description: >
-      The Cosmos DB account uses service-managed encryption.
-      Customer-managed keys provide additional control over data protection.
+      The account has no virtual_network_rule blocks, so access is not limited to specific
+      subnets.
+      The check is skipped when public network access is turned off.
     stride_category: information_disclosure
     severity: medium
+    confidence: absence
+    root_cause: cosmos-network-open
+    resource_type: azurerm_cosmosdb_account
+    condition:
+      all_of:
+        - virtual_network_rule:
+            not_exists: true
+        - public_network_access_enabled:
+            not_equals: false
+    mitigation: >
+      Add virtual_network_rule blocks and set is_virtual_network_filter_enabled to true, or
+      disable public network access and use private endpoints.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+
+  - id: COSMOS_NO_CMK
+    title: Cosmos DB not using a customer-managed key
+    description: >
+      The account does not set key_vault_key_id, so its data is encrypted with a key managed by
+      Microsoft.
+      Data is still encrypted at rest.
+      A customer-managed key adds control over key rotation and revocation.
+    stride_category: information_disclosure
+    severity: low
+    confidence: absence
     resource_type: azurerm_cosmosdb_account
     condition:
       key_vault_key_id:
         not_exists: true
     mitigation: >
-      Configure a customer-managed key from Azure Key Vault.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
-
-  - id: COSMOS_NO_ANALYTICAL_STORAGE
-    title: Cosmos DB without analytical storage
-    description: >
-      Analytical storage is not enabled. This prevents separation of
-      analytical workloads from transactional data access patterns.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: azurerm_cosmosdb_account
-    condition:
-      analytical_storage_enabled:
-        equals: false
-    mitigation: >
-      Enable analytical storage for workload isolation.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+      Set key_vault_key_id to a key from Azure Key Vault if policy requires a customer-managed
+      key.

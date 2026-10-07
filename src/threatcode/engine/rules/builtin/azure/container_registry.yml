@@ -1,0 +1,74 @@
+# Azure Container Registry.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+rules:
+  - id: ACR_ADMIN_ENABLED
+    title: Container registry admin account enabled
+    description: >
+      The registry enables its built-in admin user, which is one shared username and password
+      with full push and pull rights and no per-user audit trail.
+      A leaked admin password lets an attacker replace images that the cluster then runs.
+    stride_category: spoofing
+    severity: high
+    confidence: definitive
+    root_cause: acr-shared-credentials
+    resource_type: azurerm_container_registry
+    condition:
+      admin_enabled:
+        equals: true
+    mitigation: >
+      Set admin_enabled to false and grant pull and push through Microsoft Entra roles
+      (AcrPull, AcrPush) to managed identities.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+
+  - id: ACR_PUBLIC_NETWORK_ACCESS
+    title: Container registry reachable from the internet
+    description: >
+      Public network access is on (the provider default is true) and the registry has no network
+      rule set that denies by default, so any client on the internet that holds credentials can
+      pull or push images.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: heuristic
+    root_cause: acr-network-open
+    resource_type: azurerm_container_registry
+    condition:
+      all_of:
+        - public_network_access_enabled:
+            equals: true
+        - any_of:
+            - network_rule_set:
+                not_exists: true
+            - network_rule_set.default_action:
+                equals_ci: "Allow"
+    mitigation: >
+      Disable public network access and use a private endpoint (Premium SKU), or add a
+      network_rule_set with default_action Deny.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+
+  - id: ACR_ANONYMOUS_PULL
+    title: Container registry allows anonymous pull
+    description: >
+      The registry enables anonymous pull, so anyone who can reach it can download every image,
+      including any code, configuration and embedded secrets inside them, without credentials.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: acr-network-open
+    resource_type: azurerm_container_registry
+    condition:
+      anonymous_pull_enabled:
+        equals: true
+    mitigation: >
+      Set anonymous_pull_enabled to false and grant pull through Microsoft Entra roles.
+    metadata:
+      mitre:
+        techniques: ["T1530"]

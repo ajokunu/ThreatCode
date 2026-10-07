@@ -4,17 +4,15 @@
     "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
     "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "azurerm_key_vault.platform",
     "rule_id": "KEYVAULT_NO_NETWORK_ACLS",
-    "severity": "high",
+    "severity": "medium",
     "stride": "information_disclosure",
     "techniques": [
-      "T1530"
+      "T1555.006"
     ]
   }
 ]

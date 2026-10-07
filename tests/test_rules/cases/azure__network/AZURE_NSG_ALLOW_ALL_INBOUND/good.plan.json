@@ -1,0 +1,312 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_network_security_group.app",
+          "mode": "managed",
+          "type": "azurerm_network_security_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "location": "eastus",
+            "name": "nsg-app",
+            "resource_group_name": "rg-app",
+            "security_rule": [
+              {
+                "access": "Allow",
+                "description": "",
+                "destination_address_prefix": "*",
+                "destination_address_prefixes": [],
+                "destination_application_security_group_ids": [],
+                "destination_port_range": "443",
+                "destination_port_ranges": [],
+                "direction": "Inbound",
+                "name": "https",
+                "priority": 100,
+                "protocol": "Tcp",
+                "source_address_prefix": "Internet",
+                "source_address_prefixes": [],
+                "source_application_security_group_ids": [],
+                "source_port_range": "*",
+                "source_port_ranges": []
+              },
+              {
+                "access": "Allow",
+                "description": "",
+                "destination_address_prefix": "*",
+                "destination_address_prefixes": [],
+                "destination_application_security_group_ids": [],
+                "destination_port_range": "22",
+                "destination_port_ranges": [],
+                "direction": "Inbound",
+                "name": "ssh",
+                "priority": 110,
+                "protocol": "Tcp",
+                "source_address_prefix": "10.0.0.0/24",
+                "source_address_prefixes": [],
+                "source_application_security_group_ids": [],
+                "source_port_range": "*",
+                "source_port_ranges": []
+              }
+            ],
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_network_security_rule.internal_all",
+          "mode": "managed",
+          "type": "azurerm_network_security_rule",
+          "name": "internal_all",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "access": "Allow",
+            "description": null,
+            "destination_address_prefix": "*",
+            "destination_address_prefixes": null,
+            "destination_application_security_group_ids": null,
+            "destination_port_range": "*",
+            "destination_port_ranges": null,
+            "direction": "Inbound",
+            "name": "internal_all",
+            "network_security_group_name": "nsg-app",
+            "priority": 120,
+            "protocol": "*",
+            "resource_group_name": "rg-app",
+            "source_address_prefix": "10.0.0.0/8",
+            "source_address_prefixes": null,
+            "source_application_security_group_ids": null,
+            "source_port_range": "*",
+            "source_port_ranges": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_network_security_group.app",
+      "mode": "managed",
+      "type": "azurerm_network_security_group",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "location": "eastus",
+          "name": "nsg-app",
+          "resource_group_name": "rg-app",
+          "security_rule": [
+            {
+              "access": "Allow",
+              "description": "",
+              "destination_address_prefix": "*",
+              "destination_address_prefixes": [],
+              "destination_application_security_group_ids": [],
+              "destination_port_range": "443",
+              "destination_port_ranges": [],
+              "direction": "Inbound",
+              "name": "https",
+              "priority": 100,
+              "protocol": "Tcp",
+              "source_address_prefix": "Internet",
+              "source_address_prefixes": [],
+              "source_application_security_group_ids": [],
+              "source_port_range": "*",
+              "source_port_ranges": []
+            },
+            {
+              "access": "Allow",
+              "description": "",
+              "destination_address_prefix": "*",
+              "destination_address_prefixes": [],
+              "destination_application_security_group_ids": [],
+              "destination_port_range": "22",
+              "destination_port_ranges": [],
+              "direction": "Inbound",
+              "name": "ssh",
+              "priority": 110,
+              "protocol": "Tcp",
+              "source_address_prefix": "10.0.0.0/24",
+              "source_address_prefixes": [],
+              "source_application_security_group_ids": [],
+              "source_port_range": "*",
+              "source_port_ranges": []
+            }
+          ],
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_network_security_rule.internal_all",
+      "mode": "managed",
+      "type": "azurerm_network_security_rule",
+      "name": "internal_all",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "access": "Allow",
+          "description": null,
+          "destination_address_prefix": "*",
+          "destination_address_prefixes": null,
+          "destination_application_security_group_ids": null,
+          "destination_port_range": "*",
+          "destination_port_ranges": null,
+          "direction": "Inbound",
+          "name": "internal_all",
+          "network_security_group_name": "nsg-app",
+          "priority": 120,
+          "protocol": "*",
+          "resource_group_name": "rg-app",
+          "source_address_prefix": "10.0.0.0/8",
+          "source_address_prefixes": null,
+          "source_application_security_group_ids": null,
+          "source_port_range": "*",
+          "source_port_ranges": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_network_security_group.app",
+          "mode": "managed",
+          "type": "azurerm_network_security_group",
+          "name": "app",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "location": {
+              "constant_value": "eastus"
+            },
+            "name": {
+              "constant_value": "nsg-app"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-app"
+            },
+            "security_rule": {
+              "constant_value": [
+                {
+                  "access": "Allow",
+                  "description": "",
+                  "destination_address_prefix": "*",
+                  "destination_address_prefixes": [],
+                  "destination_application_security_group_ids": [],
+                  "destination_port_range": "443",
+                  "destination_port_ranges": [],
+                  "direction": "Inbound",
+                  "name": "https",
+                  "priority": 100,
+                  "protocol": "Tcp",
+                  "source_address_prefix": "Internet",
+                  "source_address_prefixes": [],
+                  "source_application_security_group_ids": [],
+                  "source_port_range": "*",
+                  "source_port_ranges": []
+                },
+                {
+                  "access": "Allow",
+                  "description": "",
+                  "destination_address_prefix": "*",
+                  "destination_address_prefixes": [],
+                  "destination_application_security_group_ids": [],
+                  "destination_port_range": "22",
+                  "destination_port_ranges": [],
+                  "direction": "Inbound",
+                  "name": "ssh",
+                  "priority": 110,
+                  "protocol": "Tcp",
+                  "source_address_prefix": "10.0.0.0/24",
+                  "source_address_prefixes": [],
+                  "source_application_security_group_ids": [],
+                  "source_port_range": "*",
+                  "source_port_ranges": []
+                }
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_network_security_rule.internal_all",
+          "mode": "managed",
+          "type": "azurerm_network_security_rule",
+          "name": "internal_all",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "access": {
+              "constant_value": "Allow"
+            },
+            "destination_address_prefix": {
+              "constant_value": "*"
+            },
+            "destination_port_range": {
+              "constant_value": "*"
+            },
+            "direction": {
+              "constant_value": "Inbound"
+            },
+            "name": {
+              "constant_value": "internal_all"
+            },
+            "network_security_group_name": {
+              "constant_value": "nsg-app"
+            },
+            "priority": {
+              "constant_value": 120
+            },
+            "protocol": {
+              "constant_value": "*"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-app"
+            },
+            "source_address_prefix": {
+              "constant_value": "10.0.0.0/8"
+            },
+            "source_port_range": {
+              "constant_value": "*"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

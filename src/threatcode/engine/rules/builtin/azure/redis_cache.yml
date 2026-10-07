@@ -1,0 +1,80 @@
+# Azure Cache for Redis.
+#
+# The non-TLS port attribute is enable_non_ssl_port in azurerm 3.x and non_ssl_port_enabled in
+# 4.x; both are read.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+rules:
+  - id: REDIS_NON_SSL_PORT
+    title: Redis cache listens on the unencrypted port
+    description: >
+      The cache enables the non-TLS port 6379, so clients can connect without encryption and
+      the access key and the cached data can be read or altered on the path.
+      The provider default is to keep the port closed, so this is an explicit choice.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: redis-plaintext
+    resource_type: azurerm_redis_cache
+    condition:
+      any_of:
+        - enable_non_ssl_port:
+            equals: true
+        - non_ssl_port_enabled:
+            equals: true
+    mitigation: >
+      Set non_ssl_port_enabled (enable_non_ssl_port before azurerm 4.0) to false and connect on
+      port 6380 with TLS.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+
+  - id: REDIS_OLD_TLS
+    title: Redis cache accepts TLS 1.0 or 1.1
+    description: >
+      The cache's minimum TLS version is 1.0 or 1.1, both of which are deprecated and have known
+      weaknesses.
+      The check only sees an explicit value, because the provider default depends on its
+      version (1.0 before azurerm 4.0, 1.2 after).
+    stride_category: information_disclosure
+    severity: medium
+    confidence: definitive
+    root_cause: redis-plaintext
+    resource_type: azurerm_redis_cache
+    condition:
+      minimum_tls_version:
+        matches_any: ["1.0", "1.1"]
+    mitigation: >
+      Set minimum_tls_version to 1.2.
+    metadata:
+      mitre:
+        techniques: ["T1557"]
+
+  - id: REDIS_PUBLIC_NETWORK_ACCESS
+    title: Redis cache public endpoint enabled
+    description: >
+      The cache's public endpoint is enabled (the provider default is true) and the cache is not
+      injected into a virtual network, so anyone on the internet who holds an access key can
+      connect.
+      Firewall rules, which are separate resources, are not evaluated here.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: heuristic
+    root_cause: redis-network-open
+    resource_type: azurerm_redis_cache
+    condition:
+      all_of:
+        - public_network_access_enabled:
+            equals: true
+        - subnet_id:
+            not_exists: true
+    mitigation: >
+      Set public_network_access_enabled to false and use a private endpoint, or deploy the cache
+      into a virtual network with subnet_id.
+    metadata:
+      mitre:
+        techniques: ["T1190"]

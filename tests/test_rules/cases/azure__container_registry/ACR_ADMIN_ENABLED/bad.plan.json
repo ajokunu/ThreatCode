@@ -1,0 +1,102 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_container_registry.platform",
+          "mode": "managed",
+          "type": "azurerm_container_registry",
+          "name": "platform",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "name": "crplatformprod",
+            "resource_group_name": "rg-platform",
+            "location": "eastus",
+            "sku": "Premium",
+            "anonymous_pull_enabled": false,
+            "network_rule_set": [],
+            "admin_enabled": true,
+            "public_network_access_enabled": false
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_container_registry.platform",
+      "mode": "managed",
+      "type": "azurerm_container_registry",
+      "name": "platform",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "crplatformprod",
+          "resource_group_name": "rg-platform",
+          "location": "eastus",
+          "sku": "Premium",
+          "anonymous_pull_enabled": false,
+          "network_rule_set": [],
+          "admin_enabled": true,
+          "public_network_access_enabled": false
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_container_registry.platform",
+          "mode": "managed",
+          "type": "azurerm_container_registry",
+          "name": "platform",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "name": {
+              "constant_value": "crplatformprod"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-platform"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "sku": {
+              "constant_value": "Premium"
+            },
+            "anonymous_pull_enabled": {
+              "constant_value": false
+            },
+            "admin_enabled": {
+              "constant_value": true
+            },
+            "public_network_access_enabled": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

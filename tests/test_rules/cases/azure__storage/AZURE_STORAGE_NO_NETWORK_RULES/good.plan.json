@@ -1,0 +1,136 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_storage_account.data",
+          "mode": "managed",
+          "type": "azurerm_storage_account",
+          "name": "data",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "name": "acmedata",
+            "resource_group_name": "rg-data",
+            "location": "eastus",
+            "account_tier": "Standard",
+            "account_replication_type": "GRS",
+            "public_network_access_enabled": true,
+            "network_rules": [
+              {
+                "bypass": [
+                  "AzureServices"
+                ],
+                "default_action": "Deny",
+                "ip_rules": [
+                  "203.0.113.7"
+                ],
+                "private_link_access": [],
+                "virtual_network_subnet_ids": []
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_storage_account.data",
+      "mode": "managed",
+      "type": "azurerm_storage_account",
+      "name": "data",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "acmedata",
+          "resource_group_name": "rg-data",
+          "location": "eastus",
+          "account_tier": "Standard",
+          "account_replication_type": "GRS",
+          "public_network_access_enabled": true,
+          "network_rules": [
+            {
+              "bypass": [
+                "AzureServices"
+              ],
+              "default_action": "Deny",
+              "ip_rules": [
+                "203.0.113.7"
+              ],
+              "private_link_access": [],
+              "virtual_network_subnet_ids": []
+            }
+          ]
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_storage_account.data",
+          "mode": "managed",
+          "type": "azurerm_storage_account",
+          "name": "data",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "name": {
+              "constant_value": "acmedata"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-data"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "account_tier": {
+              "constant_value": "Standard"
+            },
+            "account_replication_type": {
+              "constant_value": "GRS"
+            },
+            "public_network_access_enabled": {
+              "constant_value": true
+            },
+            "network_rules": {
+              "constant_value": [
+                {
+                  "bypass": [
+                    "AzureServices"
+                  ],
+                  "default_action": "Deny",
+                  "ip_rules": [
+                    "203.0.113.7"
+                  ],
+                  "private_link_access": [],
+                  "virtual_network_subnet_ids": []
+                }
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

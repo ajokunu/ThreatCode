@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "azurerm_container_registry.platform",
+    "rule_id": "ACR_ADMIN_ENABLED",
+    "severity": "high",
+    "stride": "spoofing",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]
