@@ -1,71 +1,53 @@
+# Legacy Azure SQL resources (azurerm_sql_server), which azurerm 3.x still accepts and azurerm
+# 4.0 removed. Auditing and threat detection are inline blocks on these resources.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # azurerm_sql_server has no public_network_access_enabled attribute, so the rule could never
+  # fire. azurerm_mssql_server carries MSSQL_PUBLIC_ACCESS.
+  - AZURE_SQL_PUBLIC_ACCESS
+  # azurerm_sql_database has no transparent_data_encryption_enabled attribute, so the rule could
+  # never fire. azurerm_mssql_database carries MSSQL_NO_TDE.
+  - AZURE_SQL_NO_ENCRYPTION
+
 rules:
   - id: AZURE_SQL_NO_AUDIT
     title: Azure SQL Server without auditing
     description: >
-      The SQL server does not have auditing enabled.
+      The legacy SQL server has no extended_auditing_policy block, so logins, queries and
+      administrative changes are not recorded.
     stride_category: repudiation
-    severity: high
+    severity: medium
+    confidence: absence
+    root_cause: no-audit-logging
+    resource_type: azurerm_sql_server
+    condition:
+      extended_auditing_policy:
+        not_exists: true
+    mitigation: >
+      Add an extended_auditing_policy block, or move to azurerm_mssql_server with an
+      azurerm_mssql_server_extended_auditing_policy.
+
+  - id: AZURE_SQL_NO_THREAT_DETECTION
+    title: Azure SQL Server without threat detection
+    description: >
+      The legacy SQL server has no threat_detection_policy block, or the policy is disabled, so
+      SQL injection attempts and anomalous access are not detected.
+    stride_category: repudiation
+    severity: medium
+    confidence: absence
+    root_cause: no-threat-detection
     resource_type: azurerm_sql_server
     condition:
       any_of:
-        - extended_auditing_policy:
+        - threat_detection_policy:
             not_exists: true
-        - extended_auditing_policy:
-            is_empty: true
+        - threat_detection_policy.state:
+            equals_ci: "Disabled"
     mitigation: >
-      Enable auditing on the SQL server.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
-
-  - id: AZURE_SQL_NO_THREAT_DETECTION
-    title: Azure SQL without threat detection
-    description: >
-      Advanced threat protection is not enabled.
-    stride_category: information_disclosure
-    severity: medium
-    resource_type: azurerm_sql_server
-    condition:
-      threat_detection_policy:
-        not_exists: true
-    mitigation: >
-      Enable Advanced Threat Protection.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
-
-  - id: AZURE_SQL_NO_ENCRYPTION
-    title: Azure SQL without TDE
-    description: >
-      Transparent Data Encryption is not enabled.
-    stride_category: information_disclosure
-    severity: high
-    resource_type: azurerm_sql_database
-    condition:
-      transparent_data_encryption_enabled:
-        equals: false
-    mitigation: >
-      Enable Transparent Data Encryption.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
-
-  - id: AZURE_SQL_PUBLIC_ACCESS
-    title: Azure SQL allows public network access
-    description: >
-      The SQL server allows public network access.
-    stride_category: information_disclosure
-    severity: high
-    resource_type: azurerm_sql_server
-    condition:
-      public_network_access_enabled:
-        equals: true
-    mitigation: >
-      Disable public network access and use private endpoints.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+      Add a threat_detection_policy block with state Enabled, or move to azurerm_mssql_server
+      with an azurerm_mssql_server_security_alert_policy.

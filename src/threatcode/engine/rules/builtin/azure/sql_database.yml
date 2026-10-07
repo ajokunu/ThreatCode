@@ -1,72 +1,91 @@
+# Azure SQL (azurerm_mssql_server and azurerm_mssql_database).
+#
+# Auditing and threat detection are separate resources, so the server rules read facts the
+# enrichment layer folds in (derived.auditing_enabled from azurerm_mssql_server_extended_auditing_policy
+# or an inline extended_auditing_policy block, derived.alert_policy_enabled from
+# azurerm_mssql_server_security_alert_policy). A database-level threat_detection_policy is not
+# counted towards the server.
+# Transparent data encryption is an attribute of the database, not the server.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: MSSQL_NO_AUDITING
     title: SQL Server without auditing
     description: >
-      The SQL Server does not have auditing enabled.
-      Database operations cannot be tracked for compliance.
+      The server has no auditing policy (an azurerm_mssql_server_extended_auditing_policy, or an
+      enabled extended_auditing_policy block), so logins, queries and administrative changes
+      are not recorded.
+      Without them an intrusion into the data cannot be reconstructed.
     stride_category: repudiation
-    severity: high
+    severity: medium
+    confidence: absence
+    root_cause: no-audit-logging
     resource_type: azurerm_mssql_server
     condition:
-      extended_auditing_policy:
-        not_exists: true
+      derived.auditing_enabled:
+        equals: false
     mitigation: >
-      Enable extended auditing policy on the SQL Server.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add an azurerm_mssql_server_extended_auditing_policy for the server that sends audit logs
+      to a storage account or a Log Analytics workspace.
 
   - id: MSSQL_NO_TDE
-    title: SQL Database without transparent data encryption
+    title: SQL Database with transparent data encryption turned off
     description: >
-      Transparent data encryption (TDE) is not enabled.
-      Data at rest in the database is not encrypted.
+      The database sets transparent_data_encryption_enabled to false, so its data files and
+      backups are not encrypted at rest.
+      The provider default is true, so this is an explicit choice.
     stride_category: information_disclosure
     severity: high
-    resource_type: azurerm_mssql_server
+    confidence: definitive
+    resource_type: azurerm_mssql_database
     condition:
       transparent_data_encryption_enabled:
         equals: false
     mitigation: >
-      Enable transparent data encryption on the database.
+      Set transparent_data_encryption_enabled to true, or remove the attribute to use the default.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: MSSQL_NO_THREAT_DETECTION
-    title: SQL Server without threat detection
+    title: SQL Server without a security alert policy
     description: >
-      Advanced Threat Protection is not enabled on the SQL Server.
-      SQL injection and anomalous activities will not be detected.
-    stride_category: tampering
+      The server has no enabled security alert policy (Advanced Threat Protection), so SQL
+      injection attempts, anomalous logins and unusual data access are not detected.
+      A threat_detection_policy on an individual database is not counted for the server.
+    stride_category: repudiation
     severity: medium
+    confidence: absence
+    root_cause: no-threat-detection
     resource_type: azurerm_mssql_server
     condition:
-      threat_detection_policy:
-        not_exists: true
+      derived.alert_policy_enabled:
+        equals: false
     mitigation: >
-      Enable Advanced Threat Protection for SQL Server.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+      Add an azurerm_mssql_server_security_alert_policy with state Enabled, or enable Microsoft
+      Defender for SQL for the subscription.
 
   - id: MSSQL_PUBLIC_ACCESS
-    title: SQL Server allows public network access
+    title: SQL Server public endpoint enabled
     description: >
-      The SQL Server allows connections from public IP addresses.
-      The database is potentially accessible from the internet.
+      The server's public network endpoint is enabled (public_network_access_enabled is true,
+      which is the provider default).
+      Whether the database is reachable depends on the server's firewall rules, which are
+      separate resources and are not evaluated here.
     stride_category: information_disclosure
     severity: high
+    confidence: heuristic
+    root_cause: sql-public-endpoint
     resource_type: azurerm_mssql_server
     condition:
       public_network_access_enabled:
         equals: true
     mitigation: >
-      Disable public network access and use private endpoints.
+      Set public_network_access_enabled to false and connect through a private endpoint.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]

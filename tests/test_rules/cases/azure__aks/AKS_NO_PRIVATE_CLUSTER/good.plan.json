@@ -1,0 +1,117 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_kubernetes_cluster.platform",
+          "mode": "managed",
+          "type": "azurerm_kubernetes_cluster",
+          "name": "platform",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "name": "aks-platform",
+            "location": "eastus",
+            "resource_group_name": "rg-platform",
+            "dns_prefix": "platform",
+            "role_based_access_control_enabled": true,
+            "api_server_access_profile": [],
+            "network_profile": [
+              {
+                "network_plugin": "azure",
+                "network_policy": "calico"
+              }
+            ],
+            "private_cluster_enabled": true
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_kubernetes_cluster.platform",
+      "mode": "managed",
+      "type": "azurerm_kubernetes_cluster",
+      "name": "platform",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "aks-platform",
+          "location": "eastus",
+          "resource_group_name": "rg-platform",
+          "dns_prefix": "platform",
+          "role_based_access_control_enabled": true,
+          "api_server_access_profile": [],
+          "network_profile": [
+            {
+              "network_plugin": "azure",
+              "network_policy": "calico"
+            }
+          ],
+          "private_cluster_enabled": true
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_kubernetes_cluster.platform",
+          "mode": "managed",
+          "type": "azurerm_kubernetes_cluster",
+          "name": "platform",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "name": {
+              "constant_value": "aks-platform"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-platform"
+            },
+            "dns_prefix": {
+              "constant_value": "platform"
+            },
+            "role_based_access_control_enabled": {
+              "constant_value": true
+            },
+            "network_profile": {
+              "constant_value": [
+                {
+                  "network_plugin": "azure",
+                  "network_policy": "calico"
+                }
+              ]
+            },
+            "private_cluster_enabled": {
+              "constant_value": true
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

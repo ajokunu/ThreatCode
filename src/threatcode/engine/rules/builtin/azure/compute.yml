@@ -1,85 +1,105 @@
+# Virtual machines: the legacy azurerm_virtual_machine and the azurerm_linux_virtual_machine and
+# azurerm_windows_virtual_machine types.
+#
+# A literal admin_password is a secret in the configuration; the secret scanner reports it.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # The rule read os_profile, which says nothing about monitoring extensions.
+  - AZURE_VM_NO_EXTENSIONS
+
 rules:
   - id: AZURE_VM_NO_DISK_ENCRYPTION
-    title: Azure VM without disk encryption
+    title: VM without encryption at host or a customer-managed disk key
     description: >
-      The virtual machine does not have disk encryption enabled.
+      The virtual machine enables neither encryption at host nor a disk encryption set.
+      Managed disks are already encrypted at rest with platform-managed keys.
+      Encryption at host adds encryption of temporary disks and caches and of the data in flight
+      to storage, and a disk encryption set lets you control and revoke the key.
     stride_category: information_disclosure
-    severity: high
-    resource_type: azurerm_virtual_machine
+    severity: low
+    confidence: absence
+    resource_types: [azurerm_linux_virtual_machine, azurerm_windows_virtual_machine]
     condition:
-      storage_os_disk.0.managed_disk_type:
-        not_exists: true
+      all_of:
+        - encryption_at_host_enabled:
+            not_equals: true
+        - os_disk.disk_encryption_set_id:
+            not_exists: true
     mitigation: >
-      Enable Azure Disk Encryption or use managed disks with encryption.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+      Set encryption_at_host_enabled to true, or set disk_encryption_set_id on os_disk to a disk
+      encryption set backed by a Key Vault key.
 
   - id: AZURE_VM_PASSWORD_AUTH
-    title: Azure VM using password authentication
+    title: Linux VM accepts password logins
     description: >
-      The VM uses password authentication instead of SSH keys.
-    stride_category: spoofing
-    severity: high
-    resource_type: azurerm_linux_virtual_machine
-    condition:
-      disable_password_authentication:
-        equals: false
-    mitigation: >
-      Disable password authentication and use SSH keys.
-    metadata:
-      mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0001"]
-
-  - id: AZURE_VM_NO_MANAGED_IDENTITY
-    title: Azure VM without managed identity
-    description: >
-      The VM does not use a managed identity for Azure service access.
+      The virtual machine sets disable_password_authentication to false, so SSH accepts
+      passwords as well as keys.
+      Passwords can be guessed or reused, and an internet-reachable SSH port is attacked
+      continuously.
+      The provider default is true, so this is an explicit choice.
     stride_category: spoofing
     severity: medium
-    resource_type: azurerm_linux_virtual_machine
+    confidence: definitive
+    resource_types: [azurerm_linux_virtual_machine, azurerm_virtual_machine]
+    condition:
+      any_of:
+        - disable_password_authentication:
+            equals: false
+        - os_profile_linux_config.disable_password_authentication:
+            equals: false
+    mitigation: >
+      Set disable_password_authentication to true and configure an admin_ssh_key.
+    metadata:
+      mitre:
+        techniques: ["T1110"]
+
+  - id: AZURE_VM_NO_MANAGED_IDENTITY
+    title: VM without a managed identity
+    description: >
+      The virtual machine has no identity block, so software on it must hold static credentials
+      to reach other Azure services.
+    stride_category: spoofing
+    severity: low
+    confidence: absence
+    root_cause: no-managed-identity
+    resource_types:
+      - azurerm_linux_virtual_machine
+      - azurerm_windows_virtual_machine
+      - azurerm_virtual_machine
     condition:
       identity:
         not_exists: true
     mitigation: >
-      Assign a managed identity to the VM.
+      Add an identity block with a system-assigned or user-assigned managed identity.
     metadata:
       mitre:
         techniques: ["T1078.004"]
-        tactics: ["TA0001"]
 
   - id: AZURE_VM_PUBLIC_IP
-    title: Azure VM with public IP
+    title: VM has a public IP address
     description: >
-      The VM has a public IP address directly assigned.
+      A network interface of the virtual machine has a public IP address attached through
+      ip_configuration public_ip_address_id, so the machine is addressable from the internet.
+      What reaches it is decided by the network security group, which is evaluated separately.
     stride_category: information_disclosure
     severity: medium
-    resource_type: azurerm_linux_virtual_machine
+    confidence: definitive
+    root_cause: vm-internet-reachable
+    resource_types:
+      - azurerm_linux_virtual_machine
+      - azurerm_windows_virtual_machine
+      - azurerm_virtual_machine
     condition:
-      public_ip_address:
-        exists: true
+      derived.has_public_ip:
+        equals: true
     mitigation: >
-      Remove the public IP and use a load balancer or bastion host.
+      Remove the public IP address and reach the machine through Azure Bastion, a VPN or a load
+      balancer.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
-
-  - id: AZURE_VM_NO_EXTENSIONS
-    title: Azure VM without monitoring extensions
-    description: >
-      The VM does not have monitoring extensions installed.
-    stride_category: repudiation
-    severity: low
-    resource_type: azurerm_virtual_machine
-    condition:
-      os_profile:
-        not_exists: true
-    mitigation: >
-      Install Azure Monitor agent for visibility.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]

@@ -1,51 +1,71 @@
+# Azure Kubernetes Service clusters.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: AKS_NO_RBAC
-    title: AKS cluster without RBAC
+    title: AKS cluster with Kubernetes RBAC turned off
     description: >
-      The AKS cluster does not have RBAC enabled.
+      The cluster sets role_based_access_control_enabled to false, so every authenticated user
+      and workload identity has the same access and Kubernetes cannot limit what a stolen token
+      can do.
+      The provider default is true, so this is an explicit choice.
     stride_category: elevation_of_privilege
     severity: critical
+    confidence: definitive
     resource_type: azurerm_kubernetes_cluster
     condition:
       role_based_access_control_enabled:
         equals: false
     mitigation: >
-      Enable RBAC on the AKS cluster.
+      Set role_based_access_control_enabled to true, and integrate Microsoft Entra ID with
+      azure_active_directory_role_based_access_control.
     metadata:
       mitre:
         techniques: ["T1078"]
-        tactics: ["TA0004"]
 
   - id: AKS_NO_NETWORK_POLICY
-    title: AKS without network policy
+    title: AKS cluster without a network policy engine
     description: >
-      The AKS cluster does not have a network policy configured.
+      The cluster's network_profile sets no network_policy, so pods can reach every other pod and
+      a compromised container can move freely inside the cluster.
     stride_category: information_disclosure
     severity: medium
+    confidence: absence
+    root_cause: no-network-segmentation
     resource_type: azurerm_kubernetes_cluster
     condition:
-      network_profile.0.network_policy:
+      network_profile.network_policy:
         not_exists: true
     mitigation: >
-      Configure a network policy (calico or azure).
-    metadata:
-      mitre:
-        techniques: ["T1040"]
-        tactics: ["TA0007"]
+      Set network_policy to calico, azure or cilium in network_profile and define
+      NetworkPolicy objects.
 
   - id: AKS_NO_PRIVATE_CLUSTER
-    title: AKS cluster is not private
+    title: AKS API server is publicly reachable
     description: >
-      The AKS cluster API server is publicly accessible.
+      The cluster's API server has a public endpoint (private_cluster_enabled is false, which is
+      the provider default) and no authorized IP ranges limit who can reach it.
+      Anyone on the internet can attempt to authenticate to the control plane.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: aks-api-public
     resource_type: azurerm_kubernetes_cluster
     condition:
-      private_cluster_enabled:
-        equals: false
+      all_of:
+        - private_cluster_enabled:
+            equals: false
+        - api_server_access_profile.authorized_ip_ranges:
+            not_exists: true
+        - api_server_authorized_ip_ranges:
+            not_exists: true
     mitigation: >
-      Enable private cluster mode.
+      Set private_cluster_enabled to true, or restrict the public endpoint with
+      api_server_access_profile authorized_ip_ranges.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
