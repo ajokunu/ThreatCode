@@ -1265,3 +1265,72 @@ class TestRuleSet:
 
         for path in (Path(rules_pkg.__file__).parent / "builtin" / "kubernetes").glob("*.yml"):
             assert "\u2014" not in path.read_text(encoding="utf-8"), path.name
+
+
+# ---------------------------------------------------------------------------------------
+# Rule integrity: a condition may only read what the parser emits
+# ---------------------------------------------------------------------------------------
+
+TESTS_DIR = Path(__file__).parent.parent
+
+
+def _condition_keys(condition: Any) -> set[str]:
+    """First path segment of every property a condition reads (not inside quantifiers)."""
+    from threatcode.engine.rules.matcher import (
+        ELEMENT_PREDICATES,
+        LOGICAL_OPERATORS,
+        QUANTIFIER_OPERATORS,
+        parse_path,
+    )
+
+    keys: set[str] = set()
+    if isinstance(condition, dict):
+        for key, value in condition.items():
+            if key in LOGICAL_OPERATORS:
+                items = value if isinstance(value, list) else [value]
+                for item in items:
+                    keys |= _condition_keys(item)
+            elif key not in ELEMENT_PREDICATES and key not in QUANTIFIER_OPERATORS:
+                keys.add(parse_path(key)[0].text)
+    return keys
+
+
+def _emitted_properties() -> dict[str, set[str]]:
+    """Property names per resource type over every Kubernetes example in the test tree."""
+    emitted: dict[str, set[str]] = defaultdict(set)
+    sources = sorted((TESTS_DIR / "test_rules" / "cases").glob("kubernetes__*/*/*.k8s.yaml"))
+    sources += sorted((TESTS_DIR / "fixtures" / "kubernetes").glob("*.yml"))
+    for path in sources:
+        for resource in KubernetesParser().parse(path.read_text(encoding="utf-8")).resources:
+            emitted[resource.resource_type] |= set(resource.properties)
+    return emitted
+
+
+class TestRuleIntegrity:
+    def test_every_property_a_rule_reads_is_emitted_for_its_resource_types(self) -> None:
+        emitted = _emitted_properties()
+        dead = {}
+        for rule in load_builtin_rules():
+            if not rule.id.startswith("K8S_"):
+                continue
+            available = set().union(*(emitted.get(t, set()) for t in rule.resource_types))
+            missing = _condition_keys(rule.condition) - available
+            if missing:
+                dead[rule.id] = sorted(missing)
+        assert dead == {}
+
+    def test_the_check_would_catch_a_rule_that_reads_a_property_nothing_emits(self) -> None:
+        # the walk finds the properties of nested conditions and ignores the element conditions
+        condition = {
+            "all_of": [
+                {"has_tls": {"equals": False}},
+                {"not": {"role_ref_name": {"matches_any": ["a"]}}},
+                {"ports": {"any_item": {"port": {"equals": 22}}}},
+            ]
+        }
+        assert _condition_keys(condition) == {"has_tls", "role_ref_name", "ports"}
+        assert "no_such_property" not in _emitted_properties()["kubernetes_deployment"]
+
+    def test_the_labels_rule_reads_the_one_dotted_key(self) -> None:
+        rule = next(r for r in load_builtin_rules() if r.id == "K8S_NO_PSA_LABELS")
+        assert _condition_keys(rule.condition) == {"labels"}
