@@ -2,11 +2,55 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from tests.helpers.pending import KNOWN_PACKAGE_IDS, pending, validate_pending
 
 PLUGIN_CONFTEST = "pytest_plugins = ['tests.helpers.pending']"
+
+# The documented switches. The inner pytester sessions run in this process and read
+# os.environ, so a switch set for the outer run would reach them and change what they report.
+SWITCHES = ("THREATCODE_RUN_PENDING", "THREATCODE_FAIL_ON_PENDING")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_pending_switches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every self-test with both switches unset, whatever the outer run exported.
+
+    The tests that exercise a switch set it themselves after this fixture has run.
+    Without it, ``THREATCODE_RUN_PENDING=all pytest`` runs the pending tests inside the
+    throwaway sessions and ``THREATCODE_FAIL_ON_PENDING=1 pytest`` turns their markers into
+    usage errors, so the WP-5-2 gate would fail on these self-tests even with no marker left.
+    """
+    for name in SWITCHES:
+        monkeypatch.delenv(name, raising=False)
+
+
+class TestSwitchIsolation:
+    @pytest.mark.parametrize("name", SWITCHES)
+    def test_a_self_test_never_sees_the_outer_switch(self, name: str) -> None:
+        assert name not in os.environ
+
+    def test_a_switch_a_test_sets_is_seen_by_the_inner_session_only(
+        self, pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pytester.makeconftest(PLUGIN_CONFTEST)
+        pytester.makepyfile(
+            """
+            from tests.helpers.pending import pending
+
+            @pending("WP-2-2", "not delivered")
+            def test_other():
+                assert False
+            """
+        )
+        pytester.runpytest().assert_outcomes(skipped=1)
+        monkeypatch.setenv("THREATCODE_RUN_PENDING", "all")
+        pytester.runpytest().assert_outcomes(failed=1)
+        monkeypatch.delenv("THREATCODE_RUN_PENDING")
+        pytester.runpytest().assert_outcomes(skipped=1)
 
 
 class TestValidation:
