@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Retries:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /prod/max-retries
+      Description: Retries before giving up
+      Type: String
+      Value: "3"

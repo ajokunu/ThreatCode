@@ -12,32 +12,9 @@
           "provider_name": "registry.terraform.io/hashicorp/aws",
           "schema_version": 0,
           "values": {
-            "acl": "private",
             "bucket": "acme-assets",
-            "bucket_prefix": null,
-            "force_destroy": false,
-            "object_lock_enabled": false,
-            "tags": null,
-            "timeouts": null
-          },
-          "sensitive_values": {
-            "cors_rule": [],
-            "grant": [],
-            "tags_all": {}
-          }
-        },
-        {
-          "address": "aws_s3_bucket_public_access_block.assets",
-          "mode": "managed",
-          "type": "aws_s3_bucket_public_access_block",
-          "name": "assets",
-          "provider_name": "registry.terraform.io/hashicorp/aws",
-          "schema_version": 0,
-          "values": {
-            "block_public_acls": true,
-            "block_public_policy": true,
-            "ignore_public_acls": true,
-            "restrict_public_buckets": true
+            "acl": "private",
+            "force_destroy": false
           },
           "sensitive_values": {}
         }
@@ -57,49 +34,13 @@
         ],
         "before": null,
         "after": {
-          "acl": "private",
           "bucket": "acme-assets",
-          "bucket_prefix": null,
-          "force_destroy": false,
-          "object_lock_enabled": false,
-          "tags": null,
-          "timeouts": null
+          "acl": "private",
+          "force_destroy": false
         },
         "after_unknown": {
           "id": true,
-          "arn": true,
-          "bucket_domain_name": true,
-          "region": true,
-          "tags_all": true
-        },
-        "before_sensitive": false,
-        "after_sensitive": {
-          "cors_rule": [],
-          "grant": [],
-          "tags_all": {}
-        }
-      }
-    },
-    {
-      "address": "aws_s3_bucket_public_access_block.assets",
-      "mode": "managed",
-      "type": "aws_s3_bucket_public_access_block",
-      "name": "assets",
-      "provider_name": "registry.terraform.io/hashicorp/aws",
-      "change": {
-        "actions": [
-          "create"
-        ],
-        "before": null,
-        "after": {
-          "block_public_acls": true,
-          "block_public_policy": true,
-          "ignore_public_acls": true,
-          "restrict_public_buckets": true
-        },
-        "after_unknown": {
-          "bucket": true,
-          "id": true
+          "arn": true
         },
         "before_sensitive": false,
         "after_sensitive": {}
@@ -122,45 +63,14 @@
           "name": "assets",
           "provider_config_key": "aws",
           "expressions": {
-            "acl": {
-              "constant_value": "private"
-            },
             "bucket": {
               "constant_value": "acme-assets"
             },
+            "acl": {
+              "constant_value": "private"
+            },
             "force_destroy": {
               "constant_value": false
-            },
-            "object_lock_enabled": {
-              "constant_value": false
-            }
-          },
-          "schema_version": 0
-        },
-        {
-          "address": "aws_s3_bucket_public_access_block.assets",
-          "mode": "managed",
-          "type": "aws_s3_bucket_public_access_block",
-          "name": "assets",
-          "provider_config_key": "aws",
-          "expressions": {
-            "block_public_acls": {
-              "constant_value": true
-            },
-            "block_public_policy": {
-              "constant_value": true
-            },
-            "bucket": {
-              "references": [
-                "aws_s3_bucket.assets.id",
-                "aws_s3_bucket.assets"
-              ]
-            },
-            "ignore_public_acls": {
-              "constant_value": true
-            },
-            "restrict_public_buckets": {
-              "constant_value": true
             }
           },
           "schema_version": 0

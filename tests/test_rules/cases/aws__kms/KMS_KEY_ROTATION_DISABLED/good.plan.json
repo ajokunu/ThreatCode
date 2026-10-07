@@ -1,0 +1,100 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_kms_key.data",
+          "mode": "managed",
+          "type": "aws_kms_key",
+          "name": "data",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "description": "data key",
+            "enable_key_rotation": true,
+            "customer_master_key_spec": "SYMMETRIC_DEFAULT",
+            "key_usage": "ENCRYPT_DECRYPT",
+            "is_enabled": true,
+            "multi_region": false
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_kms_key.data",
+      "mode": "managed",
+      "type": "aws_kms_key",
+      "name": "data",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "description": "data key",
+          "enable_key_rotation": true,
+          "customer_master_key_spec": "SYMMETRIC_DEFAULT",
+          "key_usage": "ENCRYPT_DECRYPT",
+          "is_enabled": true,
+          "multi_region": false
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_kms_key.data",
+          "mode": "managed",
+          "type": "aws_kms_key",
+          "name": "data",
+          "provider_config_key": "aws",
+          "expressions": {
+            "description": {
+              "constant_value": "data key"
+            },
+            "enable_key_rotation": {
+              "constant_value": true
+            },
+            "customer_master_key_spec": {
+              "constant_value": "SYMMETRIC_DEFAULT"
+            },
+            "key_usage": {
+              "constant_value": "ENCRYPT_DECRYPT"
+            },
+            "is_enabled": {
+              "constant_value": true
+            },
+            "multi_region": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

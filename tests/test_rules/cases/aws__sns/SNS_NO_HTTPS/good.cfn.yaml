@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Alerts:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: alerts
+  Webhook:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref Alerts
+      Protocol: https
+      Endpoint: https://hooks.example.com/alerts

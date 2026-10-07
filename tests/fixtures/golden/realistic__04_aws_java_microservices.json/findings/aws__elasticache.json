@@ -2,7 +2,7 @@
   {
     "resource_address": "aws_elasticache_replication_group.session_cache",
     "rule_id": "ELASTICACHE_NO_AUTH",
-    "severity": "high",
+    "severity": "medium",
     "stride": "spoofing",
     "techniques": [
       "T1078"

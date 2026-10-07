@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Search:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: search
+      EngineVersion: OpenSearch_2.11
+      VPCOptions:
+        SubnetIds:
+          - subnet-0123456789abcdef0

@@ -12,16 +12,11 @@
           "provider_name": "registry.terraform.io/hashicorp/aws",
           "schema_version": 0,
           "values": {
-            "description": null,
             "name": "app-access",
-            "name_prefix": null,
             "path": "/",
-            "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}",
-            "tags": null
+            "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}"
           },
-          "sensitive_values": {
-            "tags_all": {}
-          }
+          "sensitive_values": {}
         }
       ]
     }
@@ -39,23 +34,16 @@
         ],
         "before": null,
         "after": {
-          "description": null,
           "name": "app-access",
-          "name_prefix": null,
           "path": "/",
-          "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}",
-          "tags": null
+          "policy": "{\"Statement\":[{\"Action\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::acme-assets/*\"}],\"Version\":\"2012-10-17\"}"
         },
         "after_unknown": {
-          "arn": true,
           "id": true,
-          "policy_id": true,
-          "tags_all": true
+          "arn": true
         },
         "before_sensitive": false,
-        "after_sensitive": {
-          "tags_all": {}
-        }
+        "after_sensitive": {}
       }
     }
   ],

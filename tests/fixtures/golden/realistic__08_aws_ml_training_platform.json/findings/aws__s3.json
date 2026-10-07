@@ -2,7 +2,7 @@
   {
     "resource_address": "aws_s3_bucket.model_artifacts",
     "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1530"
@@ -11,16 +11,7 @@
   {
     "resource_address": "aws_s3_bucket.notebook_outputs",
     "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1530"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket.training_data",
-    "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1530"
@@ -29,35 +20,22 @@
   {
     "resource_address": "aws_s3_bucket.model_artifacts",
     "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
+    "severity": "low",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "aws_s3_bucket.notebook_outputs",
     "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
+    "severity": "low",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket.training_data",
-    "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "aws_s3_bucket.model_artifacts",
     "rule_id": "S3_NO_VERSIONING",
     "severity": "medium",
-    "stride": "tampering",
+    "stride": "denial_of_service",
     "techniques": [
       "T1485"
     ]
@@ -66,27 +44,17 @@
     "resource_address": "aws_s3_bucket.notebook_outputs",
     "rule_id": "S3_NO_VERSIONING",
     "severity": "medium",
-    "stride": "tampering",
+    "stride": "denial_of_service",
     "techniques": [
       "T1485"
     ]
   },
   {
-    "resource_address": "aws_s3_bucket.training_data",
-    "rule_id": "S3_NO_VERSIONING",
-    "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1485"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_acl.notebook_outputs",
+    "resource_address": "aws_s3_bucket.notebook_outputs",
     "rule_id": "S3_PUBLIC_ACCESS",
     "severity": "critical",
     "stride": "information_disclosure",
     "techniques": [
-      "T1190",
       "T1530"
     ]
   }

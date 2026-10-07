@@ -1,0 +1,8 @@
+resource "aws_elasticache_replication_group" "sessions" {
+  replication_group_id = "sessions"
+  description          = "session cache"
+  node_type            = "cache.t3.small"
+  num_cache_clusters   = 2
+  transit_encryption_enabled = true
+  user_group_ids             = ["app-users"]
+}

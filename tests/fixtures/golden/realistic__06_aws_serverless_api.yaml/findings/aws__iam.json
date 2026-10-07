@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AuditLogAdminRole",
+    "rule_id": "IAM_WILDCARD_ACTION",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

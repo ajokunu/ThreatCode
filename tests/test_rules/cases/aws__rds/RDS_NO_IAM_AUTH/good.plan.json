@@ -1,0 +1,90 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_rds_cluster.orders",
+          "mode": "managed",
+          "type": "aws_rds_cluster",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "cluster_identifier": "orders",
+            "engine": "aurora-postgresql",
+            "master_username": "orders",
+            "iam_database_authentication_enabled": true
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_rds_cluster.orders",
+      "mode": "managed",
+      "type": "aws_rds_cluster",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cluster_identifier": "orders",
+          "engine": "aurora-postgresql",
+          "master_username": "orders",
+          "iam_database_authentication_enabled": true
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_rds_cluster.orders",
+          "mode": "managed",
+          "type": "aws_rds_cluster",
+          "name": "orders",
+          "provider_config_key": "aws",
+          "expressions": {
+            "cluster_identifier": {
+              "constant_value": "orders"
+            },
+            "engine": {
+              "constant_value": "aurora-postgresql"
+            },
+            "master_username": {
+              "constant_value": "orders"
+            },
+            "iam_database_authentication_enabled": {
+              "constant_value": true
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

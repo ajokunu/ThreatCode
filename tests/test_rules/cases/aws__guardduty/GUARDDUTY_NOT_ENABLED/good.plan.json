@@ -1,0 +1,80 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_guardduty_detector.main",
+          "mode": "managed",
+          "type": "aws_guardduty_detector",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "enable": true,
+            "finding_publishing_frequency": "SIX_HOURS"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_guardduty_detector.main",
+      "mode": "managed",
+      "type": "aws_guardduty_detector",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "enable": true,
+          "finding_publishing_frequency": "SIX_HOURS"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_guardduty_detector.main",
+          "mode": "managed",
+          "type": "aws_guardduty_detector",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "enable": {
+              "constant_value": true
+            },
+            "finding_publishing_frequency": {
+              "constant_value": "SIX_HOURS"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

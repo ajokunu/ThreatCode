@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  DataKey:
+    Type: AWS::KMS::Key
+    Properties:
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "kms:*"
+            Resource: "*"

@@ -1,21 +1,11 @@
 [
   {
-    "resource_address": "aws_iam_user.no_mfa_user",
-    "rule_id": "IAM_NO_MFA",
-    "severity": "high",
-    "stride": "spoofing",
-    "techniques": [
-      "T1078.004"
-    ]
-  },
-  {
     "resource_address": "aws_iam_role.overpermissive_role",
     "rule_id": "IAM_OVERPERMISSIVE_ROLE",
-    "severity": "high",
+    "severity": "critical",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1078.004",
-      "T1098"
+      "T1078.004"
     ]
   },
   {

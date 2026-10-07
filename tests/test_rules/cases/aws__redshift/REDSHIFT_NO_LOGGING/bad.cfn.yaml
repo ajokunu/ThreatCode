@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Warehouse:
+    Type: AWS::Redshift::Cluster
+    Properties:
+      ClusterType: single-node
+      DBName: dev
+      MasterUsername: admin
+      ManageMasterPassword: true
+      NodeType: dc2.large

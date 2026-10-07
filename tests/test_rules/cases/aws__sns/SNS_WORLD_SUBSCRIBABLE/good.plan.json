@@ -1,0 +1,128 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_sns_topic.alerts",
+          "mode": "managed",
+          "type": "aws_sns_topic",
+          "name": "alerts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "alerts"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_sns_topic_policy.alerts",
+          "mode": "managed",
+          "type": "aws_sns_topic_policy",
+          "name": "alerts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "policy": "{\"Statement\":[{\"Action\":[\"sns:Subscribe\",\"sns:Receive\"],\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"111122223333\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Resource\":\"arn:aws:sns:us-east-1:111122223333:alerts\"}],\"Version\":\"2012-10-17\"}"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_sns_topic.alerts",
+      "mode": "managed",
+      "type": "aws_sns_topic",
+      "name": "alerts",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "alerts"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_sns_topic_policy.alerts",
+      "mode": "managed",
+      "type": "aws_sns_topic_policy",
+      "name": "alerts",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "policy": "{\"Statement\":[{\"Action\":[\"sns:Subscribe\",\"sns:Receive\"],\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"111122223333\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Resource\":\"arn:aws:sns:us-east-1:111122223333:alerts\"}],\"Version\":\"2012-10-17\"}"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_sns_topic.alerts",
+          "mode": "managed",
+          "type": "aws_sns_topic",
+          "name": "alerts",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "alerts"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_sns_topic_policy.alerts",
+          "mode": "managed",
+          "type": "aws_sns_topic_policy",
+          "name": "alerts",
+          "provider_config_key": "aws",
+          "expressions": {
+            "policy": {
+              "constant_value": "{\"Statement\":[{\"Action\":[\"sns:Subscribe\",\"sns:Receive\"],\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"111122223333\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Resource\":\"arn:aws:sns:us-east-1:111122223333:alerts\"}],\"Version\":\"2012-10-17\"}"
+            },
+            "arn": {
+              "references": [
+                "aws_sns_topic.alerts.arn",
+                "aws_sns_topic.alerts"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

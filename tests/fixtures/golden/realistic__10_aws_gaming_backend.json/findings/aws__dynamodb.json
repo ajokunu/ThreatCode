@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "aws_dynamodb_table.leaderboards",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_dynamodb_table.matches",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_dynamodb_table.leaderboards",
+    "rule_id": "DYNAMODB_NO_PITR",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  }
+]

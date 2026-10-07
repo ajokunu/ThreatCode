@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Recorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      RoleARN: arn:aws:iam::111122223333:role/config
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true

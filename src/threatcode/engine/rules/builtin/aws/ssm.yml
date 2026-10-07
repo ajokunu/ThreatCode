@@ -1,75 +1,76 @@
+# Rules on Systems Manager parameters.
+#
+# A String parameter is stored and returned in plaintext, which is right for a region name and
+# wrong for a password.
+# The rule judges the name: derived.secret_name is true when a whole word of the name (split on
+# punctuation and capitals) says the value is a secret, see threatcode/ir/enrichment/aws_data.py.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # A SecureString on the standard tier is encrypted with KMS like one on the advanced tier. The
+  # advanced tier adds parameter policies, which is a feature and not a protection.
+  - SSM_STANDARD_TIER_SECRET
+
 rules:
   - id: SSM_UNENCRYPTED_PARAMETER
-    title: SSM parameter not encrypted
+    title: SSM parameter with a secret name is stored as plain String
     description: >
-      The SSM parameter is stored as a String instead of SecureString.
-      Parameter values are visible in plaintext to anyone with read access.
+      The parameter is a plain String but its name says it holds a secret, such as a password,
+      token, API key or credential.
+      String parameters are stored and returned in plaintext, so anyone with ssm:GetParameter
+      reads the value without any permission on a KMS key, and the value appears in plaintext in
+      the Terraform state.
+      The conclusion comes from the name only, so it can be wrong for a name that merely
+      mentions a secret.
     stride_category: information_disclosure
     severity: high
+    confidence: heuristic
     resource_type: aws_ssm_parameter
     condition:
-      type:
-        equals: "String"
+      all_of:
+        - type:
+            equals: String
+        - derived.secret_name:
+            equals: true
     mitigation: >
-      Use SecureString type for sensitive parameter values.
+      Change the type to SecureString, ideally with a customer-managed key_id.
+      Prefer Secrets Manager for credentials that need rotation.
     metadata:
       mitre:
-        techniques: ["T1552.001"]
-        tactics: ["TA0006"]
+        techniques: ["T1555.006"]
 
   - id: SSM_NO_DESCRIPTION
     title: SSM parameter without description
     description: >
-      The SSM parameter lacks a description. Without descriptions,
-      the purpose and owner of parameters is unclear.
+      The parameter has no description, so its purpose and owner are not recorded.
+      When a value changes unexpectedly, nobody can tell which system depends on it or who
+      should have changed it.
     stride_category: repudiation
     severity: low
+    confidence: absence
     resource_type: aws_ssm_parameter
     condition:
       description:
         not_exists: true
     mitigation: >
-      Add a description to document the parameter's purpose and owner.
-    metadata:
-      mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0001"]
-
-  - id: SSM_STANDARD_TIER_SECRET
-    title: SSM secret parameter using standard tier
-    description: >
-      A SecureString parameter is using the Standard tier.
-      Advanced tier provides enhanced security features.
-    stride_category: information_disclosure
-    severity: low
-    resource_type: aws_ssm_parameter
-    condition:
-      all_of:
-        - type:
-            equals: "SecureString"
-        - tier:
-            equals: "Standard"
-    mitigation: >
-      Consider using Advanced tier for enhanced parameter policies.
-    metadata:
-      mitre:
-        techniques: ["T1552.001"]
-        tactics: ["TA0006"]
+      Add a description that names the owner and the system that reads the parameter.
 
   - id: SSM_NO_ALLOWED_PATTERN
     title: SSM parameter without allowed pattern
     description: >
-      The SSM parameter does not define an allowed pattern constraint.
-      Invalid values could be stored without validation.
+      The parameter does not define an allowed_pattern.
+      Any value that fits the type can be stored, including a malformed one that a consumer
+      then misreads.
     stride_category: tampering
     severity: low
+    confidence: absence
     resource_type: aws_ssm_parameter
     condition:
       allowed_pattern:
         not_exists: true
     mitigation: >
-      Define an allowed_pattern to validate parameter values.
-    metadata:
-      mitre:
-        techniques: ["T1565.001"]
-        tactics: ["TA0040"]
+      Define an allowed_pattern that matches the values the consumers expect.

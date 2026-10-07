@@ -1,0 +1,95 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_elasticache_replication_group.sessions",
+          "mode": "managed",
+          "type": "aws_elasticache_replication_group",
+          "name": "sessions",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "replication_group_id": "sessions",
+            "description": "session cache",
+            "node_type": "cache.t3.small",
+            "num_cache_clusters": 2,
+            "engine": "redis"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_elasticache_replication_group.sessions",
+      "mode": "managed",
+      "type": "aws_elasticache_replication_group",
+      "name": "sessions",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "replication_group_id": "sessions",
+          "description": "session cache",
+          "node_type": "cache.t3.small",
+          "num_cache_clusters": 2,
+          "engine": "redis"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_elasticache_replication_group.sessions",
+          "mode": "managed",
+          "type": "aws_elasticache_replication_group",
+          "name": "sessions",
+          "provider_config_key": "aws",
+          "expressions": {
+            "replication_group_id": {
+              "constant_value": "sessions"
+            },
+            "description": {
+              "constant_value": "session cache"
+            },
+            "node_type": {
+              "constant_value": "cache.t3.small"
+            },
+            "num_cache_clusters": {
+              "constant_value": 2
+            },
+            "engine": {
+              "constant_value": "redis"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

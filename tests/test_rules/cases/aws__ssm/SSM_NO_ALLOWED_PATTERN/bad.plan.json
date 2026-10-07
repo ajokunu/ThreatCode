@@ -1,0 +1,95 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ssm_parameter.retries",
+          "mode": "managed",
+          "type": "aws_ssm_parameter",
+          "name": "retries",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "/prod/max-retries",
+            "description": "Retries before giving up",
+            "type": "String",
+            "value": "3",
+            "tier": "Standard"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_ssm_parameter.retries",
+      "mode": "managed",
+      "type": "aws_ssm_parameter",
+      "name": "retries",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "/prod/max-retries",
+          "description": "Retries before giving up",
+          "type": "String",
+          "value": "3",
+          "tier": "Standard"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ssm_parameter.retries",
+          "mode": "managed",
+          "type": "aws_ssm_parameter",
+          "name": "retries",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "/prod/max-retries"
+            },
+            "description": {
+              "constant_value": "Retries before giving up"
+            },
+            "type": {
+              "constant_value": "String"
+            },
+            "value": {
+              "constant_value": "3"
+            },
+            "tier": {
+              "constant_value": "Standard"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

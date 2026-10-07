@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Orders:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: orders
+  OrdersPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref Orders
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "sqs:SendMessage"
+            Resource: !GetAtt Orders.Arn

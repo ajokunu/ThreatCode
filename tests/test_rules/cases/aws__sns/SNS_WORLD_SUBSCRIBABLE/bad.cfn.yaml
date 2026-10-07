@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Alerts:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: alerts
+  AlertsPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref Alerts
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+              - "sns:Subscribe"
+              - "sns:Receive"
+            Resource: !Ref Alerts

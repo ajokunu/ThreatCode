@@ -1,52 +1,66 @@
+# Rules on SQS queues.
+#
+# A queue policy is judged on its parsed statements (derived.allows_any_principal, see
+# threatcode/ir/enrichment/aws_data.py), so a statement that names every principal but is limited
+# with aws:SourceArn, aws:SourceAccount or aws:PrincipalOrgID, as AWS services need, is not
+# reported.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # A queue without a dead-letter queue loses nothing to an attacker: this is a reliability
+  # setting, not a security one.
+  - SQS_NO_DLQ
+
 rules:
   - id: SQS_NO_ENCRYPTION
-    title: SQS queue without encryption
+    title: SQS queue not encrypted with a customer-managed KMS key
     description: >
-      The SQS queue is not encrypted with KMS.
+      The queue has no customer-managed KMS key (kms_master_key_id) and does not use SQS-managed
+      encryption (sqs_managed_sse_enabled).
+      A queue with sqs_managed_sse_enabled set to true is encrypted at rest with an SQS-owned key
+      and is not reported.
+      Otherwise the queue is either unencrypted or relies on the default, and messages are
+      readable by anyone with sqs:ReceiveMessage without a permission on a key you control.
     stride_category: information_disclosure
-    severity: medium
+    severity: low
+    confidence: absence
     resource_type: aws_sqs_queue
     condition:
-      kms_master_key_id:
-        not_exists: true
+      all_of:
+        - kms_master_key_id:
+            not_exists: true
+        - sqs_managed_sse_enabled:
+            not_equals: true
     mitigation: >
-      Enable KMS encryption for the SQS queue.
+      Set kms_master_key_id to a customer-managed key, or set sqs_managed_sse_enabled to true
+      to use SQS-managed encryption.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: SQS_WILDCARD_POLICY
-    title: SQS queue with wildcard principal
+    title: SQS queue policy allows every principal
     description: >
-      The SQS queue policy grants access to all principals.
+      The queue policy has an Allow statement whose principal is "*" (or {"AWS": "*"}), with no
+      condition that limits the caller such as aws:SourceArn, aws:SourceAccount,
+      aws:PrincipalOrgID or aws:SourceVpce.
+      Anyone who can reach the SQS API can then send, read or purge messages, depending on the
+      actions the statement allows.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: aws_sqs_queue_policy
+    confidence: definitive
+    root_cause: sqs-open-queue-policy
+    resource_types: [aws_sqs_queue, aws_sqs_queue_policy]
     condition:
-      policy:
-        contains: '"Principal":"*"'
+      derived.allows_any_principal:
+        equals: true
     mitigation: >
-      Restrict the SQS queue policy to specific principals.
+      Name the accounts, roles or services that may use the queue in Principal.
+      Services such as S3 and SNS need an aws:SourceArn condition on the queue policy.
     metadata:
       mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0004"]
-
-  - id: SQS_NO_DLQ
-    title: SQS queue without dead-letter queue
-    description: >
-      The SQS queue does not have a dead-letter queue configured.
-      Failed messages will be lost.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: aws_sqs_queue
-    condition:
-      redrive_policy:
-        not_exists: true
-    mitigation: >
-      Configure a dead-letter queue for failed message handling.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+        techniques: ["T1078.004"]

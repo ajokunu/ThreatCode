@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_iam_role.payment_service_task_role",
+    "rule_id": "IAM_WILDCARD_ACTION",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

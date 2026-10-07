@@ -2,7 +2,7 @@
   {
     "resource_address": "aws_cloudtrail.plain",
     "rule_id": "CLOUDTRAIL_NO_ENCRYPTION",
-    "severity": "high",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1530"
@@ -11,7 +11,7 @@
   {
     "resource_address": "module.audit.aws_cloudtrail.bare",
     "rule_id": "CLOUDTRAIL_NO_ENCRYPTION",
-    "severity": "high",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1530"

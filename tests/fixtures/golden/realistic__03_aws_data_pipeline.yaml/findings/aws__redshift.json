@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "RedshiftCluster",
+    "rule_id": "REDSHIFT_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

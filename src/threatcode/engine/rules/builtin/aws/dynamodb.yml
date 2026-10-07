@@ -1,51 +1,58 @@
+# Rules on DynamoDB tables.
+#
+# Every table is encrypted at rest with an AWS owned key by default, so the encryption rule is
+# about who controls the key, not about whether the data is encrypted.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # billing_mode says how the table is billed, not whether it scales, and a throttled table is a
+  # reliability concern with no attacker in it.
+  - DYNAMODB_NO_AUTOSCALING
+
 rules:
   - id: DYNAMODB_NO_ENCRYPTION
-    title: DynamoDB table without encryption
+    title: DynamoDB table not encrypted with a customer-managed KMS key
     description: >
-      The DynamoDB table does not use KMS encryption.
+      The table does not name a customer-managed KMS key in server_side_encryption.
+      DynamoDB encrypts all data at rest with an AWS owned key by default, so the data is
+      encrypted; what is missing is a key you control.
+      With a customer-managed key, access to the data needs a permission on the key as well as
+      on the table, and every decrypt is recorded in CloudTrail.
     stride_category: information_disclosure
-    severity: medium
+    severity: low
+    confidence: absence
     resource_type: aws_dynamodb_table
     condition:
-      server_side_encryption:
+      server_side_encryption.kms_key_arn:
         not_exists: true
     mitigation: >
-      Enable server-side encryption with KMS.
+      Set server_side_encryption with enabled true and a customer-managed kms_key_arn.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: DYNAMODB_NO_PITR
-    title: DynamoDB without point-in-time recovery
+    title: DynamoDB table without point-in-time recovery
     description: >
-      Point-in-time recovery is not enabled for the DynamoDB table.
+      Point-in-time recovery is not enabled for the table.
+      Without it, items that are overwritten or deleted, by an attacker, a faulty deployment or
+      a bad query, cannot be restored to an earlier state.
     stride_category: denial_of_service
     severity: medium
+    confidence: absence
     resource_type: aws_dynamodb_table
     condition:
-      point_in_time_recovery:
-        not_exists: true
+      any_of:
+        - point_in_time_recovery:
+            not_exists: true
+        - point_in_time_recovery.enabled:
+            equals: false
     mitigation: >
-      Enable point-in-time recovery.
+      Add a point_in_time_recovery block with enabled set to true.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
-
-  - id: DYNAMODB_NO_AUTOSCALING
-    title: DynamoDB without auto scaling
-    description: >
-      The DynamoDB table does not have auto scaling configured.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: aws_dynamodb_table
-    condition:
-      billing_mode:
-        not_exists: true
-    mitigation: >
-      Configure auto scaling or use PAY_PER_REQUEST billing.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]

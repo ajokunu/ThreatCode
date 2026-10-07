@@ -2,7 +2,7 @@
   {
     "resource_address": "OrdersTable",
     "rule_id": "DYNAMODB_NO_ENCRYPTION",
-    "severity": "medium",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1530"

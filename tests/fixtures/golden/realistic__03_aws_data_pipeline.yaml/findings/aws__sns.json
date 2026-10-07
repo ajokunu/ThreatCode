@@ -2,19 +2,10 @@
   {
     "resource_address": "AlertTopic",
     "rule_id": "SNS_NO_ENCRYPTION",
-    "severity": "medium",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1530"
-    ]
-  },
-  {
-    "resource_address": "AlertTopic",
-    "rule_id": "SNS_NO_HTTPS",
-    "severity": "medium",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1557"
     ]
   }
 ]

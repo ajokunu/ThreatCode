@@ -1,72 +1,55 @@
+# Rules on AWS Config.
+#
+# A missing record is a detection gap, not an attack technique, so these rules map to no ATT&CK
+# technique and use the repudiation category.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # s3_bucket_name is a required argument of a delivery channel, so a channel without one cannot
+  # exist and the rule never fired.
+  - CONFIG_NO_DELIVERY_CHANNEL
+  # The aggregator is the resource being judged, so "no aggregator" cannot be seen from it, and
+  # an organisation aggregator has no account_aggregation_source by design.
+  - CONFIG_NO_AGGREGATION
+
 rules:
   - id: CONFIG_NOT_ENABLED
-    title: AWS Config recorder not enabled
+    title: AWS Config recorder is turned off
     description: >
-      The AWS Config configuration recorder is not enabled.
-      Configuration changes will not be tracked.
+      The configuration recorder's status resource sets is_enabled to false, so Config does not
+      record resource changes.
+      Without a configuration history, a change an attacker makes to a security group, a policy
+      or a bucket cannot be compared with the state before it.
     stride_category: repudiation
     severity: high
-    resource_type: aws_config_configuration_recorder
+    confidence: definitive
+    root_cause: config-not-recording
+    resource_type: aws_config_configuration_recorder_status
     condition:
-      recording_group:
-        not_exists: true
+      is_enabled:
+        equals: false
     mitigation: >
-      Enable the configuration recorder to track resource changes.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Set is_enabled to true on aws_config_configuration_recorder_status, after the delivery
+      channel exists.
 
   - id: CONFIG_NOT_ALL_RESOURCES
     title: AWS Config not recording all resource types
     description: >
-      The configuration recorder is not set to record all resource types.
-      Some configuration changes may go untracked.
+      The recorder's recording_group sets all_supported to false, so only the resource types it
+      lists are recorded.
+      A change to any other type, including types AWS adds later, leaves no history.
     stride_category: repudiation
     severity: medium
+    confidence: definitive
+    root_cause: config-not-recording
     resource_type: aws_config_configuration_recorder
     condition:
       recording_group.all_supported:
         equals: false
     mitigation: >
-      Set all_supported to true in the recording group.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
-
-  - id: CONFIG_NO_DELIVERY_CHANNEL
-    title: AWS Config without delivery channel
-    description: >
-      No delivery channel is configured for AWS Config.
-      Configuration snapshots and history cannot be delivered.
-    stride_category: repudiation
-    severity: high
-    resource_type: aws_config_delivery_channel
-    condition:
-      s3_bucket_name:
-        not_exists: true
-    mitigation: >
-      Configure a delivery channel with an S3 bucket for Config data.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
-
-  - id: CONFIG_NO_AGGREGATION
-    title: AWS Config without configuration aggregator
-    description: >
-      No configuration aggregator is set up for multi-account visibility.
-      Security posture across accounts cannot be centrally monitored.
-    stride_category: information_disclosure
-    severity: low
-    resource_type: aws_config_configuration_aggregator
-    condition:
-      account_aggregation_source:
-        not_exists: true
-    mitigation: >
-      Set up a configuration aggregator for cross-account visibility.
-    metadata:
-      mitre:
-        techniques: ["T1580"]
-        tactics: ["TA0007"]
+      Set all_supported to true in the recording_group, and include_global_resource_types for one
+      region.
