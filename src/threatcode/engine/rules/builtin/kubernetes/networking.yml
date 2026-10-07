@@ -1,53 +1,113 @@
+# Network exposure of workloads, Ingresses and Services.
+#
+# Calibration: definitive (the configuration proves it), heuristic (inferred, never above
+# high) and absence (something is missing, never above medium). See workloads.yml.
+#
+# The two NetworkPolicy rules sit on the workloads, not on the policies. A policy is never the
+# problem: a default-deny policy is the recommended state, so a rule on the policy fired on
+# exactly the configuration it should praise. The parser works out which workloads a policy
+# selects (podSelector against pod labels, in the policy's namespace) and records
+# ingress_policy_covered and egress_policy_covered on each workload.
+# Only policies in the scanned input are considered. A policy applied from another file or by
+# the cluster is invisible, so these are heuristic and low.
+
 rules:
   - id: K8S_NO_NETWORK_POLICY
-    title: No NetworkPolicy defined
+    title: Workload not covered by an ingress NetworkPolicy
     description: >
-      No NetworkPolicy is present. All pod-to-pod traffic is allowed by default.
+      No NetworkPolicy in the scanned input selects this workload for ingress, so every pod
+      and namespace can open connections to it.
+      Only policies in the same input were considered.
+      A policy that is applied from another file, or a cluster that enforces a default-deny
+      policy elsewhere, is not visible here.
+      A workload that a default-deny policy selects is never reported.
     stride_category: information_disclosure
-    severity: medium
-    resource_type: kubernetes_network_policy
+    severity: low
+    confidence: heuristic
+    resource_type: "@kubernetes_pod_workloads"
     condition:
-      has_ingress_rules:
+      ingress_policy_covered:
         equals: false
     mitigation: >
-      Define NetworkPolicies to restrict pod-to-pod traffic.
+      Apply a default-deny ingress NetworkPolicy to the namespace and allow only the traffic
+      the workload needs.
     metadata:
       mitre:
-        techniques: ["T1040"]
-        tactics: ["TA0007"]
+        techniques: ["T1046"]
 
   - id: K8S_DEFAULT_ALLOW_EGRESS
-    title: Default-allow egress policy
+    title: Workload not covered by an egress NetworkPolicy
     description: >
-      No NetworkPolicy restricts egress traffic. Pods can communicate
-      with any external endpoint including command and control servers.
+      No NetworkPolicy in the scanned input selects this workload for egress, so it can open
+      connections to any pod, any node and any external endpoint, including a command and
+      control server.
+      Only policies in the same input were considered.
+      A workload that a policy with Egress in its policy types selects is never reported,
+      including a default-deny policy that lists no egress rules.
     stride_category: information_disclosure
-    severity: medium
-    resource_type: kubernetes_network_policy
+    severity: low
+    confidence: heuristic
+    resource_type: "@kubernetes_pod_workloads"
     condition:
-      has_egress_rules:
+      egress_policy_covered:
         equals: false
     mitigation: >
-      Define egress NetworkPolicies to restrict outbound traffic.
+      Apply a default-deny egress NetworkPolicy to the namespace and allow only the
+      destinations the workload needs.
     metadata:
       mitre:
         techniques: ["T1048"]
-        tactics: ["TA0010"]
 
   - id: K8S_INGRESS_NO_TLS
     title: Ingress resource without TLS configuration
     description: >
-      The Ingress resource does not have TLS configured.
-      Traffic to the application is not encrypted in transit.
+      The Ingress routes traffic but has no spec.tls, so the cluster does not terminate TLS
+      for it.
+      A controller can still terminate TLS through annotations or at a cloud load balancer in
+      front of it, which this rule cannot see.
     stride_category: information_disclosure
     severity: medium
+    confidence: heuristic
     resource_type: kubernetes_ingress
     condition:
+      has_rules:
+        equals: true
       has_tls:
         equals: false
     mitigation: >
-      Configure TLS in the Ingress spec with a valid certificate.
+      Configure spec.tls with a certificate Secret for every host the Ingress serves.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
+
+  - id: K8S_SERVICE_EXPOSES_ADMIN_PORT
+    title: Service exposes a remote administration port outside the cluster
+    description: >
+      A Service of type LoadBalancer or NodePort publishes an administration port: SSH (22),
+      Telnet (23), RDP (3389) or WinRM (5985, 5986), as the Service port or its target port.
+      The port is then reachable from outside the cluster network.
+      A load balancer that is internal or restricted by source ranges is not visible here,
+      which is why this finding is heuristic.
+    stride_category: elevation_of_privilege
+    severity: high
+    confidence: heuristic
+    resource_type: kubernetes_service
+    condition:
+      service_type:
+        matches_any: ["LoadBalancer", "NodePort"]
+      ports:
+        any_item:
+          # These are the ports of threatcode.vocab.ADMIN_PORTS, written as numbers and as the
+          # quoted spelling a manifest can use
+          any_of:
+            - port:
+                matches_any: [22, 23, 3389, 5985, 5986, "22", "23", "3389", "5985", "5986"]
+            - targetPort:
+                matches_any: [22, 23, 3389, 5985, 5986, "22", "23", "3389", "5985", "5986", "ssh"]
+    mitigation: >
+      Do not publish administration ports through a Service.
+      Use kubectl exec or a bastion, or restrict the Service with loadBalancerSourceRanges and
+      an internal load balancer.
+    metadata:
+      mitre:
+        techniques: ["T1133"]
