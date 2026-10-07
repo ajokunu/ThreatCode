@@ -77,6 +77,18 @@
       "source": "WorkQueue",
       "target": "ReaderFunction",
       "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessHttpApi",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessRestApi",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -129,6 +141,11 @@
     "WorkQueue": {
       "category": "messaging",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

@@ -129,8 +129,17 @@ class InfraNode:
 
     @property
     def is_internet(self) -> bool:
-        """Whether this is the synthetic node that stands for the internet."""
-        return self.resource_type == INTERNET_TYPE
+        """Whether this node stands for the internet: the synthetic node or one the input names so.
+
+        A design input may declare its own external entity with the id `internet`; reachability
+        and attack paths then start there and the graph adds no second node.
+        """
+        return self.id == INTERNET_ID
+
+    @property
+    def is_synthetic(self) -> bool:
+        """Whether the graph builder added this node: it is context, not something the input has."""
+        return self.is_internet and self.resource_type == INTERNET_TYPE
 
     @property
     def is_container(self) -> bool:

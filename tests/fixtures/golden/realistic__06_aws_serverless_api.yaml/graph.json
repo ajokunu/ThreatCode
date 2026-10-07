@@ -455,6 +455,18 @@
       "source": "TransfersLatencyAlarm",
       "target": "TransfersFunction",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "BankingApi",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "PartnerDocsBucket",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -603,6 +615,11 @@
     "UsersTable": {
       "category": "database",
       "zone": "data"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

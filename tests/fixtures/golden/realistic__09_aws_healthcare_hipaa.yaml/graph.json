@@ -301,6 +301,12 @@
       "type": "dependency"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "AuroraCluster",
+      "type": "network_flow"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "HL7ProcessorFunction",
       "target": "HL7ProcessorDLQ",
@@ -455,6 +461,12 @@
       "source": "RecordsApiFunction",
       "target": "AuroraCluster",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiFunction",
+      "target": "AuroraCluster",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": false,

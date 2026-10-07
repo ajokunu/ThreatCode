@@ -1,0 +1,34 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_instance.bastion",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb.microservices_alb",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_lb.microservices_alb",
+      "stride": "tampering",
+      "target": "aws_ecs_service.user_service"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.bastion",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.bastion",
+      "rule_id": "EC2_UNENCRYPTED_EBS"
+    }
+  ]
+}

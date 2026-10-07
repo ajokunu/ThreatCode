@@ -1,0 +1,24 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorFunction",
+      "stride": "tampering",
+      "target": "AuroraCluster"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiFunction",
+      "stride": "tampering",
+      "target": "AuroraCluster"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "AuditLogsBucket",
+      "rule_id": "S3_NO_LOGGING"
+    }
+  ]
+}

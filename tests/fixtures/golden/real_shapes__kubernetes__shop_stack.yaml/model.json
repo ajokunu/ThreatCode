@@ -1,10 +1,43 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "kubernetes_ingress.shop.web",
+        "kubernetes_service.shop.web",
+        "kubernetes_deployment.shop.web",
+        "kubernetes_secret.shop.web-db"
+      ],
+      "severity": "high",
+      "target": "kubernetes_secret.shop.web-db"
+    }
+  ],
   "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.shop.web",
+      "stride": "tampering",
+      "target": "kubernetes_secret.shop.web-db"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_ingress.shop.web",
+      "stride": "tampering"
+    },
     {
       "severity": "high",
       "source": "kubernetes_ingress.shop.web",
       "stride": "tampering",
       "target": "kubernetes_service.shop.web"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.shop.web",
+      "rule_id": "K8S_SECRET_ENV_VAR"
     }
   ]
 }

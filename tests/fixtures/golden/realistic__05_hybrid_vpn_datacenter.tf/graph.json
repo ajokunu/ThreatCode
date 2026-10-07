@@ -99,6 +99,12 @@
     {
       "crosses_trust_boundary": true,
       "source": "aws_instance.vpn_concentrator",
+      "target": "aws_instance.internal_proxy",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.vpn_concentrator",
       "target": "aws_security_group.temp_debug",
       "type": "dependency"
     },
@@ -353,6 +359,12 @@
       "source": "aws_vpn_gateway.hub",
       "target": "aws_vpc.hub",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_instance.vpn_concentrator",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -515,6 +527,11 @@
     "aws_vpn_gateway.hub": {
       "category": "network",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

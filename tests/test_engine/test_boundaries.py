@@ -636,3 +636,136 @@ class TestKubernetesAndMcpFlowsRemain:
     def test_the_agent_to_server_invocation_is_not_a_flow(self) -> None:
         for threat in self._threats("tests/fixtures/mcp/fixed/.mcp.json"):
             assert threat.metadata["flow"]["edge_types"] == ["data_flow"]
+
+
+class TestReachabilityFlows:
+    """The flows the reachability pass adds are the boundary threats of a cloud input."""
+
+    def threats(self) -> dict[tuple[str, str], Threat]:
+        graph = InfraGraph.from_parsed(
+            detect_and_parse(
+                REPO_ROOT / "tests/fixtures/real_shapes/terraform/plan/webapp.plan.json"
+            )
+        )
+        return {
+            (t.metadata["source_address"], t.metadata["target_address"]): t
+            for t in boundaries.analyze(graph)
+        }
+
+    def test_each_tier_of_the_web_stack_is_a_threat_with_its_port_and_protocol(self) -> None:
+        found = self.threats()
+        entering = found[("internet", "aws_lb.front")]
+        assert "from internet (internet zone) to aws_lb.front (dmz zone) over tcp/443" in (
+            entering.description
+        )
+        inward = found[("aws_lb.front", "aws_instance.app[0]")]
+        assert "over tcp/8080 crosses a trust boundary" in inward.description
+        data = found[("aws_instance.app[0]", "aws_db_instance.orders")]
+        assert "over tcp/5432 crosses a trust boundary" in data.description
+        assert data.metadata["flow"]["ports"] == ["5432"]
+        assert data.metadata["flow"]["protocols"] == ["tcp"]
+
+    def test_no_description_calls_a_structural_edge_a_flow(self) -> None:
+        for threat in self.threats().values():
+            assert "Data flows from" not in threat.description
+
+    def test_the_zone_pair_decides_the_technique_of_the_crossing(self) -> None:
+        found = self.threats()
+        assert "T1190" in found[("internet", "aws_lb.front")].mitre_techniques
+        assert "T1530" in found[("aws_instance.app[0]", "aws_db_instance.orders")].mitre_techniques
+
+    def test_a_flow_from_the_internet_belongs_to_the_resource_it_enters(self) -> None:
+        threat = self.threats()[("internet", "aws_lb.front")]
+        assert (threat.resource_address, threat.resource_type) == ("aws_lb.front", "aws_lb")
+        assert threat.target_address == ""
+        assert threat.metadata["flow"]["source"] == "internet"
+        assert threat.title == "Trust boundary crossing: internet (internet) -> aws_lb.front (dmz)"
+
+    def test_it_is_located_at_the_resource_it_enters_after_a_scan(self) -> None:
+        from threatcode.pipeline import ScanRequest, run_scan
+
+        result = run_scan(
+            ScanRequest(
+                paths=(
+                    str(REPO_ROOT / "tests/fixtures/real_shapes/terraform/plan/webapp.plan.json"),
+                )
+            )
+        )
+        (threat,) = [
+            t
+            for t in result.report.threats
+            if t.source == ThreatSource.BOUNDARY and t.metadata["source_address"] == "internet"
+        ]
+        assert threat.resource_address == "aws_lb.front" and threat.fingerprint
+
+    def test_two_flows_from_one_resource_are_two_findings_with_two_fingerprints(self) -> None:
+        from threatcode.fingerprint import compute_fingerprint
+
+        found = self.threats()
+        first = found[("aws_lb.front", "aws_instance.app[0]")]
+        second = found[("aws_lb.front", "aws_instance.app[1]")]
+        assert first.id != second.id
+        assert first.metadata["fingerprint_hint"] == "aws_lb.front -> aws_instance.app[0]"
+        assert compute_fingerprint(first, "main.tf") != compute_fingerprint(second, "main.tf")
+        assert compute_fingerprint(first, "main.tf") == compute_fingerprint(first, "main.tf")
+
+    def test_the_untrusted_content_an_agent_ingests_is_not_a_boundary_threat(self) -> None:
+        graph = InfraGraph.from_parsed(
+            detect_and_parse(REPO_ROOT / "tests/fixtures/mcp/trifecta/.mcp.json")
+        )
+        agent_entries = [e for e in graph.edges if e.source == "internet"]
+        assert agent_entries and all(e.source_kind == AGENT for e in agent_entries)
+        assert not [
+            t for t in boundaries.analyze(graph) if t.metadata["source_address"] == "internet"
+        ]
+
+    def test_all_protocols_are_worded_as_such(self) -> None:
+        graph = _tiers(_edge(WEB, DB, protocol="all", ports=["0-65535"]))
+        assert "over all protocols and ports" in _only(graph).description
+
+    def test_edges_that_disagree_on_the_protocol_list_all_of_them(self) -> None:
+        graph = _tiers(
+            _edge(WEB, DB, "data_flow", protocol="tcp"),
+            _edge(WEB, DB, "network_flow", protocol="udp"),
+        )
+        threat = _only(graph)
+        assert threat.metadata["flow"]["protocols"] == ["tcp", "udp"]
+        assert "over tcp/udp" in threat.description
+
+
+class TestBoundaryRules:
+    @pytest.mark.parametrize(
+        ("meta", "rule"),
+        [
+            ({"authenticated": False}, "BOUNDARY_UNAUTHENTICATED_FLOW"),
+            ({"encrypted": False}, "BOUNDARY_UNENCRYPTED_FLOW"),
+            ({"protocol": "http"}, "BOUNDARY_UNENCRYPTED_FLOW"),
+            ({"validated": False}, "BOUNDARY_UNVALIDATED_FLOW"),
+            ({}, "BOUNDARY_GENERIC_FLOW"),
+            ({"encrypted": True, "authenticated": True}, "BOUNDARY_GENERIC_FLOW"),
+        ],
+    )
+    def test_the_kind_of_a_threat_is_in_its_metadata(self, meta: dict[str, Any], rule: str) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, **meta)))
+        assert threat.metadata["boundary_rule"] == rule
+        # Rule ids belong to the rule engine, so tools that list the rules which fired skip these
+        assert threat.rule_id == ""
+
+    def test_an_unauthenticated_flow_wins_over_an_unencrypted_one(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, authenticated=False, encrypted=False)))
+        assert threat.metadata["boundary_rule"] == "BOUNDARY_UNAUTHENTICATED_FLOW"
+
+    def test_every_technique_a_crossing_can_get_is_in_the_attack_database(self) -> None:
+        zones = ["internet", "dmz", "private", "data", "management"]
+        for source in zones:
+            for target in zones:
+                for meta in ({}, {"authenticated": False}, {"encrypted": False}):
+                    graph = _graph(
+                        [_res("design_service", "a", source), _res("design_service", "b", target)],
+                        [_edge("design_service.a", "design_service.b", **meta)],
+                    )
+                    for threat in boundaries.analyze(graph):
+                        assert threat.mitre_techniques
+                        for technique in threat.mitre_techniques:
+                            assert technique in TECHNIQUE_DB, (source, target, technique)
+                        assert threat.mitre_tactics

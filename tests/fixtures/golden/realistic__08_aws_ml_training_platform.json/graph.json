@@ -179,6 +179,12 @@
       "source": "aws_subnet.ml_private_c",
       "target": "aws_vpc.ml_platform",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_s3_bucket.notebook_outputs",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -295,6 +301,11 @@
     "aws_vpc.ml_platform": {
       "category": "network",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

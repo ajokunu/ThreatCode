@@ -1,5 +1,23 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "ServerlessRestApi",
+        "AdminFunction",
+        "AdminFunctionRole"
+      ],
+      "severity": "critical",
+      "target": "AdminFunctionRole"
+    }
+  ],
   "boundary": [
+    {
+      "severity": "medium",
+      "source": "ServerlessHttpApi",
+      "stride": "tampering"
+    },
     {
       "severity": "high",
       "source": "ServerlessHttpApi",
@@ -7,10 +25,35 @@
       "target": "ReaderFunction"
     },
     {
+      "severity": "medium",
+      "source": "ServerlessRestApi",
+      "stride": "tampering"
+    },
+    {
       "severity": "high",
       "source": "ServerlessRestApi",
       "stride": "tampering",
       "target": "AdminFunction"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "AdminFunction",
+      "rule_id": "LAMBDA_NO_VPC"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "ReaderFunction",
+      "rule_id": "LAMBDA_NO_VPC"
+    },
+    {
+      "base": "high",
+      "effective": "critical",
+      "resource_address": "AdminFunction",
+      "rule_id": "LAMBDA_OVERPERMISSIVE_ROLE"
     }
   ]
 }

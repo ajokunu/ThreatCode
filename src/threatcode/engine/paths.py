@@ -94,6 +94,7 @@ from threatcode.ir.iam import classify_access
 from threatcode.ir.nodes import (
     DATA_CATEGORIES,
     INTERNET_ID,
+    NON_TRAFFIC_SUFFIXES,
     InfraNode,
     NodeCategory,
 )
@@ -126,16 +127,25 @@ _ASSUME = frozenset({"assumes", "can_assume"})
 # Resources that never hand over a role to whoever reaches them
 _NOT_EXECUTING = frozenset({"aws_eks_cluster", "aws_ecs_cluster"})
 _EXECUTING = frozenset({NodeCategory.COMPUTE, NodeCategory.SERVERLESS, NodeCategory.CONTAINER})
-# Resource types that configure a store and are not a store themselves
-_STORE_COMPANIONS = (
+# Resource types that configure a store and are not a store themselves: the settings, policies and
+# rotations of a bucket, a table, a secret or a database, and the companions that attach to one
+_STORE_COMPANION_PREFIXES = (
     "aws_s3_bucket_",
     "aws_dynamodb_table_",
     "aws_secretsmanager_secret_",
-    "aws_kms_",
-    "aws_ssm_parameter_",
     "aws_db_instance_",
-    "aws_rds_cluster_",
-    "aws_efs_",
+)
+_STORE_COMPANIONS = frozenset(
+    {
+        "aws_kms_alias",
+        "aws_kms_grant",
+        "aws_kms_key_policy",
+        "aws_efs_mount_target",
+        "aws_efs_access_point",
+        "aws_rds_cluster_endpoint",
+        "aws_rds_cluster_snapshot",
+        "aws_rds_cluster_activity_stream",
+    }
 )
 _NOT_STORES = frozenset({"kubernetes_config_map"})
 # Ports of remote administration services: reaching them is initial access through T1133
@@ -174,12 +184,21 @@ def crown_jewel_kind(graph: InfraGraph, node: InfraNode) -> str:
     if node.resource_type == "mcp_server":
         return _mcp_kind(node)
     if node.category in DATA_CATEGORIES:
-        if node.resource_type in _NOT_STORES or node.resource_type.startswith(_STORE_COMPANIONS):
+        if _is_store_companion(node.resource_type):
             return ""
         return "secret store" if node.category is NodeCategory.SECRET else "data store"
     if node.resource_type == "aws_iam_role" and _is_admin_role(graph, node):
         return "administrator identity"
     return ""
+
+
+def _is_store_companion(resource_type: str) -> bool:
+    return (
+        resource_type in _NOT_STORES
+        or resource_type in _STORE_COMPANIONS
+        or resource_type.startswith(_STORE_COMPANION_PREFIXES)
+        or resource_type.endswith(NON_TRAFFIC_SUFFIXES)
+    )
 
 
 def _kubernetes_kind(node: InfraNode) -> str:

@@ -14,12 +14,12 @@ Three facts change a severity, each by one level, and the changes add up:
   spoofing, tampering, information disclosure or elevation of privilege finding: a weakness an
   outsider can reach is worse than the same weakness behind the network.
   A finding that states the exposure itself (a world-open group, a public bucket) is not raised,
-  because its base severity already is about being reachable.
+  because its base severity already is about being reachable (`is_exposure_finding`).
 - **Sensitive data.**
   A finding on a data store tagged `DataClassification` or `Compliance` with `confidential`,
   `restricted`, `pci`, `phi`, `hipaa` or `pii` is one level higher.
   Keys and values are matched without regard to case; a value such as `PCI-DSS, HIPAA` holds
-  several classes.
+  several classes, and a value that negates one (`non-pii`, `no-phi`) holds none.
 - **Intentional exposure.**
   An exposure finding on a resource tagged `Public=true`, `Intent=public` or
   `threatcode:intent=public` is one level lower, never below `info` and never silenced, and its
@@ -37,6 +37,7 @@ reachability edges already describe, the second are advisory.
 
 from __future__ import annotations
 
+import functools
 import re
 from collections import deque
 from collections.abc import Iterator, Mapping
@@ -74,12 +75,55 @@ REACHABLE_RAISES: frozenset[str] = frozenset(
 CONTEXT_SOURCES: frozenset[ThreatSource] = frozenset(
     {ThreatSource.RULE, ThreatSource.SECRET, ThreatSource.SCANNER}
 )
-# Words of a rule id that say the finding is about exposure
-_EXPOSURE_WORDS = frozenset(
-    {"PUBLIC", "WORLD", "OPEN", "UNRESTRICTED", "EXPOSED", "ANONYMOUS", "INTERNET"}
+# The root causes of the built-in rules that state an exposure: a resource anyone can reach, call or
+# read. A root cause outside this set is not an exposure, whatever the rule id says (a missing web
+# application firewall protects an exposed service, it is not the exposure)
+EXPOSURE_ROOT_CAUSES: frozenset[str] = frozenset(
+    {
+        "acr-network-open",
+        "aks-api-public",
+        "cloudsql-public-exposure",
+        "cosmos-network-open",
+        "eks-public-api-endpoint",
+        "gcp-firewall-world-ingress",
+        "gcp-public-iam-principal",
+        "gcp-vm-public-address",
+        "gke-open-control-plane",
+        "gke-public-nodes",
+        "image-repository-public",
+        "instance-reachable-from-internet",
+        "keyvault-network-open",
+        "kms-open-key-policy",
+        "nsg-world-ingress",
+        "rds-public-endpoint",
+        "redis-network-open",
+        "redshift-public-endpoint",
+        "s3-public-access",
+        "search-domain-public-endpoint",
+        "security-group-world-open-ingress",
+        "sns-open-topic-policy",
+        "sql-public-endpoint",
+        "sqs-open-queue-policy",
+        "storage-network-open",
+        "storage-public-blobs",
+        "unauthenticated-public-endpoint",
+        "vm-internet-reachable",
+    }
 )
-# ATT&CK techniques of initial access through an exposed service
-_EXPOSURE_TECHNIQUES = frozenset({"T1190", "T1133"})
+# For a rule without a root cause (a custom rule, an older built-in) the words of its id decide
+_EXPOSURE_WORDS = frozenset(
+    {
+        "PUBLIC",
+        "WORLD",
+        "OPEN",
+        "UNRESTRICTED",
+        "EXPOSED",
+        "EXPOSES",
+        "ANONYMOUS",
+        "UNAUTHENTICATED",
+        "INTERNET",
+    }
+)
 _SEVERITY_ORDER = (
     Severity.INFO,
     Severity.LOW,
@@ -88,6 +132,8 @@ _SEVERITY_ORDER = (
     Severity.CRITICAL,
 )
 _TOKEN = re.compile(r"[a-z0-9]+")
+# A value with one of these words says the data is not of the class that follows
+_NEGATIONS = frozenset({"no", "non", "not", "none", "without", "excluded", "exempt"})
 _MAX_TAG_DEPTH = 4
 
 
@@ -132,15 +178,30 @@ def apply(report: ThreatReport, graph: InfraGraph) -> None:
 
 
 def is_exposure_finding(threat: Threat) -> bool:
-    """Whether a finding is about the resource being exposed, by its rule or its technique.
+    """Whether a finding states that the resource is exposed to everyone.
 
-    A rule id such as ``S3_PUBLIC_ACCESS`` or ``SG_UNRESTRICTED_INGRESS`` names the exposure in
-    one of its words, and exposure rules map to the initial access techniques ``T1190`` and
-    ``T1133``.
+    The root cause of the rule decides when it has one (`EXPOSURE_ROOT_CAUSES`), on the finding or,
+    for a built-in rule, in the rule file.
+    A rule without one is judged by the words of its id (``MY_PUBLIC_BUCKET`` is, ``MY_NO_WAF`` is
+    not).
     """
-    if _EXPOSURE_WORDS & set(threat.rule_id.upper().split("_")):
-        return True
-    return bool(_EXPOSURE_TECHNIQUES & set(threat.mitre_techniques))
+    cause = threat.root_cause or _builtin_root_causes().get(threat.rule_id, "")
+    if cause:
+        return cause in EXPOSURE_ROOT_CAUSES
+    words = threat.rule_id.upper().split("_")
+    return bool(_EXPOSURE_WORDS & set(words)) or _has_phrase(words, "ALLOW", "ALL")
+
+
+def _has_phrase(words: list[str], first: str, second: str) -> bool:
+    return any(a == first and b == second for a, b in zip(words, words[1:], strict=False))
+
+
+@functools.cache
+def _builtin_root_causes() -> Mapping[str, str]:
+    """The root cause of each built-in rule, by rule id; loaded once."""
+    from threatcode.engine.rules.loader import load_builtin_rules
+
+    return {rule.id: rule.root_cause for rule in load_builtin_rules() if rule.root_cause}
 
 
 def _routes_from_internet(graph: InfraGraph) -> dict[str, list[str]]:
@@ -213,7 +274,8 @@ def sensitive_classification(node: InfraNode) -> str:
     for key, value in sorted(node_tags(node).items()):
         if re.sub(r"[^a-z0-9]", "", key) not in CLASSIFICATION_KEYS:
             continue
-        if SENSITIVE_CLASSES & set(_TOKEN.findall(value.lower())):
+        tokens = set(_TOKEN.findall(value.lower()))
+        if SENSITIVE_CLASSES & tokens and not _NEGATIONS & tokens:
             return f"{key}={value}"
     return ""
 

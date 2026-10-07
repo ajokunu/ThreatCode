@@ -1,4 +1,39 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.inventory",
+        "mcp_agent.config",
+        "mcp_server.builder"
+      ],
+      "severity": "high",
+      "target": "mcp_server.builder"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.inventory",
+        "mcp_agent.config",
+        "mcp_server.home-files"
+      ],
+      "severity": "high",
+      "target": "mcp_server.home-files"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.inventory",
+        "mcp_agent.config",
+        "mcp_server.terminal"
+      ],
+      "severity": "high",
+      "target": "mcp_server.terminal"
+    }
+  ],
   "boundary": [
     {
       "severity": "high",

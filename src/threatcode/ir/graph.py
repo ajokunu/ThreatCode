@@ -368,7 +368,8 @@ class InfraGraph:
     @property
     def node_count(self) -> int:
         """How many nodes the input defines: the synthetic internet node is not one of them."""
-        return len(self._nodes) - (1 if self.internet_node is not None else 0)
+        node = self._nodes.get(INTERNET_ID)
+        return len(self._nodes) - (1 if node is not None and node.is_synthetic else 0)
 
     @property
     def duplicate_of(self) -> dict[str, str]:
@@ -555,9 +556,11 @@ class InfraGraph:
 
     @property
     def internet_node(self) -> InfraNode | None:
-        """The synthetic node that stands for the internet, when some edge needed it."""
-        node = self._nodes.get(INTERNET_ID)
-        return node if node is not None and node.is_internet else None
+        """The node that stands for the internet: the synthetic one when some edge needed it.
+
+        A node the input declares with the id `internet` is that node instead.
+        """
+        return self._nodes.get(INTERNET_ID)
 
     def ensure_internet_node(self) -> InfraNode:
         """Add the synthetic internet node if the graph does not have it yet and return it.

@@ -2,6 +2,12 @@
   "edges": [
     {
       "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.bridge-plain",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
       "source": "mcp_agent.config",
       "target": "mcp_server.bash-npx",
       "type": "iam_binding"
@@ -122,6 +128,11 @@
     }
   ],
   "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
     "mcp_agent.config": {
       "category": "compute",
       "zone": "private"

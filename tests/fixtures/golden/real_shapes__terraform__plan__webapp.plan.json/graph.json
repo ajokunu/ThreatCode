@@ -87,6 +87,12 @@
     {
       "crosses_trust_boundary": true,
       "source": "aws_instance.app[0]",
+      "target": "aws_db_instance.orders",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.app[0]",
       "target": "aws_iam_instance_profile.app",
       "type": "dependency"
     },
@@ -125,6 +131,12 @@
       "source": "aws_instance.app[0]",
       "target": "aws_subnet.private[1]",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.app[1]",
+      "target": "aws_db_instance.orders",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -183,6 +195,12 @@
     {
       "crosses_trust_boundary": true,
       "source": "aws_lambda_function.worker",
+      "target": "aws_db_instance.orders",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.worker",
       "target": "aws_iam_role.app",
       "type": "dependency"
     },
@@ -221,6 +239,18 @@
       "source": "aws_lambda_function.worker",
       "target": "aws_subnet.private[1]",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb.front",
+      "target": "aws_instance.app[0]",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lb.front",
+      "target": "aws_instance.app[1]",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -503,6 +533,12 @@
       "source": "aws_subnet.public[1]",
       "target": "aws_vpc.main",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_lb.front",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -634,6 +670,11 @@
     "data.aws_iam_policy_document.assume": {
       "category": "iam",
       "zone": "management"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

@@ -1,0 +1,42 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "LoadBalancer",
+        "AppInstance",
+        "Database"
+      ],
+      "severity": "high",
+      "target": "Database"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "AppInstance",
+      "stride": "tampering",
+      "target": "Database"
+    },
+    {
+      "severity": "medium",
+      "source": "LoadBalancer",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "LoadBalancer",
+      "stride": "tampering",
+      "target": "AppInstance"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "AppInstance",
+      "rule_id": "EC2_UNENCRYPTED_EBS"
+    }
+  ]
+}

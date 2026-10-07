@@ -1,4 +1,28 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.tracker",
+        "mcp_agent.config",
+        "mcp_server.files"
+      ],
+      "severity": "high",
+      "target": "mcp_server.files"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.web",
+        "mcp_agent.config",
+        "mcp_server.files"
+      ],
+      "severity": "high",
+      "target": "mcp_server.files"
+    }
+  ],
   "boundary": [
     {
       "severity": "medium",

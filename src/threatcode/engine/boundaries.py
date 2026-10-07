@@ -35,6 +35,15 @@ What the threat says follows what the flow is known to be:
 - The severity comes from the zone pair, higher when the source faces the internet, and lower by
   one level when every merged edge declares the flow both encrypted and authenticated.
 - A flow about which nothing is known says so, and its confidence is lower.
+
+`metadata['boundary_rule']` says which of these a threat is, so a report can group them:
+`BOUNDARY_UNAUTHENTICATED_FLOW` (spoofing), `BOUNDARY_UNENCRYPTED_FLOW` (information disclosure),
+`BOUNDARY_UNVALIDATED_FLOW` (a flow declared `validated: false`) and `BOUNDARY_GENERIC_FLOW`
+(tampering with a flow in transit).
+It is not `Threat.rule_id`: that field names the rules of the rule engine, and the tests and
+tools that list the rules which fired would count a boundary threat as one.
+The fingerprint names both ends of the flow, so a baseline that accepts the flow from a load
+balancer to one instance does not accept its flow to another.
 """
 
 from __future__ import annotations
@@ -100,6 +109,10 @@ class _Flow:
     @property
     def authenticated(self) -> bool | None:
         return self._all("authenticated")
+
+    @property
+    def validated(self) -> bool | None:
+        return self._all("validated")
 
     @property
     def encrypted(self) -> bool | None:
@@ -221,6 +234,9 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
         confidence=1.0 if known else _LOW_CONFIDENCE,
         metadata={
             "boundary_key": f"BOUNDARY_{src_zone}_{tgt_zone}",
+            "boundary_rule": _rule_id(stride, flow),
+            # Both ends of the flow, so two flows from one resource are two findings
+            "fingerprint_hint": f"{src.id} -> {tgt.id}",
             "source_address": src.id,
             "target_address": tgt.id,
             "source_zone": src_zone,
@@ -240,6 +256,14 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
         mitre_tactics=tactics_for_techniques(techniques),
         target_address=other,
     )
+
+
+def _rule_id(stride: str, flow: _Flow) -> str:
+    if stride == StrideCategory.SPOOFING.value:
+        return "BOUNDARY_UNAUTHENTICATED_FLOW"
+    if stride == StrideCategory.INFORMATION_DISCLOSURE.value:
+        return "BOUNDARY_UNENCRYPTED_FLOW"
+    return "BOUNDARY_UNVALIDATED_FLOW" if flow.validated is False else "BOUNDARY_GENERIC_FLOW"
 
 
 def _stride(flow: _Flow) -> str:

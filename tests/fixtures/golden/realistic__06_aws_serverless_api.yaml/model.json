@@ -1,0 +1,45 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "PartnerDocsBucket"
+      ],
+      "severity": "critical",
+      "target": "PartnerDocsBucket"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "BankingApi",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "PartnerDocsBucket",
+      "stride": "tampering"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "AuditLogTable",
+      "rule_id": "DYNAMODB_NO_ENCRYPTION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "PartnerDocsBucket",
+      "rule_id": "S3_NO_ENCRYPTION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "StatementsBucket",
+      "rule_id": "S3_NO_LOGGING"
+    }
+  ]
+}

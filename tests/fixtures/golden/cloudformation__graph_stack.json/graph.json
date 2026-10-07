@@ -74,6 +74,12 @@
     },
     {
       "crosses_trust_boundary": false,
+      "source": "Distribution",
+      "target": "LoadBalancer",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
       "source": "GatewayAttachment",
       "target": "InternetGateway",
       "type": "dependency"
@@ -83,6 +89,12 @@
       "source": "GatewayAttachment",
       "target": "Vpc",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LoadBalancer",
+      "target": "Database",
+      "type": "network_flow"
     },
     {
       "crosses_trust_boundary": true,
@@ -115,6 +127,12 @@
       "type": "containment"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "WebInstance",
+      "target": "Database",
+      "type": "network_flow"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "WebInstance",
       "target": "PublicSubnet",
@@ -131,6 +149,24 @@
       "source": "WebSecurityGroup",
       "target": "Vpc",
       "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "Distribution",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "LoadBalancer",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "WebInstance",
+      "type": "network_flow"
     }
   ],
   "nodes": {
@@ -199,6 +235,11 @@
       "category": "network",
       "exposure": "internet",
       "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
     }
   }
 }

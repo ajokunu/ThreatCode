@@ -1,5 +1,63 @@
 {
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "kubernetes_ingress.default.web",
+        "kubernetes_service.default.web-lb",
+        "kubernetes_deployment.default.web",
+        "kubernetes_secret.default.db-creds"
+      ],
+      "severity": "high",
+      "target": "kubernetes_secret.default.db-creds"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "kubernetes_service.default.web-lb",
+        "kubernetes_deployment.default.web",
+        "kubernetes_secret.default.db-creds"
+      ],
+      "severity": "high",
+      "target": "kubernetes_secret.default.db-creds"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "kubernetes_service.default.web-np",
+        "kubernetes_deployment.default.web",
+        "kubernetes_secret.default.db-creds"
+      ],
+      "severity": "high",
+      "target": "kubernetes_secret.default.db-creds"
+    }
+  ],
   "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.default.api",
+      "stride": "tampering",
+      "target": "kubernetes_secret.default.db-creds"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.default.web",
+      "stride": "tampering",
+      "target": "kubernetes_secret.default.db-creds"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_ingress.default.web",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "kubernetes_service.default.web-lb",
+      "stride": "tampering"
+    },
     {
       "severity": "high",
       "source": "kubernetes_service.default.web-lb",
@@ -7,10 +65,71 @@
       "target": "kubernetes_deployment.default.web"
     },
     {
+      "severity": "medium",
+      "source": "kubernetes_service.default.web-np",
+      "stride": "tampering"
+    },
+    {
       "severity": "high",
       "source": "kubernetes_service.default.web-np",
       "stride": "tampering",
       "target": "kubernetes_deployment.default.web"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_AUTOMOUNT_SA_TOKEN"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_CAPABILITIES_NOT_DROPPED"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_NO_SECCOMP_PROFILE"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_NO_SECURITY_CONTEXT"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_RUN_AS_ROOT"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_SECRET_ENV_VAR"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.default.web",
+      "rule_id": "K8S_WRITABLE_ROOT_FS"
     }
   ]
 }
