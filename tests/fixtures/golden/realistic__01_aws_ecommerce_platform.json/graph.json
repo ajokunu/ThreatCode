@@ -86,6 +86,12 @@
     },
     {
       "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.order_processor",
+      "target": "aws_iam_role.ec2_app_role",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
       "source": "aws_lb.storefront",
       "target": "aws_security_group.alb_sg",
       "type": "dependency"

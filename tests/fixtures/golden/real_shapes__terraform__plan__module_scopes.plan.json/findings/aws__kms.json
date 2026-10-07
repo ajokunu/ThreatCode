@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_kms_key.main",
+    "rule_id": "KMS_NO_DELETION_PROTECTION",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  }
+]

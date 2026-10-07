@@ -1,0 +1,80 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_cloudtrail.encrypted",
+      "target": "aws_kms_key.trail",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_cloudtrail.encrypted",
+      "target": "aws_s3_bucket.trail_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_cloudtrail.plain",
+      "target": "aws_s3_bucket.trail_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_sqs_queue.orders",
+      "target": "aws_kms_key.trail",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "module.audit.aws_cloudtrail.bare",
+      "target": "aws_s3_bucket.trail_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "module.audit.aws_cloudtrail.this",
+      "target": "aws_kms_key.trail",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "module.audit.aws_cloudtrail.this",
+      "target": "aws_s3_bucket.trail_logs",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_cloudtrail.encrypted": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_cloudtrail.plain": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_kms_key.trail": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_s3_bucket.trail_logs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_sqs_queue.orders": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "aws_sqs_queue.plain": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "module.audit.aws_cloudtrail.bare": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "module.audit.aws_cloudtrail.this": {
+      "category": "unknown",
+      "zone": "private"
+    }
+  }
+}

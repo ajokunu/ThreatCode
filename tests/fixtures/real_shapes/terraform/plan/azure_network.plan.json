@@ -1,0 +1,839 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_resource_group.main",
+          "mode": "managed",
+          "type": "azurerm_resource_group",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "location": "eastus",
+            "name": "rg-shop",
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_virtual_network.main",
+          "mode": "managed",
+          "type": "azurerm_virtual_network",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "address_space": [
+              "10.30.0.0/16"
+            ],
+            "bgp_community": null,
+            "edge_zone": null,
+            "flow_timeout_in_minutes": null,
+            "location": "eastus",
+            "name": "vnet-shop",
+            "resource_group_name": "rg-shop",
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_subnet.app",
+          "mode": "managed",
+          "type": "azurerm_subnet",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "address_prefixes": [
+              "10.30.1.0/24"
+            ],
+            "name": "snet-app",
+            "resource_group_name": "rg-shop",
+            "virtual_network_name": "vnet-shop",
+            "private_endpoint_network_policies_enabled": true,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_network_security_group.app",
+          "mode": "managed",
+          "type": "azurerm_network_security_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "location": "eastus",
+            "name": "nsg-app",
+            "resource_group_name": "rg-shop",
+            "security_rule": [
+              {
+                "access": "Allow",
+                "description": "",
+                "destination_address_prefix": "*",
+                "destination_address_prefixes": [],
+                "destination_application_security_group_ids": [],
+                "destination_port_range": "22",
+                "destination_port_ranges": [],
+                "direction": "Inbound",
+                "name": "ssh",
+                "priority": 100,
+                "protocol": "Tcp",
+                "source_address_prefix": "*",
+                "source_address_prefixes": [],
+                "source_application_security_group_ids": [],
+                "source_port_range": "*",
+                "source_port_ranges": []
+              },
+              {
+                "access": "Allow",
+                "description": "",
+                "destination_address_prefix": "*",
+                "destination_address_prefixes": [],
+                "destination_application_security_group_ids": [],
+                "destination_port_range": "443",
+                "destination_port_ranges": [],
+                "direction": "Inbound",
+                "name": "https",
+                "priority": 110,
+                "protocol": "Tcp",
+                "source_address_prefix": "Internet",
+                "source_address_prefixes": [],
+                "source_application_security_group_ids": [],
+                "source_port_range": "*",
+                "source_port_ranges": []
+              }
+            ],
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_network_security_rule.rdp",
+          "mode": "managed",
+          "type": "azurerm_network_security_rule",
+          "name": "rdp",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "access": "Allow",
+            "description": null,
+            "destination_address_prefix": "*",
+            "destination_address_prefixes": null,
+            "destination_application_security_group_ids": null,
+            "destination_port_range": "3389",
+            "destination_port_ranges": null,
+            "direction": "Inbound",
+            "name": "rdp",
+            "priority": 120,
+            "protocol": "Tcp",
+            "resource_group_name": "rg-shop",
+            "source_address_prefix": "*",
+            "source_address_prefixes": null,
+            "source_application_security_group_ids": null,
+            "source_port_range": "*",
+            "source_port_ranges": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_subnet_network_security_group_association.app",
+          "mode": "managed",
+          "type": "azurerm_subnet_network_security_group_association",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_network_interface.app",
+          "mode": "managed",
+          "type": "azurerm_network_interface",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "ip_configuration": [
+              {
+                "gateway_load_balancer_frontend_ip_configuration_id": null,
+                "name": "internal",
+                "primary": null,
+                "private_ip_address": null,
+                "private_ip_address_allocation": "Dynamic",
+                "private_ip_address_version": "IPv4",
+                "public_ip_address_id": null
+              }
+            ],
+            "location": "eastus",
+            "name": "nic-app",
+            "resource_group_name": "rg-shop",
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "azurerm_linux_virtual_machine.app",
+          "mode": "managed",
+          "type": "azurerm_linux_virtual_machine",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "admin_username": "azureuser",
+            "location": "eastus",
+            "name": "vm-app",
+            "os_disk": [
+              {
+                "caching": "ReadWrite",
+                "storage_account_type": "Premium_LRS"
+              }
+            ],
+            "resource_group_name": "rg-shop",
+            "size": "Standard_B2s",
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_resource_group.main",
+      "mode": "managed",
+      "type": "azurerm_resource_group",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "location": "eastus",
+          "name": "rg-shop",
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_virtual_network.main",
+      "mode": "managed",
+      "type": "azurerm_virtual_network",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "address_space": [
+            "10.30.0.0/16"
+          ],
+          "bgp_community": null,
+          "edge_zone": null,
+          "flow_timeout_in_minutes": null,
+          "location": "eastus",
+          "name": "vnet-shop",
+          "resource_group_name": "rg-shop",
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "dns_servers": true,
+          "guid": true,
+          "id": true,
+          "subnet": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_subnet.app",
+      "mode": "managed",
+      "type": "azurerm_subnet",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "address_prefixes": [
+            "10.30.1.0/24"
+          ],
+          "name": "snet-app",
+          "resource_group_name": "rg-shop",
+          "virtual_network_name": "vnet-shop",
+          "private_endpoint_network_policies_enabled": true,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true,
+          "service_endpoint_policy_ids": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_network_security_group.app",
+      "mode": "managed",
+      "type": "azurerm_network_security_group",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "location": "eastus",
+          "name": "nsg-app",
+          "resource_group_name": "rg-shop",
+          "security_rule": [
+            {
+              "access": "Allow",
+              "description": "",
+              "destination_address_prefix": "*",
+              "destination_address_prefixes": [],
+              "destination_application_security_group_ids": [],
+              "destination_port_range": "22",
+              "destination_port_ranges": [],
+              "direction": "Inbound",
+              "name": "ssh",
+              "priority": 100,
+              "protocol": "Tcp",
+              "source_address_prefix": "*",
+              "source_address_prefixes": [],
+              "source_application_security_group_ids": [],
+              "source_port_range": "*",
+              "source_port_ranges": []
+            },
+            {
+              "access": "Allow",
+              "description": "",
+              "destination_address_prefix": "*",
+              "destination_address_prefixes": [],
+              "destination_application_security_group_ids": [],
+              "destination_port_range": "443",
+              "destination_port_ranges": [],
+              "direction": "Inbound",
+              "name": "https",
+              "priority": 110,
+              "protocol": "Tcp",
+              "source_address_prefix": "Internet",
+              "source_address_prefixes": [],
+              "source_application_security_group_ids": [],
+              "source_port_range": "*",
+              "source_port_ranges": []
+            }
+          ],
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true,
+          "security_rule": [
+            {},
+            {}
+          ]
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_network_security_rule.rdp",
+      "mode": "managed",
+      "type": "azurerm_network_security_rule",
+      "name": "rdp",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "access": "Allow",
+          "description": null,
+          "destination_address_prefix": "*",
+          "destination_address_prefixes": null,
+          "destination_application_security_group_ids": null,
+          "destination_port_range": "3389",
+          "destination_port_ranges": null,
+          "direction": "Inbound",
+          "name": "rdp",
+          "priority": 120,
+          "protocol": "Tcp",
+          "resource_group_name": "rg-shop",
+          "source_address_prefix": "*",
+          "source_address_prefixes": null,
+          "source_application_security_group_ids": null,
+          "source_port_range": "*",
+          "source_port_ranges": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true,
+          "network_security_group_name": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_subnet_network_security_group_association.app",
+      "mode": "managed",
+      "type": "azurerm_subnet_network_security_group_association",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true,
+          "network_security_group_id": true,
+          "subnet_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_network_interface.app",
+      "mode": "managed",
+      "type": "azurerm_network_interface",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "ip_configuration": [
+            {
+              "gateway_load_balancer_frontend_ip_configuration_id": null,
+              "name": "internal",
+              "primary": null,
+              "private_ip_address": null,
+              "private_ip_address_allocation": "Dynamic",
+              "private_ip_address_version": "IPv4",
+              "public_ip_address_id": null
+            }
+          ],
+          "location": "eastus",
+          "name": "nic-app",
+          "resource_group_name": "rg-shop",
+          "timeouts": null
+        },
+        "after_unknown": {
+          "applied_dns_servers": true,
+          "id": true,
+          "internal_domain_name_suffix": true,
+          "ip_configuration": [
+            {
+              "subnet_id": true
+            }
+          ],
+          "mac_address": true,
+          "private_ip_address": true,
+          "private_ip_addresses": true,
+          "virtual_machine_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "azurerm_linux_virtual_machine.app",
+      "mode": "managed",
+      "type": "azurerm_linux_virtual_machine",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "admin_username": "azureuser",
+          "location": "eastus",
+          "name": "vm-app",
+          "os_disk": [
+            {
+              "caching": "ReadWrite",
+              "storage_account_type": "Premium_LRS"
+            }
+          ],
+          "resource_group_name": "rg-shop",
+          "size": "Standard_B2s",
+          "timeouts": null
+        },
+        "after_unknown": {
+          "id": true,
+          "network_interface_ids": true,
+          "private_ip_address": true,
+          "public_ip_address": true,
+          "virtual_machine_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm",
+        "expressions": {
+          "features": [
+            {}
+          ]
+        }
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_resource_group.main",
+          "mode": "managed",
+          "type": "azurerm_resource_group",
+          "name": "main",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "location": {
+              "constant_value": "eastus"
+            },
+            "name": {
+              "constant_value": "rg-shop"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_virtual_network.main",
+          "mode": "managed",
+          "type": "azurerm_virtual_network",
+          "name": "main",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "address_space": {
+              "constant_value": [
+                "10.30.0.0/16"
+              ]
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "name": {
+              "constant_value": "vnet-shop"
+            },
+            "resource_group_name": {
+              "references": [
+                "azurerm_resource_group.main.name",
+                "azurerm_resource_group.main"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_subnet.app",
+          "mode": "managed",
+          "type": "azurerm_subnet",
+          "name": "app",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "address_prefixes": {
+              "constant_value": [
+                "10.30.1.0/24"
+              ]
+            },
+            "name": {
+              "constant_value": "snet-app"
+            },
+            "resource_group_name": {
+              "references": [
+                "azurerm_resource_group.main.name",
+                "azurerm_resource_group.main"
+              ]
+            },
+            "virtual_network_name": {
+              "references": [
+                "azurerm_virtual_network.main.name",
+                "azurerm_virtual_network.main"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_network_security_group.app",
+          "mode": "managed",
+          "type": "azurerm_network_security_group",
+          "name": "app",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "location": {
+              "constant_value": "eastus"
+            },
+            "name": {
+              "constant_value": "nsg-app"
+            },
+            "resource_group_name": {
+              "references": [
+                "azurerm_resource_group.main.name",
+                "azurerm_resource_group.main"
+              ]
+            },
+            "security_rule": [
+              {
+                "access": {
+                  "constant_value": "Allow"
+                },
+                "destination_address_prefix": {
+                  "constant_value": "*"
+                },
+                "destination_port_range": {
+                  "constant_value": "22"
+                },
+                "direction": {
+                  "constant_value": "Inbound"
+                },
+                "name": {
+                  "constant_value": "ssh"
+                },
+                "priority": {
+                  "constant_value": 100
+                },
+                "protocol": {
+                  "constant_value": "Tcp"
+                },
+                "source_address_prefix": {
+                  "constant_value": "*"
+                },
+                "source_port_range": {
+                  "constant_value": "*"
+                }
+              },
+              {
+                "access": {
+                  "constant_value": "Allow"
+                },
+                "destination_address_prefix": {
+                  "constant_value": "*"
+                },
+                "destination_port_range": {
+                  "constant_value": "443"
+                },
+                "direction": {
+                  "constant_value": "Inbound"
+                },
+                "name": {
+                  "constant_value": "https"
+                },
+                "priority": {
+                  "constant_value": 110
+                },
+                "protocol": {
+                  "constant_value": "Tcp"
+                },
+                "source_address_prefix": {
+                  "constant_value": "Internet"
+                },
+                "source_port_range": {
+                  "constant_value": "*"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_network_security_rule.rdp",
+          "mode": "managed",
+          "type": "azurerm_network_security_rule",
+          "name": "rdp",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "access": {
+              "constant_value": "Allow"
+            },
+            "destination_address_prefix": {
+              "constant_value": "*"
+            },
+            "destination_port_range": {
+              "constant_value": "3389"
+            },
+            "direction": {
+              "constant_value": "Inbound"
+            },
+            "name": {
+              "constant_value": "rdp"
+            },
+            "priority": {
+              "constant_value": 120
+            },
+            "protocol": {
+              "constant_value": "Tcp"
+            },
+            "resource_group_name": {
+              "references": [
+                "azurerm_resource_group.main.name",
+                "azurerm_resource_group.main"
+              ]
+            },
+            "network_security_group_name": {
+              "references": [
+                "azurerm_network_security_group.app.name",
+                "azurerm_network_security_group.app"
+              ]
+            },
+            "source_address_prefix": {
+              "constant_value": "*"
+            },
+            "source_port_range": {
+              "constant_value": "*"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_subnet_network_security_group_association.app",
+          "mode": "managed",
+          "type": "azurerm_subnet_network_security_group_association",
+          "name": "app",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "network_security_group_id": {
+              "references": [
+                "azurerm_network_security_group.app.id",
+                "azurerm_network_security_group.app"
+              ]
+            },
+            "subnet_id": {
+              "references": [
+                "azurerm_subnet.app.id",
+                "azurerm_subnet.app"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_network_interface.app",
+          "mode": "managed",
+          "type": "azurerm_network_interface",
+          "name": "app",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "ip_configuration": [
+              {
+                "name": {
+                  "constant_value": "internal"
+                },
+                "private_ip_address_allocation": {
+                  "constant_value": "Dynamic"
+                },
+                "subnet_id": {
+                  "references": [
+                    "azurerm_subnet.app.id",
+                    "azurerm_subnet.app"
+                  ]
+                }
+              }
+            ],
+            "location": {
+              "constant_value": "eastus"
+            },
+            "name": {
+              "constant_value": "nic-app"
+            },
+            "resource_group_name": {
+              "references": [
+                "azurerm_resource_group.main.name",
+                "azurerm_resource_group.main"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "azurerm_linux_virtual_machine.app",
+          "mode": "managed",
+          "type": "azurerm_linux_virtual_machine",
+          "name": "app",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "admin_username": {
+              "constant_value": "azureuser"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "name": {
+              "constant_value": "vm-app"
+            },
+            "network_interface_ids": {
+              "references": [
+                "azurerm_network_interface.app.id",
+                "azurerm_network_interface.app"
+              ]
+            },
+            "os_disk": [
+              {
+                "caching": {
+                  "constant_value": "ReadWrite"
+                },
+                "storage_account_type": {
+                  "constant_value": "Premium_LRS"
+                }
+              }
+            ],
+            "resource_group_name": {
+              "references": [
+                "azurerm_resource_group.main.name",
+                "azurerm_resource_group.main"
+              ]
+            },
+            "size": {
+              "constant_value": "Standard_B2s"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

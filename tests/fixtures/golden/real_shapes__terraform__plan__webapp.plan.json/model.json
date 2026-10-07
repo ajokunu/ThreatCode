@@ -1,0 +1,154 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_iam_role_policy.app_data",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_iam_role_policy.app_data",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.app[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.app[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.app[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.app[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_internet_gateway.gw",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_internet_gateway.gw",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.worker",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.worker",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb.front",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb_target_group.app",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb_target_group.app",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb_target_group_attachment.app[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb_target_group_attachment.app[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb_target_group_attachment.app[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb_target_group_attachment.app[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_route_table.public",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_route_table_association.public[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public[0]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public[1]",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public[1]",
+      "stride": "tampering"
+    }
+  ]
+}

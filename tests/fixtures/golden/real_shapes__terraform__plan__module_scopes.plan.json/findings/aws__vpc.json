@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "aws_vpc.main",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "module.net.aws_vpc.main",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  }
+]

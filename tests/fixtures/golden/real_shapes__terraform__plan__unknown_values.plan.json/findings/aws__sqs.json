@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "aws_sqs_queue.orders",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "aws_sqs_queue.plain",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "aws_sqs_queue.plain",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

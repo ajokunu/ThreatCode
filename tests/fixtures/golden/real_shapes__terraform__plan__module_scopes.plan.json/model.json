@@ -1,0 +1,14 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "module.net.aws_flow_log.net",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "module.net.module.leaf.aws_s3_bucket_server_side_encryption_configuration.logs",
+      "stride": "tampering"
+    }
+  ]
+}

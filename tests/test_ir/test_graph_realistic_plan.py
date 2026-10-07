@@ -27,10 +27,16 @@ from tests.helpers.graph_assert import (
 from tests.helpers.pending import pending
 from tests.helpers.plan_shape import plan_shape_problems
 from tests.helpers.scan import REAL_SHAPES_DIR, scan_real_shape
+from threatcode.ir.graph import InfraGraph
+from threatcode.values import is_unknown
 
 WEBAPP = "terraform/plan/webapp.plan.json"
 MODULES = "terraform/plan/modules.plan.json"
 TWO_VPCS = "terraform/plan/two_vpcs.plan.json"
+MODULE_SCOPES = "terraform/plan/module_scopes.plan.json"
+UNKNOWN_VALUES = "terraform/plan/unknown_values.plan.json"
+AZURE_NETWORK = "terraform/plan/azure_network.plan.json"
+GCP_NETWORK = "terraform/plan/gcp_network.plan.json"
 
 PLAN_FIXTURES = sorted((REAL_SHAPES_DIR / "terraform" / "plan").glob("*.plan.json"))
 
@@ -118,12 +124,21 @@ class TestNoUnrealisticPlanIsAddedSilently:
         assert unlisted_hand_shaped(plans, frozenset({"new/hand.plan.json"})) == []
 
 
-def test_the_corpus_has_the_three_plan_fixtures() -> None:
+def test_the_corpus_has_the_plan_fixtures() -> None:
     assert [p.name for p in PLAN_FIXTURES] == [
+        "azure_network.plan.json",
+        "gcp_network.plan.json",
+        "module_scopes.plan.json",
         "modules.plan.json",
         "two_vpcs.plan.json",
+        "unknown_values.plan.json",
         "webapp.plan.json",
     ]
+
+
+def edge_set(graph: InfraGraph) -> set[tuple[str, str, str]]:
+    """Every edge as (source, target, type), for asserting a whole graph at once."""
+    return {(e.source, e.target, e.edge_type.value) for e in graph.edges}
 
 
 # ---------------------------------------------------------------------------------------
@@ -249,79 +264,63 @@ class TestWebappExposure:
 
 
 class TestWebappCountedInstancesInheritConfiguration:
-    @pending("WP-2-1", "instances inherit the references of their resource (base address lookup)")
     def test_every_app_instance_is_attached_to_the_app_security_group(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         for node in ("aws_instance.app[0]", "aws_instance.app[1]"):
             assert_edge(graph, node, "aws_security_group.app", type="dependency")
 
-    @pending("WP-2-1", "a reference to a counted resource without an index fans out to instances")
     def test_instances_are_contained_in_the_private_subnets(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_instance.app[0]", "aws_subnet.private[0]", type="containment")
         assert_edge(graph, "aws_instance.app[0]", "aws_subnet.private[1]", type="containment")
 
-    @pending("WP-2-1", "iam_instance_profile references become an iam_binding edge")
     def test_instances_reference_their_instance_profile(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(
             graph, "aws_instance.app[1]", "aws_iam_instance_profile.app", type="iam_binding"
         )
 
-    @pending("WP-2-1", "subnets inherit the vpc_id reference of their counted resource")
     def test_counted_subnets_are_contained_in_the_vpc(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         for node in ("aws_subnet.public[0]", "aws_subnet.private[1]"):
             assert_edge(graph, node, "aws_vpc.main", type="containment")
 
-    @pending("WP-2-1", "target group attachments inherit the target_id reference")
     def test_target_group_attachments_point_at_the_instances(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_lb_target_group_attachment.app[0]", "aws_instance.app[0]")
 
 
 class TestWebappNestedBlockReferences:
-    @pending("WP-2-1", "ingress[].security_groups references become dependency edges")
     def test_the_app_group_depends_on_the_load_balancer_group(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_security_group.app", "aws_security_group.alb", type="dependency")
 
-    @pending("WP-2-1", "ingress[].security_groups references become dependency edges")
     def test_the_database_group_depends_on_the_app_group(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_security_group.db", "aws_security_group.app", type="dependency")
 
-    @pending("WP-2-1", "vpc_config[].subnet_ids references become containment edges")
     def test_the_lambda_is_contained_in_the_private_subnets(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(
             graph, "aws_lambda_function.worker", "aws_subnet.private[0]", type="containment"
         )
 
-    @pending("WP-2-1", "vpc_config[].security_group_ids references become dependency edges")
     def test_the_lambda_uses_the_app_security_group(self) -> None:
         graph = scan_real_shape(WEBAPP).graph
         assert_edge(graph, "aws_lambda_function.worker", "aws_security_group.app")
 
 
 class TestWebappUnknownValues:
-    @pending("WP-2-1", "after_unknown attributes become values.Unknown, not absent keys")
     def test_an_unknown_id_is_unknown_not_missing(self) -> None:
-        from threatcode.values import is_unknown
-
         node = scan_real_shape(WEBAPP).graph.nodes["aws_subnet.private[0]"]
         assert "vpc_id" in node.properties
         assert is_unknown(node.properties["vpc_id"])
 
-    @pending("WP-2-1", "data sources become mode data nodes that rules never evaluate")
     def test_the_data_source_is_graph_context_only(self) -> None:
         node = scan_real_shape(WEBAPP).graph.nodes["data.aws_iam_policy_document.assume"]
         assert getattr(node, "mode", "managed") == "data"
 
-    @pending("WP-2-1", "after_unknown attributes become values.Unknown, not absent keys")
     def test_the_unknown_endpoint_of_the_database_is_unknown(self) -> None:
-        from threatcode.values import is_unknown
-
         node = scan_real_shape(WEBAPP).graph.nodes["aws_db_instance.orders"]
         assert is_unknown(node.properties.get("endpoint"))
 
@@ -368,11 +367,9 @@ class TestTwoVpcs:
             assert_no_edge(graph, f"aws_{kind}.{a}", f"aws_vpc.{b}")
         assert_no_edge(graph, f"aws_instance.{a}", f"aws_subnet.{b}")
 
-    @pending("WP-2-1", "vpc_id references become containment edges to the right VPC")
     def test_the_dev_subnet_is_contained_in_the_dev_vpc(self) -> None:
         assert_edge(scan_real_shape(TWO_VPCS).graph, "aws_subnet.dev", "aws_vpc.dev", "containment")
 
-    @pending("WP-2-1", "subnet_id references become containment edges to the right subnet")
     def test_the_dev_instance_is_contained_in_the_dev_subnet(self) -> None:
         graph = scan_real_shape(TWO_VPCS).graph
         assert_edge(graph, "aws_instance.dev", "aws_subnet.dev", type="containment")
@@ -422,7 +419,6 @@ class TestModules:
         assert_edge(graph, "aws_security_group.internal", "aws_vpc.main", type="dependency")
         assert_edge(graph, "aws_instance.worker", "aws_security_group.internal", "dependency")
 
-    @pending("WP-2-1", "module resources resolve references inside their own module")
     def test_the_nacl_is_attached_to_the_subnet_of_its_own_module_instance(self) -> None:
         graph = scan_real_shape(MODULES).graph
         assert_edge(
@@ -431,12 +427,10 @@ class TestModules:
             "module.subnets[1].aws_subnet.this",
         )
 
-    @pending("WP-2-1", "module inputs resolve through the parent's module_calls expressions")
     def test_a_module_subnet_is_contained_in_the_vpc_passed_as_input(self) -> None:
         graph = scan_real_shape(MODULES).graph
         assert_edge(graph, "module.subnets[0].aws_subnet.this", "aws_vpc.main", type="containment")
 
-    @pending("WP-2-1", "module outputs resolve to the child resource that produces them")
     def test_the_worker_is_contained_in_the_subnet_its_module_output_names(self) -> None:
         graph = scan_real_shape(MODULES).graph
         assert_edge(
@@ -444,14 +438,267 @@ class TestModules:
         )
         assert_no_edge(graph, "aws_instance.worker", "module.subnets[1].aws_subnet.this")
 
-    @pending("WP-2-1", "module outputs resolve to the child resource that produces them")
     def test_the_flow_log_depends_on_the_logging_bucket(self) -> None:
         graph = scan_real_shape(MODULES).graph
         assert_edge(graph, "aws_flow_log.main", "module.logging.aws_s3_bucket.this")
 
-    @pending("WP-2-1", "for_each instances inherit the references of their resource")
     def test_for_each_rules_are_attached_to_the_security_group(self) -> None:
         graph = scan_real_shape(MODULES).graph
         assert_edge(
             graph, 'aws_security_group_rule.ingress["https"]', "aws_security_group.internal"
         )
+
+
+class TestModulesExactEdges:
+    def test_the_whole_edge_set(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        subnet0, subnet1 = "module.subnets[0].aws_subnet.this", "module.subnets[1].aws_subnet.this"
+        acl0, acl1 = (
+            "module.subnets[0].aws_network_acl.this",
+            "module.subnets[1].aws_network_acl.this",
+        )
+        rules = (
+            'aws_security_group_rule.ingress["https"]',
+            'aws_security_group_rule.ingress["ssh"]',
+        )
+        expected = {
+            ("aws_flow_log.main", "aws_vpc.main", "containment"),
+            ("aws_flow_log.main", "aws_vpc.main", "dependency"),
+            ("aws_flow_log.main", "module.logging.aws_s3_bucket.this", "dependency"),
+            ("aws_instance.worker", "aws_security_group.internal", "dependency"),
+            ("aws_instance.worker", subnet0, "containment"),
+            ("aws_instance.worker", subnet0, "dependency"),
+            ("aws_security_group.internal", "aws_vpc.main", "containment"),
+            ("aws_security_group.internal", "aws_vpc.main", "dependency"),
+            (acl0, "aws_vpc.main", "containment"),
+            (acl0, "aws_vpc.main", "dependency"),
+            (acl0, subnet0, "containment"),
+            (acl0, subnet0, "dependency"),
+            (acl1, "aws_vpc.main", "containment"),
+            (acl1, "aws_vpc.main", "dependency"),
+            (acl1, subnet1, "containment"),
+            (acl1, subnet1, "dependency"),
+            (subnet0, "aws_vpc.main", "containment"),
+            (subnet0, "aws_vpc.main", "dependency"),
+            (subnet1, "aws_vpc.main", "containment"),
+            (subnet1, "aws_vpc.main", "dependency"),
+        }
+        for rule in rules:
+            expected |= {
+                (rule, "aws_security_group.internal", "dependency"),
+                (rule, "aws_vpc.main", "dependency"),
+            }
+        assert edge_set(graph) == expected
+
+
+class TestTwoVpcsExactEdges:
+    def test_the_whole_edge_set(self) -> None:
+        graph = scan_real_shape(TWO_VPCS).graph
+        expected: set[tuple[str, str, str]] = set()
+        for key in ("prod", "dev"):
+            vpc, subnet = f"aws_vpc.{key}", f"aws_subnet.{key}"
+            expected |= {
+                (f"aws_instance.{key}", f"aws_security_group.{key}", "dependency"),
+                (f"aws_instance.{key}", subnet, "containment"),
+                (f"aws_instance.{key}", subnet, "dependency"),
+                (f"aws_security_group.{key}", vpc, "containment"),
+                (f"aws_security_group.{key}", vpc, "dependency"),
+                (subnet, vpc, "containment"),
+                (subnet, vpc, "dependency"),
+            }
+        assert edge_set(graph) == expected
+
+
+class TestModuleScopes:
+    """Same-named resources in the root and in a module never bind to each other."""
+
+    def test_the_module_subnet_binds_to_the_module_vpc_and_only_to_it(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        assert_edge(graph, "module.net.aws_subnet.a", "module.net.aws_vpc.main", "containment")
+        assert_no_edge(graph, "module.net.aws_subnet.a", "aws_vpc.main")
+
+    def test_the_root_group_binds_to_the_root_vpc_and_only_to_it(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        assert_edge(graph, "aws_security_group.shared", "aws_vpc.main", "containment")
+        assert_no_edge(graph, "aws_security_group.shared", "module.net.aws_vpc.main")
+
+    def test_a_variable_binds_to_the_parent_group_and_not_the_namesake_in_the_module(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        bastion = "module.net.aws_instance.bastion"
+        assert_edge(graph, bastion, "aws_security_group.shared", type="dependency")
+        assert_no_edge(graph, bastion, "module.net.aws_security_group.shared")
+
+    def test_a_module_local_reference_binds_to_the_module_namesake(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        inner = "module.net.aws_instance.inner"
+        assert_edge(graph, inner, "module.net.aws_security_group.shared", type="dependency")
+        assert_no_edge(graph, inner, "aws_security_group.shared")
+
+    def test_the_root_instance_is_contained_in_the_subnet_the_module_output_names(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        assert_edge(graph, "aws_instance.edge", "module.net.aws_subnet.a", type="containment")
+        assert_edge(graph, "aws_instance.edge", "aws_security_group.shared", type="dependency")
+
+    def test_a_pinned_module_key_reaches_one_tenant_subnet(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        assert_edge(
+            graph, "aws_instance.pinned", 'module.tenant["a"].aws_subnet.this', "containment"
+        )
+        assert_no_edge(graph, "aws_instance.pinned", 'module.tenant["b"].aws_subnet.this')
+
+    def test_every_tenant_subnet_is_contained_in_the_root_vpc(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        for key in ("a", "b"):
+            assert_edge(
+                graph, f'module.tenant["{key}"].aws_subnet.this', "aws_vpc.main", "containment"
+            )
+
+    def test_a_key_reaches_the_root_key_through_two_modules(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        sse = "module.net.module.leaf.aws_s3_bucket_server_side_encryption_configuration.logs"
+        assert_edge(graph, sse, "aws_kms_key.main", type="dependency")
+        assert_edge(graph, sse, "module.net.module.leaf.aws_s3_bucket.logs", type="dependency")
+
+    def test_no_node_of_the_module_binds_to_a_root_resource_it_does_not_reference(self) -> None:
+        graph = scan_real_shape(MODULE_SCOPES).graph
+        allowed_root = {"aws_security_group.shared", "aws_kms_key.main", "aws_vpc.main"}
+        for edge in graph.edges:
+            if edge.source.startswith("module.net.") and not edge.target.startswith("module."):
+                assert edge.target in allowed_root, edge
+
+
+class TestUnknownValuesGraph:
+    def test_the_whole_edge_set(self) -> None:
+        graph = scan_real_shape(UNKNOWN_VALUES).graph
+        assert edge_set(graph) == {
+            ("aws_cloudtrail.encrypted", "aws_kms_key.trail", "dependency"),
+            ("aws_cloudtrail.encrypted", "aws_s3_bucket.trail_logs", "dependency"),
+            ("aws_cloudtrail.plain", "aws_s3_bucket.trail_logs", "dependency"),
+            ("aws_sqs_queue.orders", "aws_kms_key.trail", "dependency"),
+            ("module.audit.aws_cloudtrail.bare", "aws_s3_bucket.trail_logs", "dependency"),
+            ("module.audit.aws_cloudtrail.this", "aws_kms_key.trail", "dependency"),
+            ("module.audit.aws_cloudtrail.this", "aws_s3_bucket.trail_logs", "dependency"),
+        }
+
+    def test_the_module_trail_depends_on_the_key_the_root_passes_in(self) -> None:
+        graph = scan_real_shape(UNKNOWN_VALUES).graph
+        assert_edge(graph, "module.audit.aws_cloudtrail.this", "aws_kms_key.trail")
+        assert_no_edge(graph, "module.audit.aws_cloudtrail.bare", "aws_kms_key.trail")
+
+
+class TestUnknownIsNeverALiteral:
+    """A value that is not known yet must not be mistaken for an id or a public address."""
+
+    def test_an_unknown_vpc_id_with_no_reference_does_not_attach_to_the_first_vpc(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        # aws_lb.front has vpc_id in after_unknown but no vpc_id expression
+        assert is_unknown(graph.nodes["aws_lb.front"].properties["vpc_id"])
+        assert_no_edge(graph, "aws_lb.front", "aws_vpc.main")
+
+    def test_an_unknown_public_ip_does_not_move_an_instance_into_the_dmz(self) -> None:
+        node = scan_real_shape(WEBAPP).graph.nodes["aws_instance.app[0]"]
+        assert is_unknown(node.properties["associate_public_ip_address"])
+        assert node.trust_zone.value == "private"
+
+
+class TestWebappDataSources:
+    @pending("WP-2-7", "scanned_resources counts managed resources only, not mode data nodes")
+    def test_a_data_source_is_not_counted_as_a_scanned_resource(self) -> None:
+        result = scan_real_shape(WEBAPP)
+        data_nodes = [n for n in result.graph.nodes.values() if n.mode == "data"]
+        assert len(data_nodes) == 1
+        assert result.report.scanned_resources == result.graph.node_count - len(data_nodes)
+
+    def test_rules_never_report_a_data_source(self) -> None:
+        result = scan_real_shape(WEBAPP)
+        assert result.threats_for("data.aws_iam_policy_document.assume") == []
+
+    def test_the_data_source_stays_a_node_that_the_role_depends_on(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_iam_role.app", "data.aws_iam_policy_document.assume", "dependency")
+
+    def test_the_parser_reports_the_data_source_and_the_unknowns(self) -> None:
+        codes = {d.code for d in scan_real_shape(WEBAPP).parsed[0].diagnostics}
+        assert {"plan.data_source", "plan.unknown_values"} <= codes
+        assert "parse.zero_resources" not in codes
+
+
+class TestCountedFanOut:
+    def test_the_attachment_of_each_instance_reaches_every_app_instance(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        for attachment in (
+            "aws_lb_target_group_attachment.app[0]",
+            "aws_lb_target_group_attachment.app[1]",
+        ):
+            for instance in ("aws_instance.app[0]", "aws_instance.app[1]"):
+                assert_edge(graph, attachment, instance)
+
+    def test_no_edge_runs_from_a_resource_to_its_own_sibling_instance_of_itself(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        for edge in graph.edges:
+            assert edge.source != edge.target
+
+
+class TestOtherProviders:
+    """References resolve the same way for the azurerm and google providers."""
+
+    def test_the_azure_edge_set(self) -> None:
+        graph = scan_real_shape(AZURE_NETWORK).graph
+        group = "azurerm_resource_group.main"
+        assert edge_set(graph) == {
+            ("azurerm_virtual_network.main", group, "dependency"),
+            ("azurerm_subnet.app", group, "dependency"),
+            ("azurerm_subnet.app", "azurerm_virtual_network.main", "dependency"),
+            ("azurerm_network_security_group.app", group, "dependency"),
+            ("azurerm_network_security_rule.rdp", group, "dependency"),
+            (
+                "azurerm_network_security_rule.rdp",
+                "azurerm_network_security_group.app",
+                "dependency",
+            ),
+            ("azurerm_network_interface.app", group, "dependency"),
+            ("azurerm_network_interface.app", "azurerm_subnet.app", "dependency"),
+            ("azurerm_linux_virtual_machine.app", group, "dependency"),
+            ("azurerm_linux_virtual_machine.app", "azurerm_network_interface.app", "dependency"),
+            (
+                "azurerm_subnet_network_security_group_association.app",
+                "azurerm_network_security_group.app",
+                "dependency",
+            ),
+            (
+                "azurerm_subnet_network_security_group_association.app",
+                "azurerm_subnet.app",
+                "dependency",
+            ),
+            (
+                "azurerm_subnet_network_security_group_association.app",
+                "azurerm_subnet.app",
+                "containment",
+            ),
+        }
+
+    def test_a_nested_block_reference_reaches_the_subnet(self) -> None:
+        graph = scan_real_shape(AZURE_NETWORK).graph
+        assert_edge(graph, "azurerm_network_interface.app", "azurerm_subnet.app")
+        ip_configuration = graph.nodes["azurerm_network_interface.app"].properties[
+            "ip_configuration"
+        ]
+        assert is_unknown(ip_configuration[0]["subnet_id"])
+
+    def test_the_gcp_edge_set(self) -> None:
+        graph = scan_real_shape(GCP_NETWORK).graph
+        network, subnet = "google_compute_network.vpc", "google_compute_subnetwork.app"
+        assert edge_set(graph) == {
+            (subnet, network, "dependency"),
+            ("google_compute_firewall.ssh", network, "dependency"),
+            ("google_compute_firewall.internal", network, "dependency"),
+            ("google_compute_firewall.internal", subnet, "dependency"),
+            ("google_compute_instance.vm", network, "dependency"),
+            ("google_compute_instance.vm", subnet, "dependency"),
+        }
+
+    def test_the_gcp_network_interface_block_keeps_its_unknown_network(self) -> None:
+        graph = scan_real_shape(GCP_NETWORK).graph
+        (nic,) = graph.nodes["google_compute_instance.vm"].properties["network_interface"]
+        assert is_unknown(nic["network"])
+        assert nic["network"].reference == "google_compute_network.vpc.id"
