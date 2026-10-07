@@ -150,8 +150,14 @@ class ScanResult:
         return self.analysis.graph
 
     def to_dict(self) -> dict[str, Any]:
-        """The report as a dict, exactly what ``--format json`` prints."""
-        return self.report.to_dict()
+        """The report as a dict, exactly what ``--format json`` prints.
+
+        When scanner results were ingested the document also lists them under ``ingest``.
+        """
+        data = self.report.to_dict()
+        if self.ingest_sources:
+            data["ingest"] = [dict(source) for source in self.ingest_sources]
+        return data
 
 
 @dataclass(frozen=True)
@@ -692,7 +698,7 @@ def _finish(
 
     _apply_display_filter(report, settings.min_severity)
     report.coverage = coverage
-    analysis = AnalysisResult(graph=graph, report=report)
+    analysis = AnalysisResult(graph=graph, report=report, root=root, ingest_sources=sources)
     return ScanResult(
         analysis=analysis,
         exit_code=exit_code,

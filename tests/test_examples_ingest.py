@@ -135,11 +135,6 @@ class TestIngestion:
                 return
         pytest.fail("the expected path is not in the report")
 
-    @pending(
-        "WP-4-3",
-        "the JSON report writes ScanResult.ingest_sources (tool, file, attached and unattached "
-        "counts), which the ingestion already produces",
-    )
     def test_the_report_lists_the_ingested_source(self) -> None:
         run = scan_json([WEBAPP], ingest=[TRIVY])
         sources = find_key(run.json(), "sources") or find_key(run.json(), "ingest") or []

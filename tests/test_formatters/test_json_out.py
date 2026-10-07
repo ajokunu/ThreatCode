@@ -61,9 +61,17 @@ class TestAnalysisDocument:
         )
         report.add(make_threat(1, Severity.HIGH))
         report.add(make_threat(2, Severity.LOW))
-        analysis = analysis_of(report, ingest_sources=[{"tool": "trivy"}])
+        analysis = analysis_of(report)
         assert json.loads(format_json(analysis)) == report.to_dict()
         assert json.loads(format_json(analysis)) == json.loads(format_json(report))
+
+    def test_the_default_document_lists_ingested_sources_beside_the_report(self) -> None:
+        report = ThreatReport(scanned_resources=1, timestamp="2026-01-01T00:00:00+00:00")
+        analysis = analysis_of(report, ingest_sources=[{"tool": "trivy"}])
+        data = json.loads(format_json(analysis))
+        assert data.pop("ingest") == [{"tool": "trivy"}]
+        assert data == report.to_dict()
+        assert "graph" not in data
 
     def test_the_report_blocks_are_present(self) -> None:
         report = ThreatReport(scanned_resources=3, timestamp="2026-01-01T00:00:00+00:00")

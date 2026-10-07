@@ -23,9 +23,11 @@ def format_json(
     effective severity, coverage, threats most severe first, attack paths and the LLM status.
     That is exactly what ``ScanResult.to_dict()`` and ``threatcode.scan()`` return, so the CLI and
     the Python API print the same report.
+    When scanner results were ingested the document also lists them under ``ingest``, so a scan
+    without ingestion is still exactly the report.
     With ``include_graph`` and an analysis the document also carries the graph the engine saw,
-    as nodes and edges without resource properties, the summary by base severity
-    (``summary_base``) and the ingested scanner sources (``ingest``).
+    as nodes and edges without resource properties, and the summary by base severity
+    (``summary_base``).
     Threats are in a fixed order, so two runs over the same input write the same text.
     """
     from threatcode.models.analysis import AnalysisResult
@@ -34,6 +36,8 @@ def format_json(
         data = source.to_dict(include_graph=True)
     elif isinstance(source, AnalysisResult):
         data = source.report.to_dict()
+        if source.ingest_sources:
+            data["ingest"] = [dict(entry) for entry in source.ingest_sources]
     else:
         data = source.to_dict()
     data["threats"] = sorted(data["threats"], key=_threat_key)

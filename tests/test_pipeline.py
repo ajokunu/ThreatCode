@@ -630,6 +630,17 @@ class TestSeams:
         assert any(t.rule_id == "trivy:CVE-2024-1" for t in result.report.threats)
         assert [g["code"] for g in result.coverage.gaps] == ["ingest.unattached"]
         assert result.ingest_sources == [{"tool": "trivy", "attached": 0}]
+        assert result.analysis.ingest_sources == result.ingest_sources
+        assert result.to_dict()["ingest"] == [{"tool": "trivy", "attached": 0}]
+        assert result.analysis.root == result.root
+
+    def test_the_analysis_knows_the_scan_root_and_a_scan_without_ingest_has_no_ingest_key(
+        self, tmp_path: Path
+    ) -> None:
+        result = scan(write(tmp_path, "main.tf", bucket("one")))
+        assert result.analysis.root == tmp_path
+        assert result.analysis.ingest_sources == []
+        assert "ingest" not in result.to_dict()
 
     def test_ingest_is_not_touched_without_ingest_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
