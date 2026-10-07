@@ -1,3 +1,0 @@
-docker:
-  package: WP-2-5
-  reason: a pipe into sha256sum is not a pipe into a shell

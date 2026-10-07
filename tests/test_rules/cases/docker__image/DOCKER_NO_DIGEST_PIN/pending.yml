@@ -1,3 +1,0 @@
-docker:
-  package: WP-2-5
-  reason: has_digest_pin is emitted for the final stage, so the rule can read it

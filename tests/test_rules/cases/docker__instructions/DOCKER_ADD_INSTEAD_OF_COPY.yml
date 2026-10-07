@@ -1,0 +1,8 @@
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      ADD ["config/app.conf", "/etc/app/app.conf"]
+    good: |
+      FROM debian:12-slim
+      ADD ["rootfs.tar.xz", "/"]

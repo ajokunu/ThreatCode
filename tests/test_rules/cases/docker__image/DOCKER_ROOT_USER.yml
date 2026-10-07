@@ -1,0 +1,34 @@
+# Every spelling of root counts, a user that merely contains the text does not, and a user
+# taken from an unresolved variable is unknown rather than root.
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      USER 0:0
+    good: |
+      FROM debian:12-slim
+      USER 10001:0
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      USER ROOT
+    good: |
+      FROM debian:12-slim
+      USER rootless
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      USER root:root
+    good: |
+      FROM debian:12-slim
+      ARG APP_USER
+      USER ${APP_USER}
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      USER app
+      USER 0
+    good: |
+      FROM debian:12-slim
+      USER root
+      USER app

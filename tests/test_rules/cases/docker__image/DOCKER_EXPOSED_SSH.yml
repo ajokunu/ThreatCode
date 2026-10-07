@@ -1,0 +1,9 @@
+# A port range that includes 22 exposes SSH; a range that does not is silent.
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      EXPOSE 20-25/tcp
+    good: |
+      FROM debian:12-slim
+      EXPOSE 8000-8010 ${APP_PORT}

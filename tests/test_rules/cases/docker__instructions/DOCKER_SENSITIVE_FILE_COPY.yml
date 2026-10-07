@@ -1,0 +1,15 @@
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      COPY ["server.key", "/etc/ssl/"]
+    good: |
+      FROM debian:12-slim
+      COPY ["server.crt", "/etc/ssl/"]
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      COPY --chown=app:app deploy/.env /app/.env
+    good: |
+      FROM debian:12-slim
+      COPY --chown=app:app deploy/app.env.example /app/app.env
