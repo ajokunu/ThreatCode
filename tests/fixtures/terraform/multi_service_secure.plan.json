@@ -207,9 +207,14 @@
             "ingress": [
               {
                 "cidr_blocks": ["10.0.0.0/16"],
+                "description": "",
                 "from_port": 443,
-                "to_port": 443,
-                "protocol": "tcp"
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 443
               }
             ]
           }
@@ -225,10 +230,15 @@
             "vpc_id": "vpc-secure",
             "ingress": [
               {
-                "security_groups": ["sg-app"],
+                "cidr_blocks": [],
+                "description": "",
                 "from_port": 5432,
-                "to_port": 5432,
-                "protocol": "tcp"
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": ["sg-app"],
+                "self": false,
+                "to_port": 5432
               }
             ]
           }
