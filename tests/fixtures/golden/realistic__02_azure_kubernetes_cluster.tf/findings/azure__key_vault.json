@@ -14,5 +14,14 @@
     "techniques": [
       "T1555.006"
     ]
+  },
+  {
+    "resource_address": "azurerm_key_vault.platform",
+    "rule_id": "KEYVAULT_PUBLIC_ACCESS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1555.006"
+    ]
   }
 ]

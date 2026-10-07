@@ -16,5 +16,14 @@
     "techniques": [
       "T1485"
     ]
+  },
+  {
+    "resource_address": "azurerm_storage_account.data_lake",
+    "rule_id": "AZURE_STORAGE_PUBLIC_ACCESS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
   }
 ]

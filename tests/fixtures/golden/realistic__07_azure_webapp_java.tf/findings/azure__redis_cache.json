@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "azurerm_redis_cache.main",
+    "rule_id": "REDIS_PUBLIC_NETWORK_ACCESS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]
