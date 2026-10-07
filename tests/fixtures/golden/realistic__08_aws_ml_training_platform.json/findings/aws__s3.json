@@ -27,51 +27,6 @@
     ]
   },
   {
-    "resource_address": "aws_s3_bucket_acl.notebook_outputs",
-    "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1530"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_logging.training_data",
-    "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1530"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_public_access_block.training_data",
-    "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1530"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_server_side_encryption_configuration.training_data",
-    "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1530"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_versioning.training_data",
-    "rule_id": "S3_NO_ENCRYPTION",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1530"
-    ]
-  },
-  {
     "resource_address": "aws_s3_bucket.model_artifacts",
     "rule_id": "S3_NO_LOGGING",
     "severity": "medium",
@@ -99,51 +54,6 @@
     ]
   },
   {
-    "resource_address": "aws_s3_bucket_acl.notebook_outputs",
-    "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_logging.training_data",
-    "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_public_access_block.training_data",
-    "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_server_side_encryption_configuration.training_data",
-    "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_versioning.training_data",
-    "rule_id": "S3_NO_LOGGING",
-    "severity": "medium",
-    "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
-  },
-  {
     "resource_address": "aws_s3_bucket.model_artifacts",
     "rule_id": "S3_NO_VERSIONING",
     "severity": "medium",
@@ -163,51 +73,6 @@
   },
   {
     "resource_address": "aws_s3_bucket.training_data",
-    "rule_id": "S3_NO_VERSIONING",
-    "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1485"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_acl.notebook_outputs",
-    "rule_id": "S3_NO_VERSIONING",
-    "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1485"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_logging.training_data",
-    "rule_id": "S3_NO_VERSIONING",
-    "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1485"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_public_access_block.training_data",
-    "rule_id": "S3_NO_VERSIONING",
-    "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1485"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_server_side_encryption_configuration.training_data",
-    "rule_id": "S3_NO_VERSIONING",
-    "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1485"
-    ]
-  },
-  {
-    "resource_address": "aws_s3_bucket_versioning.training_data",
     "rule_id": "S3_NO_VERSIONING",
     "severity": "medium",
     "stride": "tampering",
