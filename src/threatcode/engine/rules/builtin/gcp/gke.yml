@@ -1,51 +1,197 @@
+# Rules on GKE clusters (google_container_cluster) and node pools (google_container_node_pool).
+#
+# Provider defaults are stated as negations: nodes have public addresses and network policy is
+# off unless the configuration turns them on, and Shielded Nodes are on unless it turns them off.
+# A rule therefore judges an omitted block by what the provider does when it is omitted.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: GKE_NO_PRIVATE_CLUSTER
-    title: GKE cluster is not private
+    title: GKE cluster nodes have public IP addresses
     description: >
-      The GKE cluster does not use private nodes.
+      The cluster does not set enable_private_nodes in private_cluster_config, so its nodes get
+      external addresses.
+      Anything running on a node is then reachable from the internet wherever a firewall rule
+      allows it.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: gke-public-nodes
     resource_type: google_container_cluster
     condition:
-      private_cluster_config:
-        not_exists: true
+      private_cluster_config.enable_private_nodes:
+        is_true: false
     mitigation: >
-      Enable private cluster configuration.
+      Set enable_private_nodes to true in private_cluster_config and use Cloud NAT for outbound
+      traffic.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: GKE_LEGACY_ABAC
     title: GKE cluster with legacy ABAC enabled
     description: >
-      Legacy ABAC authorization is enabled.
+      Legacy attribute-based access control is enabled, which grants every authenticated
+      Kubernetes user broad permissions that Kubernetes RBAC does not control.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: definitive
+    root_cause: gke-legacy-abac
     resource_type: google_container_cluster
     condition:
       enable_legacy_abac:
         equals: true
     mitigation: >
-      Disable legacy ABAC and use RBAC.
+      Set enable_legacy_abac to false and grant access with RBAC.
     metadata:
       mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0004"]
+        techniques: ["T1078.004"]
 
   - id: GKE_NO_NETWORK_POLICY
-    title: GKE cluster without network policy
+    title: GKE cluster without network policy enforcement
     description: >
-      Network policy enforcement is not enabled.
+      The cluster neither enables network_policy nor uses Dataplane V2 (ADVANCED_DATAPATH), so
+      Kubernetes NetworkPolicy objects are not enforced and every pod can reach every other pod.
+      A compromised pod can then scan and attack the rest of the cluster.
     stride_category: information_disclosure
     severity: medium
+    confidence: absence
+    root_cause: gke-no-network-policy
     resource_type: google_container_cluster
     condition:
-      network_policy:
-        not_exists: true
+      all_of:
+        - network_policy.enabled:
+            is_true: false
+        - datapath_provider:
+            not_equals: "ADVANCED_DATAPATH"
     mitigation: >
-      Enable network policy.
+      Set datapath_provider to ADVANCED_DATAPATH, or enable network_policy together with the
+      network policy addon, and define NetworkPolicy objects.
     metadata:
       mitre:
-        techniques: ["T1040"]
-        tactics: ["TA0007"]
+        techniques: ["T1046"]
+
+  - id: GKE_NO_MASTER_AUTHORIZED_NETWORKS
+    title: GKE control plane reachable from any address
+    description: >
+      The cluster has a public control plane endpoint and no master_authorized_networks_config.
+      The Kubernetes API accepts connections from the whole internet, so stolen credentials or
+      an API vulnerability can be used from anywhere.
+      A cluster with a private endpoint does not match.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: absence
+    root_cause: gke-open-control-plane
+    resource_type: google_container_cluster
+    condition:
+      all_of:
+        - master_authorized_networks_config:
+            not_exists: true
+        - private_cluster_config.enable_private_endpoint:
+            is_true: false
+    mitigation: >
+      Add master_authorized_networks_config listing the ranges that administer the cluster, or
+      set enable_private_endpoint to true.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: GKE_MASTER_WORLD_ACCESS
+    title: GKE control plane authorizes the whole internet
+    description: >
+      master_authorized_networks_config lists 0.0.0.0/0 as an authorized network on a cluster with
+      a public endpoint.
+      The list exists to narrow access to the Kubernetes API, and this entry opens it to every
+      address.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: gke-open-control-plane
+    resource_type: google_container_cluster
+    condition:
+      all_of:
+        - master_authorized_networks_config.cidr_blocks:
+            any_item:
+              cidr_block:
+                is_world_cidr: true
+        - private_cluster_config.enable_private_endpoint:
+            is_true: false
+    mitigation: >
+      Replace 0.0.0.0/0 with the ranges that administer the cluster.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: GKE_NO_WORKLOAD_IDENTITY
+    title: GKE cluster without Workload Identity
+    description: >
+      The cluster has no workload_identity_config, so pods reach the node's service account
+      through the metadata server and share its permissions.
+      A compromised pod can use them to act on the project.
+      Autopilot clusters always have Workload Identity and do not match.
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: absence
+    root_cause: gke-no-workload-identity
+    resource_type: google_container_cluster
+    condition:
+      all_of:
+        - workload_identity_config.workload_pool:
+            not_exists: true
+        - enable_autopilot:
+            is_true: false
+    mitigation: >
+      Set workload_identity_config.workload_pool to PROJECT_ID.svc.id.goog and bind Kubernetes
+      service accounts to Google service accounts.
+    metadata:
+      mitre:
+        techniques: ["T1552.005"]
+
+  - id: GKE_NO_SHIELDED_NODES
+    title: GKE cluster with Shielded Nodes turned off
+    description: >
+      enable_shielded_nodes is false.
+      Shielded Nodes are on by default and protect nodes from impersonation and from boot-level
+      tampering; this cluster has opted out.
+    stride_category: tampering
+    severity: medium
+    confidence: definitive
+    root_cause: gke-no-shielded-nodes
+    resource_type: google_container_cluster
+    condition:
+      enable_shielded_nodes:
+        equals: false
+    mitigation: >
+      Remove enable_shielded_nodes or set it to true.
+    metadata:
+      mitre:
+        techniques: ["T1542.003"]
+
+  - id: GKE_NODE_DEFAULT_SA
+    title: GKE node pool using the default service account
+    description: >
+      The node pool has no node_config.service_account or names the default Compute Engine
+      service account.
+      That account holds the Editor role in projects that have not changed the default, so a
+      pod that escapes to the node can read and change most of the project.
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: definitive
+    root_cause: gcp-default-service-account
+    resource_type: google_container_node_pool
+    condition:
+      any_of:
+        - node_config.service_account:
+            not_exists: true
+        - node_config.service_account:
+            contains: "-compute@developer.gserviceaccount.com"
+    mitigation: >
+      Create a service account with only the roles nodes need (logging, monitoring and image
+      pull) and set it in node_config.service_account.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]

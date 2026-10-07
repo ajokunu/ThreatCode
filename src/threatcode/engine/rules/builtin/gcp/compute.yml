@@ -1,68 +1,99 @@
+# Rules on Compute Engine instances (google_compute_instance) and instance templates.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: GCP_VM_PUBLIC_IP
-    title: GCP instance with public IP
+    title: GCP instance with a public IP
     description: >
-      The Compute Engine instance has an external IP address.
+      A network interface has an access_config or an ipv6_access_config, which gives the instance
+      an external address.
+      The instance is then reachable from the internet wherever a firewall rule allows it.
     stride_category: information_disclosure
     severity: medium
+    confidence: definitive
+    root_cause: gcp-vm-public-address
     resource_type: google_compute_instance
     condition:
-      network_interface.0.access_config:
-        exists: true
+      any_of:
+        - network_interface:
+            any_item:
+              access_config:
+                exists: true
+        - network_interface:
+            any_item:
+              ipv6_access_config:
+                exists: true
     mitigation: >
-      Remove access_config to use internal IP only.
+      Remove access_config and ipv6_access_config to use internal addresses only, and reach the
+      instance through IAP or Cloud NAT.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: GCP_VM_DEFAULT_SA
-    title: GCP instance using default service account
+    title: GCP instance using the default service account
     description: >
-      The instance uses the default compute service account.
+      The instance has no service_account block or names the default Compute Engine service
+      account.
+      That account holds the Editor role in projects that have not changed the default, so a
+      compromised instance can read and change most of the project.
     stride_category: elevation_of_privilege
     severity: medium
+    confidence: definitive
+    root_cause: gcp-default-service-account
     resource_types: [google_compute_instance, google_compute_instance_template]
     condition:
-      service_account:
-        not_exists: true
+      any_of:
+        - service_account:
+            not_exists: true
+        - service_account.email:
+            contains: "-compute@developer.gserviceaccount.com"
     mitigation: >
-      Create and assign a custom service account.
+      Create a service account with only the roles the workload needs and assign it in a
+      service_account block.
     metadata:
       mitre:
         techniques: ["T1078.004"]
-        tactics: ["TA0001"]
 
   - id: GCP_VM_SERIAL_PORT
-    title: GCP instance with serial port enabled
+    title: GCP instance with the serial port enabled
     description: >
-      The serial port is enabled, providing console access.
+      The instance metadata sets serial-port-enable to true, which turns on interactive access to
+      the serial console for anyone with the right IAM role, bypassing network firewall rules.
     stride_category: information_disclosure
     severity: medium
+    confidence: definitive
     resource_type: google_compute_instance
     condition:
       metadata.serial-port-enable:
         equals_ci: "true"
     mitigation: >
-      Disable serial port access.
+      Remove serial-port-enable from the metadata, or set it to false.
     metadata:
       mitre:
         techniques: ["T1021"]
-        tactics: ["TA0008"]
 
   - id: GCP_VM_NO_SHIELDED
-    title: GCP instance without shielded VM
+    title: GCP instance without Shielded VM Secure Boot
     description: >
-      The instance does not have Shielded VM features enabled.
+      The instance does not turn on Secure Boot in shielded_instance_config.
+      Without it the firmware loads any bootloader, so a bootkit or a tampered kernel module can
+      persist below the operating system.
+      The virtual TPM and integrity monitoring are on by default and do not need to be set.
     stride_category: tampering
     severity: low
+    confidence: absence
+    root_cause: gcp-no-secure-boot
     resource_type: google_compute_instance
     condition:
-      shielded_instance_config:
-        not_exists: true
+      shielded_instance_config.enable_secure_boot:
+        is_true: false
     mitigation: >
-      Enable Shielded VM features.
+      Set enable_secure_boot to true in shielded_instance_config, using a Shielded VM image.
     metadata:
       mitre:
-        techniques: ["T1195.002"]
-        tactics: ["TA0001"]
+        techniques: ["T1542.003"]

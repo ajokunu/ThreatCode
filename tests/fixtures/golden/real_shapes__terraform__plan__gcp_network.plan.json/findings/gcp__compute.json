@@ -14,7 +14,7 @@
     "severity": "low",
     "stride": "tampering",
     "techniques": [
-      "T1195.002"
+      "T1542.003"
     ]
   },
   {

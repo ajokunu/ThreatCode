@@ -1,29 +1,11 @@
 [
   {
     "resource_address": "google_compute_firewall.ssh",
-    "rule_id": "GCP_FW_ALLOW_ALL",
-    "severity": "critical",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1190"
-    ]
-  },
-  {
-    "resource_address": "google_compute_firewall.ssh",
-    "rule_id": "GCP_FW_RDP_OPEN",
-    "severity": "high",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1021"
-    ]
-  },
-  {
-    "resource_address": "google_compute_firewall.ssh",
     "rule_id": "GCP_FW_SSH_OPEN",
     "severity": "high",
     "stride": "information_disclosure",
     "techniques": [
-      "T1021"
+      "T1133"
     ]
   }
 ]

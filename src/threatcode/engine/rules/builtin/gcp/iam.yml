@@ -1,35 +1,159 @@
+# Rules on Google Cloud IAM.
+#
+# A grant is one of google_*_iam_member (member, one principal) or google_*_iam_binding (members,
+# a list), so the public-principal rule reads both attributes.
+# The types are listed rather than matched by prefix: only these resources carry a role grant,
+# and the two families below have a more specific rule that reads the grant through the resource
+# it protects, so the public-principal rule leaves them out:
+#   Cloud Storage buckets   GCP_BUCKET_PUBLIC
+#   BigQuery datasets       BQ_PUBLIC_ACCESS
+#   Cloud Run services      CLOUDRUN_UNAUTHENTICATED
+#   Cloud Functions         GCFUNC_PUBLIC_INVOKER
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: GCP_IAM_ADMIN_SA
-    title: GCP service account with admin role
+    title: Primitive owner or editor role granted
     description: >
-      A service account has an admin-level IAM role.
+      An IAM member or binding on a project, folder or organization grants roles/owner or
+      roles/editor.
+      These primitive roles allow changes to almost every resource, so whoever holds them, a
+      service account or a person, can read and change most of the environment.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: google_project_iam_member
+    confidence: definitive
+    root_cause: gcp-primitive-role
+    resource_types:
+      - google_project_iam_member
+      - google_project_iam_binding
+      - google_folder_iam_member
+      - google_folder_iam_binding
+      - google_organization_iam_member
+      - google_organization_iam_binding
     condition:
       role:
         matches_any: ["roles/owner", "roles/editor"]
     mitigation: >
-      Use the principle of least privilege.
+      Grant predefined or custom roles that carry only the permissions the principal needs.
     metadata:
       mitre:
         techniques: ["T1078.004"]
-        tactics: ["TA0004"]
+
+  - id: GCP_IAM_SA_TOKEN_CREATOR
+    title: Service account token creator granted on a project, folder or organization
+    description: >
+      An IAM member or binding grants roles/iam.serviceAccountTokenCreator above a single
+      service account.
+      The holder can mint access tokens for every service account in scope and act as the most
+      privileged of them.
+    stride_category: elevation_of_privilege
+    severity: high
+    confidence: definitive
+    root_cause: gcp-impersonation-grant
+    resource_types:
+      - google_project_iam_member
+      - google_project_iam_binding
+      - google_folder_iam_member
+      - google_folder_iam_binding
+      - google_organization_iam_member
+      - google_organization_iam_binding
+    condition:
+      role:
+        equals: "roles/iam.serviceAccountTokenCreator"
+    mitigation: >
+      Grant roles/iam.serviceAccountTokenCreator on the one service account that must be
+      impersonated, with a google_service_account_iam_member, instead of on the project.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+
+  - id: GCP_IAM_PUBLIC_MEMBER
+    title: Role granted to allUsers or allAuthenticatedUsers
+    description: >
+      An IAM member or binding gives a role to allUsers (anyone on the internet) or
+      allAuthenticatedUsers (anyone with a Google account).
+      Every permission in the role is then available to anyone, without a login that identifies
+      them.
+      Buckets, datasets, Cloud Run services and Cloud Functions have their own rules.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: gcp-public-iam-principal
+    resource_types:
+      - google_project_iam_member
+      - google_project_iam_binding
+      - google_folder_iam_member
+      - google_folder_iam_binding
+      - google_organization_iam_member
+      - google_organization_iam_binding
+      - google_kms_crypto_key_iam_member
+      - google_kms_crypto_key_iam_binding
+      - google_kms_key_ring_iam_member
+      - google_kms_key_ring_iam_binding
+      - google_pubsub_topic_iam_member
+      - google_pubsub_topic_iam_binding
+      - google_pubsub_subscription_iam_member
+      - google_pubsub_subscription_iam_binding
+      - google_secret_manager_secret_iam_member
+      - google_secret_manager_secret_iam_binding
+      - google_service_account_iam_member
+      - google_service_account_iam_binding
+      - google_artifact_registry_repository_iam_member
+      - google_artifact_registry_repository_iam_binding
+      - google_bigquery_table_iam_member
+      - google_bigquery_table_iam_binding
+      - google_compute_instance_iam_member
+      - google_compute_instance_iam_binding
+      - google_compute_disk_iam_member
+      - google_compute_disk_iam_binding
+      - google_compute_image_iam_member
+      - google_compute_image_iam_binding
+      - google_compute_subnetwork_iam_member
+      - google_compute_subnetwork_iam_binding
+      - google_spanner_instance_iam_member
+      - google_spanner_instance_iam_binding
+      - google_spanner_database_iam_member
+      - google_spanner_database_iam_binding
+      - google_dataproc_cluster_iam_member
+      - google_dataproc_cluster_iam_binding
+      - google_sourcerepo_repository_iam_member
+      - google_sourcerepo_repository_iam_binding
+    condition:
+      any_of:
+        - member:
+            matches_any: ["allUsers", "allAuthenticatedUsers"]
+        - members:
+            contains: "allUsers"
+        - members:
+            contains: "allAuthenticatedUsers"
+    mitigation: >
+      Grant the role to specific users, groups or service accounts instead.
 
   - id: GCP_IAM_SA_KEY
-    title: GCP service account with user-managed key
+    title: GCP service account key created by Terraform
     description: >
-      A user-managed key exists for a service account.
-      Prefer workload identity federation.
+      A google_service_account_key without public_key_data asks Google to create the key pair, so
+      the private key is returned to Terraform and stored in the state file in plain text.
+      It is a long-lived credential that works from anywhere, and anyone who can read the state
+      holds it.
+      A key whose public half you upload (public_key_data) never exposes the private key to
+      Terraform and does not match.
     stride_category: information_disclosure
     severity: medium
+    confidence: definitive
+    root_cause: gcp-service-account-key
     resource_type: google_service_account_key
     condition:
-      service_account_id:
-        exists: true
+      public_key_data:
+        not_exists: true
     mitigation: >
-      Use workload identity federation instead of service account keys.
+      Use workload identity federation or an attached service account instead of a key.
+      If a key is unavoidable, create the key pair outside Terraform and upload the public half
+      with public_key_data.
     metadata:
       mitre:
         techniques: ["T1528"]
-        tactics: ["TA0006"]
