@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "docs": {
+      "command": "node",
+      "args": ["/home/alice/mcp-servers/mcp-shell-docs/server.js"]
+    }
+  }
+}

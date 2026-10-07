@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "reports": {
+      "command": "npx",
+      "args": ["-y", "@acme/reports-mcp@1.3.0"],
+      "env": {
+        "PASSWORD": "${REPORTS_PASSWORD}",
+        "TOKEN_URL": "https://auth.example.com/oauth/token",
+        "AUTH_TYPE": "service-account"
+      }
+    }
+  }
+}

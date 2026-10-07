@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "./notes"]
+    },
+    "tracker": {
+      "type": "http",
+      "url": "https://tracker.example.com/mcp",
+      "headers": {"Authorization": "Bearer ${TRACKER_TOKEN}"}
+    }
+  }
+}

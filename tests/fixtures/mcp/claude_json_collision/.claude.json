@@ -1,0 +1,26 @@
+{
+  "projects": {
+    "/work/a/app": {
+      "mcpServers": {
+        "github": {
+          "command": "node",
+          "args": ["server.js"],
+          "env": {"GITHUB_TOKEN": "ghp_16C7e42F292c6912E7710c838347Ae178B4a"}
+        }
+      },
+      "disabledMcpServers": ["archive"]
+    },
+    "/work/b/app": {
+      "mcpServers": {
+        "github": {
+          "command": "npx",
+          "args": ["-y", "@acme/github-mcp@1.0.0"]
+        },
+        "archive": {
+          "command": "npx",
+          "args": ["-y", "@acme/archive-mcp"]
+        }
+      }
+    }
+  }
+}
