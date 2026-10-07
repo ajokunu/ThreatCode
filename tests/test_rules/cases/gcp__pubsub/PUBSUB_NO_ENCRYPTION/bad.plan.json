@@ -1,0 +1,85 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_pubsub_topic.events",
+          "mode": "managed",
+          "type": "google_pubsub_topic",
+          "name": "events",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "events",
+            "kms_key_name": null,
+            "labels": null,
+            "project": "shop-prod",
+            "message_storage_policy": [],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_pubsub_topic.events",
+      "mode": "managed",
+      "type": "google_pubsub_topic",
+      "name": "events",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "events",
+          "kms_key_name": null,
+          "labels": null,
+          "project": "shop-prod",
+          "message_storage_policy": [],
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_pubsub_topic.events",
+          "mode": "managed",
+          "type": "google_pubsub_topic",
+          "name": "events",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "events"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

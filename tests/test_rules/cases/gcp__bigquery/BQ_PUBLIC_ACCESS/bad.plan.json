@@ -1,0 +1,151 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_bigquery_dataset.analytics",
+          "mode": "managed",
+          "type": "google_bigquery_dataset",
+          "name": "analytics",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "dataset_id": "analytics",
+            "location": "US",
+            "project": "shop-prod",
+            "default_encryption_configuration": [],
+            "access": [],
+            "labels": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "google_bigquery_dataset_iam_member.viewer",
+          "mode": "managed",
+          "type": "google_bigquery_dataset_iam_member",
+          "name": "viewer",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "role": "roles/bigquery.dataViewer",
+            "member": "allUsers",
+            "condition": []
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_bigquery_dataset.analytics",
+      "mode": "managed",
+      "type": "google_bigquery_dataset",
+      "name": "analytics",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "dataset_id": "analytics",
+          "location": "US",
+          "project": "shop-prod",
+          "default_encryption_configuration": [],
+          "access": [],
+          "labels": null,
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_bigquery_dataset_iam_member.viewer",
+      "mode": "managed",
+      "type": "google_bigquery_dataset_iam_member",
+      "name": "viewer",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "role": "roles/bigquery.dataViewer",
+          "member": "allUsers",
+          "condition": []
+        },
+        "after_unknown": {
+          "dataset_id": true,
+          "etag": true,
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_bigquery_dataset.analytics",
+          "mode": "managed",
+          "type": "google_bigquery_dataset",
+          "name": "analytics",
+          "provider_config_key": "google",
+          "expressions": {
+            "dataset_id": {
+              "constant_value": "analytics"
+            },
+            "location": {
+              "constant_value": "US"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "google_bigquery_dataset_iam_member.viewer",
+          "mode": "managed",
+          "type": "google_bigquery_dataset_iam_member",
+          "name": "viewer",
+          "provider_config_key": "google",
+          "expressions": {
+            "role": {
+              "constant_value": "roles/bigquery.dataViewer"
+            },
+            "member": {
+              "constant_value": "allUsers"
+            },
+            "dataset_id": {
+              "references": [
+                "google_bigquery_dataset.analytics.dataset_id",
+                "google_bigquery_dataset.analytics"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

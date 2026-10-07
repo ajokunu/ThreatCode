@@ -1,3 +1,0 @@
-hcl:
-  package: WP-3-5
-  reason: nested settings and ip_configuration blocks resolve through single-element lists

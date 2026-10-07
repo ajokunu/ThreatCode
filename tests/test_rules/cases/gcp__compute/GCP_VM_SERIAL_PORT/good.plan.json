@@ -1,0 +1,148 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_instance.vm",
+          "mode": "managed",
+          "type": "google_compute_instance",
+          "name": "vm",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "vm",
+            "machine_type": "e2-medium",
+            "zone": "us-central1-a",
+            "project": "shop-prod",
+            "can_ip_forward": false,
+            "tags": [
+              "ssh"
+            ],
+            "timeouts": null,
+            "boot_disk": [
+              {
+                "auto_delete": true,
+                "initialize_params": [
+                  {
+                    "image": "debian-cloud/debian-12"
+                  }
+                ]
+              }
+            ],
+            "network_interface": [
+              {
+                "alias_ip_range": [],
+                "ipv6_access_config": [],
+                "network_ip": null,
+                "queue_count": null,
+                "access_config": []
+              }
+            ],
+            "service_account": [],
+            "shielded_instance_config": [],
+            "metadata": {
+              "serial-port-enable": "FALSE"
+            }
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_compute_instance.vm",
+      "mode": "managed",
+      "type": "google_compute_instance",
+      "name": "vm",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "vm",
+          "machine_type": "e2-medium",
+          "zone": "us-central1-a",
+          "project": "shop-prod",
+          "can_ip_forward": false,
+          "tags": [
+            "ssh"
+          ],
+          "timeouts": null,
+          "boot_disk": [
+            {
+              "auto_delete": true,
+              "initialize_params": [
+                {
+                  "image": "debian-cloud/debian-12"
+                }
+              ]
+            }
+          ],
+          "network_interface": [
+            {
+              "alias_ip_range": [],
+              "ipv6_access_config": [],
+              "network_ip": null,
+              "queue_count": null,
+              "access_config": []
+            }
+          ],
+          "service_account": [],
+          "shielded_instance_config": [],
+          "metadata": {
+            "serial-port-enable": "FALSE"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_instance.vm",
+          "mode": "managed",
+          "type": "google_compute_instance",
+          "name": "vm",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "vm"
+            },
+            "machine_type": {
+              "constant_value": "e2-medium"
+            },
+            "zone": {
+              "constant_value": "us-central1-a"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            },
+            "can_ip_forward": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

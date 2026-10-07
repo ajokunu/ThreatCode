@@ -1,0 +1,139 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_container_cluster.main",
+          "mode": "managed",
+          "type": "google_container_cluster",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "main",
+            "location": "us-central1",
+            "project": "shop-prod",
+            "remove_default_node_pool": true,
+            "initial_node_count": 1,
+            "enable_legacy_abac": false,
+            "enable_shielded_nodes": true,
+            "enable_autopilot": null,
+            "datapath_provider": "ADVANCED_DATAPATH",
+            "network_policy": [],
+            "private_cluster_config": [
+              {
+                "enable_private_nodes": true,
+                "enable_private_endpoint": false,
+                "master_ipv4_cidr_block": "172.16.0.0/28"
+              }
+            ],
+            "master_authorized_networks_config": [],
+            "workload_identity_config": [
+              {
+                "workload_pool": "shop-prod.svc.id.goog"
+              }
+            ],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_container_cluster.main",
+      "mode": "managed",
+      "type": "google_container_cluster",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "main",
+          "location": "us-central1",
+          "project": "shop-prod",
+          "remove_default_node_pool": true,
+          "initial_node_count": 1,
+          "enable_legacy_abac": false,
+          "enable_shielded_nodes": true,
+          "enable_autopilot": null,
+          "datapath_provider": "ADVANCED_DATAPATH",
+          "network_policy": [],
+          "private_cluster_config": [
+            {
+              "enable_private_nodes": true,
+              "enable_private_endpoint": false,
+              "master_ipv4_cidr_block": "172.16.0.0/28"
+            }
+          ],
+          "master_authorized_networks_config": [],
+          "workload_identity_config": [
+            {
+              "workload_pool": "shop-prod.svc.id.goog"
+            }
+          ],
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_container_cluster.main",
+          "mode": "managed",
+          "type": "google_container_cluster",
+          "name": "main",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "main"
+            },
+            "location": {
+              "constant_value": "us-central1"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            },
+            "remove_default_node_pool": {
+              "constant_value": true
+            },
+            "initial_node_count": {
+              "constant_value": 1
+            },
+            "enable_legacy_abac": {
+              "constant_value": false
+            },
+            "enable_shielded_nodes": {
+              "constant_value": true
+            },
+            "datapath_provider": {
+              "constant_value": "ADVANCED_DATAPATH"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

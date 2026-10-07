@@ -1,0 +1,98 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_bigquery_dataset.analytics",
+          "mode": "managed",
+          "type": "google_bigquery_dataset",
+          "name": "analytics",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "dataset_id": "analytics",
+            "location": "US",
+            "project": "shop-prod",
+            "default_encryption_configuration": [
+              {
+                "kms_key_name": "projects/shop-prod/locations/us/keyRings/bq/cryptoKeys/analytics"
+              }
+            ],
+            "access": [],
+            "labels": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_bigquery_dataset.analytics",
+      "mode": "managed",
+      "type": "google_bigquery_dataset",
+      "name": "analytics",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "dataset_id": "analytics",
+          "location": "US",
+          "project": "shop-prod",
+          "default_encryption_configuration": [
+            {
+              "kms_key_name": "projects/shop-prod/locations/us/keyRings/bq/cryptoKeys/analytics"
+            }
+          ],
+          "access": [],
+          "labels": null,
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_bigquery_dataset.analytics",
+          "mode": "managed",
+          "type": "google_bigquery_dataset",
+          "name": "analytics",
+          "provider_config_key": "google",
+          "expressions": {
+            "dataset_id": {
+              "constant_value": "analytics"
+            },
+            "location": {
+              "constant_value": "US"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

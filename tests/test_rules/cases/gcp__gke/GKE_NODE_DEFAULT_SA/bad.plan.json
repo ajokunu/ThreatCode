@@ -1,0 +1,96 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_container_node_pool.main",
+          "mode": "managed",
+          "type": "google_container_node_pool",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "main",
+            "cluster": "main",
+            "location": "us-central1",
+            "node_count": 3,
+            "project": "shop-prod",
+            "node_config": [],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_container_node_pool.main",
+      "mode": "managed",
+      "type": "google_container_node_pool",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "main",
+          "cluster": "main",
+          "location": "us-central1",
+          "node_count": 3,
+          "project": "shop-prod",
+          "node_config": [],
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_container_node_pool.main",
+          "mode": "managed",
+          "type": "google_container_node_pool",
+          "name": "main",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "main"
+            },
+            "cluster": {
+              "constant_value": "main"
+            },
+            "location": {
+              "constant_value": "us-central1"
+            },
+            "node_count": {
+              "constant_value": 3
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

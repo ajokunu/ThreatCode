@@ -8,6 +8,12 @@ resource "google_sql_database_instance" "main" {
 
     ip_configuration {
       ipv4_enabled = true
+      ssl_mode     = "ENCRYPTED_ONLY"
+
+      authorized_networks {
+        name  = "everyone"
+        value = "0.0.0.0/0"
+      }
     }
   }
 }
