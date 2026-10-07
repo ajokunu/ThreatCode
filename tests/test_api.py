@@ -18,7 +18,7 @@ from threatcode.exceptions import ThreatCodeError
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-SIMPLE_TF = FIXTURES / "terraform" / "simple.tf"
+SIMPLE_TF = FIXTURES / "terraform" / "simple_exposed.tf"
 K8S = FIXTURES / "kubernetes" / "insecure_deployment.yml"
 
 PUBLIC_NAMES = [
@@ -146,10 +146,10 @@ class TestScan:
     def test_returns_the_report_as_a_dict_with_the_v2_contract(self) -> None:
         report = threatcode.scan(SIMPLE_TF)
         assert report["schema_version"] == "2"
-        assert report["total_threats"] == len(report["threats"]) == 5
+        assert report["total_threats"] == len(report["threats"]) == 6
         assert report["attack_paths"] == []
         assert report["coverage"]["units_parsed"] == 1
-        assert report["input_file"] == "simple.tf"
+        assert report["input_file"] == "simple_exposed.tf"
 
     def test_accepts_a_string_a_path_or_a_list(self) -> None:
         one = threatcode.scan(str(SIMPLE_TF), no_timestamp=True)
@@ -161,7 +161,7 @@ class TestScan:
         report = threatcode.scan([SIMPLE_TF, K8S])
         assert report["coverage"]["units_parsed"] == 2
         assert {t["location_file"] for t in report["threats"]} == {
-            "terraform/simple.tf",
+            "terraform/simple_exposed.tf",
             "kubernetes/insecure_deployment.yml",
         }
 
@@ -171,7 +171,7 @@ class TestScan:
         assert report["input_file"] == "."
 
     def test_a_finding_does_not_raise_whatever_the_gate(self) -> None:
-        assert threatcode.scan(SIMPLE_TF, fail_on="info")["total_threats"] == 5
+        assert threatcode.scan(SIMPLE_TF, fail_on="info")["total_threats"] == 6
 
     def test_min_severity_filters_the_listing(self) -> None:
         report = threatcode.scan(SIMPLE_TF, min_severity="high")
@@ -251,8 +251,8 @@ class TestAnalyze:
     def test_returns_the_graph_and_the_report(self) -> None:
         result = threatcode.analyze(SIMPLE_TF)
         assert isinstance(result, threatcode.AnalysisResult)
-        assert result.graph.node_count == 2
-        assert len(result.report.threats) == 5
+        assert result.graph.node_count == 3
+        assert len(result.report.threats) == 6
         assert result.attack_paths == []
         assert "<svg" in result.to_svg()
 

@@ -43,7 +43,12 @@ class TestCLIHardening:
         self, tmp_path: Path
     ) -> None:
         """A01-01: fail_on in an auto-discovered config is ignored and announced."""
-        (tmp_path / "main.tf").write_text('resource "aws_s3_bucket" "b" { bucket = "b" }')
+        (tmp_path / "main.tf").write_text(
+            'resource "aws_lambda_function_url" "u" {\n'
+            '  function_name      = "f"\n'
+            '  authorization_type = "NONE"\n'
+            "}\n"
+        )
         (tmp_path / ".threatcode.yml").write_text("fail_on: none\n")
         result = CliRunner().invoke(cli, ["scan", str(tmp_path)])
         assert result.exit_code == 1

@@ -1905,10 +1905,7 @@ class TestProviderDefaults:
         self,
     ) -> None:
         graph = hcl(res("aws_kms_key", "k", description="k")).graph
-        graph.node_formats = {"aws_kms_key.k": "terraform_hcl"}  # type: ignore[attr-defined]
-        for node in graph.nodes.values():
-            node.properties.pop("derived", None)
-        enrich_module.enrich(graph, enrich_module.ReferenceIndex(graph.nodes))
+        assert graph.node_formats["aws_kms_key.k"] == "terraform_hcl"
         node = graph.nodes["aws_kms_key.k"]
         assert node.properties["enable_key_rotation"] is False
         assert "enable_key_rotation" in node.properties["derived"]["defaults_applied"]

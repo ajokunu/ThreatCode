@@ -27,7 +27,7 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 @pytest.fixture(scope="module")
 def analysis() -> AnalysisResult:
-    result = scan_files([FIXTURES / "terraform" / "simple.tf"])
+    result = scan_files([FIXTURES / "terraform" / "simple_exposed.tf"])
     result.report.input_file = "simple.tf"
     for threat in result.report.threats:
         threat.location_file = "simple.tf"
@@ -53,10 +53,10 @@ class TestTextReport:
     def test_header_counts_and_one_line_per_finding(self, analysis: AnalysisResult) -> None:
         text = format_text(analysis)
         lines = text.splitlines()
-        assert lines[0] == "ThreatCode scan of simple.tf: 2 resources, 5 findings"
-        assert lines[2].startswith("critical 0  high 1  medium 4  low 0  info 0")
+        assert lines[0] == "ThreatCode scan of simple.tf: 3 resources, 6 findings"
+        assert lines[2].startswith("critical 0  high 1  medium 3  low 2  info 0")
         findings = [line for line in lines if line.split(" ")[0] in {"HIGH", "MEDIUM", "LOW"}]
-        assert len(findings) == 5
+        assert len(findings) == 6
 
     def test_findings_are_sorted_most_severe_first_then_by_address(
         self, analysis: AnalysisResult
@@ -76,7 +76,10 @@ class TestTextReport:
         self, analysis: AnalysisResult
     ) -> None:
         text = format_text(analysis)
-        assert "aws_s3_bucket.test  S3_NO_ENCRYPTION  S3 bucket without server-side" in text
+        assert (
+            "aws_s3_bucket.test  S3_NO_ENCRYPTION  "
+            "S3 bucket not encrypted with a customer-managed KMS key"
+        ) in text
         assert "(simple.tf:3)" in text
 
     def test_plain_text_has_no_escape_codes_by_default(self, analysis: AnalysisResult) -> None:

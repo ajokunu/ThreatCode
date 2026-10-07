@@ -30,6 +30,12 @@ from threatcode.pipeline import (
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 TF_BUCKET = 'resource "aws_s3_bucket" "{name}" {{\n  bucket = "{name}"\n}}\n'
+TF_EXPOSED = (
+    'resource "aws_lambda_function_url" "{name}" {{\n'
+    '  function_name      = "{name}"\n'
+    '  authorization_type = "NONE"\n'
+    "}}\n"
+)
 BAD_TF = 'resource "aws_s3_bucket" "broken" {\n  bucket = \n'
 
 
@@ -57,6 +63,11 @@ def fixture_text(relative: str) -> str:
 
 def bucket(name: str) -> str:
     return TF_BUCKET.format(name=name)
+
+
+def exposed(name: str) -> str:
+    """A function URL with no authentication: the one high finding a gate test can rely on."""
+    return TF_EXPOSED.format(name=name)
 
 
 def write(root: Path, relative: str, text: str) -> Path:
@@ -354,12 +365,12 @@ class TestExitContract:
         ],
     )
     def test_findings_gate_at_and_below_the_threshold(self, fail_on: str, expected: int) -> None:
-        # simple.tf has one high and no critical finding
-        assert scan(FIXTURES / "terraform/simple.tf", fail_on=fail_on).exit_code == expected
+        # simple_exposed.tf has one high and no critical finding
+        assert scan(FIXTURES / "terraform/simple_exposed.tf", fail_on=fail_on).exit_code == expected
 
     def test_default_threshold_is_high(self, tmp_path: Path) -> None:
         # one medium-or-lower finding set: a Kubernetes manifest with only mediums
-        result = scan(FIXTURES / "terraform/simple.tf")
+        result = scan(FIXTURES / "terraform/simple_exposed.tf")
         assert result.exit_code == EXIT_FINDINGS
         assert max(t.severity for t in result.report.threats) is Severity.HIGH
 
@@ -405,8 +416,8 @@ class TestExitContract:
         assert scan(path, strict=True).exit_code == EXIT_USAGE
 
     def test_strict_without_gaps_changes_nothing(self) -> None:
-        assert scan(FIXTURES / "terraform/simple.tf", strict=True).exit_code == EXIT_FINDINGS
-        assert scan(FIXTURES / "terraform/simple.tf", strict=True, fail_on="none").exit_code == 0
+        assert scan(FIXTURES / "terraform/simple_exposed.tf", strict=True).exit_code == EXIT_FINDINGS
+        assert scan(FIXTURES / "terraform/simple_exposed.tf", strict=True, fail_on="none").exit_code == 0
 
     def test_a_suppressed_gate_exits_zero(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", bucket("one"))
@@ -426,7 +437,7 @@ class TestExitContract:
         monkeypatch.setattr("threatcode.ingest.load_and_attach", reject)
         junk = write(tmp_path, "junk.json", "{}")
         with pytest.raises(UsageError, match="junk.json"):
-            scan(FIXTURES / "terraform/simple.tf", ingest=[junk])
+            scan(FIXTURES / "terraform/simple_exposed.tf", ingest=[junk])
 
 
 class TestComputeExitCode:
@@ -627,25 +638,25 @@ class TestSeams:
     def test_the_ingest_stub_refuses_files_and_names_the_first(self, tmp_path: Path) -> None:
         junk = write(tmp_path, "report.json", "{}")
         with pytest.raises(UsageError, match="report.json"):
-            scan(FIXTURES / "terraform/simple.tf", ingest=[junk])
+            scan(FIXTURES / "terraform/simple_exposed.tf", ingest=[junk])
 
 
 class TestSuppressionsAndBaseline:
     def test_suppression_is_counted_and_reported_before_the_gate(self, tmp_path: Path) -> None:
-        write(tmp_path, "main.tf", bucket("one"))
-        (tmp_path / ".threatcodeignore").write_text("S3_NO_ENCRYPTION\nGHOST_RULE\n")
+        write(tmp_path, "main.tf", exposed("one"))
+        (tmp_path / ".threatcodeignore").write_text("LAMBDA_URL_NO_AUTH\nGHOST_RULE\n")
         result = scan(tmp_path)
         assert result.ignore_file == tmp_path / ".threatcodeignore"
         assert result.ignore_entries == 2
         assert result.coverage.suppressed == 1
-        assert not any(t.rule_id == "S3_NO_ENCRYPTION" for t in result.report.threats)
+        assert not any(t.rule_id == "LAMBDA_URL_NO_AUTH" for t in result.report.threats)
         assert any("GHOST_RULE matched no finding" in n for n in result.notices)
         # the one high finding was suppressed, so the default gate no longer trips
         assert result.exit_code == EXIT_OK
 
     def test_no_ignore_reads_no_file(self, tmp_path: Path) -> None:
-        write(tmp_path, "main.tf", bucket("one"))
-        (tmp_path / ".threatcodeignore").write_text("S3_NO_ENCRYPTION\n")
+        write(tmp_path, "main.tf", exposed("one"))
+        (tmp_path / ".threatcodeignore").write_text("LAMBDA_URL_NO_AUTH\n")
         result = scan(tmp_path, no_ignore=True)
         assert result.ignore_file is None
         assert result.coverage.suppressed == 0
@@ -730,26 +741,26 @@ class TestSuppressionsAndBaseline:
     def test_a_bad_baseline_file_fails_before_scanning(self, tmp_path: Path) -> None:
         bad = write(tmp_path, "b.json", '{"hello": 1}')
         with pytest.raises(ConfigError, match="not a ThreatCode baseline"):
-            scan(FIXTURES / "terraform/simple.tf", baseline=bad)
+            scan(FIXTURES / "terraform/simple_exposed.tf", baseline=bad)
 
     def test_writing_a_baseline_into_a_directory_is_an_error(self, tmp_path: Path) -> None:
         from threatcode.exceptions import ThreatCodeError
 
         with pytest.raises(ThreatCodeError, match="cannot write .*directory"):
-            scan(FIXTURES / "terraform/simple.tf", write_baseline=tmp_path)
+            scan(FIXTURES / "terraform/simple_exposed.tf", write_baseline=tmp_path)
 
     def test_min_severity_filters_the_listing_but_not_the_gate(self) -> None:
-        full = scan(FIXTURES / "terraform/simple.tf", fail_on="high")
-        filtered = scan(FIXTURES / "terraform/simple.tf", fail_on="high", min_severity="critical")
+        full = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="high")
+        filtered = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="high", min_severity="critical")
         assert filtered.report.threats == []
         assert filtered.exit_code == full.exit_code == EXIT_FINDINGS
         assert filtered.report.to_dict()["total_threats"] == 0
 
     def test_min_severity_keeps_what_is_at_or_above_it(self) -> None:
-        result = scan(FIXTURES / "terraform/simple.tf", min_severity="medium", fail_on="none")
+        result = scan(FIXTURES / "terraform/simple_exposed.tf", min_severity="medium", fail_on="none")
         assert result.report.threats
         assert all(t.severity >= Severity.MEDIUM for t in result.report.threats)
-        assert len(result.report.threats) == 5
+        assert len(result.report.threats) == 4
 
 
 class TestStdin:

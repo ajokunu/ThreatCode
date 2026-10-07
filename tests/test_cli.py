@@ -27,10 +27,16 @@ REPO_ROOT = Path(__file__).parent.parent
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SHAPES = FIXTURES_DIR / "input_shapes"
 K8S_FIXTURE = FIXTURES_DIR / "kubernetes" / "insecure_deployment.yml"
-SIMPLE_TF = FIXTURES_DIR / "terraform" / "simple.tf"
+SIMPLE_TF = FIXTURES_DIR / "terraform" / "simple_exposed.tf"
 SIMPLE_PLAN = FIXTURES_DIR / "terraform" / "simple_s3.plan.json"
 INSECURE_PLAN = FIXTURES_DIR / "terraform" / "multi_service_insecure.plan.json"
 BUCKET = 'resource "aws_s3_bucket" "{name}" {{\n  bucket = "{name}"\n}}\n'
+EXPOSED = (
+    'resource "aws_lambda_function_url" "{name}" {{\n'
+    '  function_name      = "{name}"\n'
+    '  authorization_type = "NONE"\n'
+    "}}\n"
+)
 BAD_TF = 'resource "aws_s3_bucket" "broken" {\n  bucket = \n'
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -79,6 +85,11 @@ def bucket(name: str) -> str:
     return BUCKET.format(name=name)
 
 
+def exposed(name: str) -> str:
+    """A function URL with no authentication: the one high finding a gate test can rely on."""
+    return EXPOSED.format(name=name)
+
+
 class TestScanFormats:
     def test_json_output_is_the_v2_report(self) -> None:
         result = invoke("scan", SIMPLE_PLAN, "-f", "json")
@@ -117,7 +128,7 @@ class TestScanFormats:
     def test_hcl_file(self) -> None:
         result = invoke("scan", SIMPLE_TF)
         assert result.exit_code == 1
-        assert len(report_of(result)["threats"]) == 5
+        assert len(report_of(result)["threats"]) == 6
 
 
 class TestExitCodeMatrix:
@@ -126,7 +137,7 @@ class TestExitCodeMatrix:
         [("critical", 0), ("high", 1), ("medium", 1), ("low", 1), ("info", 1), ("none", 0)],
     )
     def test_findings_at_and_below_the_threshold(self, fail_on: str, expected: int) -> None:
-        # simple.tf: one high, three medium and one low finding, nothing critical
+        # simple_exposed.tf: one high, three medium and two low findings, nothing critical
         assert invoke("scan", SIMPLE_TF, "--fail-on", fail_on).exit_code == expected
 
     def test_the_default_threshold_is_high(self) -> None:
@@ -253,7 +264,7 @@ class TestStrictAndGaps:
         result = invoke("scan", SIMPLE_TF, "--fail-on", "none")
         assert result.exit_code == 0
         assert "Coverage gaps (1)" in result.stderr
-        assert "[hcl.module_call_skipped] simple.tf:7" in result.stderr
+        assert "[hcl.module_call_skipped] simple_exposed.tf:7" in result.stderr
         assert "Coverage gaps" not in result.stdout
         assert report_of(result)["coverage"]["gaps"][0]["code"] == "hcl.module_call_skipped"
 
@@ -385,7 +396,7 @@ class TestTtyDefaultAndColor:
 
     def test_a_terminal_gets_text(self, tty: None) -> None:
         out = invoke("scan", SIMPLE_TF).stdout
-        assert out.startswith("ThreatCode scan of simple.tf")
+        assert out.startswith("ThreatCode scan of simple_exposed.tf")
         assert not out.lstrip().startswith("{")
 
     def test_a_terminal_with_an_output_file_still_gets_json(
@@ -442,7 +453,7 @@ class TestSettingsPrecedence:
         monkeypatch.setenv("THREATCODE_MIN_SEVERITY", "high")
         assert len(report_of(invoke("scan", SIMPLE_TF, "-c", config))["threats"]) == 1
         flagged = invoke("scan", SIMPLE_TF, "-c", config, "--min-severity", "medium")
-        assert len(report_of(flagged)["threats"]) == 5
+        assert len(report_of(flagged)["threats"]) == 4
 
     def test_format_precedence(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config = write(tmp_path, "c.yml", "output_format: markdown\nfail_on: none\n")
@@ -492,7 +503,7 @@ class TestSettingsPrecedence:
 class TestAutoDiscoveredConfig:
     def _tree(self, tmp_path: Path, config: str) -> Path:
         root = tmp_path / "repo"
-        write(root, "main.tf", bucket("one"))
+        write(root, "main.tf", exposed("one"))
         write(root, ".threatcode.yml", config)
         return root
 
@@ -558,8 +569,8 @@ class TestSuppressionsAndBaselineFlags:
         assert report_of(result)["coverage"]["suppressed"] == 2
 
     def test_no_ignore(self, tmp_path: Path) -> None:
-        write(tmp_path, "main.tf", bucket("one"))
-        write(tmp_path, ".threatcodeignore", "S3_NO_ENCRYPTION\n")
+        write(tmp_path, "main.tf", exposed("one"))
+        write(tmp_path, ".threatcodeignore", "LAMBDA_URL_NO_AUTH\n")
         result = invoke("scan", tmp_path, "--no-ignore")
         assert result.exit_code == 1
         assert "ignore file" not in result.stderr
@@ -581,8 +592,8 @@ class TestSuppressionsAndBaselineFlags:
         assert "contradict" in result.stderr
 
     def test_an_expired_entry_is_warned_and_does_not_suppress(self, tmp_path: Path) -> None:
-        write(tmp_path, "main.tf", bucket("one"))
-        write(tmp_path, ".threatcodeignore", "S3_NO_ENCRYPTION exp:2020-01-01\n")
+        write(tmp_path, "main.tf", exposed("one"))
+        write(tmp_path, ".threatcodeignore", "LAMBDA_URL_NO_AUTH exp:2020-01-01\n")
         result = invoke("scan", tmp_path)
         assert result.exit_code == 1
         assert "expired on 2020-01-01" in result.stderr
@@ -594,8 +605,8 @@ class TestSuppressionsAndBaselineFlags:
         assert again.exit_code == 0
         data = report_of(again)
         assert data["threats"] == []
-        assert data["coverage"]["baselined"] == 5
-        assert "5 baselined" in again.stderr
+        assert data["coverage"]["baselined"] == 6
+        assert "6 baselined" in again.stderr
 
     def test_a_bad_baseline_is_exit_two(self, tmp_path: Path) -> None:
         result = invoke("scan", SIMPLE_TF, "--baseline", write(tmp_path, "b.json", "{}"))
@@ -684,7 +695,7 @@ class TestLlmIsOptIn:
             "LLM analysis failed (the server is down); rule results are unaffected" in result.stderr
         )
         assert report_of(result)["llm"]["status"] == "failed"
-        assert len(report_of(result)["threats"]) == 5
+        assert len(report_of(result)["threats"]) == 6
 
 
 class TestScanLLMConfig:
@@ -892,14 +903,14 @@ class TestDiffCommand:
         assert "No changes detected." in result.stdout
 
     def test_diff_works_between_two_real_scans(self, tmp_path: Path) -> None:
-        write(tmp_path / "v1", "main.tf", bucket("one"))
-        write(tmp_path / "v2", "main.tf", bucket("one") + bucket("two"))
+        write(tmp_path / "v1", "main.tf", exposed("one"))
+        write(tmp_path / "v2", "main.tf", exposed("one") + exposed("two"))
         invoke("scan", tmp_path / "v1", "-o", tmp_path / "v1.json")
         invoke("scan", tmp_path / "v2", "-o", tmp_path / "v2.json")
         result = invoke("diff", tmp_path / "v1.json", tmp_path / "v2.json", "--fail-on-new", "high")
         assert result.exit_code == 1
         added = json.loads(result.stdout)["added"]
-        assert {t["resource_address"] for t in added} == {"aws_s3_bucket.two"}
+        assert {t["resource_address"] for t in added} == {"aws_lambda_function_url.two"}
 
 
 class TestHelpAndDiscoverability:
@@ -1022,7 +1033,7 @@ class TestErrorHandling:
 
     def test_quiet_hides_the_summary_line_and_the_default_shows_it(self) -> None:
         assert (
-            "Scanned 2 resources in 1 unit, found 5 findings." in invoke("scan", SIMPLE_TF).stderr
+            "Scanned 3 resources in 1 unit, found 6 findings." in invoke("scan", SIMPLE_TF).stderr
         )
         assert "Scanned" not in invoke("-q", "scan", SIMPLE_TF).stderr
 
@@ -1176,7 +1187,7 @@ class TestScanInputs:
         result = invoke("scan", SIMPLE_TF, K8S_FIXTURE, "--fail-on", "none")
         data = report_of(result)
         assert data["coverage"]["units_parsed"] == 2
-        assert data["input_file"] == "kubernetes/insecure_deployment.yml, terraform/simple.tf"
+        assert data["input_file"] == "kubernetes/insecure_deployment.yml, terraform/simple_exposed.tf"
 
     def test_state_json_is_rejected_with_the_corrective_command(self) -> None:
         result = invoke("scan", SHAPES / "terraform_state.json")
