@@ -1,54 +1,75 @@
+# Rules on SNS topics and subscriptions.
+#
+# A topic policy is judged on its parsed statements (derived.allows_any_principal, see
+# threatcode/ir/enrichment/aws_data.py).
+# The default topic policy that AWS writes names every principal but limits it with
+# AWS:SourceOwner to the topic's own account, so it is not reported.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: SNS_NO_ENCRYPTION
-    title: SNS topic without encryption
+    title: SNS topic not encrypted with a customer-managed KMS key
     description: >
-      The SNS topic is not encrypted with KMS.
+      The topic has no customer-managed KMS key (kms_master_key_id).
+      Messages published to it are stored unencrypted, and anyone with sns:Subscribe or access
+      to a subscribed endpoint can read them without a permission on a key you control.
     stride_category: information_disclosure
-    severity: medium
+    severity: low
+    confidence: absence
     resource_type: aws_sns_topic
     condition:
       kms_master_key_id:
         not_exists: true
     mitigation: >
-      Enable KMS encryption for the SNS topic.
+      Set kms_master_key_id to a customer-managed key.
+      Services that publish to the topic, such as CloudWatch or S3, need kms:GenerateDataKey and
+      kms:Decrypt on that key.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: SNS_WORLD_SUBSCRIBABLE
-    title: SNS topic allows public subscription
+    title: SNS topic policy allows every principal
     description: >
-      The SNS topic policy allows anyone to subscribe.
+      The topic policy has an Allow statement whose principal is "*" (or {"AWS": "*"}), with no
+      condition that limits the caller such as aws:SourceOwner, aws:SourceArn, aws:SourceAccount
+      or aws:PrincipalOrgID.
+      Anyone can then subscribe an endpoint they control and receive every message, or publish
+      to the topic, depending on the actions the statement allows.
     stride_category: information_disclosure
     severity: high
-    resource_type: aws_sns_topic_policy
+    confidence: definitive
+    root_cause: sns-open-topic-policy
+    resource_types: [aws_sns_topic, aws_sns_topic_policy]
     condition:
-      policy:
-        contains: '"Principal":"*"'
+      derived.allows_any_principal:
+        equals: true
     mitigation: >
-      Restrict the SNS topic policy to specific principals.
+      Name the accounts, roles or services that may use the topic in Principal.
+      Services such as S3 need an aws:SourceArn condition.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: SNS_NO_HTTPS
-    title: SNS topic subscription without HTTPS
+    title: SNS subscription delivers over plain HTTP
     description: >
-      SNS subscriptions should enforce HTTPS for delivery.
+      The subscription uses the http protocol, so messages travel to the endpoint unencrypted.
+      Anyone on the network path can read or alter them, and an endpoint that trusts the content
+      can be fed forged notifications.
     stride_category: information_disclosure
     severity: medium
-    resource_type: aws_sns_topic
+    confidence: definitive
+    resource_type: aws_sns_topic_subscription
     condition:
-      any_of:
-        - policy:
-            not_exists: true
-        - delivery_policy:
-            not_exists: true
+      protocol:
+        equals_ci: http
     mitigation: >
-      Configure SNS to require HTTPS delivery.
+      Use the https protocol with an endpoint that has a valid certificate.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]

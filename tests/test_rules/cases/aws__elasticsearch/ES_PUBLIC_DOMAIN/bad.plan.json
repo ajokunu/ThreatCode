@@ -1,0 +1,80 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_opensearch_domain.search",
+          "mode": "managed",
+          "type": "aws_opensearch_domain",
+          "name": "search",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "domain_name": "search",
+            "engine_version": "OpenSearch_2.11"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_opensearch_domain.search",
+      "mode": "managed",
+      "type": "aws_opensearch_domain",
+      "name": "search",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "domain_name": "search",
+          "engine_version": "OpenSearch_2.11"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_opensearch_domain.search",
+          "mode": "managed",
+          "type": "aws_opensearch_domain",
+          "name": "search",
+          "provider_config_key": "aws",
+          "expressions": {
+            "domain_name": {
+              "constant_value": "search"
+            },
+            "engine_version": {
+              "constant_value": "OpenSearch_2.11"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

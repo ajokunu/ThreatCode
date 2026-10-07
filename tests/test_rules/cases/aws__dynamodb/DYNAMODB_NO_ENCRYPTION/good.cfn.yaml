@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Orders:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: orders
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab

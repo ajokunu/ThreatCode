@@ -17,13 +17,9 @@
             "identifier": "orders",
             "instance_class": "db.t3.medium",
             "publicly_accessible": true,
-            "backup_retention_period": 7,
-            "tags": null,
-            "timeouts": null
+            "backup_retention_period": 7
           },
-          "sensitive_values": {
-            "tags_all": {}
-          }
+          "sensitive_values": {}
         }
       ]
     }
@@ -46,21 +42,14 @@
           "identifier": "orders",
           "instance_class": "db.t3.medium",
           "publicly_accessible": true,
-          "backup_retention_period": 7,
-          "tags": null,
-          "timeouts": null
+          "backup_retention_period": 7
         },
         "after_unknown": {
-          "address": true,
-          "arn": true,
-          "endpoint": true,
           "id": true,
-          "tags_all": true
+          "arn": true
         },
         "before_sensitive": false,
-        "after_sensitive": {
-          "tags_all": {}
-        }
+        "after_sensitive": {}
       }
     }
   ],

@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  DbHost:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /prod/db/host
+      Description: Database host name
+      Type: String
+      Value: db.internal.example.com

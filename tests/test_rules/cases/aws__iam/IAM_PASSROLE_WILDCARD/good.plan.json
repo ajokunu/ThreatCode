@@ -1,0 +1,87 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_role_policy.deployer",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "deployer",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "deployer",
+            "policy": "{\"Statement\":[{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":\"lambda.amazonaws.com\"}},\"Effect\":\"Allow\",\"Resource\":\"*\"}],\"Version\":\"2012-10-17\"}"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_iam_role_policy.deployer",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "deployer",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "deployer",
+          "policy": "{\"Statement\":[{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":\"lambda.amazonaws.com\"}},\"Effect\":\"Allow\",\"Resource\":\"*\"}],\"Version\":\"2012-10-17\"}"
+        },
+        "after_unknown": {
+          "id": true,
+          "role": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_role_policy.deployer",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "deployer",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "deployer"
+            },
+            "policy": {
+              "constant_value": "{\"Statement\":[{\"Action\":\"iam:PassRole\",\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":\"lambda.amazonaws.com\"}},\"Effect\":\"Allow\",\"Resource\":\"*\"}],\"Version\":\"2012-10-17\"}"
+            },
+            "role": {
+              "references": [
+                "aws_iam_role.app.id",
+                "aws_iam_role.app"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

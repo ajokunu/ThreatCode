@@ -1,67 +1,137 @@
+# Rules on RDS database instances and Aurora clusters.
+#
+# aws_db_instance covers RDS and the instances of a Multi-AZ DB cluster, aws_rds_cluster covers
+# Aurora clusters, and aws_rds_cluster_instance carries publicly_accessible for Aurora.
+# CloudFormation AWS::RDS::DBInstance and AWS::RDS::DBCluster map to the same types.
+#
+# A literal master password is a secret, not a configuration setting: the secrets phase reports
+# it and attaches it to the database it exposes.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: RDS_PUBLIC_ACCESS
     title: RDS instance is publicly accessible
     description: >
-      The RDS database instance has publicly_accessible set to true,
-      allowing direct connections from the internet. Database endpoints
-      should never be exposed to the public internet.
+      The database instance has publicly_accessible set to true, which gives it a public DNS
+      name that resolves to a public address.
+      Whether it can be reached then depends only on its security group, so one permissive
+      rule exposes the database to the internet.
+      Databases should be reachable from the application tier and nothing else.
     stride_category: information_disclosure
     severity: critical
-    resource_type: aws_db_instance
+    confidence: definitive
+    root_cause: rds-public-endpoint
+    resource_types: [aws_db_instance, aws_rds_cluster_instance]
     condition:
       publicly_accessible:
         equals: true
     mitigation: >
-      Set publicly_accessible to false and place the RDS instance
-      in a private subnet. Use a bastion host or VPN for admin access.
+      Set publicly_accessible to false and place the instance in private subnets.
+      Use a bastion host, SSM Session Manager or a VPN for administration.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: RDS_NO_ENCRYPTION
-    title: RDS instance without encryption at rest
+    title: RDS database without encryption at rest
     description: >
-      The RDS instance does not have storage encryption enabled.
-      Data stored in the database can be read if the underlying
-      storage is compromised.
+      The database instance or Aurora cluster does not have storage encryption enabled.
+      Its storage, snapshots and automated backups are unencrypted, so anyone who obtains a
+      snapshot or the underlying volume can read the data.
+      Encryption can only be chosen when the database is created.
+      A database restored from a snapshot or created as a replica inherits the source's setting
+      and is not reported, and neither is a serverless Aurora cluster, which is always encrypted.
     stride_category: information_disclosure
     severity: high
-    resource_type: aws_db_instance
+    confidence: definitive
+    root_cause: rds-storage-unencrypted
+    resource_types: [aws_db_instance, aws_rds_cluster]
     condition:
-      any_of:
-        - storage_encrypted:
+      all_of:
+        - any_of:
+            - storage_encrypted:
+                equals: false
+            - storage_encrypted:
+                not_exists: true
+        - snapshot_identifier:
             not_exists: true
-        - storage_encrypted:
-            equals: false
+        - replicate_source_db:
+            not_exists: true
+        - replication_source_identifier:
+            not_exists: true
+        - engine_mode:
+            not_equals: serverless
     mitigation: >
-      Enable storage encryption using AWS KMS. Note: encryption
-      must be enabled at creation time and cannot be added to
-      existing instances without migration.
+      Set storage_encrypted to true, with a customer-managed kms_key_id where key control matters.
+      To encrypt an existing database, copy a snapshot with encryption and restore from it.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: RDS_NO_BACKUP
-    title: RDS instance without automated backups
+    title: RDS database with automated backups disabled
     description: >
-      The RDS instance has backup retention set to 0 or not configured.
-      Without backups, data loss from deletion or corruption cannot
-      be recovered.
-    stride_category: tampering
+      backup_retention_period is 0, which turns automated backups off.
+      Without backups, data lost to deletion, corruption or ransomware cannot be restored, and
+      point-in-time recovery is not available.
+    stride_category: denial_of_service
     severity: medium
-    resource_type: aws_db_instance
+    confidence: definitive
+    resource_types: [aws_db_instance, aws_rds_cluster]
     condition:
-      any_of:
-        - backup_retention_period:
-            not_exists: true
-        - backup_retention_period:
-            equals: 0
+      backup_retention_period:
+        equals: 0
     mitigation: >
-      Set backup_retention_period to at least 7 days. Enable
-      automated backups and consider cross-region backup replication.
+      Set backup_retention_period to at least 7 days and consider copying snapshots to another
+      region or account.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
+
+  - id: RDS_NO_DELETION_PROTECTION
+    title: RDS database without deletion protection
+    description: >
+      deletion_protection is off, so the database can be deleted with a single API call or a
+      Terraform destroy.
+      Anyone with rds:DeleteDBInstance or rds:DeleteDBCluster, or a mistaken plan, can remove
+      the database and, with skip_final_snapshot, its last copy.
+    stride_category: denial_of_service
+    severity: low
+    confidence: absence
+    resource_types: [aws_db_instance, aws_rds_cluster]
+    condition:
+      any_of:
+        - deletion_protection:
+            equals: false
+        - deletion_protection:
+            not_exists: true
+    mitigation: >
+      Set deletion_protection to true on production databases.
+    metadata:
+      mitre:
+        techniques: ["T1485"]
+
+  - id: RDS_NO_IAM_AUTH
+    title: Aurora cluster does not use IAM database authentication
+    description: >
+      iam_database_authentication_enabled is off, so the cluster accepts only passwords that
+      are stored in the database.
+      IAM authentication replaces long-lived passwords with short-lived tokens tied to an IAM
+      identity, which can be revoked and appears in CloudTrail.
+    stride_category: spoofing
+    severity: low
+    confidence: absence
+    resource_type: aws_rds_cluster
+    condition:
+      any_of:
+        - iam_database_authentication_enabled:
+            equals: false
+        - iam_database_authentication_enabled:
+            not_exists: true
+    mitigation: >
+      Set iam_database_authentication_enabled to true and grant rds-db:connect to the roles that
+      need access.

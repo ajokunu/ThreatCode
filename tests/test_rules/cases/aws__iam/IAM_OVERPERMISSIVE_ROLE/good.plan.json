@@ -12,21 +12,11 @@
           "provider_name": "registry.terraform.io/hashicorp/aws",
           "schema_version": 0,
           "values": {
-            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
-            "description": null,
-            "force_detach_policies": false,
-            "max_session_duration": 3600,
             "name": "app",
-            "name_prefix": null,
             "path": "/",
-            "permissions_boundary": null,
-            "tags": null
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}"
           },
-          "sensitive_values": {
-            "inline_policy": [],
-            "managed_policy_arns": [],
-            "tags_all": {}
-          }
+          "sensitive_values": {}
         }
       ]
     }
@@ -44,31 +34,16 @@
         ],
         "before": null,
         "after": {
-          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
-          "description": null,
-          "force_detach_policies": false,
-          "max_session_duration": 3600,
           "name": "app",
-          "name_prefix": null,
           "path": "/",
-          "permissions_boundary": null,
-          "tags": null
+          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}"
         },
         "after_unknown": {
-          "arn": true,
-          "create_date": true,
           "id": true,
-          "inline_policy": true,
-          "managed_policy_arns": true,
-          "tags_all": true,
-          "unique_id": true
+          "arn": true
         },
         "before_sensitive": false,
-        "after_sensitive": {
-          "inline_policy": [],
-          "managed_policy_arns": [],
-          "tags_all": {}
-        }
+        "after_sensitive": {}
       }
     }
   ],
@@ -88,20 +63,14 @@
           "name": "app",
           "provider_config_key": "aws",
           "expressions": {
-            "assume_role_policy": {
-              "constant_value": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}"
-            },
-            "force_detach_policies": {
-              "constant_value": false
-            },
-            "max_session_duration": {
-              "constant_value": 3600
-            },
             "name": {
               "constant_value": "app"
             },
             "path": {
               "constant_value": "/"
+            },
+            "assume_role_policy": {
+              "constant_value": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}"
             }
           },
           "schema_version": 0

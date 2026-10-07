@@ -1,52 +1,77 @@
+# Rules on Elasticsearch and OpenSearch domains.
+#
+# aws_opensearch_domain is the successor of aws_elasticsearch_domain and has the same arguments,
+# so every rule names both types.
+# CloudFormation AWS::Elasticsearch::Domain and AWS::OpenSearchService::Domain map to them.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: ES_NO_ENCRYPTION
-    title: Elasticsearch domain without encryption
+    title: Search domain without encryption at rest
     description: >
-      The Elasticsearch domain does not encrypt data at rest.
+      The domain does not encrypt its data at rest.
+      Indexes, snapshots and logs are stored in plaintext on the underlying volumes.
     stride_category: information_disclosure
     severity: high
-    resource_type: aws_elasticsearch_domain
+    confidence: definitive
+    resource_types: [aws_elasticsearch_domain, aws_opensearch_domain]
     condition:
-      encrypt_at_rest:
-        not_exists: true
+      any_of:
+        - encrypt_at_rest:
+            not_exists: true
+        - encrypt_at_rest.enabled:
+            equals: false
     mitigation: >
-      Enable encryption at rest.
+      Add an encrypt_at_rest block with enabled set to true, using a customer-managed kms_key_id
+      where key control matters.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: ES_PUBLIC_DOMAIN
-    title: Elasticsearch domain publicly accessible
+    title: Search domain may be publicly accessible
     description: >
-      The Elasticsearch domain does not have a VPC configuration
-      and may be publicly accessible.
+      The domain has no VPC configuration, so it has a public endpoint.
+      Whether it is open depends on its access policy, which this rule does not read: a domain
+      without vpc_options is reachable from the internet by anyone the policy allows.
+      The conclusion is inferred from the missing VPC options, so it is a heuristic.
     stride_category: information_disclosure
-    severity: critical
-    resource_type: aws_elasticsearch_domain
+    severity: high
+    confidence: heuristic
+    root_cause: search-domain-public-endpoint
+    resource_types: [aws_elasticsearch_domain, aws_opensearch_domain]
     condition:
       vpc_options:
         not_exists: true
     mitigation: >
-      Deploy the domain inside a VPC.
+      Add vpc_options with private subnets and a security group, so the domain is only
+      reachable from inside the network.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: ES_NO_NODE_TO_NODE_ENCRYPTION
-    title: Elasticsearch without node-to-node encryption
+    title: Search domain without node-to-node encryption
     description: >
       Node-to-node encryption is not enabled.
+      Traffic between the nodes of the cluster, including replicated documents, crosses the
+      network unencrypted.
     stride_category: information_disclosure
     severity: medium
-    resource_type: aws_elasticsearch_domain
+    confidence: definitive
+    resource_types: [aws_elasticsearch_domain, aws_opensearch_domain]
     condition:
-      node_to_node_encryption:
-        not_exists: true
+      any_of:
+        - node_to_node_encryption:
+            not_exists: true
+        - node_to_node_encryption.enabled:
+            equals: false
     mitigation: >
-      Enable node-to-node encryption.
+      Add a node_to_node_encryption block with enabled set to true.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]

@@ -1,0 +1,8 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Region:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /prod/region
+      Type: String
+      Value: us-east-1

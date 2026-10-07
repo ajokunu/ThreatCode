@@ -12,19 +12,11 @@
           "provider_name": "registry.terraform.io/hashicorp/aws",
           "schema_version": 0,
           "values": {
+            "bucket": "acme-assets",
             "acl": "public-read",
-            "bucket": "acme-public-assets",
-            "bucket_prefix": null,
-            "force_destroy": false,
-            "object_lock_enabled": false,
-            "tags": null,
-            "timeouts": null
+            "force_destroy": false
           },
-          "sensitive_values": {
-            "cors_rule": [],
-            "grant": [],
-            "tags_all": {}
-          }
+          "sensitive_values": {}
         }
       ]
     }
@@ -42,27 +34,16 @@
         ],
         "before": null,
         "after": {
+          "bucket": "acme-assets",
           "acl": "public-read",
-          "bucket": "acme-public-assets",
-          "bucket_prefix": null,
-          "force_destroy": false,
-          "object_lock_enabled": false,
-          "tags": null,
-          "timeouts": null
+          "force_destroy": false
         },
         "after_unknown": {
           "id": true,
-          "arn": true,
-          "bucket_domain_name": true,
-          "region": true,
-          "tags_all": true
+          "arn": true
         },
         "before_sensitive": false,
-        "after_sensitive": {
-          "cors_rule": [],
-          "grant": [],
-          "tags_all": {}
-        }
+        "after_sensitive": {}
       }
     }
   ],
@@ -82,16 +63,13 @@
           "name": "assets",
           "provider_config_key": "aws",
           "expressions": {
+            "bucket": {
+              "constant_value": "acme-assets"
+            },
             "acl": {
               "constant_value": "public-read"
             },
-            "bucket": {
-              "constant_value": "acme-public-assets"
-            },
             "force_destroy": {
-              "constant_value": false
-            },
-            "object_lock_enabled": {
               "constant_value": false
             }
           },

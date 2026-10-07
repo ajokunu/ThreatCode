@@ -1,0 +1,90 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_cloudtrail.audit",
+          "mode": "managed",
+          "type": "aws_cloudtrail",
+          "name": "audit",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "audit",
+            "s3_bucket_name": "acme-audit-trail",
+            "enable_logging": true,
+            "kms_key_id": "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_cloudtrail.audit",
+      "mode": "managed",
+      "type": "aws_cloudtrail",
+      "name": "audit",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "audit",
+          "s3_bucket_name": "acme-audit-trail",
+          "enable_logging": true,
+          "kms_key_id": "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_cloudtrail.audit",
+          "mode": "managed",
+          "type": "aws_cloudtrail",
+          "name": "audit",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "audit"
+            },
+            "s3_bucket_name": {
+              "constant_value": "acme-audit-trail"
+            },
+            "enable_logging": {
+              "constant_value": true
+            },
+            "kms_key_id": {
+              "constant_value": "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}
