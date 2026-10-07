@@ -26,9 +26,10 @@ it does:
 Derived facts
 -------------
 
-All of them are ``True``, ``False`` or an `Unknown` (the document could not be read or depends on
-a value the scan does not have), never a missing key, so a rule reads them with ``equals: true``
-and an unreadable policy produces neither a finding nor a pass.
+Each is ``True``, ``False`` or an `Unknown` (the document could not be read or depends on a value
+the scan does not have), so a rule reads it with ``equals: true`` and an unreadable policy produces
+neither a finding nor a pass.
+A node with nothing to judge, such as a bucket with no policy, does not carry the fact at all.
 
 ``allows_all_actions``
     On a policy-bearing identity (the four standalone policy types, and a role, user or group with
@@ -37,8 +38,10 @@ and an unreadable policy produces neither a finding nor a pass.
     A ``Deny`` statement never counts, and neither does a statement that names ``NotAction``.
 ``allows_service_wildcard``
     Some ``Allow`` statement grants every action of one service (``iam:*``, ``s3:*``) on every
-    resource.
-    A bare ``*`` is ``allows_all_actions`` instead, so the two never report the same statement.
+    resource, or grants every action (``*``) on a limited set of resources.
+    A statement that grants ``*`` on ``*`` is ``allows_all_actions`` instead, so the two never
+    report the same statement.
+    A service wildcard on a limited resource (``s3:*`` on one bucket) is not reported.
 ``allows_passrole_wildcard``
     Some ``Allow`` statement grants ``iam:PassRole`` (or a pattern that covers it, such as
     ``iam:Pass*``) on every resource and is not narrowed by an ``iam:PassedToService`` condition.
@@ -272,25 +275,53 @@ def _all_actions_everywhere(statement: Mapping[str, Any]) -> Tri:
     return _and([_allows(statement), _all_actions(statement), _all_resources(statement)])
 
 
+def _not(value: Tri) -> Tri:
+    return None if value is None else not value
+
+
 def _service_wildcard_everywhere(statement: Mapping[str, Any]) -> Tri:
-    return _and([_allows(statement), _service_wildcard(statement), _all_resources(statement)])
+    """Every action of one service on every resource, or every action on limited resources."""
+    return _and(
+        [
+            _allows(statement),
+            _or(
+                [
+                    _and([_service_wildcard(statement), _all_resources(statement)]),
+                    _and([_all_actions(statement), _not(_all_resources(statement))]),
+                ]
+            ),
+        ]
+    )
 
 
 def _over(
     documents: Iterable[Statements | Unknown | None],
     predicate: Callable[[Mapping[str, Any]], Tri],
-) -> bool | Unknown:
-    """The fact for several documents: True on a hit, Unknown when a document is unreadable."""
+) -> bool | Unknown | None:
+    """The fact for several documents: True on a hit, Unknown when a document is unreadable.
+
+    None means there was nothing to judge (no document, or only empty ones), and the caller
+    leaves the key out so a node without a policy does not carry a fact about one.
+    """
     unreadable = False
+    judged = False
     verdicts: list[Tri] = []
     for document in documents:
         statements, unknown = _read(document)
         unreadable = unreadable or unknown
+        judged = judged or unknown or bool(statements)
         verdicts.extend(predicate(statement) for statement in statements)
+    if not judged:
+        return None
     outcome = _or(verdicts)
     if outcome is False and unreadable:
         outcome = None
     return _fact(outcome)
+
+
+def _present(facts: Mapping[str, bool | Unknown | None]) -> dict[str, Any]:
+    """The facts that were judged; a fact that had nothing to judge is left out."""
+    return {key: value for key, value in facts.items() if value is not None}
 
 
 # ---------------------------------------------------------------------------
@@ -332,11 +363,13 @@ def _identity_documents(node: InfraNode) -> list[Statements | Unknown | None]:
 
 def _identity_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
     documents = _identity_documents(node)
-    return {
-        "allows_all_actions": _over(documents, _all_actions_everywhere),
-        "allows_service_wildcard": _over(documents, _service_wildcard_everywhere),
-        "allows_passrole_wildcard": _over(documents, _passrole_wildcard),
-    }
+    return _present(
+        {
+            "allows_all_actions": _over(documents, _all_actions_everywhere),
+            "allows_service_wildcard": _over(documents, _service_wildcard_everywhere),
+            "allows_passrole_wildcard": _over(documents, _passrole_wildcard),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +400,7 @@ def _attached_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
 def _managed_arn_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
     raw = node.properties.get("managed_policy_arns", node.properties.get("ManagedPolicyArns"))
     if raw is None:
-        return {"admin_policy_attached": False}
+        return {}
     if is_unknown(raw):
         return {"admin_policy_attached": raw}
     return {"admin_policy_attached": _fact(_or(_names_admin_policy(a) for a in as_list(raw)))}
@@ -378,20 +411,49 @@ def _managed_arn_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
 # ---------------------------------------------------------------------------
 
 
+def _bucket_policies_by_edge(
+    bucket: InfraNode, ctx: EnrichContext
+) -> tuple[list[Statements | Unknown | None], bool]:
+    """The policy resources the graph links to a bucket, and whether every one is linked.
+
+    The companion phase matches a policy resource to its bucket by value, which cannot follow a
+    CloudFormation ``Ref`` to a logical id.
+    The reference edge the graph drew from that ``Ref`` can.
+    """
+    documents: list[Statements | Unknown | None] = []
+    complete = True
+    for policy_node in ctx.peers(bucket, type_matcher("aws_s3_bucket_policy"), any_input=True):
+        targets = {
+            edge.target
+            for edge in ctx.graph.edges_from(policy_node.id)
+            if ctx.graph.nodes[edge.target].resource_type == "aws_s3_bucket"
+        }
+        if not targets:
+            complete = False
+        elif bucket.id in targets:
+            documents.append(own_policy_statements(policy_node))
+    return documents, complete
+
+
 def _resource_policy_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
     documents: list[Statements | Unknown | None] = [own_policy_statements(node)]
     if node.resource_type == "aws_s3_bucket":
         # Bucket policy resources are folded in by the companion phase, which has already run
         companion = ctx.derived(node).get("policy_statements")
-        if isinstance(companion, list) or is_unknown(companion):
+        if isinstance(companion, list):
             documents.append(companion)
-    return {"allows_any_principal": _over(documents, _any_principal)}
+        elif isinstance(companion, Unknown):
+            linked, complete = _bucket_policies_by_edge(node, ctx)
+            documents.extend(linked)
+            if not complete:
+                documents.append(companion)
+    return _present({"allows_any_principal": _over(documents, _any_principal)})
 
 
 def _trust_policy_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
     raw = node.properties.get("assume_role_policy", node.properties.get("AssumeRolePolicyDocument"))
     document = statements_of(raw) if raw is not None else None
-    return {"allows_any_principal": _over([document], _any_principal)}
+    return _present({"allows_any_principal": _over([document], _any_principal)})
 
 
 # ---------------------------------------------------------------------------

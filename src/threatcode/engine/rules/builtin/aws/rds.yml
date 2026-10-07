@@ -44,7 +44,8 @@ rules:
       snapshot or the underlying volume can read the data.
       Encryption can only be chosen when the database is created.
       A database restored from a snapshot or created as a replica inherits the source's setting
-      and is not reported, and neither is a serverless Aurora cluster, which is always encrypted.
+      and is not reported, and neither is an instance that belongs to a cluster, which inherits
+      the cluster's, or a serverless Aurora cluster, which is always encrypted.
     stride_category: information_disclosure
     severity: high
     confidence: definitive
@@ -62,6 +63,8 @@ rules:
         - replicate_source_db:
             not_exists: true
         - replication_source_identifier:
+            not_exists: true
+        - db_cluster_identifier:
             not_exists: true
         - engine_mode:
             not_equals: serverless
@@ -93,16 +96,16 @@ rules:
         techniques: ["T1485"]
 
   - id: RDS_NO_DELETION_PROTECTION
-    title: RDS database without deletion protection
+    title: Aurora cluster without deletion protection
     description: >
-      deletion_protection is off, so the database can be deleted with a single API call or a
+      deletion_protection is off, so the cluster can be deleted with a single API call or a
       Terraform destroy.
-      Anyone with rds:DeleteDBInstance or rds:DeleteDBCluster, or a mistaken plan, can remove
-      the database and, with skip_final_snapshot, its last copy.
+      Anyone with rds:DeleteDBCluster, or a mistaken plan, can remove the cluster and, with
+      skip_final_snapshot, its last copy.
     stride_category: denial_of_service
     severity: low
     confidence: absence
-    resource_types: [aws_db_instance, aws_rds_cluster]
+    resource_type: aws_rds_cluster
     condition:
       any_of:
         - deletion_protection:

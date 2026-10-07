@@ -5,17 +5,16 @@
     "root_module": {
       "resources": [
         {
-          "address": "aws_db_instance.orders",
+          "address": "aws_rds_cluster.orders",
           "mode": "managed",
-          "type": "aws_db_instance",
+          "type": "aws_rds_cluster",
           "name": "orders",
           "provider_name": "registry.terraform.io/hashicorp/aws",
           "schema_version": 0,
           "values": {
-            "allocated_storage": 50,
-            "engine": "postgres",
-            "identifier": "orders",
-            "instance_class": "db.t3.medium",
+            "cluster_identifier": "orders",
+            "engine": "aurora-postgresql",
+            "master_username": "orders",
             "deletion_protection": true
           },
           "sensitive_values": {}
@@ -25,9 +24,9 @@
   },
   "resource_changes": [
     {
-      "address": "aws_db_instance.orders",
+      "address": "aws_rds_cluster.orders",
       "mode": "managed",
-      "type": "aws_db_instance",
+      "type": "aws_rds_cluster",
       "name": "orders",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "change": {
@@ -36,10 +35,9 @@
         ],
         "before": null,
         "after": {
-          "allocated_storage": 50,
-          "engine": "postgres",
-          "identifier": "orders",
-          "instance_class": "db.t3.medium",
+          "cluster_identifier": "orders",
+          "engine": "aurora-postgresql",
+          "master_username": "orders",
           "deletion_protection": true
         },
         "after_unknown": {
@@ -61,23 +59,20 @@
     "root_module": {
       "resources": [
         {
-          "address": "aws_db_instance.orders",
+          "address": "aws_rds_cluster.orders",
           "mode": "managed",
-          "type": "aws_db_instance",
+          "type": "aws_rds_cluster",
           "name": "orders",
           "provider_config_key": "aws",
           "expressions": {
-            "allocated_storage": {
-              "constant_value": 50
-            },
-            "engine": {
-              "constant_value": "postgres"
-            },
-            "identifier": {
+            "cluster_identifier": {
               "constant_value": "orders"
             },
-            "instance_class": {
-              "constant_value": "db.t3.medium"
+            "engine": {
+              "constant_value": "aurora-postgresql"
+            },
+            "master_username": {
+              "constant_value": "orders"
             },
             "deletion_protection": {
               "constant_value": true

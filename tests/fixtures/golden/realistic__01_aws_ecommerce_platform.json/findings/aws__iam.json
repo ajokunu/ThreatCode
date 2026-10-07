@@ -1,8 +1,8 @@
 [
   {
     "resource_address": "aws_iam_policy.s3_full_access",
-    "rule_id": "IAM_WILDCARD_ACTION",
-    "severity": "critical",
+    "rule_id": "IAM_SERVICE_WILDCARD",
+    "severity": "high",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1078.004"

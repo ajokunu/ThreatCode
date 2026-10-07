@@ -52,14 +52,15 @@ rules:
         techniques: ["T1078.004"]
 
   - id: IAM_SERVICE_WILDCARD
-    title: IAM policy allows every action of a service on every resource
+    title: IAM policy allows a wildcard over every action of a service
     description: >
       A statement allows every action of one AWS service (for example iam:* or s3:*) on all
-      resources.
+      resources, or allows every action (Action "*") on a limited set of resources.
       iam:* alone lets the holder create administrators, and a service-wide grant on all
       resources is far broader than any single workload needs.
-      A policy that allows every action of every service is reported as IAM_WILDCARD_ACTION
-      instead.
+      A statement that allows every action on every resource is reported as IAM_WILDCARD_ACTION
+      instead, and a service wildcard on one named resource, such as s3:* on one bucket, is
+      not reported.
     stride_category: elevation_of_privilege
     severity: high
     confidence: definitive

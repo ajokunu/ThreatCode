@@ -3,7 +3,7 @@
     "resource_address": "aws_db_instance.no_backup_db",
     "rule_id": "RDS_NO_BACKUP",
     "severity": "medium",
-    "stride": "tampering",
+    "stride": "denial_of_service",
     "techniques": [
       "T1485"
     ]
@@ -12,7 +12,7 @@
     "resource_address": "aws_db_instance.public_db",
     "rule_id": "RDS_NO_BACKUP",
     "severity": "medium",
-    "stride": "tampering",
+    "stride": "denial_of_service",
     "techniques": [
       "T1485"
     ]

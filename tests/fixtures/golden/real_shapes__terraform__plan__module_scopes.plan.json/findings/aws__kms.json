@@ -1,11 +1,9 @@
 [
   {
     "resource_address": "aws_kms_key.main",
-    "rule_id": "KMS_NO_DELETION_PROTECTION",
+    "rule_id": "KMS_KEY_ROTATION_DISABLED",
     "severity": "low",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1485"
-    ]
+    "stride": "information_disclosure",
+    "techniques": []
   }
 ]

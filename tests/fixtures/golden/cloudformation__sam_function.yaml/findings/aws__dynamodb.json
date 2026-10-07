@@ -1,11 +1,11 @@
 [
   {
     "resource_address": "ItemsTable",
-    "rule_id": "DYNAMODB_NO_AUTOSCALING",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
     "severity": "low",
-    "stride": "denial_of_service",
+    "stride": "information_disclosure",
     "techniques": [
-      "T1499"
+      "T1530"
     ]
   },
   {
