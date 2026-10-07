@@ -131,8 +131,15 @@ def normalize_text(text: str) -> str:
 # --- expression text -----------------------------------------------------------------
 
 
-def _skip_string(text: str, i: int) -> int:
+# Strings nested inside interpolations nested inside strings: deeper than this is taken
+# as running to the end of the text, so hostile input cannot exhaust the Python stack
+_MAX_NESTING = 64
+
+
+def _skip_string(text: str, i: int, depth: int = 0) -> int:
     """Index just after the quoted string that starts at ``i``, honouring ``${}`` nesting."""
+    if depth > _MAX_NESTING:
+        return len(text)
     quote = text[i]
     i += 1
     n = len(text)
@@ -144,26 +151,28 @@ def _skip_string(text: str, i: int) -> int:
         if ch == quote:
             return i + 1
         if ch in "$%" and text.startswith("{", i + 1) and not text.startswith(ch + ch, i - 1):
-            i = skip_braces(text, i + 1)
+            i = skip_braces(text, i + 1, depth + 1)
             continue
         i += 1
     return n
 
 
-def skip_braces(text: str, i: int) -> int:
+def skip_braces(text: str, i: int, depth: int = 0) -> int:
     """Index just after the ``}`` that closes the ``{`` at ``i``; strings are skipped whole."""
-    depth = 0
+    if depth > _MAX_NESTING:
+        return len(text)
+    nesting = 0
     n = len(text)
     while i < n:
         ch = text[i]
         if ch in "\"'":
-            i = _skip_string(text, i)
+            i = _skip_string(text, i, depth + 1)
             continue
         if ch == "{":
-            depth += 1
+            nesting += 1
         elif ch == "}":
-            depth -= 1
-            if depth == 0:
+            nesting -= 1
+            if nesting == 0:
                 return i + 1
         i += 1
     return n

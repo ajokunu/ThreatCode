@@ -358,9 +358,20 @@ class TestFunctions:
         assert is_unknown(ev("length(var.items)"))
         assert is_unknown(ev("concat(var.items, [1])"))
 
-    def test_jsonencode_writes_an_unknown_leaf_as_the_placeholder(self) -> None:
+    def test_jsonencode_keeps_the_structure_when_a_leaf_is_unknown(self) -> None:
         value = ev("jsonencode({a = var.x, b = 1})")
-        assert value == f'{{"a":"{UNKNOWN_TEXT}","b":1}}'
+        assert isinstance(value, dict)
+        assert value["b"] == 1
+        assert unknown_reference(value["a"]) == "var.x"
+
+    def test_jsonencode_keeps_the_structure_for_an_unknown_list_element(self) -> None:
+        value = ev("jsonencode({a = [1, var.x]})")
+        assert isinstance(value, dict) and is_unknown(value["a"][1])
+
+    def test_jsonencode_normalizes_a_structure_with_an_unknown_leaf_like_a_text_one(self) -> None:
+        value = ev("jsonencode({b = [2.0, var.x], a = true})")
+        assert value["a"] is True
+        assert value["b"][0] == 2 and isinstance(value["b"][0], int)
 
     def test_jsonencode_of_an_unknown_value_is_unknown(self) -> None:
         assert is_unknown(ev("jsonencode(var.x)"))
@@ -602,3 +613,159 @@ class TestReferenceScanning:
     def test_a_directive_condition_is_scanned(self) -> None:
         refs = self.refs("%{ if aws_vpc.main.enable }yes%{ endif }")
         assert refs == ["aws_vpc.main.enable"]
+
+
+# --- properties --------------------------------------------------------------------------
+
+hypothesis = pytest.importorskip("hypothesis")
+
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+from threatcode.parsers._hcl_values import (  # noqa: E402
+    canonical_json,
+    find_interpolations,
+    normalize_text,
+    unpythonize_template,
+)
+
+FIXED = settings(max_examples=150, derandomize=True, deadline=None)
+
+# Characters that make HCL text interesting: quotes, braces, operators, template markers
+_HCL_ALPHABET = st.sampled_from(list("abz_09.-+*/%<>=!&|?:,()[]{}\"'$#\\\n ") + ["${", "%{", "$${"])
+hcl_noise = st.lists(_HCL_ALPHABET, max_size=60).map("".join)
+hcl_pieces = st.lists(
+    st.sampled_from(
+        [
+            "var.x",
+            "local.y",
+            "aws_vpc.main.id",
+            "true",
+            "false",
+            "null",
+            "1",
+            "2.5",
+            '"s"',
+            "(",
+            ")",
+            "[",
+            "]",
+            "{",
+            "}",
+            "?",
+            ":",
+            ",",
+            "+",
+            "&&",
+            "==",
+            "!",
+            "for",
+            "in",
+            "if",
+            "=>",
+            "...",
+            ".",
+            "*",
+            "jsonencode",
+            "merge",
+            "concat",
+            "True",
+            "None",
+            "${",
+        ]
+    ),
+    max_size=14,
+).map(" ".join)
+json_values = st.recursive(
+    st.one_of(
+        st.none(),
+        st.booleans(),
+        st.integers(min_value=-(10**9), max_value=10**9),
+        st.text(
+            alphabet=st.characters(blacklist_characters="$%", blacklist_categories=["Cs"]),
+            max_size=12,
+        ),
+    ),
+    lambda children: st.one_of(
+        st.lists(children, max_size=4),
+        st.dictionaries(
+            st.text(
+                alphabet=st.characters(blacklist_characters="$%", blacklist_categories=["Cs"]),
+                max_size=6,
+            ),
+            children,
+            max_size=4,
+        ),
+    ),
+    max_leaves=10,
+)
+
+
+class TestProperties:
+    @FIXED
+    @given(st.one_of(hcl_noise, hcl_pieces, st.text(max_size=80)))
+    def test_arbitrary_text_never_raises(self, text: str) -> None:
+        module = Module(variables={"x": 1}, locals_={"y": "z"}, resources={("aws_vpc", "main")})
+        evaluate_expression(text, module)
+        evaluate_string(text, module)
+        evaluate_string("${" + text + "}", module)
+        string_references("${" + text + "}", module)
+        string_references(text, module)
+        normalize_text(text)
+        unpythonize_template(text)
+        find_interpolations(text)
+
+    @FIXED
+    @given(st.one_of(hcl_noise, hcl_pieces))
+    def test_an_expression_is_unknown_or_a_plain_value(self, text: str) -> None:
+        value = evaluate_expression(text)
+        assert is_unknown(value) or isinstance(
+            value, (bool, int, float, str, list, dict, type(None))
+        )
+
+    @FIXED
+    @given(json_values)
+    def test_jsonencode_of_a_literal_is_canonical_json(self, value: Any) -> None:
+        import json
+
+        text = json.dumps(value, ensure_ascii=False)
+        assert evaluate_expression(f"jsonencode({text})") == canonical_json(value)
+
+    @FIXED
+    @given(json_values)
+    def test_normalizing_json_text_is_idempotent_and_keeps_the_data(self, value: Any) -> None:
+        import json
+
+        if not isinstance(value, (dict, list)):
+            return
+        once = normalize_text(json.dumps(value, indent=1))
+        assert normalize_text(once) == once
+        assert json.loads(once) == value
+
+    @FIXED
+    @given(
+        st.integers(-1000, 1000),
+        st.integers(-1000, 1000),
+        st.integers(1, 1000),
+    )
+    def test_integer_arithmetic_matches_python(self, a: int, b: int, c: int) -> None:
+        assert evaluate_expression(f"({a}) + ({b}) * ({c})") == a + b * c
+        assert evaluate_expression(f"({a}) - ({b}) - ({c})") == a - b - c
+        assert evaluate_expression(f"({a}) % ({c})") == a % c
+        assert evaluate_expression(f"({a}) < ({b})") is (a < b)
+        assert evaluate_expression(f"({a}) == ({b})") is (a == b)
+
+    @FIXED
+    @given(st.booleans(), st.booleans(), st.booleans())
+    def test_boolean_logic_matches_python(self, a: bool, b: bool, c: bool) -> None:
+        text = f"{str(a).lower()} && {str(b).lower()} || !{str(c).lower()}"
+        assert evaluate_expression(text) is ((a and b) or (not c))
+        ternary = f"{str(a).lower()} ? {str(b).lower()} : {str(c).lower()}"
+        assert evaluate_expression(ternary) is (b if a else c)
+
+    @FIXED
+    @given(st.lists(st.sampled_from(["aws_vpc.main", "aws_vpc.other", "var.x"]), max_size=6))
+    def test_references_are_found_wherever_they_sit(self, parts: list[str]) -> None:
+        text = "${" + "} and ${".join(f"f({p}[0].id)" for p in parts) + "}" if parts else ""
+        found = string_references(text, Module(resources={("aws_vpc", "main")}))
+        assert found == (["aws_vpc.main.id"] if any(p == "aws_vpc.main" for p in parts) else [])

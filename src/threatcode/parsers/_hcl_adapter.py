@@ -207,27 +207,36 @@ def _skip_trivia(text: str, i: int) -> int:
     return i
 
 
-def _skip_interpolation(text: str, i: int) -> int:
+# Interpolations nested inside strings nested inside interpolations: deeper than this is
+# taken as running to the end of the text
+_MAX_NESTING_DEPTH = 64
+
+
+def _skip_interpolation(text: str, i: int, depth: int = 0) -> int:
     """Index after the ``}`` that closes the interpolation whose ``{`` is at ``i``."""
-    depth = 0
+    if depth > _MAX_NESTING_DEPTH:
+        return len(text)
+    nesting = 0
     n = len(text)
     while i < n:
         ch = text[i]
         if ch == '"':
-            i = _skip_quoted(text, i)
+            i = _skip_quoted(text, i, depth + 1)
             continue
         if ch == "{":
-            depth += 1
+            nesting += 1
         elif ch == "}":
-            depth -= 1
-            if depth == 0:
+            nesting -= 1
+            if nesting == 0:
                 return i + 1
         i += 1
     return n
 
 
-def _skip_quoted(text: str, i: int) -> int:
+def _skip_quoted(text: str, i: int, depth: int = 0) -> int:
     """Index after the double-quoted string that starts at ``i``."""
+    if depth > _MAX_NESTING_DEPTH:
+        return len(text)
     i += 1
     n = len(text)
     while i < n:
@@ -239,7 +248,7 @@ def _skip_quoted(text: str, i: int) -> int:
         elif text.startswith(("$${", "%%{"), i):
             i += 3
         elif text.startswith(("${", "%{"), i):
-            i = _skip_interpolation(text, i + 1)
+            i = _skip_interpolation(text, i + 1, depth + 1)
         else:
             i += 1
     return n

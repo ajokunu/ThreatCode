@@ -767,6 +767,48 @@ class TestDynamicBlocks:
         )
         assert len(by_address(parse_dir(tmp_path))["a.b"].properties["rule"]) == 1
 
+    def test_a_dynamic_block_inside_a_static_block_is_expanded(self, tmp_path: Path) -> None:
+        result = parse_snippet(
+            tmp_path,
+            """
+            resource "aws_lb" "other" {}
+            resource "kubernetes_deployment" "app" {
+              spec {
+                template {
+                  container {
+                    name = "app"
+                    dynamic "env" {
+                      for_each = { MODE = "prod", REGION = "eu" }
+                      content {
+                        name  = env.key
+                        value = env.value
+                      }
+                    }
+                    dynamic "port" {
+                      for_each = [8080]
+                      content {
+                        container_port = port.value
+                        host           = aws_lb.other.dns_name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """,
+        )
+        deployment = by_address(result)["kubernetes_deployment.app"]
+        container = deployment.properties["spec"][0]["template"][0]["container"][0]
+        assert "dynamic" not in container
+        assert container["env"] == [
+            {"name": "MODE", "value": "prod"},
+            {"name": "REGION", "value": "eu"},
+        ]
+        assert container["port"][0]["container_port"] == 8080
+        assert deployment.references == {
+            "spec[].template[].container[].port[].host": ["aws_lb.other.dns_name"]
+        }
+
     def test_nested_dynamic_blocks(self, tmp_path: Path) -> None:
         result = parse_snippet(
             tmp_path,
@@ -1116,7 +1158,7 @@ class TestDataBlocks:
         text = policy.properties["policy"]
         assert text == json.dumps(json.loads(text), sort_keys=True, separators=(",", ":"))
 
-    def test_a_document_that_names_a_resource_keeps_the_rest_readable(self, tmp_path: Path) -> None:
+    def test_a_document_that_names_a_resource_keeps_its_structure(self, tmp_path: Path) -> None:
         result = parse_snippet(
             tmp_path,
             """
@@ -1126,15 +1168,22 @@ class TestDataBlocks:
                 actions   = ["*"]
                 resources = [aws_s3_bucket.b.arn]
               }
+              statement {
+                actions   = ["s3:GetObject"]
+                resources = ["${aws_s3_bucket.b.arn}/*"]
+              }
             }
             resource "aws_iam_policy" "p" {
               policy = data.aws_iam_policy_document.doc.json
             }
             """,
         )
-        policy = json.loads(by_address(result)["aws_iam_policy.p"].properties["policy"])
-        assert policy["Statement"][0]["Action"] == "*"
-        assert policy["Statement"][0]["Resource"] == "(known after apply)"
+        policy = by_address(result)["aws_iam_policy.p"].properties["policy"]
+        assert isinstance(policy, dict)
+        first, second = policy["Statement"]
+        assert first["Action"] == "*"
+        assert first["Resource"].reference == "aws_s3_bucket.b.arn"
+        assert second["Resource"] == "(known after apply)/*"
 
     def test_the_policy_attribute_keeps_the_data_reference(self, tmp_path: Path) -> None:
         policy = by_address(parse_snippet(tmp_path, self.POLICY_DOC))["aws_iam_policy.p"]
@@ -1238,11 +1287,20 @@ class TestPolicyNormalization:
         assert document["Statement"][0]["Action"] == ["s3:GetObject"]
         assert document["Statement"][0]["Resource"] == "arn:aws:s3:::(known after apply)/*"
 
-    def test_a_policy_with_a_resource_reference_has_an_unknown_leaf(
+    def test_a_policy_with_a_resource_reference_keeps_its_structure(
         self, policies: dict[str, ParsedResource]
     ) -> None:
-        document = json.loads(policies["aws_iam_policy.scoped_reference"].properties["policy"])
-        assert document["Statement"][0]["Resource"] == "(known after apply)"
+        policy = policies["aws_iam_policy.scoped_reference"].properties["policy"]
+        assert isinstance(policy, dict)
+        statement = policy["Statement"][0]
+        assert statement["Action"] == ["s3:GetObject"]
+        assert is_unknown(statement["Resource"])
+        assert statement["Resource"].reference == "aws_s3_bucket.data.arn"
+
+    def test_a_policy_whose_unknown_part_is_only_inside_a_template_is_text(
+        self, policies: dict[str, ParsedResource]
+    ) -> None:
+        assert isinstance(policies["aws_iam_policy.with_variable"].properties["policy"], str)
 
     def test_a_policy_with_a_variable_does_not_look_like_a_wildcard(
         self, policies: dict[str, ParsedResource]

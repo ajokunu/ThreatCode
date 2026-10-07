@@ -884,10 +884,33 @@ def _jsonable(value: Any, depth: int = 0) -> Any:
     return value
 
 
+def has_unknown(value: Any, depth: int = 0) -> bool:
+    """Whether a value is an Unknown or holds one anywhere inside it."""
+    if is_unknown(value):
+        return True
+    if depth > MAX_DEPTH:
+        return False
+    if isinstance(value, dict):
+        return any(has_unknown(v, depth + 1) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(has_unknown(v, depth + 1) for v in value)
+    return False
+
+
 def _fn_jsonencode(args: list[Any]) -> Any:
+    """Canonical JSON text, or the structure itself when a leaf cannot be known.
+
+    JSON text cannot say that a leaf is unknown, so a value with a leaf that is exactly one
+    unresolved expression stays a structure with an ``Unknown`` at that leaf, and a rule
+    reads it three-valued. A template that has only some parts unresolved is text with
+    ``(known after apply)`` in their place and does not make the value a structure.
+    """
     if len(args) != 1 or is_unknown(args[0]):
         return _unknown()
-    return canonical_json(_jsonable(args[0]))
+    value = _jsonable(args[0])
+    if has_unknown(value):
+        return value
+    return canonical_json(value)
 
 
 def _fn_merge(args: list[Any]) -> Any:
@@ -1157,7 +1180,7 @@ def evaluate_expression(text: str, ctx: Context = EMPTY_CONTEXT) -> Any:
     return value
 
 
-def evaluate_string(text: str, ctx: Context = EMPTY_CONTEXT) -> Any:
+def evaluate_string(text: str, ctx: Context = EMPTY_CONTEXT, lenient: bool = False) -> Any:
     """Evaluate a string value as python-hcl2 reports it.
 
     Text with no ``${}`` is a literal, kept as written except that JSON becomes canonical JSON.
@@ -1165,6 +1188,7 @@ def evaluate_string(text: str, ctx: Context = EMPTY_CONTEXT) -> Any:
     type of ``expr``. A template with a part that is not known is Unknown, except that a
     template that is itself a JSON document is rendered with ``(known after apply)`` in place
     of each part it could not resolve, so its literal text stays readable by rules.
+    With ``lenient`` every template is rendered that way, which suits text that is a document.
     """
     if "${" not in text and "%{" not in text:
         return normalize_text(text)
@@ -1175,7 +1199,7 @@ def evaluate_string(text: str, ctx: Context = EMPTY_CONTEXT) -> Any:
         return _unknown(text)
     if isinstance(node, Lit):
         return normalize_text(str(node.value))
-    value = _eval(node, ctx, 0, False)
+    value = _eval(node, ctx, 0, lenient)
     if is_unknown(value):
         if text.lstrip().startswith(("{", "[")) and isinstance(node, Tpl):
             lenient = _eval(node, ctx, 0, True)
@@ -1188,16 +1212,18 @@ def evaluate_string(text: str, ctx: Context = EMPTY_CONTEXT) -> Any:
     return value
 
 
-def evaluate_value(raw: Any, ctx: Context = EMPTY_CONTEXT, depth: int = 0) -> Any:
+def evaluate_value(
+    raw: Any, ctx: Context = EMPTY_CONTEXT, depth: int = 0, lenient: bool = False
+) -> Any:
     """Evaluate a value as python-hcl2 reports it: strings, numbers, lists and objects."""
     if depth > MAX_DEPTH * 4:
         return _unknown()
     if isinstance(raw, str):
-        return evaluate_string(raw, ctx)
+        return evaluate_string(raw, ctx, lenient)
     if isinstance(raw, dict):
-        return {key: evaluate_value(value, ctx, depth + 1) for key, value in raw.items()}
+        return {key: evaluate_value(value, ctx, depth + 1, lenient) for key, value in raw.items()}
     if isinstance(raw, list):
-        return [evaluate_value(item, ctx, depth + 1) for item in raw]
+        return [evaluate_value(item, ctx, depth + 1, lenient) for item in raw]
     return raw
 
 

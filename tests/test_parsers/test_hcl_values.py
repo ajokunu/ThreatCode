@@ -198,7 +198,9 @@ class TestNormalizeValue:
         value = normalize_value(
             "${jsonencode({'Statement': [{'Resource': '${aws_s3_bucket.b.arn}'}]})}"
         )
-        assert json.loads(value) == {"Statement": [{"Resource": UNKNOWN_TEXT}]}
+        assert isinstance(value, dict)
+        leaf = value["Statement"][0]["Resource"]
+        assert unknown_reference(leaf) == "aws_s3_bucket.b.arn"
 
     def test_jsonencode_keeps_the_literal_text_around_an_unresolved_part(self) -> None:
         value = normalize_value("${jsonencode({'Resource': 'arn:aws:s3:::${var.bucket}/*'})}")

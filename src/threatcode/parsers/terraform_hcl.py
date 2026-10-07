@@ -51,8 +51,10 @@ from threatcode.parsers._hcl_eval import (
     Context,
     IteratorContext,
     evaluate_value,
+    has_unknown,
     string_references,
 )
+from threatcode.parsers._hcl_values import canonical_json
 from threatcode.parsers._text import decode_input
 from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
 from threatcode.values import Unknown, is_unknown
@@ -184,7 +186,7 @@ class _Scope(Context):
     def declares_data(self, kind: str, name: str) -> bool:
         return (kind, name) in self.data_blocks
 
-    def _isolated(self, compute: Callable[[], Any]) -> tuple[Any, list[_Miss], set[str]]:
+    def isolated(self, compute: Callable[[], Any]) -> tuple[Any, list[_Miss], set[str]]:
         """Run ``compute`` and return its value with the misses and defaults it used.
 
         The counters of the attribute being evaluated are put back afterwards, so a cached
@@ -198,7 +200,7 @@ class _Scope(Context):
         finally:
             session.misses, session.defaults = outer
 
-    def _replay(self, misses: list[_Miss], defaults: set[str]) -> None:
+    def replay(self, misses: list[_Miss], defaults: set[str]) -> None:
         self.session.misses.extend(misses)
         self.session.defaults.update(defaults)
 
@@ -209,7 +211,7 @@ class _Scope(Context):
             cached = self._resolve_variable(name)
             self._variable_cache[name] = cached
         value, status, misses, defaults = cached
-        self._replay(misses, defaults)
+        self.replay(misses, defaults)
         if status == "default":
             self.session.defaults.add(name)
         elif status in ("no_value", "undeclared"):
@@ -224,7 +226,7 @@ class _Scope(Context):
         elif name in self.inputs:
             parent = self.parent
             raw = self.inputs[name]
-            value, misses, defaults = self._isolated(lambda: evaluate_value(raw, parent))
+            value, misses, defaults = self.isolated(lambda: evaluate_value(raw, parent))
             return value, "supplied", misses, defaults
         if declared is not None and declared.has_default:
             return evaluate_value(declared.default), "default", [], set()
@@ -244,12 +246,12 @@ class _Scope(Context):
             self._active.add(key)
             try:
                 raw = self.locals_raw[name]
-                cached = self._isolated(lambda: evaluate_value(raw, self))
+                cached = self.isolated(lambda: evaluate_value(raw, self))
             finally:
                 self._active.discard(key)
             self._local_cache[name] = cached
         value, misses, defaults = cached
-        self._replay(misses, defaults)
+        self.replay(misses, defaults)
         return value
 
     def module_output(self, module: str, output: str) -> Any:
@@ -375,15 +377,16 @@ def _principals(blocks: list[dict[str, Any]]) -> Any:
 def _render_policy_document(body: dict[str, Any], scope: Context) -> Any:
     """The JSON a ``data.aws_iam_policy_document`` produces, or None when it cannot be known.
 
-    Only literal statements render: a ``dynamic`` statement, ``source_policy_documents`` and
-    ``override_policy_documents`` make the document unknowable. An attribute inside a statement
-    that is not known (a bucket ARN) is written as ``(known after apply)``.
+    A ``dynamic`` statement, ``source_policy_documents`` and ``override_policy_documents`` make
+    the document unknowable. Otherwise it is canonical JSON text, except that a value which is
+    exactly one unresolved expression (``resources = [aws_s3_bucket.b.arn]``) keeps the document
+    a structure with an ``Unknown`` at that leaf, as ``jsonencode`` does.
     """
     if any(
         key in body for key in ("dynamic", "source_policy_documents", "override_policy_documents")
     ):
         return None
-    evaluated = evaluate_value(body, scope)
+    evaluated = evaluate_value(body, scope, lenient=True)
     if not isinstance(evaluated, dict):
         return None
     statements: list[dict[str, Any]] = []
@@ -424,9 +427,7 @@ def _render_policy_document(body: dict[str, Any], scope: Context) -> Any:
     if isinstance(evaluated.get("policy_id"), str) and evaluated["policy_id"]:
         document["Id"] = evaluated["policy_id"]
     document["Statement"] = statements
-    from threatcode.parsers._hcl_values import canonical_json
-
-    return canonical_json(document)
+    return document if has_unknown(document) else canonical_json(document)
 
 
 # --- the parser --------------------------------------------------------------------------
@@ -872,6 +873,17 @@ class _Notes:
     dynamic: list[str] = field(default_factory=list)
 
 
+def _has_dynamic(raw: Any, depth: int = 0) -> bool:
+    """Whether a raw value holds a ``dynamic`` block anywhere inside it."""
+    if depth > 64:
+        return False
+    if isinstance(raw, dict):
+        return "dynamic" in raw or any(_has_dynamic(v, depth + 1) for v in raw.values())
+    if isinstance(raw, list):
+        return any(_has_dynamic(item, depth + 1) for item in raw)
+    return False
+
+
 def _evaluate_body(
     body: dict[str, Any],
     ctx: Context,
@@ -887,11 +899,16 @@ def _evaluate_body(
     for key, raw in body.items():
         if key == "dynamic":
             continue
-        session.begin()
-        result[key] = evaluate_value(raw, ctx)
+        if top_level:
+            session.begin()
+        attribute_path = f"{path}.{key}" if path else key
+        if _has_dynamic(raw):
+            result[key] = _evaluate_nested(raw, ctx, scope, attribute_path, references, notes)
+        else:
+            result[key] = evaluate_value(raw, ctx)
+            _collect_references(raw, attribute_path, scope, references)
         if top_level and session.misses:
             notes.unresolved[key] = list(session.misses)
-        _collect_references(raw, f"{path}.{key}" if path else key, scope, references)
     for entry in _as_list(body.get("dynamic")):
         if not isinstance(entry, dict):
             continue
@@ -902,6 +919,24 @@ def _evaluate_body(
                 continue
             _expand_dynamic(block_name, spec, content, ctx, scope, path, references, notes, result)
     return result
+
+
+def _evaluate_nested(
+    raw: Any,
+    ctx: Context,
+    scope: _Scope,
+    path: str,
+    references: dict[str, list[str]],
+    notes: _Notes,
+) -> Any:
+    """Evaluate a nested block that holds a ``dynamic`` block somewhere inside it."""
+    if isinstance(raw, list):
+        child = f"{path}[]" if any(isinstance(item, dict) for item in raw) else path
+        return [_evaluate_nested(item, ctx, scope, child, references, notes) for item in raw]
+    if isinstance(raw, dict):
+        return _evaluate_body(raw, ctx, scope, path, references, notes, False)
+    _collect_references(raw, path, scope, references)
+    return evaluate_value(raw, ctx)
 
 
 def _expand_dynamic(
@@ -915,11 +950,12 @@ def _expand_dynamic(
     notes: _Notes,
     result: dict[str, Any],
 ) -> None:
-    session = scope.session
     iterator = _iterator_name(spec.get("iterator"), name)
-    session.begin()
-    collection = evaluate_value(spec.get("for_each"), ctx)
-    by_default = bool(session.defaults)
+    # The collection is an input of the attribute that holds the block: what it used is
+    # reported with that attribute, and a default it used decides how an empty one is read
+    collection, misses, defaults = scope.isolated(lambda: evaluate_value(spec.get("for_each"), ctx))
+    scope.replay(misses, defaults)
+    by_default = bool(defaults)
     items = _iteration(collection)
     block_path = f"{path}.{name}[]" if path else f"{name}[]"
     expanded: list[dict[str, Any]]
