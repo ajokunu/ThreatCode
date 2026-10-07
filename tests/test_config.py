@@ -63,7 +63,13 @@ class TestThreatCodeConfig:
     def test_llm_defaults(self) -> None:
         cfg = ThreatCodeConfig()
         assert cfg.llm.max_tokens == 4096
-        assert cfg.llm.temperature == 0.2
+        # No temperature is sent unless one is configured: current models reject it
+        assert cfg.llm.temperature is None
+        assert cfg.llm.model == "claude-sonnet-5-5"
+        assert cfg.llm.timeout == 120
+        assert cfg.llm.max_retries == 1
+        assert cfg.llm.max_input_tokens == 60_000
+        assert cfg.llm.api_key_env is None
 
     def test_redaction_defaults(self) -> None:
         assert ThreatCodeConfig().redaction.strategy == "placeholder"
@@ -276,18 +282,21 @@ class TestLlmConfigValidation:
         )
         assert cfg.llm.allow_local_network is True
 
-    @pytest.mark.parametrize("provider", ["openai", "anthropic"])
-    def test_allow_local_network_rejected_for_hosted_providers(
-        self, tmp_path: Path, provider: str
-    ) -> None:
-        path = write_config(
-            tmp_path, f"llm:\n  provider: {provider}\n  allow_local_network: true\n"
-        )
-        expected = (
-            f"llm: allow_local_network requires provider 'ollama' or 'local', not '{provider}'"
-        )
+    def test_allow_local_network_rejected_for_hosted_openai(self, tmp_path: Path) -> None:
+        path = write_config(tmp_path, "llm:\n  provider: openai\n  allow_local_network: true\n")
+        expected = "llm: allow_local_network requires provider 'ollama' or 'local', not 'openai'"
         with pytest.raises(ConfigError, match=expected):
             load_config(path)
+
+    def test_allow_local_network_is_accepted_for_anthropic_behind_a_gateway(
+        self, tmp_path: Path
+    ) -> None:
+        path = write_config(
+            tmp_path,
+            "llm:\n  provider: anthropic\n  base_url: http://10.0.0.5:8080\n"
+            "  allow_local_network: true\n",
+        )
+        assert load_config(path).llm.allow_local_network is True
 
     def test_allow_local_network_defaults_off(self) -> None:
         assert ThreatCodeConfig().llm.allow_local_network is False
