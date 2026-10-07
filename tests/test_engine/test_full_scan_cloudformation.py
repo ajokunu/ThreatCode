@@ -204,7 +204,7 @@ INSECURE_COUNTERPARTS = [
     ),
     pytest.param(
         "AWS::SSM::Parameter",
-        {"Type": "String", "Value": "x"},
+        {"Type": "String", "Name": "/prod/db/password", "Value": "x"},
         "SSM_UNENCRYPTED_PARAMETER",
         id="ssm-plain-string",
     ),

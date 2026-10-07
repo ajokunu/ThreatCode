@@ -26,7 +26,6 @@ FIRING_RULE_IDS = {
     "S3_NO_VERSIONING",
     "S3_NO_LOGGING",
     "IAM_WILDCARD_ACTION",
-    "IAM_NO_MFA",
     "IAM_OVERPERMISSIVE_ROLE",
     "EC2_PUBLIC_IP",
     "EC2_IMDSV1",
@@ -256,9 +255,13 @@ class TestUnknownValuesThroughTheLibraryPath:
         assert not result.fired("SQS_NO_ENCRYPTION", "aws_sqs_queue.orders")
         assert result.fired("SQS_NO_ENCRYPTION", "aws_sqs_queue.plain")
 
-    def test_other_findings_on_the_unknown_resources_are_unaffected(self) -> None:
+    def test_the_only_findings_are_the_resources_that_really_lack_the_setting(self) -> None:
         result = scan_real_shape("terraform/plan/unknown_values.plan.json")
-        assert result.fired("SQS_NO_DLQ", "aws_sqs_queue.orders")
+        assert {(t.rule_id, t.resource_address) for t in result.report.threats} == {
+            ("CLOUDTRAIL_NO_ENCRYPTION", "aws_cloudtrail.plain"),
+            ("CLOUDTRAIL_NO_ENCRYPTION", "module.audit.aws_cloudtrail.bare"),
+            ("SQS_NO_ENCRYPTION", "aws_sqs_queue.plain"),
+        }
 
     def test_buckets_whose_settings_are_all_unknown_report_no_absence(self) -> None:
         result = scan_real_shape("terraform/plan/unknown_values.plan.json")

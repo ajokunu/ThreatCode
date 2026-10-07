@@ -183,9 +183,9 @@ class TestBuiltinRules:
             pytest.skip("PyYAML was built without libyaml")
         assert issubclass(loader._RuleYamlLoader, yaml.CSafeLoader)
 
-    def test_s3_public_access_covers_the_acl_resource(self) -> None:
+    def test_s3_public_access_is_judged_on_the_bucket_not_its_acl_resource(self) -> None:
         by_id = {r.id: r for r in load_builtin_rules()}
-        assert by_id["S3_PUBLIC_ACCESS"].resource_types == ("aws_s3_bucket", "aws_s3_bucket_acl")
+        assert by_id["S3_PUBLIC_ACCESS"].resource_types == ("aws_s3_bucket",)
         assert by_id["S3_NO_ENCRYPTION"].resource_types == ("aws_s3_bucket",)
 
     def test_gcp_default_service_account_covers_instance_templates(self) -> None:
@@ -760,11 +760,11 @@ class TestImmutability:
     def test_condition_cannot_be_changed(self) -> None:
         rule = self._rule()
         with pytest.raises(TypeError, match="read-only"):
-            rule.condition["any_of"] = []
+            rule.condition["not"] = {}
         with pytest.raises(TypeError, match="read-only"):
-            rule.condition["any_of"].append({"x": 1})
+            rule.condition["not"]["derived.sse_algorithm"]["matches_any"].append("x")
         with pytest.raises(TypeError, match="read-only"):
-            rule.condition["any_of"][0]["server_side_encryption_configuration"].clear()
+            rule.condition["not"]["derived.sse_algorithm"].clear()
 
     def test_metadata_cannot_be_changed(self) -> None:
         rule = self._rule()

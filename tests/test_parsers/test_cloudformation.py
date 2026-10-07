@@ -266,7 +266,20 @@ class TestTypeTable:
         assert module.main(["--check"]) == 0
 
     def test_every_unsupported_type_is_in_use_and_unmapped(self) -> None:
-        assert set(UNSUPPORTED_IN_CFN) == {"aws_default_security_group", "aws_s3_bucket_acl"}
+        assert set(UNSUPPORTED_IN_CFN) == {
+            "aws_config_configuration_recorder_status",
+            "aws_default_security_group",
+            "aws_iam_group_policy",
+            "aws_iam_group_policy_attachment",
+            "aws_iam_policy_attachment",
+            "aws_iam_role_policy",
+            "aws_iam_role_policy_attachment",
+            "aws_iam_user_policy",
+            "aws_iam_user_policy_attachment",
+            "aws_rds_cluster_instance",
+            "aws_s3_account_public_access_block",
+            "aws_s3_bucket_public_access_block",
+        }
         assert not set(UNSUPPORTED_IN_CFN) & terraform_types()
         assert all(reason.strip() for reason in UNSUPPORTED_IN_CFN.values())
 

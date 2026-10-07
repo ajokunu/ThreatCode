@@ -196,9 +196,44 @@ UNSUPPORTED_IN_CFN: Mapping[str, str] = MappingProxyType(
         "aws_default_security_group": (
             "CloudFormation cannot adopt the default security group of a VPC"
         ),
-        "aws_s3_bucket_acl": (
-            "CloudFormation sets the ACL through AccessControl on AWS::S3::Bucket, "
-            "which becomes the acl attribute of aws_s3_bucket"
+        "aws_s3_bucket_public_access_block": (
+            "CloudFormation sets the public access block through PublicAccessBlockConfiguration "
+            "on AWS::S3::Bucket, which becomes the public_access_block fact of aws_s3_bucket"
+        ),
+        "aws_s3_account_public_access_block": (
+            "CloudFormation has no resource for the account-level S3 public access block"
+        ),
+        "aws_rds_cluster_instance": (
+            "CloudFormation creates a cluster member as AWS::RDS::DBInstance with "
+            "DBClusterIdentifier, which becomes aws_db_instance"
+        ),
+        "aws_config_configuration_recorder_status": (
+            "CloudFormation has no resource that starts or stops a configuration recorder"
+        ),
+        "aws_iam_role_policy": (
+            "CloudFormation writes an inline policy of a role as AWS::IAM::Policy, "
+            "which becomes aws_iam_policy"
+        ),
+        "aws_iam_user_policy": (
+            "CloudFormation writes an inline policy of a user as AWS::IAM::Policy, "
+            "which becomes aws_iam_policy"
+        ),
+        "aws_iam_group_policy": (
+            "CloudFormation writes an inline policy of a group as AWS::IAM::Policy, "
+            "which becomes aws_iam_policy"
+        ),
+        "aws_iam_role_policy_attachment": (
+            "CloudFormation attaches managed policies through ManagedPolicyArns on AWS::IAM::Role"
+        ),
+        "aws_iam_user_policy_attachment": (
+            "CloudFormation attaches managed policies through ManagedPolicyArns on AWS::IAM::User"
+        ),
+        "aws_iam_group_policy_attachment": (
+            "CloudFormation attaches managed policies through ManagedPolicyArns on AWS::IAM::Group"
+        ),
+        "aws_iam_policy_attachment": (
+            "CloudFormation has no exclusive policy attachment resource; policies are attached "
+            "through ManagedPolicyArns or the Roles, Users and Groups of AWS::IAM::Policy"
         ),
     }
 )
