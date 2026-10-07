@@ -4,9 +4,8 @@ The fixtures under ``tests/fixtures/real_shapes/docker`` are Dockerfiles as team
 lowercase instructions, line continuations with comments inside them, heredocs, multi-stage
 builds with ``--platform`` and ``ARG`` tags, ``ONBUILD`` triggers and a ``Containerfile``.
 
-Today the lexer reads only uppercase single-line instructions, treats ``--platform=...`` as the
-base image and has no notion of stages. Assertions that hold now run now; each one a later
-package delivers is its own pending test.
+The parser reads these the way BuildKit does: lowercase keywords, comments inside
+continuations, heredocs, ``--platform`` flags, stages and ``ONBUILD`` triggers.
 """
 
 from __future__ import annotations
@@ -14,13 +13,12 @@ from __future__ import annotations
 import json
 
 from tests.helpers.graph_assert import assert_edge, assert_zone
-from tests.helpers.pending import pending
 from tests.helpers.scan import scan_real_shape
 
 SUMMARY = "dockerfile.image.summary"
 
 # Node types a Dockerfile may legitimately produce: every instruction keyword, the image summary
-# and the stage node a later package adds. Anything else means body text was read as an instruction.
+# and the stage node. Anything else means body text was read as an instruction.
 KNOWN_NODE_TYPES = {
     f"dockerfile_{name}"
     for name in (
@@ -80,7 +78,6 @@ class TestContinuations:
     def test_the_summary_is_in_the_private_zone(self) -> None:
         assert_zone(scan_real_shape(self.PATH).graph, SUMMARY, "private")
 
-    @pending("WP-2-5", "comment lines inside a continuation are dropped from the RUN command")
     def test_the_run_instruction_is_one_command_without_the_comments(self) -> None:
         nodes = scan_real_shape(self.PATH).graph.nodes
         run = _nodes_of(nodes, "dockerfile_run")[0]
@@ -89,14 +86,12 @@ class TestContinuations:
         assert "rm -rf /var/lib/apt/lists/*" in args
         assert "#" not in args
 
-    @pending("WP-2-5", "ENV parses every KEY=VALUE pair of a multi-line instruction")
     def test_the_multi_line_env_is_parsed_into_every_key(self) -> None:
         nodes = scan_real_shape(self.PATH).graph.nodes
         env = _nodes_of(nodes, "dockerfile_env")
         keys = {key for n in env for key in n.properties.get("keys", [n.properties.get("key")])}
         assert {"APP_HOME", "APP_PORT", "LOG_LEVEL"} <= keys
 
-    @pending("WP-2-5", "a synthetic stage node contains the instructions of its stage")
     def test_instructions_are_contained_in_their_stage(self) -> None:
         graph = scan_real_shape(self.PATH).graph
         stage = next(n for n in graph.nodes.values() if n.resource_type == "dockerfile_stage")
@@ -110,7 +105,6 @@ class TestLowercase:
     def test_the_summary_node_exists(self) -> None:
         assert SUMMARY in scan_real_shape(self.PATH).graph.nodes
 
-    @pending("WP-2-5", "the lexer matches instruction keywords case-insensitively")
     def test_lowercase_instructions_are_read(self) -> None:
         graph = scan_real_shape(self.PATH).graph
         props = graph.nodes[SUMMARY].properties
@@ -120,7 +114,6 @@ class TestLowercase:
         assert props["has_workdir"] is True
         assert props["exposed_ports"] == [8000]
 
-    @pending("WP-2-5", "the lexer matches instruction keywords case-insensitively")
     def test_every_lowercase_instruction_is_a_node(self) -> None:
         types = {n.resource_type for n in scan_real_shape(self.PATH).graph.nodes.values()}
         assert {"dockerfile_from", "dockerfile_run", "dockerfile_copy", "dockerfile_cmd"} <= types
@@ -134,7 +127,6 @@ class TestHeredoc:
         assert props["base_image"] == "alpine:3.20"
         assert props["user_value"] == "app"
 
-    @pending("WP-2-5", "a heredoc body is attached to its RUN instruction")
     def test_the_run_instruction_carries_its_heredoc_body(self) -> None:
         run = _nodes_of(scan_real_shape(self.PATH).graph.nodes, "dockerfile_run")[0]
         assert "apk add --no-cache curl ca-certificates" in json.dumps(run.properties)
@@ -142,8 +134,8 @@ class TestHeredoc:
     def test_heredoc_bodies_are_never_read_as_instructions(self) -> None:
         """A body line such as ``set -eux`` must not become a dockerfile_set node.
 
-        This holds today because only uppercase keywords are read; it must keep holding once
-        lowercase keywords are accepted, which is when a naive lexer would break it.
+        Lowercase keywords are accepted, so a naive lexer would read ``set -eux`` as an
+        instruction; heredoc bodies belong to the RUN or COPY that opens them.
         """
         nodes = scan_real_shape(self.PATH).graph.nodes
         unknown = {n.resource_type for n in nodes.values()} - KNOWN_NODE_TYPES
@@ -164,14 +156,12 @@ class TestMultiStage:
         nodes = scan_real_shape(self.PATH).graph.nodes
         assert len(_nodes_of(nodes, "dockerfile_from")) == 3
 
-    @pending("WP-2-5", "FROM flags such as --platform are not read as the image reference")
     def test_the_platform_flag_is_not_the_base_image(self) -> None:
         nodes = scan_real_shape(self.PATH).graph.nodes
         images = {n.properties["image"] for n in _nodes_of(nodes, "dockerfile_from")}
         assert "--platform=$BUILDPLATFORM" not in images
         assert "golang:1.22" in images or "golang:${GO_VERSION}" in images
 
-    @pending("WP-2-5", "the image summary is computed from the final stage")
     def test_the_summary_describes_the_distroless_final_stage(self) -> None:
         props = scan_real_shape(self.PATH).graph.nodes[SUMMARY].properties
         assert props["base_image"].startswith("gcr.io/distroless/static-debian12")
@@ -179,12 +169,10 @@ class TestMultiStage:
         assert props["final_stage_uses_latest_tag"] is False
         assert props["stage_count"] == 3
 
-    @pending("WP-2-5", "ARG defaults before the first FROM are substituted into the reference")
     def test_the_runtime_tag_comes_from_the_arg_default(self) -> None:
         props = scan_real_shape(self.PATH).graph.nodes[SUMMARY].properties
         assert props["base_image"] == "gcr.io/distroless/static-debian12:nonroot"
 
-    @pending("WP-2-5", "each FROM opens a stage node named after the stage")
     def test_every_stage_is_a_node(self) -> None:
         graph = scan_real_shape(self.PATH).graph
         stages = {n.id for n in graph.nodes.values() if n.resource_type == "dockerfile_stage"}
@@ -194,12 +182,10 @@ class TestMultiStage:
             "dockerfile.stage.runtime",
         }
 
-    @pending("WP-2-5", "FROM <stage> is a dependency edge with relation base")
     def test_the_test_stage_is_based_on_the_build_stage(self) -> None:
         graph = scan_real_shape(self.PATH).graph
         assert_edge(graph, "dockerfile.stage.test", "dockerfile.stage.build", "dependency", "base")
 
-    @pending("WP-2-5", "COPY --from is a dependency edge with relation copy_from")
     def test_the_runtime_stage_copies_from_the_build_stage(self) -> None:
         graph = scan_real_shape(self.PATH).graph
         assert_edge(
@@ -210,7 +196,6 @@ class TestMultiStage:
             relation="copy_from",
         )
 
-    @pending("WP-2-5", "EXPOSE and USER are PRIVATE: a declared port is not internet exposure")
     def test_expose_and_user_are_private(self) -> None:
         graph = scan_real_shape(self.PATH).graph
         for node in _nodes_of(graph.nodes, "dockerfile_expose"):
@@ -227,7 +212,6 @@ class TestOnbuild:
         assert props["base_image"] == "node:20-alpine"
         assert props["user_value"] == "node"
 
-    @pending("WP-2-5", "ONBUILD <INSTR> is unwrapped and flagged onbuild")
     def test_the_triggers_are_unwrapped_into_their_instruction_type(self) -> None:
         nodes = scan_real_shape(self.PATH).graph.nodes
         runs = [n for n in _nodes_of(nodes, "dockerfile_run") if n.properties.get("onbuild")]
@@ -240,8 +224,75 @@ class TestOnbuild:
 class TestContainerfile:
     PATH = "docker/Containerfile"
 
-    @pending("WP-2-5", "Containerfile is a Dockerfile name; the detector is WP-1-4, merged first")
     def test_a_containerfile_is_read(self) -> None:
         props = scan_real_shape(self.PATH).graph.nodes[SUMMARY].properties
         assert props["base_image"] == "registry.access.redhat.com/ubi9/ubi-minimal:9.4"
         assert props["user_value"] == "1001"
+
+
+class TestEveryRealShape:
+    FILES = (
+        "Containerfile",
+        "continuations.Dockerfile",
+        "heredoc.Dockerfile",
+        "lowercase.Dockerfile",
+        "multistage.Dockerfile",
+        "onbuild.Dockerfile",
+    )
+
+    def test_no_file_produces_a_node_of_an_unknown_type(self) -> None:
+        for name in self.FILES:
+            nodes = scan_real_shape(f"docker/{name}").graph.nodes
+            unknown = {n.resource_type for n in nodes.values()} - KNOWN_NODE_TYPES
+            assert not unknown, f"{name}: {sorted(unknown)}"
+
+    def test_no_file_has_a_trust_boundary_crossing(self) -> None:
+        for name in self.FILES:
+            graph = scan_real_shape(f"docker/{name}").graph
+            assert not [e for e in graph.edges if e.crosses_trust_boundary], name
+
+    def test_every_instruction_node_is_contained_in_exactly_one_stage(self) -> None:
+        for name in self.FILES:
+            graph = scan_real_shape(f"docker/{name}").graph
+            for node in graph.nodes.values():
+                if node.resource_type in ("dockerfile_image", "dockerfile_stage"):
+                    continue
+                stages = [
+                    e.target
+                    for e in graph.edges
+                    if e.source == node.id and e.edge_type.value == "containment"
+                ]
+                assert len(stages) <= 1, (name, node.id)
+
+    def test_every_dockerfile_has_exactly_one_summary(self) -> None:
+        for name in self.FILES:
+            nodes = scan_real_shape(f"docker/{name}").graph.nodes
+            assert len(_nodes_of(nodes, "dockerfile_image")) == 1, name
+
+    def test_the_summary_user_matches_the_file(self) -> None:
+        expected = {
+            "Containerfile": "1001",
+            "continuations.Dockerfile": "app",
+            "heredoc.Dockerfile": "app",
+            "lowercase.Dockerfile": "10001",
+            "multistage.Dockerfile": "65532:65532",
+            "onbuild.Dockerfile": "node",
+        }
+        for name, user in expected.items():
+            props = scan_real_shape(f"docker/{name}").graph.nodes[SUMMARY].properties
+            assert props["user_value"] == user, name
+            assert props["is_root_user"] is False, name
+
+    def test_the_continuation_run_keeps_every_command_after_the_comments(self) -> None:
+        nodes = scan_real_shape("docker/continuations.Dockerfile").graph.nodes
+        run = _nodes_of(nodes, "dockerfile_run")[0]
+        assert run.start_line == 4
+        assert run.end_line == 11
+        assert run.properties["has_apt_no_recommends"] is False
+        assert run.properties["has_apt_no_clean"] is False
+
+    def test_the_heredoc_copy_is_in_the_copy_node_not_in_instructions(self) -> None:
+        nodes = scan_real_shape("docker/heredoc.Dockerfile").graph.nodes
+        copy = _nodes_of(nodes, "dockerfile_copy")[0]
+        assert "listen" in copy.properties["heredoc_body"]
+        assert copy.properties["sources"] == []

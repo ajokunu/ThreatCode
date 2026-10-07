@@ -4,17 +4,13 @@
     "rule_id": "DOCKER_COPY_NO_CHOWN",
     "severity": "low",
     "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1611"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "dockerfile.copy.4",
     "rule_id": "DOCKER_COPY_NO_CHOWN",
     "severity": "low",
     "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1611"
-    ]
+    "techniques": []
   }
 ]

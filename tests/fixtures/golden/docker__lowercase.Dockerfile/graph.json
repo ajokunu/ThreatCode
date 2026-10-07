@@ -1,0 +1,104 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.arg.1",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.cmd.8",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.copy.5",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.env.2",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.expose.6",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.from.0",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.run.3",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.run.4",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.user.7",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "dockerfile.arg.1": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.cmd.8": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.copy.5": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "dockerfile.env.2": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.expose.6": {
+      "category": "network",
+      "zone": "private"
+    },
+    "dockerfile.from.0": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.image.summary": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.run.3": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "dockerfile.run.4": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "dockerfile.stage.0": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.user.7": {
+      "category": "iam",
+      "zone": "private"
+    }
+  }
+}

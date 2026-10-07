@@ -1,11 +1,9 @@
 [
   {
-    "resource_address": "dockerfile.copy.2",
+    "resource_address": "dockerfile.copy.3",
     "rule_id": "DOCKER_COPY_NO_CHOWN",
     "severity": "low",
     "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1611"
-    ]
+    "techniques": []
   }
 ]

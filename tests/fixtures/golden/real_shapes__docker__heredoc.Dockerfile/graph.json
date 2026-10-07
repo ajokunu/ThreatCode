@@ -1,0 +1,64 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.cmd.4",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.copy.2",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.from.0",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.run.1",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.user.3",
+      "target": "dockerfile.stage.0",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "dockerfile.cmd.4": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.copy.2": {
+      "category": "storage",
+      "zone": "private"
+    },
+    "dockerfile.from.0": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.image.summary": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.run.1": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "dockerfile.stage.0": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.user.3": {
+      "category": "iam",
+      "zone": "private"
+    }
+  }
+}

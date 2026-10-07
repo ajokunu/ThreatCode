@@ -1,0 +1,27 @@
+[
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_MISSING_WORKDIR",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": []
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NO_DIGEST_PIN",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NO_HEALTHCHECK",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  }
+]

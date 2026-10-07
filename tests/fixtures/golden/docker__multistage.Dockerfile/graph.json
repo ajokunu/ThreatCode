@@ -1,5 +1,96 @@
 {
-  "edges": [],
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.copy.2",
+      "target": "dockerfile.stage.builder",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.copy.4",
+      "target": "dockerfile.stage.builder",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.copy.9",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.entrypoint.13",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.expose.10",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.from.0",
+      "target": "dockerfile.stage.builder",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.from.6",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.healthcheck.11",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.run.3",
+      "target": "dockerfile.stage.builder",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.run.5",
+      "target": "dockerfile.stage.builder",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.run.8",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.stage.1",
+      "target": "dockerfile.stage.builder",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.user.12",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.workdir.1",
+      "target": "dockerfile.stage.builder",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "dockerfile.workdir.7",
+      "target": "dockerfile.stage.1",
+      "type": "containment"
+    }
+  ],
   "nodes": {
     "dockerfile.copy.2": {
       "category": "storage",
@@ -19,7 +110,7 @@
     },
     "dockerfile.expose.10": {
       "category": "network",
-      "zone": "dmz"
+      "zone": "private"
     },
     "dockerfile.from.0": {
       "category": "container",
@@ -49,9 +140,17 @@
       "category": "compute",
       "zone": "private"
     },
+    "dockerfile.stage.1": {
+      "category": "container",
+      "zone": "private"
+    },
+    "dockerfile.stage.builder": {
+      "category": "container",
+      "zone": "private"
+    },
     "dockerfile.user.12": {
       "category": "iam",
-      "zone": "management"
+      "zone": "private"
     },
     "dockerfile.workdir.1": {
       "category": "container",
