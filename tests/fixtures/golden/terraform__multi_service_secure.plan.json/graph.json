@@ -2,6 +2,30 @@
   "edges": [
     {
       "crosses_trust_boundary": true,
+      "source": "aws_flow_log.secondary_vpc_flow_log",
+      "target": "aws_vpc.secondary_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_flow_log.secondary_vpc_flow_log",
+      "target": "aws_vpc.secondary_vpc",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_flow_log.secure_vpc_flow_log",
+      "target": "aws_vpc.secure_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_flow_log.secure_vpc_flow_log",
+      "target": "aws_vpc.secure_vpc",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
       "source": "aws_lambda_function.vpc_lambda",
       "target": "aws_iam_role.scoped_role",
       "type": "iam_binding"
@@ -19,6 +43,14 @@
     "aws_default_security_group.locked_down": {
       "category": "network",
       "zone": "private"
+    },
+    "aws_flow_log.secondary_vpc_flow_log": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_flow_log.secure_vpc_flow_log": {
+      "category": "monitoring",
+      "zone": "management"
     },
     "aws_iam_policy.scoped_policy": {
       "category": "iam",

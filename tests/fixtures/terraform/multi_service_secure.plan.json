@@ -111,6 +111,7 @@
             "instance_type": "t3.medium",
             "associate_public_ip_address": false,
             "monitoring": true,
+            "metadata_options": [{"http_endpoint": "enabled", "http_tokens": "required"}],
             "root_block_device": [
               {
                 "encrypted": true,
@@ -131,6 +132,7 @@
             "instance_type": "t3.micro",
             "associate_public_ip_address": false,
             "monitoring": true,
+            "metadata_options": [{"http_endpoint": "enabled", "http_tokens": "required"}],
             "root_block_device": [
               {
                 "encrypted": true,
@@ -150,6 +152,7 @@
             "instance_type": "t3.small",
             "associate_public_ip_address": false,
             "monitoring": true,
+            "metadata_options": [{"http_endpoint": "enabled", "http_tokens": "required"}],
             "root_block_device": [
               {
                 "encrypted": true,
@@ -362,6 +365,27 @@
           "values": {
             "vpc_id": "vpc-secure"
           }
+        },
+        {
+          "address": "aws_flow_log.secure_vpc_flow_log",
+          "mode": "managed",
+          "type": "aws_flow_log",
+          "name": "secure_vpc_flow_log",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "traffic_type": "ALL",
+            "log_destination_type": "cloud-watch-logs"
+          }        },
+        {
+          "address": "aws_flow_log.secondary_vpc_flow_log",
+          "mode": "managed",
+          "type": "aws_flow_log",
+          "name": "secondary_vpc_flow_log",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "traffic_type": "ALL",
+            "log_destination_type": "cloud-watch-logs"
+          }
         }
       ]
     }
@@ -390,6 +414,8 @@
         {"type": "aws_lambda_function", "name": "cron_lambda", "expressions": {}},
         {"type": "aws_subnet", "name": "private", "expressions": {}},
         {"type": "aws_route_table", "name": "private_rt", "expressions": {}},
+        {"type": "aws_flow_log", "name": "secure_vpc_flow_log", "expressions": {"vpc_id": {"references": ["aws_vpc.secure_vpc.id", "aws_vpc.secure_vpc"]}}},
+        {"type": "aws_flow_log", "name": "secondary_vpc_flow_log", "expressions": {"vpc_id": {"references": ["aws_vpc.secondary_vpc.id", "aws_vpc.secondary_vpc"]}}},
         {"type": "aws_internet_gateway", "name": "igw", "expressions": {}}
       ]
     }
