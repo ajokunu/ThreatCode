@@ -5,7 +5,16 @@
     "severity": "medium",
     "stride": "information_disclosure",
     "techniques": [
-      "T1190"
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "azurerm_storage_account.data_lake",
+    "rule_id": "AZURE_STORAGE_NO_SOFT_DELETE",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
     ]
   }
 ]

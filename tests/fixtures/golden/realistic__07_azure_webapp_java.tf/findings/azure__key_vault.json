@@ -4,8 +4,6 @@
     "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
     "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   }
 ]

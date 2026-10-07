@@ -1609,6 +1609,116 @@ class TestDefaults:
         assert "KEYVAULT_PUBLIC_ACCESS" in found["azurerm_key_vault.allow"]
 
 
+class TestHclPlanParity:
+    """One configuration written as HCL and as the plan that materialises its defaults.
+
+    The plan is the reference.
+    HCL omits the attributes a plan fills in, so the defaults table has to make the two agree.
+    """
+
+    CASES: list[tuple[str, str, dict[str, Any], str]] = [
+        (
+            "azurerm_kubernetes_cluster",
+            'resource "azurerm_kubernetes_cluster" "x" {\n  name = "x"\n}\n',
+            {
+                "name": "x",
+                "private_cluster_enabled": False,
+                "role_based_access_control_enabled": True,
+            },
+            "an AKS cluster that never sets private_cluster_enabled",
+        ),
+        (
+            "azurerm_key_vault",
+            'resource "azurerm_key_vault" "x" {\n  name = "x"\n}\n',
+            {
+                "name": "x",
+                "purge_protection_enabled": False,
+                "public_network_access_enabled": True,
+                "soft_delete_retention_days": 90,
+                "network_acls": [],
+            },
+            "a Key Vault with every default",
+        ),
+        (
+            "azurerm_storage_account",
+            'resource "azurerm_storage_account" "x" {\n  name = "x"\n}\n',
+            {
+                "name": "x",
+                "allow_nested_items_to_be_public": True,
+                "https_traffic_only_enabled": True,
+                "public_network_access_enabled": True,
+                "network_rules": [],
+                "blob_properties": [],
+            },
+            "a storage account with every default",
+        ),
+        (
+            "azurerm_cosmosdb_account",
+            'resource "azurerm_cosmosdb_account" "x" {\n  name = "x"\n}\n',
+            {
+                "name": "x",
+                "public_network_access_enabled": True,
+                "is_virtual_network_filter_enabled": False,
+                "virtual_network_rule": [],
+            },
+            "a Cosmos DB account with every default",
+        ),
+        (
+            "azurerm_mssql_server",
+            'resource "azurerm_mssql_server" "x" {\n  name = "x"\n}\n',
+            {"name": "x", "public_network_access_enabled": True},
+            "a SQL server with every default",
+        ),
+        (
+            "azurerm_container_registry",
+            'resource "azurerm_container_registry" "x" {\n  name = "x"\n}\n',
+            {
+                "name": "x",
+                "admin_enabled": False,
+                "anonymous_pull_enabled": False,
+                "public_network_access_enabled": True,
+                "network_rule_set": [],
+            },
+            "a registry with every default",
+        ),
+        (
+            "azurerm_redis_cache",
+            'resource "azurerm_redis_cache" "x" {\n  name = "x"\n}\n',
+            {"name": "x", "public_network_access_enabled": True, "subnet_id": None},
+            "a cache with every default",
+        ),
+        (
+            "azurerm_linux_web_app",
+            'resource "azurerm_linux_web_app" "x" {\n  name = "x"\n  site_config {}\n}\n',
+            {"name": "x", "https_only": False, "site_config": [{}]},
+            "a web app that never sets https_only",
+        ),
+        (
+            "azurerm_linux_function_app",
+            'resource "azurerm_linux_function_app" "x" {\n  name = "x"\n  site_config {}\n}\n',
+            {
+                "name": "x",
+                "https_only": False,
+                "public_network_access_enabled": True,
+                "site_config": [{}],
+            },
+            "a function app with every default",
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("resource_type", "hcl", "plan_values", "why"), CASES, ids=[c[0] for c in CASES]
+    )
+    def test_hcl_with_defaults_trips_the_same_rules_as_the_plan(
+        self, tmp_path: Path, resource_type: str, hcl: str, plan_values: dict[str, Any], why: str
+    ) -> None:
+        address = f"{resource_type}.x"
+        from_hcl = _scan_hcl(tmp_path, hcl, defaults=True)[address]
+        from_plan = _scan_plan((resource_type, "x", plan_values))[address]
+        assert from_hcl == from_plan, why
+        assert from_plan, f"{why}: the plan trips no rule, so parity proves nothing"
+
+
 # ---------------------------------------------------------------------------
 # Resource type boundaries and realistic inputs
 # ---------------------------------------------------------------------------

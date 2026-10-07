@@ -2,19 +2,15 @@
   {
     "resource_address": "azurerm_mssql_server.main",
     "rule_id": "MSSQL_NO_AUDITING",
-    "severity": "high",
+    "severity": "medium",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "azurerm_mssql_server.main",
     "rule_id": "MSSQL_NO_THREAT_DETECTION",
     "severity": "medium",
-    "stride": "tampering",
-    "techniques": [
-      "T1190"
-    ]
+    "stride": "repudiation",
+    "techniques": []
   }
 ]

@@ -1,11 +1,20 @@
 [
   {
+    "resource_address": "azurerm_network_security_group.aks",
+    "rule_id": "AZURE_NSG_WEB_PORT_OPEN",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
     "resource_address": "azurerm_virtual_network.platform",
     "rule_id": "AZURE_VNET_NO_DDOS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "denial_of_service",
     "techniques": [
-      "T1499"
+      "T1498"
     ]
   }
 ]

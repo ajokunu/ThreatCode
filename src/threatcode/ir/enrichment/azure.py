@@ -146,6 +146,8 @@ RELATIONS: tuple[RelationSpec, ...] = (
         source_types=_VM_TYPES,
         link_attrs=("network_interface_ids", "primary_network_interface_id"),
         target_type="azurerm_network_interface",
+        # network_interface_ids is mandatory, so a plan that omits it has it computed
+        required=True,
         derive=_has_public_ip,
         absent={"has_public_ip": False},
     ),
