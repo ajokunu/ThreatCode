@@ -34,19 +34,15 @@ CORPUS: dict[str, tuple[str, str, str]] = {
         "WP-2-5",
         "COPY without --chown is judged on the build stage, not the final stage",
     ),
-    # An empty package means the scan is already clean, so no marker is needed
-    "mcp": ("mcp/.mcp.json", "", ""),
+    "mcp": (
+        "mcp/.mcp.json",
+        "WP-2-6",
+        "a loopback server and an environment-referenced header count as configured auth",
+    ),
 }
 
 # fixture file -> {rule id: why this finding is correct on a hardened input}
-ALLOWED: dict[str, dict[str, str]] = {
-    "mcp/.mcp.json": {
-        "MCP_LETHAL_TRIFECTA": (
-            "the config pairs a docs filesystem server, web fetch and a remote issue tracker, "
-            "which gives one agent private data, untrusted content and a way out"
-        ),
-    },
-}
+ALLOWED: dict[str, dict[str, str]] = {}
 
 
 def rule_findings(relative: str) -> dict[str, list[str]]:
@@ -117,7 +113,7 @@ class TestHardenedInputsScanClean:
     @pytest.mark.parametrize(
         "fmt",
         [
-            pytest.param(fmt, marks=pending(package, why) if package else ())
+            pytest.param(fmt, marks=pending(package, why))
             for fmt, (_relative, package, why) in CORPUS.items()
         ],
     )
@@ -128,9 +124,8 @@ class TestHardenedInputsScanClean:
 
     def test_the_pending_markers_are_honest_the_scans_are_not_clean_today(self) -> None:
         """If this fails, a scan is already clean: remove its pending marker."""
-        for fmt, (relative, package, _why) in CORPUS.items():
-            if package:
-                assert unexpected(relative), f"{fmt}: {relative} already scans clean"
+        for fmt, (relative, _package, _why) in CORPUS.items():
+            assert unexpected(relative), f"{fmt}: {relative} already scans clean"
 
     def test_a_finding_on_a_synthetic_bad_input_is_not_masked_by_the_allowlist(
         self, tmp_path: Path

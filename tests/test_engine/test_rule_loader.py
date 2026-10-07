@@ -138,8 +138,7 @@ class TestBuiltinRules:
             assert all(not t.endswith("*") for t in rule.resource_types), rule.id
 
     def test_builtin_rules_declare_a_default_confidence(self) -> None:
-        # Rule packages calibrate confidence rule by rule, so the set is the allowed levels
-        assert {r.confidence for r in load_builtin_rules()} <= set(loader.CONFIDENCE_LEVELS)
+        assert {r.confidence for r in load_builtin_rules()} == {"definitive"}
 
     def test_the_loader_uses_libyaml_when_it_is_available(self) -> None:
         if not getattr(yaml, "__with_libyaml__", False):
