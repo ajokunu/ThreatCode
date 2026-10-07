@@ -6,6 +6,7 @@ summary that always says what was not analysed and what was set aside.
 
 The table fits the terminal: it drops its least useful columns on a narrow one and cuts long cells
 with ``...``.
+It names the rule of each finding, because that is the key a suppression is written with.
 Findings that share a root cause on one resource are one row.
 Colors are used only when ``RenderOptions.color`` is set (the CLI sets it for a terminal) and
 ``NO_COLOR`` is not, so redirected output and CI logs stay plain.
@@ -53,6 +54,8 @@ _GAP = 2
 _MIN_TEXT = 14
 _DROP_TEXT = 20
 _MAX_LOCATION = 32
+_MAX_RULE = 28
+_MIN_RULE = 12
 _MAX_TECHNIQUES = 16
 _MAX_PATHS = 10
 _STRIDE_SHORT = {
@@ -217,6 +220,7 @@ def _rows(threats: Sequence[Threat]) -> list[dict[str, str | Threat]]:
             {
                 "severity": max(threat_severity(m) for m in members).value,
                 "resource": first.resource_address or "-",
+                "rule": first.rule_id or first.source.value,
                 "finding": title,
                 "stride": _STRIDE_SHORT.get(first.stride_category, first.stride_category),
                 "attck": ",".join(techniques),
@@ -226,27 +230,47 @@ def _rows(threats: Sequence[Threat]) -> list[dict[str, str | Threat]]:
     return rows
 
 
+def _middle(text: str, size: int) -> str:
+    """``text`` cut in the middle to ``size`` characters, so the end of an address survives."""
+    if len(text) <= size or size <= 5:
+        return text
+    tail = (size - 3) * 3 // 5
+    head = size - 3 - tail
+    return f"{text[:head]}...{text[len(text) - tail :]}"
+
+
 def _table(threats: Sequence[Threat], paint: _Painter, width: int) -> list[str]:
     rows = _rows(threats)
-    optional = ["location", "attck", "stride"]
+
+    def widest(column: str, head: str, cap: int | None = None) -> int:
+        size = max([len(head), *(len(str(r[column])) for r in rows)])
+        return min(size, cap) if cap else size
+
     natural = {
         "severity": 8,
-        "stride": max([len("STRIDE"), *(len(str(r["stride"])) for r in rows)]),
-        "attck": min(max([len("ATT&CK"), *(len(str(r["attck"])) for r in rows)]), _MAX_TECHNIQUES),
-        "location": min(
-            max([len("LOCATION"), *(len(str(r["location"])) for r in rows)]), _MAX_LOCATION
-        ),
-        "resource": max([len("RESOURCE"), *(len(str(r["resource"])) for r in rows)]),
-        "finding": max([len("FINDING"), *(len(str(r["finding"])) for r in rows)]),
+        "stride": widest("stride", "STRIDE"),
+        "attck": widest("attck", "ATT&CK", _MAX_TECHNIQUES),
+        "location": widest("location", "LOCATION", _MAX_LOCATION),
+        "rule": widest("rule", "RULE", _MAX_RULE),
+        "resource": widest("resource", "RESOURCE"),
+        "finding": widest("finding", "FINDING"),
     }
-    columns = ["severity", "resource", "finding", "stride", "attck", "location"]
+    columns = ["severity", "resource", "rule", "finding", "stride", "attck", "location"]
+    # What a narrow terminal gives up first: STRIDE, then the technique ids, then the location
+    droppable = ["location", "attck", "stride"]
+    text_columns = ("resource", "finding")
 
     def fixed(cols: list[str]) -> int:
-        return sum(natural[c] for c in cols if c not in ("resource", "finding"))
+        return sum(natural[c] for c in cols if c not in text_columns)
 
-    while optional and fixed(columns) + _GAP * (len(columns) - 1) + 2 * _DROP_TEXT > width:
-        columns.remove(optional.pop())
-    room = width - fixed(columns) - _GAP * (len(columns) - 1)
+    def spare(cols: list[str]) -> int:
+        return width - fixed(cols) - _GAP * (len(cols) - 1)
+
+    while droppable and spare(columns) < 2 * _DROP_TEXT:
+        columns.remove(droppable.pop())
+    if spare(columns) < 2 * _MIN_TEXT:
+        natural["rule"] = max(_MIN_RULE, natural["rule"] - (2 * _MIN_TEXT - spare(columns)))
+    room = max(spare(columns), 2 * _MIN_TEXT)
     resource_w = max(_MIN_TEXT, min(natural["resource"], int(room * 0.4)))
     finding_w = max(_MIN_TEXT, min(natural["finding"], room - resource_w))
     resource_w = max(_MIN_TEXT, min(natural["resource"], room - finding_w))
@@ -255,6 +279,7 @@ def _table(threats: Sequence[Threat], paint: _Painter, width: int) -> list[str]:
     heads = {
         "severity": "SEVERITY",
         "resource": "RESOURCE",
+        "rule": "RULE",
         "finding": "FINDING",
         "stride": "STRIDE",
         "attck": "ATT&CK",
@@ -269,6 +294,8 @@ def _table(threats: Sequence[Threat], paint: _Painter, width: int) -> list[str]:
             size = sizes[column]
             if column == "location" and len(text) > size:
                 text = "..." + text[-(size - 3) :]
+            elif column == "resource" and len(text) > size:
+                text = _middle(text, size)
             cell = truncate(text, size).ljust(size)
             if column == "severity":
                 cell = paint(text.upper().ljust(size), text)

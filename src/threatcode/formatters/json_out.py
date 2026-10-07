@@ -15,26 +15,28 @@ __all__ = ["format_json"]
 
 
 def format_json(
-    source: AnalysisResult | ThreatReport, indent: int = 2, *, include_graph: bool = True
+    source: AnalysisResult | ThreatReport, indent: int = 2, *, include_graph: bool = False
 ) -> str:
     """Format a scan as JSON.
 
-    Given an analysis the document is the report (schema version, timestamp unless the scan left
-    it out, summary by effective and by base severity, coverage, threats, attack paths, the LLM
-    status) plus the ingested scanner sources and the graph the engine saw, as nodes and edges
-    without properties.
-    Given a report alone it is the report.
-    The order is fixed, so two runs over the same input write the same text:
-    threats most severe first, attack paths most severe first.
+    The document is the report: schema version, timestamp unless the scan left it out, summary by
+    effective severity, coverage, threats most severe first, attack paths and the LLM status.
+    That is exactly what ``ScanResult.to_dict()`` and ``threatcode.scan()`` return, so the CLI and
+    the Python API print the same report.
+    With ``include_graph`` and an analysis the document also carries the graph the engine saw,
+    as nodes and edges without resource properties, the summary by base severity
+    (``summary_base``) and the ingested scanner sources (``ingest``).
+    Threats are in a fixed order, so two runs over the same input write the same text.
     """
     from threatcode.models.analysis import AnalysisResult
 
-    if isinstance(source, AnalysisResult):
-        data = source.to_dict(include_graph=include_graph)
+    if isinstance(source, AnalysisResult) and include_graph:
+        data = source.to_dict(include_graph=True)
+    elif isinstance(source, AnalysisResult):
+        data = source.report.to_dict()
     else:
         data = source.to_dict()
     data["threats"] = sorted(data["threats"], key=_threat_key)
-    data["attack_paths"] = sorted(data["attack_paths"], key=_path_key)
     return json.dumps(data, indent=indent, sort_keys=False)
 
 
@@ -49,11 +51,3 @@ def _threat_key(threat: dict[str, object]) -> tuple[int, str, str, str]:
         str(threat.get("rule_id", "")),
         str(threat.get("id", "")),
     )
-
-
-def _path_key(path: dict[str, object]) -> tuple[int, float, str]:
-    score = path.get("score", 0)
-    number = (
-        float(score) if isinstance(score, (int, float)) and not isinstance(score, bool) else 0.0
-    )
-    return (-_RANK.get(str(path.get("severity")), 0), -number, str(path.get("id", "")))

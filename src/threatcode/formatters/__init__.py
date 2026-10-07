@@ -42,8 +42,9 @@ class RenderOptions:
     color: bool = False
     # Terminal width for the text report; 0 means find it (COLUMNS, else the terminal, else 100).
     width: int = 0
-    # Put the graph (nodes and edges, no properties) in the JSON report.
-    include_graph: bool = True
+    # Put the graph (nodes and edges, no properties), the summary by base severity and the ingested
+    # sources in the JSON report. Off by default so the JSON is exactly the report.
+    include_graph: bool = False
 
 
 class FormatterSpec(NamedTuple):
@@ -101,7 +102,7 @@ def _text(analysis: AnalysisResult, options: RenderOptions) -> str:
 
 
 FORMATTERS: dict[str, FormatterSpec] = {
-    "json": FormatterSpec(_json, ".json", "Machine-readable report with coverage and the graph"),
+    "json": FormatterSpec(_json, ".json", "Machine-readable report with coverage"),
     "sarif": FormatterSpec(_sarif, ".sarif", "SARIF 2.1.0 for GitHub code scanning"),
     "markdown": FormatterSpec(_markdown, ".md", "Markdown for pull request comments"),
     "bitbucket": FormatterSpec(_bitbucket, ".json", "Bitbucket Code Insights report"),

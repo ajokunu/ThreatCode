@@ -33,18 +33,22 @@ class AnalysisResult:
         return self.report.attack_paths
 
     def to_dict(self, *, include_graph: bool = True) -> dict[str, Any]:
-        """The report plus the graph the engine saw, as ``--format json`` writes it.
+        """The report plus the graph the engine saw.
+
+        This is the full document; ``--format json`` writes just the report unless asked for the
+        graph (``RenderOptions.include_graph``).
 
         The graph is the export form: nodes and edges, with no resource properties, because the
         properties come from the input and can hold secrets.
         Ingested scanner results are listed under ``ingest`` when there are any.
         """
         result = self.report.to_dict()
+        if not include_graph:
+            return result
         result["summary_base"] = _base_summary(self.report)
         if self.ingest_sources:
             result["ingest"] = [dict(source) for source in self.ingest_sources]
-        if include_graph:
-            result["graph"] = self.graph.to_export_dict()
+        result["graph"] = self.graph.to_export_dict()
         return result
 
     def to_svg(self) -> str:

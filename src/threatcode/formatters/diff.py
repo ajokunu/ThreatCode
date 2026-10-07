@@ -116,7 +116,7 @@ def _path_sort_key(path: dict[str, Any]) -> tuple[int, float, str]:
 
 
 def _path_summary(path: dict[str, Any]) -> dict[str, Any]:
-    """The part of an attack path a diff reports: its id, ends, severity and length."""
+    """The part of an attack path a diff reports: its id, ends, severity and hop count."""
     hops = path.get("hops")
     return {
         "id": path["id"],
@@ -124,7 +124,7 @@ def _path_summary(path: dict[str, Any]) -> dict[str, Any]:
         "target": str(path.get("target", "")),
         "severity": _path_severity(path),
         "score": path.get("score", 0),
-        "hops": len(hops) if isinstance(hops, list) else 0,
+        "hops": max(len(hops) - 1, 0) if isinstance(hops, list) else 0,
     }
 
 

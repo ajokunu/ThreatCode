@@ -265,3 +265,142 @@ class TestFormatDiff:
         result = compute_diff(str(path), str(path))
         assert result["added"] == result["removed"] == result["changed"] == []
         assert result["unchanged_count"] == len(report.threats) > 0
+
+
+def attack_path(
+    path_id: str,
+    severity: str = "critical",
+    entry: str = "internet",
+    target: str = "aws_db_instance.main",
+    score: float = 50.0,
+    hops: int = 3,
+) -> dict[str, Any]:
+    return {
+        "id": path_id,
+        "entry": entry,
+        "target": target,
+        "severity": severity,
+        "score": score,
+        "hops": [{"node_id": f"n{i}"} for i in range(hops)],
+    }
+
+
+def diff_with_paths(
+    tmp_path: Path, before: list[dict[str, Any]], after: list[dict[str, Any]]
+) -> Any:
+    return compute_diff(
+        write_report(tmp_path / "b.json", [], attack_paths=before),
+        write_report(tmp_path / "c.json", [], attack_paths=after),
+    )
+
+
+class TestAttackPaths:
+    def test_paths_are_added_and_removed_by_id(self, tmp_path: Path) -> None:
+        result = diff_with_paths(
+            tmp_path,
+            [attack_path("old"), attack_path("kept")],
+            [attack_path("kept"), attack_path("new", "high")],
+        )
+        assert [p["id"] for p in result["attack_paths_added"]] == ["new"]
+        assert [p["id"] for p in result["attack_paths_removed"]] == ["old"]
+        added = result["attack_paths_added"][0]
+        assert added == {
+            "id": "new",
+            "entry": "internet",
+            "target": "aws_db_instance.main",
+            "severity": "high",
+            "score": 50.0,
+            "hops": 2,
+        }
+
+    def test_paths_are_sorted_by_severity_then_score_then_id(self, tmp_path: Path) -> None:
+        result = diff_with_paths(
+            tmp_path,
+            [],
+            [
+                attack_path("c", "high", score=9),
+                attack_path("a", "critical", score=1),
+                attack_path("b", "high", score=9),
+                attack_path("d", "high", score=20),
+            ],
+        )
+        assert [p["id"] for p in result["attack_paths_added"]] == ["a", "d", "b", "c"]
+
+    def test_a_report_from_before_attack_paths_has_none(self, tmp_path: Path) -> None:
+        result = diff_of(tmp_path, [], [])
+        assert result["attack_paths_added"] == result["attack_paths_removed"] == []
+
+    def test_a_path_alone_is_a_change(self, tmp_path: Path) -> None:
+        result = diff_with_paths(tmp_path, [], [attack_path("new")])
+        text = format_diff(result, "markdown")
+        assert "No changes detected." not in text
+        assert "No changes detected." not in format_diff(result, "text")
+
+    def test_paths_are_listed_before_threats_in_every_format(self, tmp_path: Path) -> None:
+        result = compute_diff(
+            write_report(tmp_path / "b.json", [threat("gone")], attack_paths=[attack_path("old")]),
+            write_report(tmp_path / "c.json", [threat("new")], attack_paths=[attack_path("fresh")]),
+        )
+        markdown = format_diff(result, "markdown")
+        assert markdown.index("## New Attack Paths (+1)") < markdown.index("## New Threats")
+        assert markdown.index("## Closed Attack Paths (-1)") < markdown.index("## New Threats")
+        assert "- **critical** `internet` to `aws_db_instance.main` (2 hops) - `fresh`" in markdown
+        assert "~~`internet` to `aws_db_instance.main`~~" in markdown
+        lines = format_diff(result, "text").splitlines()
+        first_threat = next(i for i, ln in enumerate(lines) if "a.b" in ln)
+        path_lines = [i for i, ln in enumerate(lines) if "attack path" in ln]
+        assert path_lines and max(path_lines) < first_threat
+        assert "+ critical attack path internet -> aws_db_instance.main (2 hops)" in lines
+        assert json.loads(format_diff(result, "json"))["attack_paths_added"][0]["id"] == "fresh"
+
+    def test_a_new_path_gates_at_or_above_its_severity(self, tmp_path: Path) -> None:
+        result = diff_with_paths(tmp_path, [], [attack_path("p", "high")])
+        assert [o["id"] for o in gating_threats(result, "high")] == ["p"]
+        assert gating_threats(result, "critical") == []
+
+    def test_a_closed_path_never_gates(self, tmp_path: Path) -> None:
+        assert gating_threats(diff_with_paths(tmp_path, [attack_path("p")], []), "info") == []
+
+    @pytest.mark.parametrize("bad", ["x", {"id": "p"}, [1], [{"no": "id"}], [{"id": ""}]])
+    def test_malformed_attack_paths_are_rejected_with_a_message(
+        self, tmp_path: Path, bad: Any
+    ) -> None:
+        path = write_report(tmp_path / "r.json", [], attack_paths=bad)
+        with pytest.raises(ThreatCodeError, match="'attack_paths' must be a list"):
+            load_report(path)
+
+
+class TestMarkdownIsInert:
+    def test_hostile_titles_and_addresses_stay_inline(self, tmp_path: Path) -> None:
+        hostile = threat(
+            "x",
+            "high",
+            title="\n# Fake heading\n- item @octocat <img src=x> [l](http://e) | a",
+            address='res.a`b["c"]|d',
+        )
+        text = format_diff(diff_of(tmp_path, [], [hostile]), "markdown")
+        assert not any(line.startswith(("# Fake", "- item")) for line in text.splitlines())
+        assert "@octocat" not in text and "@‍octocat" in text
+        assert "<img" not in text.replace("\\<img", "")
+        assert "](http://e" not in text
+        assert "``res.a`b" in text.replace("` `", "") or 'res.a`b["c"]|d' in text
+
+    def test_arrows_are_not_mangled(self, tmp_path: Path) -> None:
+        text = format_diff(
+            diff_of(tmp_path, [], [threat("x", title="dmz -> data (x)")]), "markdown"
+        )
+        assert "dmz -> data (x)" in text
+        assert "-\\>" not in text and "\\(" not in text
+
+    def test_a_changed_title_is_escaped_too(self, tmp_path: Path) -> None:
+        result = diff_of(
+            tmp_path, [threat("t", "low", "Old *title*")], [threat("t", "high", "New <b>title</b>")]
+        )
+        text = format_diff(result, "markdown")
+        assert "was titled Old \\*title\\*" in text
+        assert "<b>" not in text.replace("\\<b>", "")
+
+    def test_there_are_no_em_dashes_in_any_format(self, tmp_path: Path) -> None:
+        result = diff_with_paths(tmp_path, [attack_path("a")], [attack_path("b")])
+        for fmt in ("markdown", "text", "json"):
+            assert chr(0x2014) not in format_diff(result, fmt)
