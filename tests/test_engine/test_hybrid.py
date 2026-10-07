@@ -395,3 +395,229 @@ class TestRuleThreatMetadata:
         fresh = next(t for t in again.threats if t.rule_id == "S3_NO_ENCRYPTION")
         assert "tampered" not in fresh.metadata
         assert "T0000" not in fresh.mitre_techniques
+
+
+class TestRuleLocations:
+    @staticmethod
+    def _graph(**node_extra: Any) -> InfraGraph:
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        resource = ParsedResource(
+            resource_type="aws_s3_bucket",
+            address="aws_s3_bucket.logs",
+            name="logs",
+            provider="aws",
+            properties={"bucket": "logs"},
+            source_location="infra/main.tf",
+            start_line=12,
+            end_line=19,
+            **node_extra,
+        )
+        return InfraGraph.from_parsed(ParsedOutput(resources=[resource]))
+
+    def test_a_rule_threat_carries_the_location_of_its_node(self) -> None:
+        report = HybridEngine().analyze(self._graph())
+        threats = [t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION"]
+        assert len(threats) == 1
+        assert threats[0].location_file == "infra/main.tf"
+        assert threats[0].location_start_line == 12
+        assert threats[0].location_end_line == 19
+
+    def test_a_node_without_a_location_leaves_the_fields_unset(self) -> None:
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        bare = ParsedResource(
+            resource_type="aws_s3_bucket", address="aws_s3_bucket.x", name="x", provider="aws"
+        )
+        report = HybridEngine().analyze(InfraGraph.from_parsed(ParsedOutput(resources=[bare])))
+        threat = next(t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION")
+        assert (threat.location_file, threat.location_start_line, threat.location_end_line) == (
+            "",
+            None,
+            None,
+        )
+        data = threat.to_dict()
+        assert "location_file" not in data
+        assert "location_start_line" not in data
+
+    def test_the_location_reaches_the_serialized_threat(self) -> None:
+        report = HybridEngine().analyze(self._graph())
+        data = next(t for t in report.to_dict()["threats"] if t["rule_id"] == "S3_NO_ENCRYPTION")
+        assert data["location_file"] == "infra/main.tf"
+        assert data["location_start_line"] == 12
+        assert data["location_end_line"] == 19
+
+    def test_threat_ids_do_not_depend_on_the_location(self) -> None:
+        located = HybridEngine().analyze(self._graph())
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        bare = ParsedResource(
+            resource_type="aws_s3_bucket",
+            address="aws_s3_bucket.logs",
+            name="logs",
+            provider="aws",
+            properties={"bucket": "logs"},
+        )
+        plain = HybridEngine().analyze(InfraGraph.from_parsed(ParsedOutput(resources=[bare])))
+        assert [t.id for t in located.threats] == [t.id for t in plain.threats]
+
+
+class TestDataSources:
+    @staticmethod
+    def _graph() -> InfraGraph:
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        managed = ParsedResource(
+            resource_type="aws_s3_bucket", address="aws_s3_bucket.m", name="m", provider="aws"
+        )
+        looked_up = ParsedResource(
+            resource_type="aws_s3_bucket",
+            address="data.aws_s3_bucket.d",
+            name="d",
+            provider="aws",
+            mode="data",
+        )
+        return InfraGraph.from_parsed(ParsedOutput(resources=[managed, looked_up]))
+
+    def test_data_sources_are_not_counted_as_scanned_resources(self) -> None:
+        graph = self._graph()
+        assert graph.node_count == 2
+        assert HybridEngine().analyze(graph).scanned_resources == 1
+
+    def test_no_rule_evaluates_a_data_source(self) -> None:
+        report = HybridEngine().analyze(self._graph())
+        assert {t.resource_address for t in report.threats if t.rule_id} == {"aws_s3_bucket.m"}
+
+    def test_a_graph_without_data_sources_counts_every_node(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        assert report.scanned_resources == simple_s3_graph.node_count
+
+
+def _candidates(engine: HybridEngine, resource_type: str) -> list[Rule]:
+    engine._ensure_index()
+    return engine._rules_for(resource_type)
+
+
+def _brute_force(engine: HybridEngine, graph: InfraGraph) -> list[tuple[str, str]]:
+    """Every rule against every managed node, in load order, with no index."""
+    found: list[tuple[str, str]] = []
+    for node in graph.nodes.values():
+        if node.mode == "data":
+            continue
+        for rule in engine._rules:
+            if hybrid.matches_rule(rule, node):
+                found.append((rule.id, node.id))
+    return found
+
+
+class TestRuleIndex:
+    FIXTURES = (
+        "terraform/simple_s3.plan.json",
+        "terraform/multi_service_insecure.plan.json",
+        "terraform/multi_service_secure.plan.json",
+        "terraform/simple.tf",
+        "realistic/01_aws_ecommerce_platform.json",
+        "realistic/02_azure_kubernetes_cluster.tf",
+        "realistic/03_aws_data_pipeline.yaml",
+        "realistic/05_hybrid_vpn_datacenter.tf",
+        "realistic/10_aws_gaming_backend.json",
+    )
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_indexed_evaluation_matches_testing_every_rule(self, fixture: str) -> None:
+        from tests.helpers.scan import FIXTURES_DIR, scan_files
+
+        graph = scan_files([FIXTURES_DIR / fixture]).graph
+        engine = HybridEngine()
+        report = ThreatReport()
+        indexed = [(t.rule_id, t.resource_address) for t in engine._run_rules(graph, report)]
+        assert indexed == _brute_force(engine, graph)
+        if "secure" not in fixture or "insecure" in fixture:
+            assert indexed, fixture
+
+    @staticmethod
+    def _rule(rule_id: str, *types: str) -> Rule:
+        return Rule(
+            id=rule_id,
+            title=rule_id,
+            description="",
+            stride_category="tampering",
+            severity="low",
+            resource_types=tuple(types),
+            condition={"zzz_never_set": {"not_exists": True}},
+        )
+
+    def test_exact_and_glob_rules_come_back_in_load_order(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [
+            self._rule("A_EXACT", "aws_s3_bucket"),
+            self._rule("B_GLOB", "aws_s3_*"),
+            self._rule("C_EXACT", "aws_s3_bucket"),
+            self._rule("D_OTHER", "aws_vpc"),
+            self._rule("E_MIXED", "aws_s3_bucket", "aws_kms*"),
+        ]
+        ids = [r.id for r in _candidates(engine, "aws_s3_bucket")]
+        assert ids == ["A_EXACT", "B_GLOB", "C_EXACT", "E_MIXED"]
+
+    def test_a_rule_with_several_matching_entries_is_considered_once(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("MIXED", "aws_s3_bucket", "aws_s3_*", "aws_s3_bucket")]
+        assert [r.id for r in _candidates(engine, "aws_s3_bucket")] == ["MIXED"]
+
+    def test_a_type_no_rule_names_gets_no_rules(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("A", "aws_s3_bucket"), self._rule("B", "aws_kms*")]
+        assert _candidates(engine, "aws_vpc") == []
+
+    def test_exact_entries_do_not_match_by_prefix(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("A", "aws_s3_bucket")]
+        assert _candidates(engine, "aws_s3_bucket_versioning") == []
+
+    def test_replacing_the_rule_list_rebuilds_the_index(self, simple_s3_graph: InfraGraph) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("ONLY", "aws_s3_bucket")]
+        # the condition holds for any node that lacks a property nobody sets
+        report = engine.analyze(simple_s3_graph)
+        assert {t.rule_id for t in report.threats if t.source == ThreatSource.RULE} == {"ONLY"}
+
+    def test_glob_rules_are_evaluated_for_matching_nodes(self, simple_s3_graph: InfraGraph) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("GLOB", "aws_s3_*")]
+        report = engine.analyze(simple_s3_graph)
+        buckets = {
+            n.id for n in simple_s3_graph.nodes.values() if n.resource_type.startswith("aws_s3_")
+        }
+        assert {t.resource_address for t in report.threats if t.rule_id == "GLOB"} == buckets
+
+    def test_every_builtin_rule_is_reachable_through_the_index(self) -> None:
+        engine = HybridEngine()
+        engine._ensure_index()
+        indexed = {r.id for rules in engine._exact_rules.values() for _i, r in rules}
+        indexed |= {r.id for _i, r in engine._glob_rules}
+        assert indexed == {r.id for r in engine._rules}
+
+
+class TestPhaseSignaturesAreUnchanged:
+    def test_phase_function_signatures(self) -> None:
+        import inspect
+
+        from threatcode.engine.llm.phase import run_llm_phase
+
+        assert list(inspect.signature(boundaries.analyze).parameters) == ["graph"]
+        assert list(inspect.signature(severity.apply).parameters) == ["report", "graph"]
+        assert list(inspect.signature(paths.find).parameters) == ["graph", "threats"]
+        assert list(inspect.signature(run_llm_phase).parameters) == [
+            "graph",
+            "threats",
+            "client",
+            "config",
+        ]
+        assert list(inspect.signature(HybridEngine.analyze).parameters) == [
+            "self",
+            "graph",
+            "input_file",
+            "context",
+        ]
