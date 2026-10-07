@@ -4,16 +4,22 @@ from __future__ import annotations
 
 import codecs
 import importlib
+import itertools
 import json
+import sys
 import textwrap
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from threatcode.diagnostics import Diagnostic
 from threatcode.exceptions import ParseError
 from threatcode.ir.graph import InfraGraph
-from threatcode.parsers import detect_and_parse
+from threatcode.parsers import detect_and_parse, terraform_hcl
 from threatcode.parsers._text import decode_input
 from threatcode.parsers.base import ParsedOutput, ParsedResource
 from threatcode.parsers.terraform_hcl import TerraformHCLParser
@@ -1639,3 +1645,369 @@ class TestRealModules:
             for resource in TerraformHCLParser().parse_file(path).resources:
                 dumped = json.dumps(resource.properties, default=str)
                 assert "True" not in dumped and "None" not in dumped, (path.name, resource.address)
+
+
+# --- limits: a hostile file must stay cheap to read ----------------------------------------
+
+
+def run_within(work: Callable[[], ParsedOutput], seconds: float = 30.0) -> ParsedOutput:
+    """Run ``work`` in a thread so a runaway evaluation fails the test instead of hanging it."""
+    box: dict[str, Any] = {}
+
+    def target() -> None:
+        try:
+            box["result"] = work()
+        except BaseException as exc:  # noqa: BLE001 - handed back to the test thread below
+            box["error"] = exc
+
+    thread = threading.Thread(target=target, daemon=True)
+    started = time.monotonic()
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), f"the parse had not finished after {seconds} seconds"
+    assert time.monotonic() - started < seconds
+    if "error" in box:
+        raise box["error"]
+    result: ParsedOutput = box["result"]
+    return result
+
+
+def chain_of_locals(
+    n: int,
+    step: str,
+    base: str = "1",
+    attribute: str = "bucket",
+    prefix: str = "l",
+    resource: str = "b",
+) -> str:
+    """``<prefix>0 = base`` and ``<prefix><i> = step``, with ``PREV`` the previous local."""
+    lines = ["locals {", f"  {prefix}0 = {base}"]
+    for i in range(1, n + 1):
+        lines.append(f"  {prefix}{i} = " + step.replace("PREV", f"local.{prefix}{i - 1}"))
+    lines.append("}")
+    lines.append(f'resource "aws_s3_bucket" "{resource}" {{\n  {attribute} = local.{prefix}{n}\n}}')
+    return "\n".join(lines) + "\n"
+
+
+TEMPLATE_DOUBLING = '"${PREV}${PREV}"'
+DOUBLING_SHAPES = {
+    "template": TEMPLATE_DOUBLING,
+    "concat": "concat(PREV, PREV)",
+    "list": "[PREV, PREV]",
+    "object": "{a = PREV, b = PREV}",
+    "jsonencode": "jsonencode([PREV, PREV])",
+    "flatten": "flatten([PREV, PREV])",
+    "merge": "merge({x = PREV}, {y = PREV})",
+}
+BASES = {"template": '"aaaaaaaaaa"', "concat": '["a"]'}
+
+
+def doubling(shape: str, n: int, attribute: str = "bucket", **names: str) -> str:
+    return chain_of_locals(n, DOUBLING_SHAPES[shape], BASES.get(shape, '"a"'), attribute, **names)
+
+
+def only_resource(result: ParsedOutput) -> ParsedResource:
+    (resource,) = result.resources
+    return resource
+
+
+class TestValueSizeLimits:
+    """Short files that double a value must scan quickly and leave the value Unknown."""
+
+    # Up to 23 the chain is within the nesting limit, so only the size limit can stop it
+    @pytest.mark.parametrize("n", [19, 21, 23, 40, 400])
+    @pytest.mark.parametrize("shape", ["template", "concat"])
+    def test_doubling_locals_finish_fast_and_are_unknown(
+        self, tmp_path: Path, shape: str, n: int
+    ) -> None:
+        write(tmp_path, "main.tf", doubling(shape, n))
+        started = time.monotonic()
+        result = run_within(lambda: parse_dir(tmp_path))
+        assert time.monotonic() - started < 10
+        assert is_unknown(only_resource(result).properties["bucket"])
+
+    @pytest.mark.parametrize("shape", ["template", "concat"])
+    def test_the_single_file_path_is_just_as_safe(self, tmp_path: Path, shape: str) -> None:
+        path = write(tmp_path, "main.tf", doubling(shape, 23))
+        result = run_within(lambda: TerraformHCLParser().parse_file(path))
+        assert is_unknown(only_resource(result).properties["bucket"])
+
+    @pytest.mark.parametrize("n", [20, 40])
+    @pytest.mark.parametrize("shape", ["list", "object", "jsonencode", "flatten", "merge"])
+    def test_doubling_a_shared_structure_stays_small(
+        self, tmp_path: Path, shape: str, n: int
+    ) -> None:
+        # [x, x] shares x, so the process holds little, but anything that prints or walks the
+        # value would see 2**40 elements; the value must be bounded to what it would weigh
+        write(tmp_path, "main.tf", doubling(shape, n))
+        result = run_within(lambda: parse_dir(tmp_path))
+        value = only_resource(result).properties["bucket"]
+        assert len(json.dumps(value, default=str)) < 500_000
+
+    def test_a_string_just_under_the_limit_resolves(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", doubling("template", 12))
+        result = parse_dir(tmp_path)
+        assert only_resource(result).properties["bucket"] == "a" * 10 * 2**12
+        assert codes(result, "hcl.evaluation_limit") == []
+
+    def test_a_list_just_under_the_limit_resolves(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", doubling("concat", 12))
+        result = parse_dir(tmp_path)
+        assert only_resource(result).properties["bucket"] == ["a"] * 2**12
+        assert codes(result, "hcl.evaluation_limit") == []
+
+    def test_the_first_level_past_the_limit_is_unknown_and_the_one_before_is_not(
+        self, tmp_path: Path
+    ) -> None:
+        # 10 characters doubled 17 times is 1,310,720, past the 1,048,576 limit; 16 times is not
+        write(
+            tmp_path,
+            "main.tf",
+            chain_of_locals(17, TEMPLATE_DOUBLING, '"aaaaaaaaaa"')
+            + 'resource "aws_s3_bucket" "c" {\n  bucket = local.l16\n}\n',
+        )
+        resources = by_address(parse_dir(tmp_path))
+        assert is_unknown(resources["aws_s3_bucket.b"].properties["bucket"])
+        assert len(resources["aws_s3_bucket.c"].properties["bucket"]) == 655_360
+
+    def test_the_limit_is_one_warning_that_says_what_it_was(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", doubling("template", 20))
+        write(tmp_path, "more.tf", doubling("concat", 20, "tags", prefix="m", resource="c"))
+        (note,) = codes(run_within(lambda: parse_dir(tmp_path)), "hcl.evaluation_limit")
+        assert note.level == "warning"
+        assert "treated as unknown" in note.message and "grew past" in note.message
+        assert "levels deep" not in note.message
+
+    def test_a_value_the_limit_hides_does_not_fire_an_absence_rule(self, tmp_path: Path) -> None:
+        # an Unknown must stay unknown for the rules: it is neither absent nor a pass
+        write(tmp_path, "main.tf", doubling("template", 20, "kms_key_id"))
+        value = only_resource(parse_dir(tmp_path)).properties["kms_key_id"]
+        assert is_unknown(value)
+        assert "kms_key_id" in only_resource(parse_dir(tmp_path)).properties
+
+    def test_a_module_without_a_limit_has_no_note(self) -> None:
+        for name in ("module_dir", "modules_root"):
+            path = HCL_FIXTURES / name
+            if path.is_dir():
+                assert codes(parse_dir(path), "hcl.evaluation_limit") == []
+
+    def test_references_through_doubling_locals_are_found_without_reading_them_twice(
+        self, tmp_path: Path
+    ) -> None:
+        # 2**20 reads of the same local without a memo; with one, 20
+        text = chain_of_locals(20, TEMPLATE_DOUBLING, '"${aws_vpc.main.id}"')
+        write(tmp_path, "main.tf", 'resource "aws_vpc" "main" {}\n' + text)
+        result = run_within(lambda: parse_dir(tmp_path))
+        bucket = by_address(result)["aws_s3_bucket.b"]
+        assert bucket.references["bucket"] == ["aws_vpc.main.id"]
+
+    def test_the_work_budget_stops_many_values_just_under_the_limits(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(terraform_hcl, "MAX_EVALUATION_WORK", 3_000)
+        lines = ["locals {", "  base = " + json.dumps(list(range(500))), "}"]
+        for i in range(30):
+            lines.append(f'resource "x" "r{i}" {{\n  v = concat(local.base, [{i}])\n}}')
+        write(tmp_path, "main.tf", "\n".join(lines) + "\n")
+        result = parse_dir(tmp_path)
+        values = [r.properties["v"] for r in result.resources]
+        assert not is_unknown(values[0]) and len(values[0]) == 501
+        assert is_unknown(values[-1])
+        assert codes(result, "hcl.evaluation_limit")
+
+
+class TestNestingLimits:
+    LIMIT = terraform_hcl.MAX_NESTED_RESOLUTIONS
+
+    def chain_with_neighbours(self, n: int, extra: str = "") -> str:
+        return (
+            chain_of_locals(n, "PREV + 1")
+            + 'resource "aws_s3_bucket" "head" {\n  other = local.l5\n}\n'
+            + extra
+        )
+
+    @pytest.mark.parametrize("through", ["directory", "file"])
+    def test_a_two_hundred_deep_chain_parses_and_the_tail_is_unknown(
+        self, tmp_path: Path, through: str
+    ) -> None:
+        # the CLI reads a directory or a file; both used to fail with a RecursionError
+        path = write(tmp_path, "main.tf", self.chain_with_neighbours(200))
+        if through == "directory":
+            result = run_within(lambda: parse_dir(tmp_path))
+        else:
+            result = run_within(lambda: TerraformHCLParser().parse_file(path))
+        resources = by_address(result)
+        assert is_unknown(resources["aws_s3_bucket.b"].properties["bucket"])
+        assert resources["aws_s3_bucket.head"].properties["other"] == 6
+        (note,) = codes(result, "hcl.evaluation_limit")
+        assert str(self.LIMIT) in note.message and "levels deep" in note.message
+
+    def test_a_chain_within_the_limit_still_resolves(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.chain_with_neighbours(20))
+        result = parse_dir(tmp_path)
+        assert by_address(result)["aws_s3_bucket.b"].properties["bucket"] == 21
+        assert codes(result, "hcl.evaluation_limit") == []
+
+    def test_the_limit_is_exact(self, tmp_path: Path) -> None:
+        # l<k> needs k + 1 locals open at once
+        edge = self.LIMIT - 1
+        write(tmp_path, "main.tf", chain_of_locals(edge, "PREV + 1"))
+        assert only_resource(parse_dir(tmp_path)).properties["bucket"] == self.LIMIT
+        write(tmp_path, "main.tf", chain_of_locals(edge + 1, "PREV + 1"))
+        assert is_unknown(only_resource(parse_dir(tmp_path)).properties["bucket"])
+
+    def test_a_cut_chain_does_not_poison_a_shorter_use_of_the_same_local(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # l14 needs 15 locals open, so it is cut; l7 needs 8 and fits. The cut of l14 reaches
+        # l7 while it is being worked out from there, and l7 must still come to 8 when used
+        # on its own afterwards.
+        monkeypatch.setattr(terraform_hcl, "MAX_NESTED_RESOLUTIONS", 8)
+        text = chain_of_locals(14, "PREV + 1", attribute="first")
+        text += 'resource "aws_s3_bucket" "second" {\n  middle = local.l7\n}\n'
+        text += 'resource "aws_s3_bucket" "third" {\n  again = local.l14\n}\n'
+        write(tmp_path, "main.tf", text)
+        resources = by_address(parse_dir(tmp_path))
+        assert is_unknown(resources["aws_s3_bucket.b"].properties["first"])
+        assert resources["aws_s3_bucket.second"].properties["middle"] == 8
+        assert is_unknown(resources["aws_s3_bucket.third"].properties["again"])
+
+    def test_no_order_of_resources_loses_a_value_or_invents_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # What an attribute comes to may be more precise when an earlier attribute already
+        # worked out part of its chain, but it is never less precise than on its own, and a
+        # value it does have is always the right one.
+        monkeypatch.setattr(terraform_hcl, "MAX_NESTED_RESOLUTIONS", 8)
+        chain = chain_of_locals(14, "PREV + 1").split("resource")[0]
+        uses = {"deep": 14, "middle": 7, "edge": 8, "low": 3}
+
+        def values(order: tuple[str, ...]) -> dict[str, Any]:
+            body = "".join(
+                f'resource "aws_s3_bucket" "{name}" {{\n  v = local.l{uses[name]}\n}}\n'
+                for name in order
+            )
+            write(tmp_path, "main.tf", chain + body)
+            result = by_address(parse_dir(tmp_path))
+            return {name: result[f"aws_s3_bucket.{name}"].properties["v"] for name in order}
+
+        alone = {name: values((name,))[name] for name in uses}
+        assert {name: is_unknown(value) for name, value in alone.items()} == {
+            "deep": True,
+            "middle": False,
+            "edge": True,
+            "low": False,
+        }
+        for order in itertools.permutations(uses):
+            for name, value in values(order).items():
+                assert is_unknown(value) or value == uses[name] + 1, (order, name)
+                if not is_unknown(alone[name]):
+                    assert value == uses[name] + 1, (order, name)
+
+    def test_the_references_of_a_long_chain_are_cut_not_crashed(self, tmp_path: Path) -> None:
+        text = chain_of_locals(120, "PREV", '"${aws_vpc.main.id}"')
+        write(tmp_path, "main.tf", 'resource "aws_vpc" "main" {}\n' + text)
+        result = run_within(lambda: parse_dir(tmp_path))
+        assert by_address(result)["aws_s3_bucket.b"].references.get("bucket", []) == []
+        assert codes(result, "hcl.evaluation_limit")
+
+    def test_the_references_of_a_chain_within_the_limit_are_found(self, tmp_path: Path) -> None:
+        text = chain_of_locals(10, "PREV", '"${aws_vpc.main.id}"')
+        write(tmp_path, "main.tf", 'resource "aws_vpc" "main" {}\n' + text)
+        result = parse_dir(tmp_path)
+        assert by_address(result)["aws_s3_bucket.b"].references["bucket"] == ["aws_vpc.main.id"]
+
+    def test_a_chain_that_crosses_a_module_boundary_is_bounded(self, tmp_path: Path) -> None:
+        text = chain_of_locals(60, "PREV + 1").split("resource")[0]
+        write(
+            tmp_path,
+            "main.tf",
+            text
+            + 'module "m" {\n  source = "./m"\n  v      = local.l60\n}\n'
+            + 'resource "aws_s3_bucket" "b" {\n  bucket = module.m.o\n}\n',
+        )
+        write(
+            tmp_path,
+            "m/main.tf",
+            'variable "v" {}\noutput "o" {\n  value = var.v\n}\n'
+            'resource "x" "inner" {\n  v = var.v\n}\n',
+        )
+        result = run_within(lambda: parse_dir(tmp_path))
+        resources = by_address(result)
+        assert is_unknown(resources["aws_s3_bucket.b"].properties["bucket"])
+        assert is_unknown(resources["module.m.x.inner"].properties["v"])
+
+    def test_a_short_chain_through_a_module_still_resolves(self, tmp_path: Path) -> None:
+        text = chain_of_locals(5, "PREV + 1").split("resource")[0]
+        write(
+            tmp_path,
+            "main.tf",
+            text
+            + 'module "m" {\n  source = "./m"\n  v      = local.l5\n}\n'
+            + 'resource "aws_s3_bucket" "b" {\n  bucket = module.m.o\n}\n',
+        )
+        write(tmp_path, "m/main.tf", 'variable "v" {}\noutput "o" {\n  value = var.v\n}\n')
+        assert only_resource(parse_dir(tmp_path)).properties["bucket"] == 6
+
+    def test_doubling_policy_documents_are_worked_out_once(self, tmp_path: Path) -> None:
+        lines = [
+            'data "aws_iam_policy_document" "d0" {',
+            '  statement {\n    actions   = ["s3:GetObject"]\n    resources = ["*"]\n  }',
+            "}",
+        ]
+        for i in range(1, 31):
+            ref = f"data.aws_iam_policy_document.d{i - 1}.json"
+            lines.append(
+                f'data "aws_iam_policy_document" "d{i}" {{\n  statement {{\n'
+                f'    sid       = "${{{ref}}}${{{ref}}}"\n'
+                f'    actions   = ["s3:GetObject"]\n    resources = ["*"]\n  }}\n}}'
+            )
+        lines.append(
+            'resource "aws_iam_policy" "p" {\n  policy = data.aws_iam_policy_document.d30.json\n}'
+        )
+        write(tmp_path, "main.tf", "\n".join(lines) + "\n")
+        result = run_within(lambda: parse_dir(tmp_path))
+        policy = by_address(result)["aws_iam_policy.p"].properties["policy"]
+        assert len(json.dumps(policy, default=str)) < 2_000_000
+
+    def test_a_stack_overflow_inside_a_local_is_contained(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real = terraform_hcl.evaluate_value
+
+        def overflowing(raw: Any, *args: Any, **kwargs: Any) -> Any:
+            if raw == "${overflow_marker}":
+                raise RecursionError
+            return real(raw, *args, **kwargs)
+
+        monkeypatch.setattr(terraform_hcl, "evaluate_value", overflowing)
+        write(
+            tmp_path,
+            "main.tf",
+            'locals {\n  bad = "${overflow_marker}"\n  good = "fine"\n}\n'
+            'resource "x" "y" {\n  a = local.bad\n  b = local.good\n}\n',
+        )
+        result = parse_dir(tmp_path)
+        properties = only_resource(result).properties
+        assert is_unknown(properties["a"]) and properties["b"] == "fine"
+        (note,) = codes(result, "hcl.evaluation_limit")
+        assert "too deeply" in note.message
+
+    def test_a_deep_caller_cannot_make_the_parse_fail(self, tmp_path: Path) -> None:
+        # The scan may be entered from a deep stack. However many frames are left, a
+        # RecursionError must end as an Unknown, never as a failed parse.
+        write(tmp_path, "main.tf", self.chain_with_neighbours(22))
+        spare = 600
+
+        def descend(depth: int) -> ParsedOutput:
+            if depth == 0:
+                return parse_dir(tmp_path)
+            return descend(depth - 1)
+
+        limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(max(limit, 1000))
+        try:
+            result = descend(spare)
+        finally:
+            sys.setrecursionlimit(limit)
+        assert by_address(result)["aws_s3_bucket.head"].properties["other"] == 6

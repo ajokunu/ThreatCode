@@ -29,6 +29,10 @@ What the parser does with a module
   statements renders to policy JSON for the references to its ``.json``.
 - One unparseable file in a directory is a ``parse.failed`` error diagnostic and the other files
   still parse. A single file that cannot be parsed raises ``ParseError``.
+- Limits keep an untrusted file cheap: values that evaluation builds are limited in size (see
+  ``_hcl_eval``), locals, module inputs and outputs and policy documents may refer to each other
+  ``MAX_NESTED_RESOLUTIONS`` levels deep, and each of them is worked out once. A value past a
+  limit is ``Unknown`` and one ``hcl.evaluation_limit`` warning says so.
 """
 
 from __future__ import annotations
@@ -41,12 +45,15 @@ from pathlib import Path
 from typing import Any
 
 from threatcode.constants import is_terraform_json_name, is_terraform_name
-from threatcode.diagnostics import Diagnostic, Level
+from threatcode.diagnostics import Diagnostic, Level, register_code
 from threatcode.exceptions import ParseError
 from threatcode.ir.addressing import strip_attribute_suffix
 from threatcode.parsers import _hcl_adapter
 from threatcode.parsers._hcl_adapter import HclBlock, HclDocument
 from threatcode.parsers._hcl_eval import (
+    MAX_COLLECTION_SIZE,
+    MAX_EVALUATION_WORK,
+    MAX_VALUE_LENGTH,
     NOT_BOUND,
     Context,
     IteratorContext,
@@ -61,6 +68,11 @@ from threatcode.values import Unknown, is_unknown
 
 logger = logging.getLogger(__name__)
 
+register_code(
+    "hcl.evaluation_limit",
+    "A Terraform value was treated as unknown because evaluating it reached a size or depth limit",
+)
+
 # Followed modules: nesting depth and the total number of module instances read
 MAX_MODULE_DEPTH = 8
 MAX_MODULE_INSTANCES = 200
@@ -68,6 +80,11 @@ MAX_MODULE_INSTANCES = 200
 MAX_DYNAMIC_EXPANSION = 32
 # Keys of a known for_each recorded in resource meta
 MAX_RECORDED_KEYS = 50
+# Resolutions that may be open at once: a local, a module output, a data document or a module
+# input being worked out, or the references inside one. A chain of locals that each name the
+# previous one nests this deep, and every level costs about a dozen Python frames, so a longer
+# chain is cut with Unknown instead of overflowing the stack.
+MAX_NESTED_RESOLUTIONS = 24
 
 _META_ARGUMENTS = ("count", "for_each", "depends_on", "lifecycle", "provider")
 _MISSING = object()
@@ -103,6 +120,12 @@ class _Session:
     misses: list[_Miss] = field(default_factory=list)
     defaults: set[str] = field(default_factory=set)
     lookups: int = 0
+    # Limits: resolutions open right now, how many were cut short by the nesting limit so far
+    # (see _Scope._memoized), the work left for size checks, and the limits that were reached
+    nesting: int = 0
+    cut: int = 0
+    work_left: int = field(default_factory=lambda: MAX_EVALUATION_WORK)
+    limits: dict[str, int] = field(default_factory=dict)
 
     def begin(self) -> None:
         self.misses = []
@@ -113,6 +136,18 @@ class _Session:
         self, level: Level, code: str, message: str, file: str = "", line: int | None = None
     ) -> None:
         self.diagnostics.append(Diagnostic(level, code, message, file, line))
+
+
+@dataclass
+class _Memo:
+    """A resolved value with the misses and defaults it was worked out from."""
+
+    value: Any
+    misses: list[_Miss]
+    defaults: set[str]
+    # The nesting depth a limit cut this value short at; None when nothing was cut. A cut value
+    # is worked out again when it is asked for from a shallower depth, which has more room.
+    cut_at: int | None = None
 
 
 @dataclass
@@ -151,7 +186,9 @@ class _Scope(Context):
         self.data_blocks: dict[tuple[str, str], HclBlock] = {}
         self.module_instances_unknown = False
         self._variable_cache: dict[str, tuple[Any, str, list[_Miss], set[str]]] = {}
-        self._local_cache: dict[str, tuple[Any, list[_Miss], set[str]]] = {}
+        # Everything resolved through _memoized: locals, module inputs, outputs, data
+        # documents and the references inside them, keyed by kind and name
+        self._memos: dict[tuple[str, str], _Memo] = {}
         self._active: set[tuple[str, str]] = set()
 
     # -- building -------------------------------------------------------------------------
@@ -204,8 +241,65 @@ class _Scope(Context):
         self.session.misses.extend(misses)
         self.session.defaults.update(defaults)
 
+    def charge(self, units: int) -> bool:
+        session = self.session
+        session.work_left -= units
+        return session.work_left >= 0
+
+    def exceeded(self, limit: str) -> None:
+        limits = self.session.limits
+        limits[limit] = limits.get(limit, 0) + 1
+
+    def _memoized(self, key: tuple[str, str], compute: Callable[[], Any], refused: Any) -> Any:
+        """Work out ``key`` once, keeping nesting bounded and the answer stable.
+
+        A resolution that is already open for ``key`` is a cycle, and one more level than
+        ``MAX_NESTED_RESOLUTIONS`` is a chain too long to follow; both give ``refused``.
+        So does a Python ``RecursionError`` from the deepest levels, because a few frames
+        per level add up when each level is itself a deeply nested expression.
+        The answer is kept, so a value used many times is worked out once; a value that a
+        limit cut short is worked out again when it is asked for from a shallower depth,
+        so what it comes to does not depend on which attribute asked for it first.
+        """
+        session = self.session
+        depth = session.nesting
+        memo = self._memos.get(key)
+        if memo is not None and (memo.cut_at is None or depth >= memo.cut_at):
+            if memo.cut_at is not None:
+                session.cut += 1
+            self.replay(memo.misses, memo.defaults)
+            return memo.value
+        if key in self._active:
+            return refused
+        if depth >= MAX_NESTED_RESOLUTIONS:
+            session.cut += 1
+            self.exceeded("nesting")
+            return refused
+        before = session.cut
+        self._active.add(key)
+        session.nesting += 1
+        try:
+            value, misses, defaults = self.isolated(compute)
+        except RecursionError:
+            session.cut += 1
+            self.exceeded("recursion")
+            value, misses, defaults = refused, [], set()
+        finally:
+            session.nesting -= 1
+            self._active.discard(key)
+        cut_at = depth if session.cut != before else None
+        self._memos[key] = _Memo(value, misses, defaults, cut_at)
+        self.replay(misses, defaults)
+        return value
+
     def variable(self, name: str) -> Any:
         self.session.lookups += 1
+        if self.parent is not None and name in self.inputs:
+            parent = self.parent
+            raw = self.inputs[name]
+            return self._memoized(
+                ("input", name), lambda: evaluate_value(raw, parent), Unknown(f"var.{name}")
+            )
         cached = self._variable_cache.get(name)
         if cached is None:
             cached = self._resolve_variable(name)
@@ -220,14 +314,8 @@ class _Scope(Context):
 
     def _resolve_variable(self, name: str) -> tuple[Any, str, list[_Miss], set[str]]:
         declared = self.variables.get(name)
-        if self.parent is None:
-            if name in self.tfvars:
-                return evaluate_value(self.tfvars[name]), "supplied", [], set()
-        elif name in self.inputs:
-            parent = self.parent
-            raw = self.inputs[name]
-            value, misses, defaults = self.isolated(lambda: evaluate_value(raw, parent))
-            return value, "supplied", misses, defaults
+        if self.parent is None and name in self.tfvars:
+            return evaluate_value(self.tfvars[name]), "supplied", [], set()
         if declared is not None and declared.has_default:
             return evaluate_value(declared.default), "default", [], set()
         status = "no_value" if declared is not None else "undeclared"
@@ -238,34 +326,20 @@ class _Scope(Context):
         if name not in self.locals_raw:
             self.session.misses.append(_Miss(self.path, "local", name, "undeclared"))
             return Unknown(f"local.{name}")
-        cached = self._local_cache.get(name)
-        if cached is None:
-            key = ("local", name)
-            if key in self._active:
-                return Unknown(f"local.{name}")
-            self._active.add(key)
-            try:
-                raw = self.locals_raw[name]
-                cached = self.isolated(lambda: evaluate_value(raw, self))
-            finally:
-                self._active.discard(key)
-            self._local_cache[name] = cached
-        value, misses, defaults = cached
-        self.replay(misses, defaults)
-        return value
+        raw = self.locals_raw[name]
+        return self._memoized(
+            ("local", name), lambda: evaluate_value(raw, self), Unknown(f"local.{name}")
+        )
 
     def module_output(self, module: str, output: str) -> Any:
         child = self.children.get(module)
+        unknown = Unknown(f"module.{module}.{output}")
         if child is None or output not in child.outputs:
-            return Unknown(f"module.{module}.{output}")
-        key = ("output", f"{module}.{output}")
-        if key in self._active:
-            return Unknown(f"module.{module}.{output}")
-        self._active.add(key)
-        try:
-            return evaluate_value(child.outputs[output], child)
-        finally:
-            self._active.discard(key)
+            return unknown
+        raw = child.outputs[output]
+        return self._memoized(
+            ("output", f"{module}.{output}"), lambda: evaluate_value(raw, child), unknown
+        )
 
     def data_value(self, kind: str, name: str, attribute: str) -> Any:
         if kind != _POLICY_DOCUMENT or attribute != "json":
@@ -273,40 +347,31 @@ class _Scope(Context):
         block = self.data_blocks.get((kind, name))
         if block is None:
             return NOT_BOUND
-        key = ("data", f"{kind}.{name}")
-        if key in self._active:
-            return NOT_BOUND
-        self._active.add(key)
-        try:
-            rendered = _render_policy_document(block.body, self)
-        finally:
-            self._active.discard(key)
+        rendered = self._memoized(
+            ("data", f"{kind}.{name}"), lambda: _render_policy_document(block.body, self), None
+        )
         return NOT_BOUND if rendered is None else rendered
 
     def variable_references(self, name: str) -> list[str]:
         if self.parent is None or name not in self.inputs:
             return []
-        return self._guarded(("varref", name), self.inputs[name], self.parent)
+        return self._references(("varref", name), self.inputs[name], self.parent)
 
     def local_references(self, name: str) -> list[str]:
         if name not in self.locals_raw:
             return []
-        return self._guarded(("localref", name), self.locals_raw[name], self)
+        return self._references(("localref", name), self.locals_raw[name], self)
 
     def module_references(self, module: str, output: str) -> list[str]:
         child = self.children.get(module)
         if child is None or output not in child.outputs:
             return []
-        return self._guarded(("outref", f"{module}.{output}"), child.outputs[output], child)
+        return self._references(("outref", f"{module}.{output}"), child.outputs[output], child)
 
-    def _guarded(self, key: tuple[str, str], raw: Any, scope: Context) -> list[str]:
-        if key in self._active:
-            return []
-        self._active.add(key)
-        try:
-            return raw_references(raw, scope)
-        finally:
-            self._active.discard(key)
+    def _references(self, key: tuple[str, str], raw: Any, scope: Context) -> list[str]:
+        """What ``raw`` refers to, worked out once: a local used twice must not be read twice."""
+        found: list[str] = self._memoized(key, lambda: raw_references(raw, scope), [])
+        return list(found)
 
 
 def raw_references(raw: Any, scope: Context, depth: int = 0) -> list[str]:
@@ -516,6 +581,7 @@ class TerraformHCLParser(BaseParser):
         resources: list[ParsedResource] = []
         _emit(scope, resources, session)
         _drop_shadowed_references(resources, session)
+        _report_limits(session)
         if tfvars_files:
             metadata["tfvars"] = tfvars_files
         if session.followed_modules:
@@ -530,6 +596,29 @@ class TerraformHCLParser(BaseParser):
             metadata=metadata,
             diagnostics=session.diagnostics,
         )
+
+
+_LIMIT_REASONS = {
+    "value size": (
+        f"a value grew past {MAX_VALUE_LENGTH:,} characters or {MAX_COLLECTION_SIZE:,} elements, "
+        "or the files used up the work allowed for size checks"
+    ),
+    "nesting": f"locals, module inputs or outputs refer to each other more than "
+    f"{MAX_NESTED_RESOLUTIONS} levels deep",
+    "recursion": "an expression was nested too deeply to evaluate",
+}
+
+
+def _report_limits(session: _Session) -> None:
+    """One warning when evaluation gave up on a value, so an Unknown is never unexplained."""
+    if not session.limits:
+        return
+    reasons = "; ".join(_LIMIT_REASONS.get(kind, kind) for kind in sorted(session.limits))
+    session.diagnose(
+        "warning",
+        "hcl.evaluation_limit",
+        f"some values are treated as unknown because evaluating them reached a limit: {reasons}",
+    )
 
 
 def _load_json_syntax(text: str, name: str) -> dict[str, Any]:

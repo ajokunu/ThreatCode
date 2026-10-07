@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import textwrap
+import time
 from collections import defaultdict
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from threatcode.cli import cli
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.engine.rules.loader import load_all_rules
 from threatcode.ir.graph import InfraGraph
@@ -347,3 +351,60 @@ class TestModuleScans:
     def test_the_diagnostics_reach_the_graph(self) -> None:
         graph = InfraGraph.from_parsed(detect_and_parse(HCL_FIXTURES / "modules.tf"))
         assert {d.code for d in graph.diagnostics} == {"hcl.module_call_skipped"}
+
+
+class TestHostileFiles:
+    """The scan runs on untrusted pull requests, so a short file must not make it hang or fail."""
+
+    @staticmethod
+    def doubling(n: int) -> str:
+        lines = ["locals {", '  l0 = "aaaaaaaaaa"']
+        lines += [f'  l{i} = "${{local.l{i - 1}}}${{local.l{i - 1}}}"' for i in range(1, n + 1)]
+        lines += ["}", f'resource "aws_s3_bucket" "b" {{\n  bucket = local.l{n}\n}}']
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def chain(n: int) -> str:
+        lines = ["locals {", "  l0 = 1"]
+        lines += [f"  l{i} = local.l{i - 1} + 1" for i in range(1, n + 1)]
+        lines += ["}", f'resource "aws_s3_bucket" "b" {{\n  bucket = local.l{n}\n}}']
+        return "\n".join(lines) + "\n"
+
+    @pytest.mark.parametrize("source", ["doubling", "chain"])
+    @pytest.mark.parametrize("target", ["file", "directory"])
+    def test_the_cli_scans_the_file_and_still_finds_what_is_there(
+        self, tmp_path: Path, source: str, target: str
+    ) -> None:
+        text = self.doubling(40) if source == "doubling" else self.chain(200)
+        (tmp_path / "main.tf").write_text(text, encoding="utf-8")
+        argument = tmp_path / "main.tf" if target == "file" else tmp_path
+        started = time.monotonic()
+        result = CliRunner().invoke(cli, ["scan", str(argument), "--no-llm", "--format", "json"])
+        assert time.monotonic() - started < 30
+        assert "RecursionError" not in result.output
+        report = json.loads(result.stdout[result.stdout.index("{") :])
+        assert report["scanned_resources"] == 1
+        # The bucket has no encryption block whatever its name is, and the rules still see that
+        rules = {threat["rule_id"] for threat in report["threats"] if threat.get("rule_id")}
+        assert "S3_NO_ENCRYPTION" in rules
+
+    def test_a_value_the_limits_hid_never_fires_a_presence_rule(self, tmp_path: Path) -> None:
+        # Both buckets say the same thing, but one says it through a value that is too large
+        # to follow: that one is unknown, so the rule neither fires nor passes it
+        locals_ = ['locals {\n  l0 = "public-read"']
+        locals_ += [f'  l{i} = "${{local.l{i - 1}}}${{local.l{i - 1}}}"' for i in range(1, 22)]
+        locals_.append("}")
+        found = _scan_text(
+            tmp_path,
+            "\n".join(locals_)
+            + """
+            resource "aws_s3_bucket" "hidden" {
+              acl = local.l21
+            }
+            resource "aws_s3_bucket" "plain" {
+              acl = "public-read"
+            }
+            """,
+        )
+        assert "S3_PUBLIC_ACCESS" in found["aws_s3_bucket.plain"]
+        assert "S3_PUBLIC_ACCESS" not in found["aws_s3_bucket.hidden"]
