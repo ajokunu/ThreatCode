@@ -1,0 +1,178 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.alb_sg",
+      "target": "aws_vpc.microservices_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.bastion_sg",
+      "target": "aws_vpc.microservices_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.ecs_user_service",
+      "target": "aws_vpc.microservices_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private_app_a",
+      "target": "aws_vpc.microservices_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.private_app_b",
+      "target": "aws_vpc.microservices_vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public_a",
+      "target": "aws_vpc.microservices_vpc",
+      "type": "containment"
+    }
+  ],
+  "nodes": {
+    "aws_cloudwatch_log_group.notification_service": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_cloudwatch_log_group.payment_service": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_cloudwatch_log_group.user_service": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_cloudwatch_metric_alarm.user_service_cpu": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_db_instance.payment_service_db": {
+      "category": "database",
+      "zone": "private"
+    },
+    "aws_db_instance.user_service_db": {
+      "category": "database",
+      "zone": "private"
+    },
+    "aws_ecr_repository.notification_service": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_ecr_repository.payment_service": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_ecr_repository.user_service": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "aws_ecs_cluster.microservices": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_ecs_service.notification_service": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_ecs_service.payment_service": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_ecs_service.user_service": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_ecs_task_definition.notification_service": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_ecs_task_definition.payment_service": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_ecs_task_definition.user_service": {
+      "category": "container",
+      "zone": "private"
+    },
+    "aws_elasticache_replication_group.session_cache": {
+      "category": "database",
+      "zone": "data"
+    },
+    "aws_iam_role.ecs_execution_role": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.notification_service_task_role": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.payment_service_task_role": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.user_service_task_role": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.bastion": {
+      "category": "compute",
+      "zone": "dmz"
+    },
+    "aws_lb.microservices_alb": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_s3_bucket.artifact_store": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_public_access_block.artifact_store": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_server_side_encryption_configuration.artifact_store": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_versioning.artifact_store": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_security_group.alb_sg": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.bastion_sg": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.ecs_user_service": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.private_app_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.private_app_b": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.public_a": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_vpc.microservices_vpc": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "kubernetes_cluster_role_binding.default.test-admin-binding",
+    "rule_id": "K8S_CLUSTER_ADMIN_BINDING",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cluster_role.default.overly-permissive",
+    "rule_id": "K8S_WILDCARD_RBAC_RESOURCES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cluster_role.default.overly-permissive",
+    "rule_id": "K8S_WILDCARD_RBAC_VERBS",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  }
+]

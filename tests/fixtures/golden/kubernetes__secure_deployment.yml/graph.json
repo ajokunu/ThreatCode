@@ -1,0 +1,9 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.production.secure-app": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

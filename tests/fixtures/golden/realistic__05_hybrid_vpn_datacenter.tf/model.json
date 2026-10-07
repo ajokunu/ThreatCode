@@ -1,0 +1,19 @@
+{
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "aws_internet_gateway.hub",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.dmz_a",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.dmz_b",
+      "stride": "tampering"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "aws_internet_gateway.main",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.order_processor",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb.storefront",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb.storefront",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public_a",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public_b",
+      "stride": "tampering"
+    }
+  ]
+}

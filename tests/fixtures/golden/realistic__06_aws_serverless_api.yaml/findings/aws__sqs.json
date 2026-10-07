@@ -1,0 +1,92 @@
+[
+  {
+    "resource_address": "AuditDLQ",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "AuthDLQ",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "NotificationQueue",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "TransactionDeadLetterQueue",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "TransactionQueue",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "AuditDLQ",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "AuthDLQ",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "NotificationQueue",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "TransactionDeadLetterQueue",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "TransactionQueue",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

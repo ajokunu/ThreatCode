@@ -38,6 +38,19 @@ class Rule:
     condition: dict[str, Any]
     mitigation: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    source_group: str = ""
+
+
+_BUILTIN_DIR = Path(__file__).parent / "builtin"
+
+
+def _source_group(path: Path) -> str:
+    """Name the rule file a rule came from: 'aws__s3' for builtin/aws/s3.yml."""
+    try:
+        relative = path.resolve().relative_to(_BUILTIN_DIR.resolve())
+    except ValueError:
+        return f"custom__{path.stem}"
+    return "__".join(relative.with_suffix("").parts)
 
 
 def load_rules_from_file(path: Path) -> list[Rule]:
@@ -86,6 +99,7 @@ def load_rules_from_file(path: Path) -> list[Rule]:
                 condition=raw["condition"],
                 mitigation=str(raw.get("mitigation", "")),
                 metadata=raw.get("metadata", {}),
+                source_group=_source_group(path),
             )
         except KeyError as e:
             raise RuleLoadError(f"Rule in {path} missing required field: {e}") from e

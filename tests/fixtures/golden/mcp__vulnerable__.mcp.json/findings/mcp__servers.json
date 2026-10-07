@@ -1,0 +1,75 @@
+[
+  {
+    "resource_address": "mcp_server.home-files",
+    "rule_id": "MCP_BROAD_FILESYSTEM",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1005"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.builder",
+    "rule_id": "MCP_CONTAINER_PRIVILEGED",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.inventory",
+    "rule_id": "MCP_PLAINTEXT_TRANSPORT",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040",
+      "T1557"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.inventory",
+    "rule_id": "MCP_REMOTE_NO_AUTH",
+    "severity": "low",
+    "stride": "spoofing",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.weather",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.terminal",
+    "rule_id": "MCP_SHELL_EXEC",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1059"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.builder",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.weather",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

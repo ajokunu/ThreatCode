@@ -1,0 +1,162 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "BankingApiDeployment",
+      "target": "AccountsFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "BankingApiDeployment",
+      "target": "AuthFunction",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "AccountsFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AccountsFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "AlertsTopic": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "ApiAccessLogGroup": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "AuditDLQ": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "AuditLogAdminRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "AuditLogFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AuditLogTable": {
+      "category": "database",
+      "zone": "data"
+    },
+    "AuthDLQ": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "AuthErrorRateAlarm": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "AuthFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AuthFunctionLogGroup": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "AuthFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "BankingApi": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "BankingApiDeployment": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "BankingApiStage": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "CustomerUserPool": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "CustomerUserPoolClient": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "LambdaSecurityGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "NotificationQueue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "NotificationQueueMapping": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "NotificationsFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "NotificationsFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "PartnerDocsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "PartnerDocsBucketPolicy": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "StatementsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "TransactionDLQAlarm": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "TransactionDeadLetterQueue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "TransactionQueue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "TransactionQueueMapping": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "TransactionsTable": {
+      "category": "database",
+      "zone": "data"
+    },
+    "TransfersFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "TransfersFunctionLogGroup": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "TransfersFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "TransfersLatencyAlarm": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "UsersTable": {
+      "category": "database",
+      "zone": "data"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "PublicDatabase",
+      "target": "UnencryptedBucket",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "OverpermissiveRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "PublicBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "PublicDatabase": {
+      "category": "database",
+      "zone": "private"
+    },
+    "UnencryptedBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "WildcardPolicy": {
+      "category": "iam",
+      "zone": "management"
+    }
+  }
+}

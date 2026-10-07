@@ -1,0 +1,46 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_instance.main",
+      "target": "aws_instance.web",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.web",
+      "target": "aws_s3_bucket.data",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_db_instance.main": {
+      "category": "database",
+      "zone": "dmz"
+    },
+    "aws_iam_policy.s3_full": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.lambda_exec": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.web": {
+      "category": "compute",
+      "zone": "dmz"
+    },
+    "aws_s3_bucket.data": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.logs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.public_assets": {
+      "category": "storage",
+      "zone": "data"
+    }
+  }
+}

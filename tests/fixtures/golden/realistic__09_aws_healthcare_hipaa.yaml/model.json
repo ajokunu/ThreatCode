@@ -1,0 +1,9 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "HIPAACloudTrail",
+      "stride": "tampering"
+    }
+  ]
+}

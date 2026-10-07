@@ -1,0 +1,29 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_db_instance.public_db",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_internet_gateway.igw",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_internet_gateway.igw",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_subnet.public",
+      "stride": "tampering"
+    }
+  ]
+}

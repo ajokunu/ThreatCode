@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_iam_policy.sagemaker_execution",
+    "rule_id": "IAM_WILDCARD_ACTION",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

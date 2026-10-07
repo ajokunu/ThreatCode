@@ -1,0 +1,25 @@
+{
+  "edges": [],
+  "nodes": {
+    "mcp_server.builder": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.home-files": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.inventory": {
+      "category": "compute",
+      "zone": "internet"
+    },
+    "mcp_server.terminal": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.weather": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

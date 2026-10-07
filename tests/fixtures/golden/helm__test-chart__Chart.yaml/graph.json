@@ -1,0 +1,9 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.default.release-app": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

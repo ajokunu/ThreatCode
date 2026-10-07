@@ -1,0 +1,92 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "ClickstreamFirehose",
+      "target": "ClickstreamStream",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "AlertTopic": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "AnalyticsSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "AthenaResultsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "ClickstreamFirehose": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "ClickstreamStream": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "ClickstreamVPC": {
+      "category": "network",
+      "zone": "private"
+    },
+    "EventProcessorFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "FirehoseRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "GlueCrawler": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "GlueCrawlerRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "GlueDatabase": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "LambdaProcessorRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "PrivateSubnetA": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PrivateSubnetB": {
+      "category": "network",
+      "zone": "private"
+    },
+    "ProcessedDataBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "ProcessingAlarm": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "RawDataBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "RedshiftCluster": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "RedshiftSubnetGroup": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "SessionAggregator": {
+      "category": "serverless",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "aws_instance.game_server_1",
+    "rule_id": "EC2_NO_MONITORING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": [
+      "T1562.008"
+    ]
+  },
+  {
+    "resource_address": "aws_instance.game_server_1",
+    "rule_id": "EC2_PUBLIC_IP",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "aws_instance.game_server_1",
+    "rule_id": "EC2_UNENCRYPTED_EBS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]
