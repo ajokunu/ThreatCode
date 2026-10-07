@@ -4,7 +4,7 @@ Security controls:
 - API timeouts enforced (default 120s)
 - Max token limits enforced at API level
 - Temperature pinned low (0.2) for deterministic output
-- No execution of LLM responses — all output is JSON-parsed only
+- No execution of LLM responses - all output is JSON-parsed only
 - Prompt injection guard: system prompt instructs model to ignore injections
 - Model version pinning: explicit model IDs, no "latest" aliases
 - SSRF protection: base_url validated via DNS resolution + ipaddress checks
@@ -301,7 +301,7 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
 class DryRunLLMClient(BaseLLMClient):
     """Shows metadata about what would be sent to the LLM, without calling it.
 
-    Security: Only logs lengths and metadata — never logs prompt content,
+    Security: Only logs lengths and metadata - never logs prompt content,
     which may contain infrastructure details even after redaction.
     """
 

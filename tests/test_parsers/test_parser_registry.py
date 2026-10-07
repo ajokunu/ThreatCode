@@ -551,6 +551,8 @@ class TestCloudFormationDetection:
 
 
 class TestKubernetesDetection:
+    # A List is claimed as Kubernetes input here. Expanding its items into one resource each
+    # belongs to the Kubernetes parser (WI-K7), so these tests only pin the detection.
     def test_list_object_in_yaml(self) -> None:
         assert detect_and_parse(SHAPES / "k8s_list.yml").format_type == "kubernetes"
 
