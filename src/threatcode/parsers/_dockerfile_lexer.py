@@ -373,8 +373,9 @@ _SHELL_RE = re.compile(
       (?P<space>[ \t]+)
     | (?P<cont>\\\n)
     | (?P<newline>\n)
+    | (?P<redir>&>>?)
     | (?P<op>&&|\|\||\|&|\||;|&|\(|\))
-    | (?P<word>(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[^\s|&;()"'\\])+|["'\\])
+    | (?P<word>(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[<>]&[0-9]*-?|[^\s|&;()"'\\])+|["'\\])
     """,
     re.VERBOSE | re.DOTALL,
 )
@@ -387,7 +388,8 @@ def shell_pipelines(text: str) -> list[list[list[str]]]:
 
     ``&&``, ``||``, ``;``, ``&``, parentheses and newlines end a pipeline; ``|`` joins the
     commands on either side into one. Quoted strings stay inside their word, and a
-    backslash-newline joins lines.
+    backslash-newline joins lines. File-descriptor redirections (``2>&1``, ``>&2``, ``&>file``,
+    ``>&-``) stay inside the command; only a bare ``&`` or ``&&`` ends it.
     """
     pipelines: list[list[list[str]]] = []
     pipeline: list[list[str]] = []
@@ -408,7 +410,7 @@ def shell_pipelines(text: str) -> list[list[list[str]]]:
 
     for match in _SHELL_RE.finditer(text):
         kind = match.lastgroup
-        if kind == "word":
+        if kind in ("word", "redir"):
             command.append(match.group())
         elif kind == "op":
             if match.group() in _PIPES:
@@ -422,6 +424,8 @@ def shell_pipelines(text: str) -> list[list[list[str]]]:
 
 
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# Shell reserved words that can precede a command in command position.
+_RESERVED_PREFIXES = frozenset({"if", "then", "else", "elif", "do", "while", "until", "!", "{"})
 # Wrappers that run the next command; the value is the options that take an argument.
 _WRAPPERS: Mapping[str, frozenset[str]] = {
     "sudo": frozenset({"-u", "-g", "-h", "-p", "-C", "-T", "-r", "-t", "-U", "-D"}),
@@ -437,16 +441,16 @@ _WRAPPERS: Mapping[str, frozenset[str]] = {
 def command_name(raw_words: list[str]) -> tuple[list[str], str, list[str]]:
     """Find the program a command runs.
 
-    Skips ``VAR=value`` prefixes and wrapper commands (``sudo``, ``env``, ``command``,
-    ``exec``, ``nohup``, ``time``) with their options. Returns the wrappers that were skipped,
-    the program's base name and the words after it.
+    Skips ``VAR=value`` prefixes, reserved words such as ``then`` and ``do``, and wrapper
+    commands (``sudo``, ``env``, ``command``, ``exec``, ``nohup``, ``time``) with their options.
+    Returns the wrappers that were skipped, the program's base name and the words after it.
     """
     words = [unquote(word) for word in raw_words]
     wrappers: list[str] = []
     i = 0
     while i < len(words):
         word = words[i]
-        if _ASSIGNMENT_RE.match(word):
+        if _ASSIGNMENT_RE.match(word) or word in _RESERVED_PREFIXES:
             i += 1
             continue
         base = word.rsplit("/", 1)[-1]

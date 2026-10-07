@@ -654,6 +654,20 @@ class TestHeuristicsCurlPipe:
             "curl https://x.sh|sh",
             "true; curl https://x.sh | sh",
             "curl https://x.sh \\\n  | sh",
+            "curl -s x 2>&1 | sh",
+            "curl -s x >&2 | sh",
+            "curl -s x &>/dev/null | sh",
+            "curl -s x 2>/dev/null | sh",
+            "curl -s x 2>&1 | sh 2>&1",
+            "if true; then curl x | sh; fi",
+            "if curl x | sh; then echo ok; fi",
+            "for i in 1 2; do curl x | sh; done",
+            "while true; do curl x | sh; done",
+            "until false; do curl x | sh; done",
+            "if false; then true; else curl x | sh; fi",
+            "if false; then true; elif true; then curl x | sh; fi",
+            "! curl x | sh",
+            "{ curl x | sh; }",
         ],
     )
     def test_a_download_piped_into_an_interpreter_is_flagged(self, command: str) -> None:
@@ -680,6 +694,11 @@ class TestHeuristicsCurlPipe:
             "bash script.sh | curl -X POST https://x",
             "curl https://x | shuf",
             "curl https://x | node-gyp",
+            "echo then curl x | sh",
+            "echo do curl x | sh",
+            "curl x 2>&1 & sh",
+            "curl x 2>&1 && sh",
+            "curl x 2>&1; sh",
         ],
     )
     def test_other_pipelines_are_not_flagged(self, command: str) -> None:
@@ -713,6 +732,14 @@ class TestHeuristicsSudo:
             "true; sudo make",
             "curl x | sudo tee /etc/y",
             "sudo",
+            "if true; then sudo make; fi",
+            "for i in 1; do sudo make; done",
+            "while true; do sudo make; done",
+            "if false; then true; else sudo make; fi",
+            "if false; then true; elif true; then sudo make; fi",
+            "! sudo make",
+            "{ sudo make; }",
+            "sudo make 2>&1",
         ],
     )
     def test_sudo_as_a_command_is_flagged(self, command: str) -> None:
@@ -730,6 +757,8 @@ class TestHeuristicsSudo:
             "which sudo",
             "useradd -G sudo app",
             "sed -i 's/sudo/x/' /etc/f",
+            "echo then sudo make",
+            "echo do sudo",
         ],
     )
     def test_the_word_sudo_elsewhere_is_not_flagged(self, command: str) -> None:
