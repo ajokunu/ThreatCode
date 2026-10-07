@@ -22,6 +22,12 @@
       "crosses_trust_boundary": false,
       "source": "azurerm_network_interface.app",
       "target": "azurerm_subnet.app",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_network_interface.app",
+      "target": "azurerm_subnet.app",
       "type": "dependency"
     },
     {
@@ -47,6 +53,12 @@
       "source": "azurerm_subnet.app",
       "target": "azurerm_resource_group.main",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.app",
+      "target": "azurerm_virtual_network.main",
+      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -85,15 +97,17 @@
       "zone": "private"
     },
     "azurerm_network_interface.app": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "azurerm_network_security_group.app": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "azurerm_network_security_rule.rdp": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "azurerm_resource_group.main": {

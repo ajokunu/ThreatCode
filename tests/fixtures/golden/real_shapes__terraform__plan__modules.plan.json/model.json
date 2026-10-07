@@ -1,9 +1,0 @@
-{
-  "boundary": [
-    {
-      "severity": "medium",
-      "source": "aws_flow_log.main",
-      "stride": "tampering"
-    }
-  ]
-}

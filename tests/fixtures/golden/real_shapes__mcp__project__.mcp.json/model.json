@@ -1,14 +1,10 @@
 {
   "boundary": [
     {
-      "severity": "high",
-      "source": "mcp_agent.config",
-      "stride": "tampering"
-    },
-    {
-      "severity": "high",
+      "severity": "medium",
       "source": "mcp_server.analytics",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "mcp_agent.config"
     }
   ]
 }

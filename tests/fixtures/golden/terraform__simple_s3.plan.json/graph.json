@@ -1,7 +1,7 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "aws_db_instance.main",
       "target": "aws_instance.web",
       "type": "dependency"
@@ -16,7 +16,8 @@
   "nodes": {
     "aws_db_instance.main": {
       "category": "database",
-      "zone": "dmz"
+      "exposure": "internet",
+      "zone": "data"
     },
     "aws_iam_policy.s3_full": {
       "category": "iam",
@@ -40,6 +41,7 @@
     },
     "aws_s3_bucket.public_assets": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     }
   }

@@ -2,9 +2,93 @@
   "edges": [
     {
       "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_ecr_repository.inference_images",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_ecr_repository.training_images",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_iam_policy.sagemaker_execution",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_iam_role.lambda_model_deploy",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_instance.gpu_experiment_box",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_kms_key.ml_data_key",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_lambda_function.experiment_tracker",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_lambda_function.model_deployer",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_s3_bucket.model_artifacts",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_s3_bucket.notebook_outputs",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_s3_bucket.training_data",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.sagemaker_execution",
+      "target": "aws_sagemaker_notebook_instance.research",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy_attachment.sagemaker_execution",
+      "target": "aws_iam_policy.sagemaker_execution",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy_attachment.sagemaker_execution",
+      "target": "aws_iam_role.sagemaker_execution",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
       "source": "aws_instance.gpu_experiment_box",
       "target": "aws_security_group.notebook_debug",
-      "type": "network_flow"
+      "type": "dependency"
     },
     {
       "crosses_trust_boundary": true,
@@ -13,10 +97,46 @@
       "type": "containment"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.experiment_tracker",
+      "target": "aws_iam_role.lambda_model_deploy",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.experiment_tracker",
+      "target": "aws_security_group.sagemaker_notebook",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.experiment_tracker",
+      "target": "aws_subnet.ml_private_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_lambda_function.experiment_tracker",
+      "target": "aws_subnet.ml_private_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_lambda_function.model_deployer",
+      "target": "aws_iam_role.lambda_model_deploy",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_sagemaker_notebook_instance.research",
+      "target": "aws_iam_role.sagemaker_execution",
+      "type": "iam_binding"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "aws_sagemaker_notebook_instance.research",
       "target": "aws_security_group.sagemaker_notebook",
-      "type": "network_flow"
+      "type": "dependency"
     },
     {
       "crosses_trust_boundary": false,
@@ -67,11 +187,11 @@
       "zone": "management"
     },
     "aws_ecr_repository.inference_images": {
-      "category": "unknown",
+      "category": "container",
       "zone": "private"
     },
     "aws_ecr_repository.training_images": {
-      "category": "unknown",
+      "category": "container",
       "zone": "private"
     },
     "aws_iam_policy.lambda_model_deploy": {
@@ -99,8 +219,8 @@
       "zone": "dmz"
     },
     "aws_kms_key.ml_data_key": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "secret",
+      "zone": "data"
     },
     "aws_lambda_function.experiment_tracker": {
       "category": "serverless",
@@ -116,6 +236,7 @@
     },
     "aws_s3_bucket.notebook_outputs": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "aws_s3_bucket.training_data": {
@@ -143,11 +264,12 @@
       "zone": "data"
     },
     "aws_sagemaker_notebook_instance.research": {
-      "category": "unknown",
+      "category": "compute",
       "zone": "private"
     },
     "aws_security_group.notebook_debug": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "aws_security_group.sagemaker_notebook": {

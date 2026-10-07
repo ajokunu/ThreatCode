@@ -1,7 +1,7 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "PublicDatabase",
       "target": "UnencryptedBucket",
       "type": "dependency"
@@ -14,11 +14,13 @@
     },
     "PublicBucket": {
       "category": "storage",
+      "exposure": "internet",
       "zone": "data"
     },
     "PublicDatabase": {
       "category": "database",
-      "zone": "dmz"
+      "exposure": "internet",
+      "zone": "data"
     },
     "UnencryptedBucket": {
       "category": "storage",

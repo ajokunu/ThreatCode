@@ -1,7 +1,7 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "Bucket",
       "target": "Key",
       "type": "dependency"
@@ -31,19 +31,19 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "Queue",
       "target": "Key",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "Table",
       "target": "Key",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "Trail",
       "target": "Key",
       "type": "dependency"
@@ -60,7 +60,7 @@
     },
     "Database": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "Function": {
       "category": "serverless",
@@ -75,8 +75,8 @@
       "zone": "private"
     },
     "Key": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "secret",
+      "zone": "data"
     },
     "Queue": {
       "category": "messaging",
@@ -87,8 +87,8 @@
       "zone": "data"
     },
     "Trail": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     }
   }
 }

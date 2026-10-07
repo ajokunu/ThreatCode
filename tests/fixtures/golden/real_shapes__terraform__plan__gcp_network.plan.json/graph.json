@@ -4,6 +4,12 @@
       "crosses_trust_boundary": false,
       "source": "google_compute_firewall.internal",
       "target": "google_compute_network.vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "google_compute_firewall.internal",
+      "target": "google_compute_network.vpc",
       "type": "dependency"
     },
     {
@@ -16,7 +22,19 @@
       "crosses_trust_boundary": false,
       "source": "google_compute_firewall.ssh",
       "target": "google_compute_network.vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "google_compute_firewall.ssh",
+      "target": "google_compute_network.vpc",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "google_compute_instance.vm",
+      "target": "google_compute_network.vpc",
+      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -28,7 +46,19 @@
       "crosses_trust_boundary": false,
       "source": "google_compute_instance.vm",
       "target": "google_compute_subnetwork.app",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "google_compute_instance.vm",
+      "target": "google_compute_subnetwork.app",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "google_compute_subnetwork.app",
+      "target": "google_compute_network.vpc",
+      "type": "containment"
     },
     {
       "crosses_trust_boundary": false,
@@ -44,6 +74,7 @@
     },
     "google_compute_firewall.ssh": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "google_compute_instance.vm": {
@@ -55,7 +86,7 @@
       "zone": "private"
     },
     "google_compute_subnetwork.app": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     }
   }

@@ -1,7 +1,7 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "AuditLogsBucket",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -19,13 +19,13 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "AuroraCluster",
       "target": "MedVaultKMSKey",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "AuroraInstanceA",
       "target": "AuroraCluster",
       "type": "dependency"
@@ -43,7 +43,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "AuroraInstanceB",
       "target": "AuroraCluster",
       "type": "dependency"
@@ -77,6 +77,12 @@
       "source": "CloudTrailBucketPolicy",
       "target": "AuditLogsBucket",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CloudTrailBucketPolicy",
+      "target": "AuditLogsBucket",
+      "type": "iam_binding"
     },
     {
       "crosses_trust_boundary": false,
@@ -121,13 +127,127 @@
       "type": "containment"
     },
     {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuditLogsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuroraCluster",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuroraInstanceA",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuroraInstanceB",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "CloudTrailCWRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "HIPAAAlertsTopic",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "HL7ProcessorDLQ",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "HL7ProcessorFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "HL7ProcessorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "MedVaultKMSKey",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "PatientRecordsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "RDSMonitoringRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "RecordsApiDLQ",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "RecordsApiFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "RecordsApiRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "ReportGeneratorFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "ReportGeneratorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "SessionCacheTable",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "TempUploadsBucket",
+      "type": "iam_binding"
+    },
+    {
       "crosses_trust_boundary": false,
       "source": "HIPAAAlertsSubscription",
       "target": "HIPAAAlertsTopic",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "HIPAAAlertsTopic",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -145,19 +265,19 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "HIPAACloudTrail",
       "target": "CloudTrailCWRole",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "HIPAACloudTrail",
       "target": "CloudTrailLogGroup",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "HIPAACloudTrail",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -169,7 +289,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "HL7ProcessorDLQ",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -199,7 +319,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "HL7ProcessorFunction",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -301,7 +421,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "PatientRecordsBucket",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -325,7 +445,7 @@
       "type": "containment"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "RecordsApiDLQ",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -343,7 +463,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "RecordsApiFunction",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -439,7 +559,7 @@
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": true,
+      "crosses_trust_boundary": false,
       "source": "SessionCacheTable",
       "target": "MedVaultKMSKey",
       "type": "dependency"
@@ -462,11 +582,11 @@
     },
     "AuroraInstanceA": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "AuroraInstanceB": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "CacheSG": {
       "category": "network",
@@ -489,7 +609,7 @@
       "zone": "private"
     },
     "DatabaseSubnetGroup": {
-      "category": "database",
+      "category": "network",
       "zone": "private"
     },
     "EmergencyAdminRole": {
@@ -505,8 +625,8 @@
       "zone": "private"
     },
     "HIPAACloudTrail": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "monitoring",
+      "zone": "management"
     },
     "HL7ProcessorDLQ": {
       "category": "messaging",
@@ -525,12 +645,12 @@
       "zone": "private"
     },
     "MedVaultKMSKey": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "secret",
+      "zone": "data"
     },
     "MedVaultKMSKeyAlias": {
-      "category": "unknown",
-      "zone": "private"
+      "category": "secret",
+      "zone": "data"
     },
     "MedVaultVPC": {
       "category": "network",

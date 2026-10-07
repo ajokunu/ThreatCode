@@ -283,11 +283,9 @@ class TestSamGraph:
 
 
 class TestZonesExposureAndPaths:
-    @pending("WP-3-1", "RDS types have an explicit DATABASE category, so zone data")
     def test_the_database_is_in_the_data_zone(self) -> None:
         assert_zone(scan_real_shape(WEB_JSON).graph, "Database", "data")
 
-    @pending("WP-3-1", "a load balancer with Scheme internet-facing has exposure internet")
     def test_the_internet_facing_load_balancer_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(WEB_JSON).graph, "LoadBalancer", "internet")
 

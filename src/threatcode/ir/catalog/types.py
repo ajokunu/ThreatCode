@@ -22,6 +22,11 @@ class NodeCategory(str, Enum):
     MONITORING = "monitoring"
     MESSAGING = "messaging"
     CONTAINER = "container"
+    # Stores of secret material: KMS keys, Secrets Manager secrets, SSM parameters,
+    # key vaults and Kubernetes Secrets. A data store, so the DATA zone
+    SECRET = "secret"
+    # A managed API front door: API Gateway REST and HTTP APIs, Lambda function URLs
+    API = "api"
     UNKNOWN = "unknown"
 
     @property
@@ -50,5 +55,7 @@ _CATEGORY_TO_STRIDE: dict[NodeCategory, str] = {
     NodeCategory.MONITORING: "process",
     NodeCategory.MESSAGING: "data_flow",
     NodeCategory.CONTAINER: "process",
+    NodeCategory.SECRET: "data_store",
+    NodeCategory.API: "process",
     NodeCategory.UNKNOWN: "process",
 }

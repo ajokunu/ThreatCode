@@ -934,10 +934,10 @@ class TestAttachmentRules:
             graph_module._custom_containment_hints.remove(("scope_id", "custom_scope"))
 
 
-class TestLegacyHeuristicsWithoutReferences:
-    """Until parsers populate references the existing heuristics run unchanged."""
+class TestLiteralValuesWithoutReferences:
+    """Hand-written inputs state addresses, ids and names; a value binds only by resolving."""
 
-    def test_literal_subnet_and_security_group_values_still_make_edges(self) -> None:
+    def test_literal_subnet_and_security_group_addresses_make_edges(self) -> None:
         parsed = ParsedOutput(
             resources=[
                 _pr("aws_subnet", "a"),
@@ -952,12 +952,28 @@ class TestLegacyHeuristicsWithoutReferences:
                 ),
             ]
         )
-        assert _edges_of(InfraGraph.from_parsed(parsed)) == {
+        graph = InfraGraph.from_parsed(parsed)
+        assert _edges_of(graph) == {
             ("aws_instance.app", "aws_subnet.a", "containment"),
-            ("aws_instance.app", "aws_security_group.web", "network_flow"),
+            ("aws_instance.app", "aws_security_group.web", "dependency"),
         }
 
-    def test_literal_role_label_still_matches_by_name(self) -> None:
+    def test_a_security_group_attachment_is_never_a_network_flow(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_security_group", "web"),
+                _pr(
+                    "aws_instance",
+                    "app",
+                    properties={"vpc_security_group_ids": ["aws_security_group.web"]},
+                ),
+            ]
+        )
+        (edge,) = InfraGraph.from_parsed(parsed).edges
+        assert (edge.edge_type, edge.relation) == (EdgeType.DEPENDENCY, "security_group")
+        assert edge.declared is False
+
+    def test_literal_role_label_still_matches_as_the_last_resort(self) -> None:
         parsed = ParsedOutput(
             resources=[
                 _pr("aws_iam_role", "exec"),
@@ -968,8 +984,339 @@ class TestLegacyHeuristicsWithoutReferences:
             ("aws_iam_instance_profile.p", "aws_iam_role.exec", "iam_binding")
         }
 
+    def test_a_role_name_attribute_wins_over_another_roles_label(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_iam_role", "ops", properties={"name": "deploy"}),
+                _pr("aws_iam_role", "deploy", properties={"name": "other"}),
+                _pr("aws_iam_instance_profile", "p", properties={"role": "deploy"}),
+            ]
+        )
+        assert _edges_of(InfraGraph.from_parsed(parsed)) == {
+            ("aws_iam_instance_profile.p", "aws_iam_role.ops", "iam_binding")
+        }
 
-# -- Declared edges that name unknown nodes -------------------------------------
+    def test_a_role_arn_resolves_through_the_name_attribute(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_iam_role", "fn", properties={"name": "orders-fn"}),
+                _pr(
+                    "aws_lambda_function",
+                    "orders",
+                    properties={"role": "arn:aws:iam::123456789012:role/service/orders-fn"},
+                ),
+            ]
+        )
+        assert _edges_of(InfraGraph.from_parsed(parsed)) == {
+            ("aws_lambda_function.orders", "aws_iam_role.fn", "iam_binding")
+        }
+
+    def test_a_policy_attachment_names_its_policy_and_role(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_iam_role", "r", properties={"name": "r-name"}),
+                _pr("aws_iam_policy", "p", properties={"name": "p-name"}),
+                _pr(
+                    "aws_iam_role_policy_attachment",
+                    "a",
+                    properties={"role": "r-name", "policy_arn": "aws_iam_policy.p"},
+                ),
+            ]
+        )
+        edges = InfraGraph.from_parsed(parsed).edges
+        assert {(e.source, e.target, e.relation) for e in edges if e.relation != "has_policy"} == {
+            ("aws_iam_role_policy_attachment.a", "aws_iam_role.r", "assumes"),
+            ("aws_iam_role_policy_attachment.a", "aws_iam_policy.p", "attaches"),
+        }
+
+
+class TestTwoVpcPlacement:
+    """A subnet or security group belongs to the VPC its value names, never to the first VPC."""
+
+    def _vpcs(self, *extra: ParsedResource) -> ParsedOutput:
+        return ParsedOutput(
+            resources=[
+                _pr("aws_vpc", "prod", properties={"id": "vpc-prod0001"}),
+                _pr("aws_vpc", "dev", properties={"id": "vpc-dev0001"}),
+                *extra,
+            ]
+        )
+
+    def _ambiguous(self, graph: InfraGraph) -> list[str]:
+        return [d.message for d in graph.diagnostics if d.code == "graph.ambiguous_reference"]
+
+    def test_the_dev_subnet_binds_only_to_the_dev_vpc_by_address(self) -> None:
+        subnet = _pr("aws_subnet", "dev_a", properties={"vpc_id": "aws_vpc.dev"})
+        graph = InfraGraph.from_parsed(self._vpcs(subnet))
+        assert _edges_of(graph) == {("aws_subnet.dev_a", "aws_vpc.dev", "containment")}
+
+    def test_the_dev_subnet_binds_only_to_the_dev_vpc_by_id(self) -> None:
+        subnet = _pr("aws_subnet", "dev_a", properties={"vpc_id": "vpc-dev0001"})
+        graph = InfraGraph.from_parsed(self._vpcs(subnet))
+        assert _edges_of(graph) == {("aws_subnet.dev_a", "aws_vpc.dev", "containment")}
+        assert self._ambiguous(graph) == []
+
+    def test_the_dev_security_group_binds_only_to_the_dev_vpc(self) -> None:
+        group = _pr("aws_security_group", "dev", properties={"vpc_id": "${aws_vpc.dev.id}"})
+        graph = InfraGraph.from_parsed(self._vpcs(group))
+        assert _edges_of(graph) == {("aws_security_group.dev", "aws_vpc.dev", "containment")}
+
+    def test_an_unresolvable_literal_with_two_candidates_adds_no_edge_and_says_why(self) -> None:
+        subnet = _pr(
+            "aws_subnet",
+            "stray",
+            properties={"vpc_id": "vpc-0unknown"},
+            source_location="net.tf",
+            start_line=12,
+        )
+        graph = InfraGraph.from_parsed(self._vpcs(subnet))
+        assert graph.edges == []
+        (diag,) = [d for d in graph.diagnostics if d.code == "graph.ambiguous_reference"]
+        # Most likely a VPC outside the input, so information and not a coverage gap
+        assert diag.level == "info"
+        assert "vpc-0unknown" in diag.message
+        assert "aws_vpc.prod" in diag.message and "aws_vpc.dev" in diag.message
+        assert "no edge was added" in diag.message
+        assert (diag.file, diag.line) == ("net.tf", 12)
+
+    def test_a_literal_vpc_id_binds_the_only_vpc_and_says_how(self) -> None:
+        # One candidate leaves nothing to choose: the placement binds it, marked as inferred
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_vpc", "only"),
+                _pr("aws_subnet", "a", properties={"vpc_id": "vpc-somewhere"}),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        (edge,) = graph.edges
+        assert (edge.source, edge.target, edge.edge_type) == (
+            "aws_subnet.a",
+            "aws_vpc.only",
+            EdgeType.CONTAINMENT,
+        )
+        assert edge.attributes == {"binding": "only_candidate"}
+        assert self._ambiguous(graph) == []
+
+    def test_the_sole_candidate_is_not_bound_for_a_dangling_address(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_vpc", "only"),
+                _pr("aws_subnet", "a", properties={"vpc_id": "aws_vpc.gone"}),
+            ]
+        )
+        assert InfraGraph.from_parsed(parsed).edges == []
+
+    def test_the_sole_candidate_is_not_bound_for_a_subnet_or_a_security_group_value(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_subnet", "only"),
+                _pr("aws_security_group", "only"),
+                _pr(
+                    "aws_instance",
+                    "i",
+                    properties={"subnet_id": "subnet-0abc", "vpc_security_group_ids": ["sg-0abc"]},
+                ),
+            ]
+        )
+        assert InfraGraph.from_parsed(parsed).edges == []
+
+    def test_the_sole_candidate_of_another_unit_is_not_bound(self) -> None:
+        graph = InfraGraph.from_units(
+            [
+                ParsedOutput(
+                    resources=[_pr("aws_subnet", "a", properties={"vpc_id": "vpc-1"})],
+                    source_path="a",
+                ),
+                ParsedOutput(resources=[_pr("aws_vpc", "main")], source_path="b"),
+            ]
+        )
+        assert graph.edges == []
+
+    def test_an_id_that_two_vpcs_share_is_reported_and_binds_neither(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_vpc", "a", properties={"id": "vpc-1"}),
+                _pr("aws_vpc", "b", properties={"id": "vpc-1"}),
+                _pr("aws_subnet", "s", properties={"vpc_id": "vpc-1"}),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        assert graph.edges == []
+        (message,) = self._ambiguous(graph)
+        assert "matches several nodes" in message
+        assert "aws_vpc.a" in message and "aws_vpc.b" in message
+        (diag,) = [d for d in graph.diagnostics if d.code == "graph.ambiguous_reference"]
+        assert diag.level == "warning"
+
+    def test_a_dangling_address_is_not_an_ambiguity(self) -> None:
+        subnet = _pr("aws_subnet", "a", properties={"vpc_id": "aws_vpc.gone"})
+        graph = InfraGraph.from_parsed(self._vpcs(subnet))
+        assert graph.edges == []
+        assert self._ambiguous(graph) == []
+
+    def test_a_security_group_value_that_names_no_group_among_several_is_reported(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_security_group", "a"),
+                _pr("aws_security_group", "b"),
+                _pr("aws_instance", "i", properties={"vpc_security_group_ids": ["sg-0abc"]}),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        assert graph.edges == []
+        assert len(self._ambiguous(graph)) == 1
+
+    def test_an_unmatched_role_or_managed_policy_is_external_and_adds_no_noise(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_iam_role", "a", properties={"name": "a"}),
+                _pr("aws_iam_role", "b", properties={"name": "b"}),
+                _pr("aws_iam_policy", "p", properties={"name": "p"}),
+                _pr("aws_iam_policy", "q", properties={"name": "q"}),
+                _pr(
+                    "aws_iam_role_policy_attachment",
+                    "managed",
+                    properties={
+                        "role": "someone-elses-role",
+                        "policy_arn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+                    },
+                ),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        assert graph.edges == []
+        assert self._ambiguous(graph) == []
+
+    def test_a_foreign_provider_attribute_is_not_reported_against_aws_nodes(self) -> None:
+        # google_project_iam_member.role is "roles/viewer", which says nothing about aws roles
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_iam_role", "a"),
+                _pr("aws_iam_role", "b"),
+                ParsedResource(
+                    "google_project_iam_member",
+                    "google_project_iam_member.m",
+                    "m",
+                    "google",
+                    properties={"role": "roles/viewer"},
+                ),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        assert graph.edges == []
+        assert self._ambiguous(graph) == []
+
+    def test_the_same_graph_built_from_a_reference_binds_the_same_vpc(self) -> None:
+        subnet = _pr("aws_subnet", "dev_a", references={"vpc_id": ["aws_vpc.dev.id"]})
+        graph = InfraGraph.from_parsed(self._vpcs(subnet))
+        assert _edges_of(graph) == {("aws_subnet.dev_a", "aws_vpc.dev", "containment")}
+
+
+class TestAzureAndGoogleAttachments:
+    def test_a_subnet_is_contained_in_the_virtual_network_it_names(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                ParsedResource("azurerm_virtual_network", "azurerm_virtual_network.a", "a", "az"),
+                ParsedResource("azurerm_virtual_network", "azurerm_virtual_network.b", "b", "az"),
+                ParsedResource(
+                    "azurerm_subnet",
+                    "azurerm_subnet.s",
+                    "s",
+                    "az",
+                    references={"virtual_network_name": ["azurerm_virtual_network.b.name"]},
+                ),
+            ]
+        )
+        assert _edges_of(InfraGraph.from_parsed(parsed)) == {
+            ("azurerm_subnet.s", "azurerm_virtual_network.b", "containment")
+        }
+
+    def test_a_google_instance_is_contained_in_its_network_and_subnetwork(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                ParsedResource("google_compute_network", "google_compute_network.n", "n", "g"),
+                ParsedResource(
+                    "google_compute_subnetwork", "google_compute_subnetwork.s", "s", "g"
+                ),
+                ParsedResource(
+                    "google_compute_instance",
+                    "google_compute_instance.vm",
+                    "vm",
+                    "g",
+                    references={
+                        "network_interface[].network": ["google_compute_network.n.id"],
+                        "network_interface[].subnetwork": ["google_compute_subnetwork.s.id"],
+                    },
+                ),
+            ]
+        )
+        assert _edges_of(InfraGraph.from_parsed(parsed)) == {
+            ("google_compute_instance.vm", "google_compute_network.n", "containment"),
+            ("google_compute_instance.vm", "google_compute_subnetwork.s", "containment"),
+        }
+
+    def test_the_dead_vnet_and_network_id_hints_are_gone(self) -> None:
+        from threatcode.ir import graph as graph_module
+
+        assert not hasattr(graph_module, "_BUILTIN_CONTAINMENT_HINTS")
+        parsed = ParsedOutput(
+            resources=[
+                ParsedResource("azurerm_virtual_network", "azurerm_virtual_network.a", "a", "az"),
+                _pr("custom_thing", "t", properties={"vnet_id": "azurerm_virtual_network.a"}),
+            ]
+        )
+        assert InfraGraph.from_parsed(parsed).edges == []
+
+
+class TestRegisteredContainmentHint:
+    def test_a_hint_binds_by_reference_and_by_unique_name(self) -> None:
+        from threatcode.ir import graph as graph_module
+        from threatcode.ir.graph import register_containment_hint
+
+        register_containment_hint("scope_id", "custom_scope")
+        try:
+            parsed = ParsedOutput(
+                resources=[
+                    _pr("custom_scope", "s"),
+                    _pr("custom_scope", "t"),
+                    _pr("custom_thing", "by_name", properties={"scope_id": "t"}),
+                    _pr("custom_thing", "by_ref", references={"scope_id": ["custom_scope.s.id"]}),
+                ]
+            )
+            assert _edges_of(InfraGraph.from_parsed(parsed)) == {
+                ("custom_thing.by_name", "custom_scope.t", "containment"),
+                ("custom_thing.by_ref", "custom_scope.s", "containment"),
+            }
+        finally:
+            graph_module._custom_containment_hints.remove(("scope_id", "custom_scope"))
+
+    def test_a_hint_binds_the_only_node_of_its_type_and_never_the_first_of_several(self) -> None:
+        from threatcode.ir import graph as graph_module
+        from threatcode.ir.graph import register_containment_hint
+
+        register_containment_hint("scope_id", "custom_scope")
+        try:
+            lone = ParsedOutput(
+                resources=[
+                    _pr("custom_scope", "first"),
+                    _pr("custom_thing", "t", properties={"scope_id": "nobody"}),
+                ]
+            )
+            assert _edges_of(InfraGraph.from_parsed(lone)) == {
+                ("custom_thing.t", "custom_scope.first", "containment")
+            }
+            several = ParsedOutput(
+                resources=[
+                    _pr("custom_scope", "first"),
+                    _pr("custom_scope", "second"),
+                    _pr("custom_thing", "t", properties={"scope_id": "nobody"}),
+                ]
+            )
+            graph = InfraGraph.from_parsed(several)
+            assert graph.edges == []
+            assert [d.code for d in graph.diagnostics] == ["graph.ambiguous_reference"]
+        finally:
+            graph_module._custom_containment_hints.remove(("scope_id", "custom_scope"))
 
 
 class TestDeclaredEdgeStrictness:
@@ -1462,5 +1809,301 @@ class TestEnrichHook:
         InfraGraph.from_units([ParsedOutput(), ParsedOutput()])
         assert seen == [1]
 
-    def test_default_enrich_changes_nothing(self, simple_s3_graph: InfraGraph) -> None:
-        assert all(n.exposure == "unknown" for n in simple_s3_graph.nodes.values())
+
+class TestPassOrder:
+    """Enrichment, IAM, exposure and the boundary marking run in that order."""
+
+    def test_the_passes_run_in_order_over_the_finished_edges(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from threatcode.ir import exposure, iam
+
+        calls: list[tuple[str, int, bool]] = []
+
+        def spy(name: str) -> Any:
+            def run(graph: InfraGraph, *args: Any) -> None:
+                crossed = any(e.crosses_boundary for e in graph.edges)
+                calls.append((name, len(graph.edges), crossed))
+
+            return run
+
+        monkeypatch.setattr("threatcode.ir.graph.enrich", spy("enrich"))
+        monkeypatch.setattr(iam, "link", spy("iam"))
+        monkeypatch.setattr(exposure, "apply", spy("exposure"))
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_vpc", "main"),
+                _pr("aws_subnet", "a", references={"vpc_id": ["aws_vpc.main"]}),
+                _pr("aws_instance", "i", properties={"associate_public_ip_address": True}),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        assert [name for name, _, _ in calls] == ["enrich", "iam", "exposure"]
+        # Every pass sees the structural edges, and none sees a crossing yet
+        assert all(count == 1 and not crossed for _, count, crossed in calls)
+        # The crossings are marked afterwards, from the zones the passes left
+        (edge,) = graph.edges
+        assert edge.crosses_boundary is False
+
+    def test_a_zone_the_exposure_pass_changes_is_the_zone_the_crossing_compares(self) -> None:
+        # A subnet with a route to an internet gateway becomes public (DMZ) in the exposure pass;
+        # the instance in it is private, so the containment edge crosses only with the final zone
+        parsed = ParsedOutput(
+            resources=[
+                _pr("aws_internet_gateway", "gw"),
+                _pr("aws_route_table", "pub", properties={"route": [_default_route("gw")]}),
+                _pr("aws_subnet", "a"),
+                _pr(
+                    "aws_route_table_association",
+                    "a",
+                    properties={
+                        "subnet_id": "aws_subnet.a",
+                        "route_table_id": "aws_route_table.pub",
+                    },
+                ),
+                _pr("aws_instance", "i", properties={"subnet_id": "aws_subnet.a"}),
+            ]
+        )
+        graph = InfraGraph.from_parsed(parsed)
+        subnet = graph.get_node("aws_subnet.a")
+        assert subnet is not None
+        assert (subnet.trust_zone, subnet.exposure) == (TrustZone.DMZ, "internet")
+        (edge,) = [e for e in graph.edges if e.source == "aws_instance.i"]
+        assert edge.crosses_boundary is True
+        assert (edge.source_zone, edge.target_zone) == (TrustZone.PRIVATE, TrustZone.DMZ)
+
+
+def _default_route(gateway: str) -> dict[str, str]:
+    return {"cidr_block": "0.0.0.0/0", "gateway_id": f"aws_internet_gateway.{gateway}"}
+
+
+class TestFlowEdgeTypes:
+    def test_flow_edges_are_the_traffic_carrying_types_only(self) -> None:
+        from threatcode.ir.edges import FLOW_EDGE_TYPES
+
+        assert FLOW_EDGE_TYPES == {EdgeType.NETWORK_FLOW, EdgeType.DATA_FLOW}
+        assert FLOW_EDGE_TYPES <= REACHABILITY
+        assert not FLOW_EDGE_TYPES & STRUCTURAL
+        assert EdgeType.IAM_BINDING not in FLOW_EDGE_TYPES
+
+
+class TestNodeBookkeeping:
+    def test_node_formats_record_the_parser_format_of_each_node(self) -> None:
+        graph = InfraGraph.from_units(
+            [
+                ParsedOutput(resources=[_pr("aws_vpc", "a")], format_type="terraform_hcl"),
+                ParsedOutput(
+                    resources=[_pr("aws_vpc", "b")], format_type="cloudformation", source_path="t"
+                ),
+            ]
+        )
+        assert graph.node_formats == {
+            "aws_vpc.a": "terraform_hcl",
+            "aws_vpc.b": "cloudformation",
+        }
+
+    def test_zone_declared_lists_only_the_nodes_whose_zone_the_input_declared(self) -> None:
+        parsed = ParsedOutput(
+            resources=[
+                _res("design_service.api", trust_zone="dmz"),
+                _res("design_service.other"),
+            ]
+        )
+        assert InfraGraph.from_parsed(parsed).zone_declared == {"design_service.api"}
+
+
+class TestExportDict:
+    def _graph(self) -> InfraGraph:
+        parsed = ParsedOutput(
+            resources=[
+                _pr(
+                    "aws_s3_bucket",
+                    "b",
+                    properties={"bucket": "secret-bucket-name", "password": "hunter2"},
+                    source_location="main.tf",
+                    start_line=3,
+                    end_line=9,
+                ),
+                _pr("aws_lambda_function", "f", properties={"role": "unused"}),
+            ],
+            edges=[
+                ParsedEdge(
+                    "aws_lambda_function.f",
+                    "aws_s3_bucket.b",
+                    "data_flow",
+                    {"protocol": "https", "ports": (443,)},
+                )
+            ],
+        )
+        return InfraGraph.from_parsed(parsed)
+
+    def test_nodes_carry_what_a_reader_needs_and_no_properties(self) -> None:
+        data = self._graph().to_export_dict()
+        nodes = {n["id"]: n for n in data["nodes"]}
+        bucket = nodes["aws_s3_bucket.b"]
+        assert bucket == {
+            "id": "aws_s3_bucket.b",
+            "type": "aws_s3_bucket",
+            "name": "b",
+            "category": "storage",
+            "zone": "data",
+            "exposure": "unknown",
+            "boundary": "",
+            "evidence": "config",
+            "stride_element": "data_store",
+            "module": "",
+            "mode": "managed",
+            "source_file": "main.tf",
+            "start_line": 3,
+            "end_line": 9,
+        }
+        assert "hunter2" not in str(data)
+
+    def test_properties_are_included_only_on_request(self) -> None:
+        graph = self._graph()
+        assert "properties" not in graph.to_export_dict()["nodes"][0]
+        with_properties = graph.to_export_dict(include_properties=True)
+        nodes = {n["id"]: n for n in with_properties["nodes"]}
+        assert nodes["aws_s3_bucket.b"]["properties"]["password"] == "hunter2"
+
+    def test_edges_carry_type_relation_attributes_and_the_crossing(self) -> None:
+        (edge,) = self._graph().to_export_dict()["edges"]
+        assert edge == {
+            "source": "aws_lambda_function.f",
+            "target": "aws_s3_bucket.b",
+            "type": "data_flow",
+            "relation": "",
+            "declared": True,
+            "crosses_boundary": True,
+            "source_zone": "private",
+            "target_zone": "data",
+            "attributes": {"protocol": "https", "ports": [443]},
+        }
+
+    def test_the_export_is_json_serialisable_and_stable(self) -> None:
+        import json
+
+        first = json.dumps(self._graph().to_export_dict(include_properties=True), sort_keys=True)
+        second = json.dumps(self._graph().to_export_dict(include_properties=True), sort_keys=True)
+        assert first == second
+
+    def test_nodes_and_edges_are_sorted_whatever_the_input_order(self) -> None:
+        forward = ParsedOutput(resources=[_pr("aws_vpc", "a"), _pr("aws_vpc", "b")])
+        backward = ParsedOutput(resources=[_pr("aws_vpc", "b"), _pr("aws_vpc", "a")])
+        ids = [n["id"] for n in InfraGraph.from_parsed(forward).to_export_dict()["nodes"]]
+        assert ids == ["aws_vpc.a", "aws_vpc.b"]
+        assert ids == [n["id"] for n in InfraGraph.from_parsed(backward).to_export_dict()["nodes"]]
+
+    def test_to_dict_keeps_its_shape_for_the_redacted_prompt(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
+        data = simple_s3_graph.to_dict()
+        assert set(data) == {"nodes", "edges"}
+        node = next(iter(data["nodes"].values()))
+        assert "properties" not in node and "source_file" not in node
+
+
+class TestSubgraph:
+    def _graph(self) -> InfraGraph:
+        parsed = ParsedOutput(
+            resources=[_pr("aws_vpc", "v"), _pr("aws_subnet", "s"), _pr("aws_instance", "i")],
+            edges=[
+                ParsedEdge("aws_subnet.s", "aws_vpc.v", "containment"),
+                ParsedEdge("aws_subnet.s", "aws_vpc.v", "dependency"),
+                ParsedEdge("aws_instance.i", "aws_subnet.s", "network_flow", {"ports": [22]}),
+            ],
+        )
+        return InfraGraph.from_parsed(parsed)
+
+    def test_parallel_edges_between_one_pair_are_both_visible(self) -> None:
+        view = self._graph().subgraph([EdgeType.CONTAINMENT, EdgeType.DEPENDENCY])
+        assert view.number_of_edges("aws_subnet.s", "aws_vpc.v") == 2
+        assert set(view["aws_subnet.s"]["aws_vpc.v"]) == {"containment", "dependency"}
+
+    def test_only_the_requested_edge_types_are_kept_and_every_node_is(self) -> None:
+        view = self._graph().subgraph([EdgeType.NETWORK_FLOW])
+        assert set(view.nodes) == {"aws_vpc.v", "aws_subnet.s", "aws_instance.i"}
+        assert [(u, v) for u, v, _ in view.edges(keys=True)] == [("aws_instance.i", "aws_subnet.s")]
+        assert view["aws_instance.i"]["aws_subnet.s"]["network_flow"]["attributes"] == {
+            "ports": [22]
+        }
+
+    def test_an_empty_selection_has_nodes_and_no_edges(self) -> None:
+        view = self._graph().subgraph([])
+        assert view.number_of_nodes() == 3 and view.number_of_edges() == 0
+
+    def test_the_reachability_subgraph_keeps_the_edges_an_attacker_can_follow(self) -> None:
+        view = self._graph().reachability_subgraph()
+        assert [(u, v, k) for u, v, k in view.edges(keys=True)] == [
+            ("aws_instance.i", "aws_subnet.s", "network_flow")
+        ]
+
+    def test_nodes_carry_zone_and_category(self) -> None:
+        view = self._graph().subgraph([EdgeType.CONTAINMENT])
+        assert view.nodes["aws_vpc.v"]["zone"] == "private"
+        assert view.nodes["aws_vpc.v"]["category"] == "network"
+
+
+class TestNeighbors:
+    def _graph(self) -> InfraGraph:
+        parsed = ParsedOutput(
+            resources=[_pr("aws_vpc", "v"), _pr("aws_subnet", "s"), _pr("aws_instance", "i")],
+            edges=[
+                ParsedEdge("aws_subnet.s", "aws_vpc.v", "containment"),
+                ParsedEdge("aws_subnet.s", "aws_vpc.v", "dependency"),
+                ParsedEdge("aws_instance.i", "aws_subnet.s", "network_flow"),
+            ],
+        )
+        return InfraGraph.from_parsed(parsed)
+
+    def test_the_default_is_the_targets_of_outgoing_edges_once_each(self) -> None:
+        graph = self._graph()
+        assert [n.id for n in graph.get_neighbors("aws_subnet.s")] == ["aws_vpc.v"]
+        assert [n.id for n in graph.get_neighbors("aws_vpc.v")] == []
+
+    def test_incoming_and_both_directions(self) -> None:
+        graph = self._graph()
+        assert [n.id for n in graph.get_neighbors("aws_subnet.s", "in")] == ["aws_instance.i"]
+        assert [n.id for n in graph.get_neighbors("aws_subnet.s", "both")] == [
+            "aws_vpc.v",
+            "aws_instance.i",
+        ]
+
+    def test_an_unknown_node_has_no_neighbors(self) -> None:
+        assert self._graph().get_neighbors("nope") == []
+
+    def test_get_edges_for_node_still_lists_every_edge_touching_the_node(self) -> None:
+        edges = self._graph().get_edges_for_node("aws_subnet.s")
+        assert len(edges) == 3
+
+
+class TestPublicAddEdge:
+    def test_it_adds_a_typed_edge_with_a_relation(self) -> None:
+        graph = InfraGraph.from_parsed(
+            ParsedOutput(resources=[_pr("aws_vpc", "a"), _pr("aws_vpc", "b")])
+        )
+        graph.add_edge(
+            "aws_vpc.a", "aws_vpc.b", EdgeType.IAM_BINDING, {"x": 1}, relation="can_assume"
+        )
+        (edge,) = graph.edges
+        assert (edge.edge_type, edge.relation, edge.attributes) == (
+            EdgeType.IAM_BINDING,
+            "can_assume",
+            {"x": 1},
+        )
+        assert edge.declared is False
+
+    def test_a_repeated_edge_keeps_its_place_and_gains_the_new_attributes(self) -> None:
+        graph = InfraGraph.from_parsed(
+            ParsedOutput(resources=[_pr("aws_vpc", "a"), _pr("aws_vpc", "b")])
+        )
+        graph.add_edge("aws_vpc.a", "aws_vpc.b", EdgeType.DEPENDENCY, {"x": 1})
+        graph.add_edge("aws_vpc.a", "aws_vpc.b", EdgeType.DEPENDENCY, {"y": 2})
+        (edge,) = graph.edges
+        assert edge.attributes == {"x": 1, "y": 2}
+
+    def test_an_unknown_endpoint_is_an_error(self) -> None:
+        graph = InfraGraph.from_parsed(ParsedOutput(resources=[_pr("aws_vpc", "a")]))
+        with pytest.raises(ThreatCodeError, match="unknown node"):
+            graph.add_edge("aws_vpc.a", "aws_vpc.gone", EdgeType.DEPENDENCY)
+        assert graph.edges == []

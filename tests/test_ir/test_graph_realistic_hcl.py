@@ -186,11 +186,9 @@ class TestTwoVpcs:
 
 
 class TestZonesExposureAndPaths:
-    @pending("WP-3-1", "RDS types have an explicit DATABASE category, so zone data")
     def test_the_database_is_in_the_data_zone(self) -> None:
         assert_zone(scan_real_shape(*MODULE_FILES).graph, "aws_db_instance.orders", "data")
 
-    @pending("WP-3-1", "an internet-facing load balancer has exposure internet")
     def test_the_load_balancer_is_exposed(self) -> None:
         assert_exposure(scan_real_shape(*MODULE_FILES).graph, "aws_lb.front", "internet")
 

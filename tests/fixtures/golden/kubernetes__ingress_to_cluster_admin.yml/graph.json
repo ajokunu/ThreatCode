@@ -46,6 +46,7 @@
     },
     "kubernetes_ingress.edge.portal": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "kubernetes_service.edge.portal": {

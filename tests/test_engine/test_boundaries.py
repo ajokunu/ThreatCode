@@ -2,95 +2,403 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from tests.test_ir.test_golden import GOLDEN_INPUTS, REPO_ROOT
 from threatcode.engine import boundaries
 from threatcode.engine.boundaries import _boundary_severity
 from threatcode.engine.hybrid import HybridEngine
-from threatcode.engine.mitre import BOUNDARY_TACTICS, BOUNDARY_TECHNIQUES
+from threatcode.engine.mitre import BOUNDARY_TECHNIQUES, TECHNIQUE_DB
 from threatcode.ir.graph import InfraGraph
-from threatcode.models.threat import Severity, ThreatSource, hash_id
+from threatcode.models.threat import Severity, Threat, ThreatSource, hash_id
 from threatcode.parsers import detect_and_parse
-from threatcode.parsers.base import ParsedOutput, ParsedResource
+from threatcode.parsers.base import ParsedEdge, ParsedOutput, ParsedResource
+from threatcode.values import Unknown
 
 REALISTIC = Path(__file__).parent.parent / "fixtures" / "realistic"
 
 
-class TestBoundaryAnalysis:
-    def test_boundary_threats_generated(self, simple_s3_graph: InfraGraph) -> None:
-        engine = HybridEngine()
-        report = engine.analyze(simple_s3_graph)
+def _res(rtype: str, name: str, zone: str | None = None, **kwargs: Any) -> ParsedResource:
+    return ParsedResource(
+        rtype, f"{rtype}.{name}", name, rtype.split("_", 1)[0], trust_zone=zone, **kwargs
+    )
 
-        boundary_threats = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
-        assert len(boundary_threats) > 0
 
-    def test_one_threat_per_crossing_edge_in_edge_order(self, simple_s3_graph: InfraGraph) -> None:
-        crossings = simple_s3_graph.get_boundary_crossing_edges()
-        threats = boundaries.analyze(simple_s3_graph)
+def _graph(
+    resources: list[ParsedResource], edges: list[ParsedEdge], strict: bool = True
+) -> InfraGraph:
+    return InfraGraph.from_parsed(
+        ParsedOutput(resources=resources, edges=edges), strict_edges=strict
+    )
 
-        assert crossings
-        assert [t.id for t in threats] == [
-            hash_id(f"BOUNDARY_{e.source}_{e.target}") for e in crossings
-        ]
-        assert [t.resource_address for t in threats] == [e.source for e in crossings]
 
-    def test_threat_contents(self, simple_s3_graph: InfraGraph) -> None:
-        crossing = simple_s3_graph.get_boundary_crossing_edges()[0]
-        threat = boundaries.analyze(simple_s3_graph)[0]
-        src_zone = crossing.metadata["source_zone"]
-        tgt_zone = crossing.metadata["target_zone"]
+def _edge(source: str, target: str, edge_type: str = "data_flow", **meta: Any) -> ParsedEdge:
+    return ParsedEdge(source, target, edge_type, meta)
 
-        assert threat.title == f"Trust boundary crossing: {src_zone} -> {tgt_zone}"
-        assert crossing.source in threat.description
-        assert crossing.target in threat.description
-        assert f"{crossing.source} ({src_zone} zone)" in threat.description
-        assert threat.stride_category == "tampering"
+
+# A dmz web tier, a private app tier and a data store: the shape of most inputs
+WEB = "design_service.web"
+APP = "design_service.app"
+DB = "design_database.orders"
+
+
+def _tiers(*edges: ParsedEdge) -> InfraGraph:
+    return _graph(
+        [
+            _res("design_service", "web", "dmz"),
+            _res("design_service", "app", "private"),
+            _res("design_database", "orders", "data"),
+        ],
+        list(edges),
+    )
+
+
+def _only(graph: InfraGraph) -> Threat:
+    (threat,) = boundaries.analyze(graph)
+    return threat
+
+
+class TestOnlyFlowsCross:
+    @pytest.mark.parametrize("edge_type", ["containment", "dependency", "iam_binding"])
+    def test_a_structural_or_iam_edge_across_zones_produces_no_threat(self, edge_type: str) -> None:
+        graph = _tiers(_edge(WEB, DB, edge_type))
+        assert [e.crosses_trust_boundary for e in graph.edges] == [True]
+        assert boundaries.analyze(graph) == []
+
+    @pytest.mark.parametrize("edge_type", ["network_flow", "data_flow"])
+    def test_a_flow_edge_across_zones_produces_one_threat(self, edge_type: str) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, edge_type)))
+        assert (threat.resource_address, threat.target_address) == (WEB, DB)
         assert threat.source == ThreatSource.BOUNDARY
-        assert threat.rule_id == ""
-        assert threat.confidence == 1.0
-        assert threat.mitre_techniques == list(BOUNDARY_TECHNIQUES)
-        assert threat.mitre_tactics == list(BOUNDARY_TACTICS)
-        assert threat.severity == _boundary_severity(src_zone, tgt_zone)
-        assert threat.target_address == ""
 
-    def test_mitre_lists_are_copies(self) -> None:
-        graph = InfraGraph.from_parsed(
-            detect_and_parse(REALISTIC / "01_aws_ecommerce_platform.json")
+    def test_a_declared_data_flow_produces_exactly_one_threat_with_its_port(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, protocol="tcp", port=5432)))
+        assert "tcp/5432" in threat.description
+        assert "declares" in threat.description
+
+    def test_a_flow_inside_one_zone_and_boundary_is_not_a_crossing(self) -> None:
+        graph = _graph(
+            [_res("design_service", "a", "private"), _res("design_service", "b", "private")],
+            [_edge("design_service.a", "design_service.b")],
         )
-        threats = boundaries.analyze(graph)
-        assert len(threats) >= 2
-        first, second = threats[:2]
-        first.mitre_techniques.append("T0000")
-        assert "T0000" not in second.mitre_techniques
-        assert "T0000" not in BOUNDARY_TECHNIQUES
+        assert boundaries.analyze(graph) == []
 
-    def test_graph_without_crossings_has_no_boundary_threats(self) -> None:
+    def test_two_declared_boundaries_in_one_zone_are_a_crossing(self) -> None:
+        graph = _graph(
+            [
+                _res("design_service", "a", "private", boundary="tz-a"),
+                _res("design_service", "b", "private", boundary="tz-b"),
+            ],
+            [_edge("design_service.a", "design_service.b")],
+        )
+        assert len(boundaries.analyze(graph)) == 1
+
+    def test_a_subnet_in_its_vpc_and_an_internet_gateway_attached_to_it_are_not_crossings(
+        self,
+    ) -> None:
         graph = InfraGraph.from_parsed(
             ParsedOutput(
                 resources=[
+                    ParsedResource("aws_vpc", "aws_vpc.main", "main", "aws"),
                     ParsedResource(
-                        resource_type="aws_s3_bucket",
-                        address="aws_s3_bucket.only",
-                        name="only",
-                        provider="aws",
-                    )
-                ]
+                        "aws_subnet",
+                        "aws_subnet.pub",
+                        "pub",
+                        "aws",
+                        properties={"map_public_ip_on_launch": True},
+                    ),
+                    ParsedResource("aws_internet_gateway", "aws_internet_gateway.gw", "gw", "aws"),
+                ],
+                edges=[
+                    ParsedEdge("aws_subnet.pub", "aws_vpc.main", "containment", declared=False),
+                    ParsedEdge(
+                        "aws_internet_gateway.gw", "aws_vpc.main", "dependency", declared=False
+                    ),
+                ],
             )
         )
-        assert graph.node_count == 1
+        assert [e.crosses_trust_boundary for e in graph.edges] == [True, True]
         assert boundaries.analyze(graph) == []
 
-    def test_matches_what_the_engine_reports(self, simple_s3_graph: InfraGraph) -> None:
-        report = HybridEngine().analyze(simple_s3_graph)
-        in_report = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
-        assert [t.to_dict() for t in in_report] == [
-            t.to_dict() for t in boundaries.analyze(simple_s3_graph)
-        ]
+    def test_the_fixture_with_the_most_wiring_has_only_flow_threats(self) -> None:
+        graph = InfraGraph.from_parsed(
+            detect_and_parse(REALISTIC / "01_aws_ecommerce_platform.json")
+        )
+        assert graph.get_boundary_crossing_edges()
+        assert boundaries.analyze(graph) == []
 
 
-class TestBoundarySeverity:
+class TestEndpointsThatCannotExchangeTraffic:
+    @pytest.mark.parametrize(
+        "rtype",
+        [
+            "aws_security_group",
+            "aws_network_acl",
+            "aws_route_table",
+            "aws_iam_policy",
+            "aws_iam_role",
+            "aws_s3_bucket_policy",
+            "aws_vpc",
+            "aws_subnet",
+            "kubernetes_namespace",
+            "kubernetes_network_policy",
+            "kubernetes_role_binding",
+            "azurerm_network_security_group",
+            "google_compute_firewall",
+        ],
+    )
+    @pytest.mark.parametrize("end", ["source", "target"])
+    def test_a_flow_to_or_from_such_a_node_produces_no_threat(self, rtype: str, end: str) -> None:
+        passive = _res(rtype, "p", "data")
+        actor = _res("design_service", "web", "dmz")
+        edges = (
+            [_edge(passive.address, WEB, "network_flow")]
+            if end == "source"
+            else [_edge(WEB, passive.address, "network_flow")]
+        )
+        assert boundaries.analyze(_graph([passive, actor], edges)) == []
+
+    def test_an_instance_a_load_balancer_and_a_database_can(self) -> None:
+        graph = _graph(
+            [
+                _res("aws_lb", "front", "dmz"),
+                _res("aws_instance", "app", "private"),
+                _res("aws_db_instance", "db", "data"),
+            ],
+            [
+                _edge("aws_lb.front", "aws_instance.app", "network_flow"),
+                _edge("aws_instance.app", "aws_db_instance.db", "network_flow"),
+            ],
+        )
+        assert len(boundaries.analyze(graph)) == 2
+
+
+class TestPairsAreMerged:
+    def test_edges_between_one_pair_make_one_threat_naming_every_type(self) -> None:
+        graph = _tiers(
+            _edge(WEB, DB, "network_flow", protocol="tcp", port=5432),
+            _edge(WEB, DB, "data_flow"),
+            _edge(WEB, DB, "dependency"),
+        )
+        threat = _only(graph)
+        assert threat.metadata["flow"]["edge_types"] == ["data_flow", "network_flow"]
+        assert "data_flow and network_flow" in threat.description
+        assert "5432" in threat.description
+
+    def test_the_reverse_direction_is_a_separate_threat_with_its_own_id(self) -> None:
+        threats = boundaries.analyze(_tiers(_edge(WEB, DB), _edge(DB, WEB)))
+        assert len(threats) == 2
+        assert len({t.id for t in threats}) == 2
+
+    def test_the_id_seed_includes_the_pair_and_the_sorted_edge_types(self) -> None:
+        both = _only(_tiers(_edge(WEB, DB, "network_flow"), _edge(WEB, DB, "data_flow")))
+        assert both.id == hash_id(f"BOUNDARY|{WEB}|{DB}|data_flow+network_flow")
+        only_data = _only(_tiers(_edge(WEB, DB, "data_flow")))
+        assert only_data.id == hash_id(f"BOUNDARY|{WEB}|{DB}|data_flow")
+        assert only_data.id != both.id
+
+    def test_pairs_whose_names_would_run_together_keep_distinct_ids(self) -> None:
+        graph = _graph(
+            [
+                _res("design_service", "a_b", "dmz"),
+                _res("design_service", "c", "data"),
+                _res("design_service", "a", "dmz"),
+                _res("design_service", "b_c", "data"),
+            ],
+            [
+                _edge("design_service.a_b", "design_service.c"),
+                _edge("design_service.a", "design_service.b_c"),
+            ],
+        )
+        threats = boundaries.analyze(graph)
+        assert len(threats) == 2 and len({t.id for t in threats}) == 2
+
+    def test_threats_follow_the_order_of_the_first_edge_of_each_pair(self) -> None:
+        graph = _tiers(_edge(APP, DB), _edge(WEB, APP), _edge(APP, DB, "network_flow"))
+        assert [t.resource_address for t in boundaries.analyze(graph)] == [APP, WEB]
+
+    def test_ids_are_stable_across_builds(self) -> None:
+        first = [t.id for t in boundaries.analyze(_tiers(_edge(WEB, DB), _edge(APP, DB)))]
+        second = [t.id for t in boundaries.analyze(_tiers(_edge(WEB, DB), _edge(APP, DB)))]
+        assert first == second
+
+
+class TestWhatTheThreatSays:
+    def test_the_title_names_both_endpoints_and_both_zones(self) -> None:
+        assert _only(_tiers(_edge(WEB, DB))).title == (
+            f"Trust boundary crossing: {WEB} (dmz) -> {DB} (data)"
+        )
+
+    def test_the_target_is_recorded_on_the_threat_and_in_the_metadata(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB)))
+        assert threat.target_address == DB
+        assert threat.resource_address == WEB
+        assert threat.resource_type == "design_service"
+        assert threat.metadata["source_address"] == WEB
+        assert threat.metadata["target_address"] == DB
+        assert (threat.metadata["source_zone"], threat.metadata["target_zone"]) == ("dmz", "data")
+        assert threat.metadata["boundary_key"] == "BOUNDARY_dmz_data"
+
+    def test_the_description_says_what_is_known_not_a_fixed_sentence(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB)))
+        assert "Data flows from" not in threat.description
+        assert WEB in threat.description and DB in threat.description
+        assert "dmz zone" in threat.description and "data zone" in threat.description
+        assert "Nothing in the input says" in threat.description
+
+    def test_an_inferred_flow_is_worded_as_reachability(self) -> None:
+        graph = _tiers(ParsedEdge(WEB, APP, "network_flow", {}, declared=False))
+        threat = _only(graph)
+        assert "can reach" in threat.description
+        assert "declares" not in threat.description
+
+    def test_a_port_without_a_protocol_and_a_protocol_without_a_port(self) -> None:
+        with_port = _only(
+            _tiers(ParsedEdge(WEB, APP, "network_flow", {"port": 8080}, declared=False))
+        )
+        assert "on port 8080" in with_port.description
+        with_protocol = _only(
+            _tiers(ParsedEdge(WEB, APP, "network_flow", {"protocol": "grpc"}, declared=False))
+        )
+        assert "over grpc" in with_protocol.description
+
+    def test_several_ports_are_listed_in_order(self) -> None:
+        threat = _only(
+            _tiers(
+                ParsedEdge(WEB, APP, "network_flow", {"ports": [443, 80]}, declared=False),
+            )
+        )
+        assert "on port 80,443" in threat.description
+
+    def test_the_threat_does_not_repeat_the_flow_facts_it_does_not_have(self) -> None:
+        flow = _only(_tiers(_edge(WEB, DB))).metadata["flow"]
+        assert flow == {
+            "source": WEB,
+            "target": DB,
+            "edge_types": ["data_flow"],
+            "relations": [],
+            "protocols": [],
+            "ports": [],
+            "authenticated": None,
+            "encrypted": None,
+        }
+
+
+class TestStrideFollowsTheFlow:
+    @pytest.mark.parametrize(
+        ("meta", "stride"),
+        [
+            ({"authenticated": False}, "spoofing"),
+            ({"authenticated": False, "encrypted": False}, "spoofing"),
+            ({"encrypted": False}, "information_disclosure"),
+            ({"authenticated": True, "encrypted": False}, "information_disclosure"),
+            ({"protocol": "http"}, "information_disclosure"),
+            ({"protocol": "http", "authenticated": True}, "information_disclosure"),
+            ({"authenticated": True, "encrypted": True}, "tampering"),
+            ({"protocol": "https", "authenticated": True}, "tampering"),
+            ({"protocol": "https"}, "tampering"),
+            ({"authenticated": True}, "tampering"),
+            ({}, "tampering"),
+        ],
+    )
+    def test_the_category(self, meta: dict[str, Any], stride: str) -> None:
+        assert _only(_tiers(_edge(WEB, DB, **meta))).stride_category == stride
+
+    def test_an_explicit_flag_beats_the_protocol(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, protocol="https", encrypted=False)))
+        assert threat.stride_category == "information_disclosure"
+
+    def test_merged_edges_take_the_weakest_claim(self) -> None:
+        graph = _tiers(
+            _edge(WEB, DB, "data_flow", authenticated=True),
+            _edge(WEB, DB, "network_flow", authenticated=False),
+        )
+        threat = _only(graph)
+        assert threat.metadata["flow"]["authenticated"] is False
+        assert threat.stride_category == "spoofing"
+
+    def test_merged_edges_agree_only_when_all_say_yes(self) -> None:
+        graph = _tiers(
+            _edge(WEB, DB, "data_flow", authenticated=True, encrypted=True),
+            _edge(WEB, DB, "network_flow"),
+        )
+        flow = _only(graph).metadata["flow"]
+        assert flow["authenticated"] is None
+        assert flow["encrypted"] is None
+
+    def test_a_flow_without_facts_has_lower_confidence(self) -> None:
+        assert _only(_tiers(_edge(WEB, DB))).confidence == 0.5
+        assert _only(_tiers(_edge(WEB, DB, authenticated=False))).confidence == 1.0
+        assert _only(_tiers(_edge(WEB, DB, protocol="https"))).confidence == 1.0
+
+
+class TestMitreFollowsTheZonePair:
+    @pytest.mark.parametrize(
+        ("src_zone", "tgt_zone", "meta", "techniques"),
+        [
+            ("internet", "dmz", {}, ["T1190", "T1565.002"]),
+            ("internet", "private", {}, ["T1565.002"]),
+            ("dmz", "data", {}, ["T1530", "T1565.002"]),
+            ("private", "data", {}, ["T1530", "T1565.002"]),
+            ("private", "management", {}, ["T1078", "T1565.002"]),
+            ("internet", "data", {}, ["T1530", "T1565.002"]),
+            ("dmz", "private", {}, ["T1565.002"]),
+            ("dmz", "data", {"authenticated": False}, ["T1530", "T1557"]),
+            ("dmz", "data", {"encrypted": False}, ["T1530", "T1040"]),
+            ("internet", "dmz", {"encrypted": False}, ["T1190", "T1040"]),
+        ],
+    )
+    def test_techniques(
+        self, src_zone: str, tgt_zone: str, meta: dict[str, Any], techniques: list[str]
+    ) -> None:
+        graph = _graph(
+            [_res("design_service", "a", src_zone), _res("design_service", "b", tgt_zone)],
+            [_edge("design_service.a", "design_service.b", **meta)],
+        )
+        assert _only(graph).mitre_techniques == techniques
+
+    def test_every_technique_exists_in_the_attack_database_and_is_current(self) -> None:
+        used: set[str] = set()
+        for src, tgt in (("internet", "dmz"), ("dmz", "data"), ("private", "management")):
+            for meta in ({}, {"authenticated": False}, {"encrypted": False}):
+                graph = _graph(
+                    [_res("design_service", "a", src), _res("design_service", "b", tgt)],
+                    [_edge("design_service.a", "design_service.b", **meta)],
+                )
+                used.update(_only(graph).mitre_techniques)
+        assert used >= {"T1190", "T1530", "T1078", "T1557", "T1040", "T1565.002"}
+        for technique in used:
+            entry = TECHNIQUE_DB[technique]
+            assert not entry["revoked"] and not entry["deprecated"], technique
+
+    def test_the_tactics_are_derived_from_the_techniques(self) -> None:
+        threat = _only(
+            _graph(
+                [_res("design_service", "a", "internet"), _res("design_service", "b", "dmz")],
+                [_edge("design_service.a", "design_service.b")],
+            )
+        )
+        derived: set[str] = set()
+        for technique in threat.mitre_techniques:
+            derived.update(TECHNIQUE_DB[technique]["tactic_ids"])
+        assert threat.mitre_tactics == sorted(derived)
+        assert "TA0001" in threat.mitre_tactics
+
+    def test_the_technique_lists_are_copies(self) -> None:
+        threats = boundaries.analyze(_tiers(_edge(WEB, DB), _edge(APP, DB)))
+        assert len(threats) == 2
+        threats[0].mitre_techniques.append("T0000")
+        threats[0].mitre_tactics.append("TA0000")
+        assert "T0000" not in threats[1].mitre_techniques
+        assert "TA0000" not in threats[1].mitre_tactics
+        assert "T0000" not in BOUNDARY_TECHNIQUES
+
+
+class TestSeverity:
     @pytest.mark.parametrize(
         ("src", "tgt"),
         [
@@ -119,3 +427,172 @@ class TestBoundarySeverity:
     )
     def test_other_pairs_are_medium(self, src: str, tgt: str) -> None:
         assert _boundary_severity(src, tgt) == Severity.MEDIUM
+
+    def test_the_threat_takes_the_severity_of_its_pair(self) -> None:
+        assert _only(_tiers(_edge(WEB, DB))).severity == Severity.HIGH
+        assert _only(_tiers(_edge(WEB, APP))).severity == Severity.MEDIUM
+        assert _only(_tiers(_edge(APP, DB))).severity == Severity.MEDIUM
+
+    def test_a_flow_declared_encrypted_and_authenticated_is_one_level_lower(self) -> None:
+        safe = {"encrypted": True, "authenticated": True}
+        assert _only(_tiers(_edge(WEB, DB, **safe))).severity == Severity.MEDIUM
+        assert _only(_tiers(_edge(WEB, APP, **safe))).severity == Severity.LOW
+
+    @pytest.mark.parametrize(
+        "meta",
+        [{"encrypted": True}, {"authenticated": True}, {"encrypted": True, "authenticated": False}],
+    )
+    def test_half_the_story_does_not_lower_it(self, meta: dict[str, Any]) -> None:
+        assert _only(_tiers(_edge(WEB, DB, **meta))).severity == Severity.HIGH
+
+    def test_a_protocol_that_implies_encryption_counts(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, protocol="https", authenticated=True)))
+        assert threat.severity == Severity.MEDIUM
+
+    def test_merged_edges_lower_it_only_when_every_edge_is_safe(self) -> None:
+        safe = {"encrypted": True, "authenticated": True}
+        graph = _tiers(_edge(WEB, DB, "data_flow", **safe), _edge(WEB, DB, "network_flow"))
+        assert _only(graph).severity == Severity.HIGH
+        graph = _tiers(_edge(WEB, DB, "data_flow", **safe), _edge(WEB, DB, "network_flow", **safe))
+        assert _only(graph).severity == Severity.MEDIUM
+
+    def test_a_source_that_faces_the_internet_is_judged_as_the_internet(self) -> None:
+        resources = [
+            ParsedResource(
+                "aws_lb", "aws_lb.front", "front", "aws", properties={"internal": False}
+            ),
+            ParsedResource("aws_instance", "aws_instance.app", "app", "aws"),
+        ]
+        graph = InfraGraph.from_parsed(
+            ParsedOutput(
+                resources=resources,
+                edges=[ParsedEdge("aws_lb.front", "aws_instance.app", "network_flow", {}, False)],
+            )
+        )
+        lb = graph.get_node("aws_lb.front")
+        assert lb is not None and lb.exposure == "internet"
+        # dmz -> private is MEDIUM, but a source that is internet-exposed is an internet pair
+        assert _only(graph).severity == Severity.HIGH
+
+    def test_the_same_pair_without_exposure_stays_medium(self) -> None:
+        resources = [
+            ParsedResource(
+                "aws_lb", "aws_lb.front", "front", "aws", properties={"internal": Unknown()}
+            ),
+            ParsedResource("aws_instance", "aws_instance.app", "app", "aws"),
+        ]
+        graph = InfraGraph.from_parsed(
+            ParsedOutput(
+                resources=resources,
+                edges=[ParsedEdge("aws_lb.front", "aws_instance.app", "network_flow", {}, False)],
+            )
+        )
+        assert _only(graph).severity == Severity.MEDIUM
+
+
+class TestMitigation:
+    def test_the_advice_follows_the_category(self) -> None:
+        spoofing = _only(_tiers(_edge(WEB, DB, authenticated=False))).mitigation
+        disclosure = _only(_tiers(_edge(WEB, DB, encrypted=False))).mitigation
+        tampering = _only(_tiers(_edge(WEB, DB))).mitigation
+        assert "Authenticate" in spoofing
+        assert "Encrypt" in disclosure
+        assert "validated" in tampering
+        assert len({spoofing, disclosure, tampering}) == 3
+
+
+class TestEngineIntegration:
+    def test_boundary_threats_are_generated_for_a_flow_input(self) -> None:
+        report = HybridEngine().analyze(_tiers(_edge(WEB, DB)))
+        found = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
+        assert len(found) == 1
+
+    def test_a_plan_with_only_wiring_has_no_boundary_threat(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        assert [t for t in report.threats if t.source == ThreatSource.BOUNDARY] == []
+
+    def test_what_the_engine_reports_is_what_the_phase_produces(self) -> None:
+        graph = _tiers(_edge(WEB, DB), _edge(WEB, APP, "network_flow"))
+        report = HybridEngine().analyze(graph)
+        in_report = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
+        assert [t.to_dict() for t in in_report] == [t.to_dict() for t in boundaries.analyze(graph)]
+
+    def test_the_target_address_reaches_the_serialised_threat(self) -> None:
+        data = _only(_tiers(_edge(WEB, DB))).to_dict()
+        assert data["target_address"] == DB
+        assert data["metadata"]["flow"]["edge_types"] == ["data_flow"]
+
+    def test_a_graph_without_crossings_has_no_boundary_threats(self) -> None:
+        graph = InfraGraph.from_parsed(
+            ParsedOutput(
+                resources=[ParsedResource("aws_s3_bucket", "aws_s3_bucket.only", "only", "aws")]
+            )
+        )
+        assert boundaries.analyze(graph) == []
+
+
+class TestIdsAreUnique:
+    @pytest.mark.parametrize("path", sorted(p.name for p in REALISTIC.iterdir() if p.is_file()))
+    def test_a_realistic_input_has_no_duplicate_threat_id(self, path: str) -> None:
+        graph = InfraGraph.from_parsed(detect_and_parse(REALISTIC / path))
+        report = HybridEngine().analyze(graph, input_file=path)
+        counts = Counter(t.id for t in report.threats)
+        assert [tid for tid, n in counts.items() if n > 1] == []
+
+    @pytest.mark.parametrize("relpath", GOLDEN_INPUTS)
+    def test_a_golden_input_has_no_duplicate_boundary_id(self, relpath: str) -> None:
+        graph = InfraGraph.from_parsed(detect_and_parse(REPO_ROOT / relpath))
+        ids = [t.id for t in boundaries.analyze(graph)]
+        assert len(ids) == len(set(ids))
+
+
+class TestKubernetesAndMcpFlowsRemain:
+    def _threats(self, relpath: str) -> list[Threat]:
+        graph = InfraGraph.from_parsed(detect_and_parse(REPO_ROOT / relpath))
+        return boundaries.analyze(graph)
+
+    def test_an_exposed_service_to_its_workload_is_a_high_flow_threat(self) -> None:
+        threats = self._threats("tests/fixtures/kubernetes/graph_stack.yml")
+        pairs = {(t.resource_address, t.target_address): t for t in threats}
+        lb = pairs[("kubernetes_service.default.web-lb", "kubernetes_deployment.default.web")]
+        assert lb.metadata["flow"]["edge_types"] == ["network_flow"]
+        assert lb.metadata["flow"]["relations"] == ["selects"]
+        # The Service is exposed to the internet, so its flow into the cluster is an internet pair
+        assert lb.severity == Severity.HIGH
+
+    def test_a_cluster_ip_service_and_the_wiring_around_it_produce_nothing(self) -> None:
+        threats = self._threats("tests/fixtures/kubernetes/graph_stack.yml")
+        sources = {t.resource_address for t in threats}
+        assert not any("api-internal" in s for s in sources)
+        assert not any(s.startswith("kubernetes_role") for s in sources)
+        assert not any("secret" in s for s in sources)
+
+    def test_an_ingress_to_a_service_in_another_zone_is_a_flow_threat(self) -> None:
+        threats = self._threats("tests/fixtures/real_shapes/kubernetes/shop_stack.yaml")
+        (threat,) = threats
+        assert threat.resource_address == "kubernetes_ingress.shop.web"
+        assert threat.target_address == "kubernetes_service.shop.web"
+        assert threat.metadata["flow"]["relations"] == ["backend"]
+
+    def test_a_remote_mcp_server_that_is_neither_encrypted_nor_authenticated(self) -> None:
+        (threat,) = self._threats("tests/fixtures/mcp/vulnerable/.mcp.json")
+        assert (threat.resource_address, threat.target_address) == (
+            "mcp_server.inventory",
+            "mcp_agent.config",
+        )
+        assert threat.stride_category == "spoofing"
+        assert threat.severity == Severity.HIGH
+        assert "over http" in threat.description
+
+    def test_a_pinned_authenticated_https_server_is_one_level_lower(self) -> None:
+        (threat,) = self._threats("tests/fixtures/mcp/fixed/.mcp.json")
+        assert threat.metadata["flow"]["authenticated"] is True
+        assert threat.metadata["flow"]["encrypted"] is True
+        assert threat.severity == Severity.MEDIUM
+        assert threat.stride_category == "tampering"
+
+    def test_the_agent_to_server_invocation_is_not_a_flow(self) -> None:
+        for threat in self._threats("tests/fixtures/mcp/fixed/.mcp.json"):
+            assert threat.metadata["flow"]["edge_types"] == ["data_flow"]

@@ -6,6 +6,7 @@ import pytest
 
 from threatcode.ir.catalog import kubernetes
 from threatcode.ir.nodes import NodeCategory, TrustZone, categorize_resource, infer_trust_zone
+from threatcode.values import Unknown
 
 CASES = [
     ("kubernetes_deployment", NodeCategory.CONTAINER, TrustZone.PRIVATE),
@@ -20,9 +21,10 @@ CASES = [
     ("kubernetes_service", NodeCategory.NETWORK, TrustZone.DMZ),
     ("kubernetes_ingress", NodeCategory.NETWORK, TrustZone.DMZ),
     ("kubernetes_network_policy", NodeCategory.NETWORK, TrustZone.PRIVATE),
-    ("kubernetes_secret", NodeCategory.STORAGE, TrustZone.DATA),
+    ("kubernetes_secret", NodeCategory.SECRET, TrustZone.DATA),
     ("kubernetes_config_map", NodeCategory.STORAGE, TrustZone.PRIVATE),
     ("kubernetes_pvc", NodeCategory.STORAGE, TrustZone.DATA),
+    ("kubernetes_persistent_volume", NodeCategory.STORAGE, TrustZone.DATA),
     ("kubernetes_service_account", NodeCategory.IAM, TrustZone.MANAGEMENT),
     ("kubernetes_role", NodeCategory.IAM, TrustZone.MANAGEMENT),
     ("kubernetes_cluster_role", NodeCategory.IAM, TrustZone.MANAGEMENT),
@@ -88,6 +90,17 @@ class TestZoneOverride:
         assert kubernetes.zone_override("kubernetes_service", {}) is None
         assert kubernetes.zone_override("kubernetes_service", {"service_type": None}) is None
         assert infer_trust_zone("kubernetes_service", {}) == TrustZone.DMZ
+
+    def test_a_service_type_the_scan_cannot_read_keeps_the_static_zone(self) -> None:
+        # An unresolved value never selects a zone: not private, and not exposed either
+        assert kubernetes.zone_override("kubernetes_service", {"service_type": Unknown()}) is None
+        assert infer_trust_zone("kubernetes_service", {"service_type": Unknown("v")}) == (
+            TrustZone.DMZ
+        )
+
+    def test_the_config_map_is_not_a_secret_store(self) -> None:
+        assert categorize_resource("kubernetes_config_map") == NodeCategory.STORAGE
+        assert categorize_resource("kubernetes_secret") == NodeCategory.SECRET
 
     def test_an_ingress_without_rules_is_private(self) -> None:
         assert infer_trust_zone("kubernetes_ingress", {"has_rules": False}) == TrustZone.PRIVATE

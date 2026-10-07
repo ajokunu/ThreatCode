@@ -43,13 +43,13 @@
       "type": "containment"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "Database",
       "target": "DatabaseSecurityGroup",
       "type": "dependency"
     },
     {
-      "crosses_trust_boundary": false,
+      "crosses_trust_boundary": true,
       "source": "Database",
       "target": "DbSubnetGroup",
       "type": "dependency"
@@ -230,14 +230,14 @@
     },
     "Database": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "DatabaseSecurityGroup": {
       "category": "network",
       "zone": "private"
     },
     "DbSubnetGroup": {
-      "category": "database",
+      "category": "network",
       "zone": "private"
     },
     "GatewayAttachment": {
@@ -250,14 +250,17 @@
     },
     "Listener": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "LoadBalancer": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "LoadBalancerSecurityGroup": {
       "category": "network",
+      "exposure": "internet",
       "zone": "private"
     },
     "PrivateSubnet": {
@@ -278,6 +281,7 @@
     },
     "PublicSubnet": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "PublicSubnetRouteTableAssociation": {

@@ -1,34 +1,22 @@
 {
   "boundary": [
     {
-      "severity": "high",
-      "source": "mcp_agent.config",
-      "stride": "tampering"
-    },
-    {
-      "severity": "high",
-      "source": "mcp_agent.config",
-      "stride": "tampering"
-    },
-    {
-      "severity": "high",
-      "source": "mcp_agent.config",
-      "stride": "tampering"
-    },
-    {
-      "severity": "high",
+      "severity": "medium",
       "source": "mcp_server.path-token",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "mcp_agent.config"
     },
     {
-      "severity": "high",
+      "severity": "medium",
       "source": "mcp_server.query-auth",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "mcp_agent.config"
     },
     {
-      "severity": "high",
+      "severity": "medium",
       "source": "mcp_server.userinfo",
-      "stride": "tampering"
+      "stride": "tampering",
+      "target": "mcp_agent.config"
     }
   ]
 }

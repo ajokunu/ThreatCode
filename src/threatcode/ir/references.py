@@ -21,6 +21,10 @@ Resolution only ever finds nodes that exist, and it never guesses:
 - A bare name matches `node.name` only when the caller says which type of node
   it needs and exactly one node of that type has the name.
   Several candidates are reported as ambiguous, with no match.
+- `resolve_literal` reads a value that is not a reference but an identifier the input states:
+  the `id`, `arn` or `name` attribute of exactly one node of the required type, or an ARN whose
+  last component is such a name (`arn:aws:iam::1:role/ops/deploy` finds the role named `deploy`).
+  The attribute wins over the resource label, which is the last resort.
 
 CloudFormation intrinsics are accepted as well: `{"Ref": X}`,
 `{"Fn::GetAtt": [X, attr]}`, `{"Fn::Sub": "...${X}..."}` and `{"Fn::Join": ...}`.
@@ -31,9 +35,10 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from threatcode.ir.addressing import base_address, components
+from threatcode.values import is_unknown
 
 if TYPE_CHECKING:
     from threatcode.ir.nodes import InfraNode
@@ -52,6 +57,41 @@ _TOKEN = re.compile(rf"(?<![\w.\]\-]){_IDENT}(?:{_INDEX})*(?:\.{_IDENT}(?:{_INDE
 _BARE = re.compile(rf"^{_IDENT}$")
 _INTERPOLATION = re.compile(r"\$\{([^}]*)\}")
 _SUB_PLACEHOLDER = re.compile(r"\$\{([^}!]+)\}")
+
+
+# Properties a literal identifier is compared with, in the order they are tried
+LITERAL_KEYS: tuple[str, ...] = ("id", "arn", "name")
+
+
+class ArnParts(NamedTuple):
+    """The fields of an ARN: `arn:partition:service:region:account:resource`."""
+
+    partition: str
+    service: str
+    region: str
+    account: str
+    resource: str
+
+    @property
+    def name(self) -> str:
+        """The last component of the resource: `deploy` for `role/ops/deploy`."""
+        return self.resource.replace(":", "/").rsplit("/", 1)[-1]
+
+    @property
+    def kind(self) -> str:
+        """The resource kind when the resource has one: `role` for `role/ops/deploy`."""
+        flat = self.resource.replace(":", "/")
+        return flat.split("/", 1)[0] if "/" in flat else ""
+
+
+def parse_arn(value: Any) -> ArnParts | None:
+    """Split an ARN into its fields; None for anything that is not one."""
+    if not isinstance(value, str) or is_unknown(value) or not value.startswith("arn:"):
+        return None
+    parts = value.strip().split(":", 5)
+    if len(parts) != 6 or not parts[2]:
+        return None
+    return ArnParts(parts[1], parts[2], parts[3], parts[4], parts[5])
 
 
 def type_is(resource_type: str) -> TypeMatcher:
@@ -93,12 +133,21 @@ class ReferenceIndex:
         self._ids_by_base: dict[str, list[str]] = {}
         self._nodes_by_name: dict[str, list[InfraNode]] = {}
         self._type_by_id: dict[str, str] = {}
+        self._by_literal: dict[str, list[InfraNode]] = {}
         for key, node in nodes.items():
             self._id_by_key[key] = node.id
             self._type_by_id[node.id] = node.resource_type
             self._ids_by_base.setdefault(base_address(key), []).append(node.id)
             if node.name:
                 self._nodes_by_name.setdefault(node.name, []).append(node)
+            seen: set[str] = set()
+            for literal_key in LITERAL_KEYS:
+                literal = node.properties.get(literal_key)
+                if isinstance(literal, str) and not is_unknown(literal) and literal.strip():
+                    text = literal.strip()
+                    if text not in seen:
+                        seen.add(text)
+                        self._by_literal.setdefault(text, []).append(node)
 
     def resolve(
         self,
@@ -137,6 +186,76 @@ class ReferenceIndex:
                     rejected.setdefault(node_id)
             ids = kept
         return Resolution(tuple(ids), tuple(ambiguous), tuple(rejected))
+
+    def resolve_literal(
+        self,
+        value: Any,
+        from_module: str = "",
+        *,
+        required_type: TypeMatcher,
+    ) -> Resolution:
+        """Resolve a literal identifier to the node of `required_type` that carries it.
+
+        The order is: an `id`, `arn` or `name` attribute equal to the value; for an ARN, the
+        `name` attribute equal to the ARN's last component; then `resolve_detailed`, which reads
+        the value as an address or, for a bare word, as a resource label.
+        A step that finds exactly one node decides.
+        A step that finds several reports them as ambiguous and stops, so a name two roles share
+        never picks one of them.
+        """
+        if not isinstance(value, str) or is_unknown(value):
+            return Resolution()
+        text = value.strip()
+        if not text or "${" in text:
+            return Resolution()
+        for pool in (self._literal_hits(text, required_type), self._arn_hits(text, required_type)):
+            if len(pool) == 1:
+                return Resolution((pool[0].id,))
+            if len(pool) > 1:
+                return Resolution(ambiguous=tuple(sorted(n.id for n in pool)))
+        return self.resolve_detailed(text, from_module, required_type=required_type)
+
+    def resolve_value(
+        self,
+        raw: Any,
+        from_module: str = "",
+        *,
+        required_type: TypeMatcher,
+    ) -> Resolution:
+        """Resolve any attribute value a parser leaves: a reference, a literal or an `Unknown`.
+
+        An `Unknown` resolves through the reference it carries.
+        A string with an HCL interpolation, a CloudFormation intrinsic mapping and a list of
+        either resolve as references.
+        Any other string is a literal identifier (`resolve_literal`).
+        The ids of several list items are merged in order, without repeats.
+        """
+        if is_unknown(raw):
+            raw = raw.reference
+        if isinstance(raw, (list, tuple)):
+            ids: dict[str, None] = {}
+            ambiguous: dict[str, None] = {}
+            for item in raw:
+                found = self.resolve_value(item, from_module, required_type=required_type)
+                ids.update(dict.fromkeys(found.ids))
+                ambiguous.update(dict.fromkeys(found.ambiguous))
+            return Resolution(tuple(ids), tuple(ambiguous))
+        if isinstance(raw, str) and "${" not in raw:
+            return self.resolve_literal(raw, from_module, required_type=required_type)
+        return self.resolve_detailed(raw, from_module, required_type=required_type)
+
+    def _literal_hits(self, text: str, required_type: TypeMatcher) -> list[InfraNode]:
+        return [n for n in self._by_literal.get(text, ()) if required_type(n.resource_type)]
+
+    def _arn_hits(self, text: str, required_type: TypeMatcher) -> list[InfraNode]:
+        arn = parse_arn(text)
+        if arn is None or not arn.name:
+            return []
+        return [
+            n
+            for n in self._by_literal.get(arn.name, ())
+            if required_type(n.resource_type) and n.properties.get("name") == arn.name
+        ]
 
     def _resolve_candidate(
         self, candidate: str, bare: bool, scope: str, required_type: TypeMatcher | None

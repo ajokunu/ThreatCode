@@ -1,9 +1,0 @@
-{
-  "boundary": [
-    {
-      "severity": "high",
-      "source": "aws_instance.web",
-      "stride": "tampering"
-    }
-  ]
-}

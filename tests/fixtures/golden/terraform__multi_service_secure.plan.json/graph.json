@@ -1,53 +1,23 @@
 {
   "edges": [
     {
-      "crosses_trust_boundary": false,
-      "source": "aws_default_security_group.locked_down",
-      "target": "aws_vpc.secure_vpc",
-      "type": "containment"
-    },
-    {
       "crosses_trust_boundary": true,
-      "source": "aws_internet_gateway.igw",
-      "target": "aws_vpc.secure_vpc",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_route_table.private_rt",
-      "target": "aws_vpc.secure_vpc",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_security_group.app_sg",
-      "target": "aws_vpc.secure_vpc",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_security_group.db_sg",
-      "target": "aws_vpc.secure_vpc",
-      "type": "containment"
-    },
-    {
-      "crosses_trust_boundary": false,
-      "source": "aws_subnet.private",
-      "target": "aws_vpc.secure_vpc",
-      "type": "containment"
+      "source": "aws_lambda_function.vpc_lambda",
+      "target": "aws_iam_role.scoped_role",
+      "type": "iam_binding"
     }
   ],
   "nodes": {
     "aws_db_instance.encrypted_db": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "aws_db_instance.replica_db": {
       "category": "database",
-      "zone": "private"
+      "zone": "data"
     },
     "aws_default_security_group.locked_down": {
-      "category": "unknown",
+      "category": "network",
       "zone": "private"
     },
     "aws_iam_policy.scoped_policy": {

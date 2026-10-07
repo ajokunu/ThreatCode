@@ -18,6 +18,7 @@
     },
     "kubernetes_service.stock.inventory": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     }
   }

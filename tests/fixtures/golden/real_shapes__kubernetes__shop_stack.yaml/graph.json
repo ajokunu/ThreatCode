@@ -66,6 +66,7 @@
     },
     "kubernetes_ingress.shop.web": {
       "category": "network",
+      "exposure": "internet",
       "zone": "dmz"
     },
     "kubernetes_namespace.shop": {
@@ -89,7 +90,7 @@
       "zone": "management"
     },
     "kubernetes_secret.shop.web-db": {
-      "category": "storage",
+      "category": "secret",
       "zone": "data"
     },
     "kubernetes_service.shop.web": {

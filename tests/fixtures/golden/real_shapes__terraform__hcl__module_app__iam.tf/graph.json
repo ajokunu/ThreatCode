@@ -9,6 +9,12 @@
     {
       "crosses_trust_boundary": false,
       "source": "aws_iam_role.app",
+      "target": "aws_iam_role_policy.app_data",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.app",
       "target": "data.aws_iam_policy_document.assume",
       "type": "dependency"
     },
