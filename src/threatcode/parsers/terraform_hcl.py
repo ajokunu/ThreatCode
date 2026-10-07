@@ -78,6 +78,9 @@ MAX_MODULE_DEPTH = 8
 MAX_MODULE_INSTANCES = 200
 # A dynamic block with a known collection is expanded up to this many blocks
 MAX_DYNAMIC_EXPANSION = 32
+# All the blocks that the dynamic blocks of one resource expand to, nested ones included. Without
+# a total, `dynamic` blocks nested N deep over 30 elements each build 30**N blocks.
+MAX_DYNAMIC_BLOCKS = 256
 # Keys of a known for_each recorded in resource meta
 MAX_RECORDED_KEYS = 50
 # Resolutions that may be open at once: a local, a module output, a data document or a module
@@ -606,6 +609,10 @@ _LIMIT_REASONS = {
     "nesting": f"locals, module inputs or outputs refer to each other more than "
     f"{MAX_NESTED_RESOLUTIONS} levels deep",
     "recursion": "an expression was nested too deeply to evaluate",
+    "dynamic blocks": (
+        f"the dynamic blocks of a resource would generate more than {MAX_DYNAMIC_BLOCKS} blocks, "
+        "so the ones past that are one block each with unknown iterator values"
+    ),
 }
 
 
@@ -960,6 +967,9 @@ class _Notes:
 
     unresolved: dict[str, list[_Miss]] = field(default_factory=dict)
     dynamic: list[str] = field(default_factory=list)
+    # Blocks generated so far by the dynamic blocks of this resource, charged against
+    # MAX_DYNAMIC_BLOCKS
+    generated: int = 0
 
 
 def _has_dynamic(raw: Any, depth: int = 0) -> bool:
@@ -1048,7 +1058,9 @@ def _expand_dynamic(
     items = _iteration(collection)
     block_path = f"{path}.{name}[]" if path else f"{name}[]"
     expanded: list[dict[str, Any]]
-    if items is not None and items and len(items) <= MAX_DYNAMIC_EXPANSION:
+    within_total = items is not None and notes.generated + len(items) <= MAX_DYNAMIC_BLOCKS
+    if items is not None and items and len(items) <= MAX_DYNAMIC_EXPANSION and within_total:
+        notes.generated += len(items)
         expanded = [
             _evaluate_body(
                 content,
@@ -1072,9 +1084,17 @@ def _expand_dynamic(
         expanded = [
             _evaluate_body(content, unknown_ctx, scope, block_path, references, notes, False)
         ]
-        notes.dynamic.append(
-            f"dynamic block '{name}' became one block; its for_each is not known here"
-        )
+        if items is not None and items and len(items) <= MAX_DYNAMIC_EXPANSION:
+            # a known, small collection that the resource's total left no room for
+            scope.exceeded("dynamic blocks")
+            notes.dynamic.append(
+                f"dynamic block '{name}' became one block; this resource's dynamic blocks "
+                f"would generate more than {MAX_DYNAMIC_BLOCKS} blocks"
+            )
+        else:
+            notes.dynamic.append(
+                f"dynamic block '{name}' became one block; its for_each is not known here"
+            )
     _collect_references(spec.get("for_each"), block_path, scope, references)
     if expanded:
         existing = result.get(name)

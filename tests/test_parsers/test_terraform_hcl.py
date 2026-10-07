@@ -2018,3 +2018,176 @@ class TestNestingLimits:
         finally:
             sys.setrecursionlimit(limit)
         assert by_address(result)["aws_s3_bucket.head"].properties["other"] == 6
+
+
+class TestDynamicBlockLimits:
+    """Dynamic blocks nested in each other must not multiply without a total per resource."""
+
+    LIMIT = terraform_hcl.MAX_DYNAMIC_BLOCKS
+
+    @staticmethod
+    def nested_dynamic(levels: int, width: int = 30, wrap: bool = False) -> str:
+        """``levels`` dynamic blocks inside each other, each over ``width`` elements."""
+        items = ", ".join(str(i) for i in range(width))
+        lines = ['resource "a" "b" {']
+        if wrap:
+            lines.append("outer {")
+        for level in range(levels):
+            lines += [f'dynamic "d{level}" {{', f"for_each = [{items}]", "content {"]
+        lines.append(f"leaf = d{levels - 1}.value")
+        lines += ["}", "}"] * levels
+        if wrap:
+            lines.append("}")
+        lines.append("}")
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def siblings(count: int, resource: str = "b") -> str:
+        """``count`` dynamic blocks side by side, each over the most elements one may expand."""
+        items = ", ".join(str(i) for i in range(terraform_hcl.MAX_DYNAMIC_EXPANSION))
+        blocks = [
+            f'dynamic "s{i}" {{\nfor_each = [{items}]\ncontent {{\nv = s{i}.value\n}}\n}}'
+            for i in range(count)
+        ]
+        return f'resource "a" "{resource}" {{\n' + "\n".join(blocks) + "\n}\n"
+
+    @classmethod
+    def block_bound(cls, levels: int) -> int:
+        """The most blocks ``nested_dynamic(levels)`` may hold: linear in the depth.
+
+        At most ``LIMIT`` blocks are expanded; each body evaluated for one of them (and the
+        resource itself) may then add a chain of one-block fallbacks as long as the nesting.
+        """
+        return cls.LIMIT + (cls.LIMIT + 1) * levels
+
+    @staticmethod
+    def dicts(value: Any) -> int:
+        """How many blocks (objects) a property value holds, nested ones included."""
+        if isinstance(value, dict):
+            return 1 + sum(TestDynamicBlockLimits.dicts(v) for v in value.values())
+        if isinstance(value, list):
+            return sum(TestDynamicBlockLimits.dicts(v) for v in value)
+        return 0
+
+    @staticmethod
+    def leaves(value: Any) -> list[Any]:
+        """Every ``leaf`` value in the nested blocks."""
+        found: list[Any] = []
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if key == "leaf":
+                    found.append(inner)
+                else:
+                    found.extend(TestDynamicBlockLimits.leaves(inner))
+        elif isinstance(value, list):
+            for inner in value:
+                found.extend(TestDynamicBlockLimits.leaves(inner))
+        return found
+
+    @pytest.mark.parametrize("levels", [3, 6, 20])
+    @pytest.mark.parametrize("entry", ["file", "directory"])
+    def test_nested_dynamic_blocks_over_long_lists_stay_cheap(
+        self, tmp_path: Path, levels: int, entry: str
+    ) -> None:
+        # 30 elements per level is 30**levels blocks without a total: 4 levels took 7 seconds
+        # and 270 MB, and 5 levels (a file under 1 KB) did not finish
+        write(tmp_path, "main.tf", self.nested_dynamic(levels))
+        run = (
+            (lambda: TerraformHCLParser().parse_file(tmp_path / "main.tf"))
+            if entry == "file"
+            else (lambda: parse_dir(tmp_path))
+        )
+        started = time.monotonic()
+        result = run_within(run)
+        assert time.monotonic() - started < 1.0
+        properties = only_resource(result).properties
+        # the first level is expanded in full; the total stops the multiplication below it
+        assert len(properties["d0"]) == terraform_hcl.MAX_DYNAMIC_EXPANSION - 2
+        assert self.dicts(properties) <= self.block_bound(levels)
+        assert len(codes(result, "hcl.evaluation_limit")) == 1
+
+    def test_the_cap_is_one_warning_that_names_the_dynamic_blocks(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.nested_dynamic(6))
+        write(tmp_path, "more.tf", self.nested_dynamic(6).replace('"b"', '"c"'))
+        (note,) = codes(run_within(lambda: parse_dir(tmp_path)), "hcl.evaluation_limit")
+        assert note.level == "warning"
+        assert "treated as unknown" in note.message
+        assert f"more than {self.LIMIT} blocks" in note.message
+        assert "grew past" not in note.message and "levels deep" not in note.message
+
+    def test_blocks_past_the_total_are_one_block_with_unknown_iterators(
+        self, tmp_path: Path
+    ) -> None:
+        result = parse_snippet(tmp_path, self.nested_dynamic(6))
+        leaves = self.leaves(only_resource(result).properties)
+        # expanded blocks keep their iterator value; the ones past the total hold an Unknown,
+        # so a rule reads them as neither present nor absent
+        assert any(isinstance(leaf, int) for leaf in leaves)
+        unknown = [leaf for leaf in leaves if is_unknown(leaf)]
+        assert unknown
+        assert len(leaves) - len(unknown) <= self.LIMIT
+        assert all(isinstance(leaf, int) or is_unknown(leaf) for leaf in leaves)
+        messages = [d.message for d in codes(result, "hcl.dynamic_block")]
+        assert any("would generate more than" in m for m in messages)
+        assert any("became 30 block(s)" in m for m in messages)
+
+    def test_the_cap_holds_for_dynamic_blocks_inside_a_static_block(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.nested_dynamic(6, wrap=True))
+        started = time.monotonic()
+        result = run_within(lambda: parse_dir(tmp_path))
+        assert time.monotonic() - started < 1.0
+        (outer,) = only_resource(result).properties["outer"]
+        assert len(outer["d0"]) == terraform_hcl.MAX_DYNAMIC_EXPANSION - 2
+        assert self.dicts(outer) <= self.block_bound(6)
+        assert len(codes(result, "hcl.evaluation_limit")) == 1
+
+    def test_a_nest_within_the_total_expands_in_full_without_a_warning(
+        self, tmp_path: Path
+    ) -> None:
+        # 10 + 10 * 10 = 110 blocks is well within the total
+        result = parse_snippet(tmp_path, self.nested_dynamic(2, width=10))
+        properties = only_resource(result).properties
+        leaves = self.leaves(properties)
+        assert leaves == [i for _ in range(10) for i in range(10)]
+        assert codes(result, "hcl.evaluation_limit") == []
+
+    def test_the_total_is_exactly_the_limit(self, tmp_path: Path) -> None:
+        full = self.LIMIT // terraform_hcl.MAX_DYNAMIC_EXPANSION
+        within = only_resource(parse_snippet(tmp_path, self.siblings(full)))
+        assert [len(within.properties[f"s{i}"]) for i in range(full)] == [32] * full
+        assert not any(is_unknown(b["v"]) for i in range(full) for b in within.properties[f"s{i}"])
+        past = parse_snippet(tmp_path, self.siblings(full + 1), name="past.tf")
+        assert [len(only_resource(past).properties[f"s{i}"]) for i in range(full)] == [32] * full
+        (last,) = only_resource(past).properties[f"s{full}"]
+        assert is_unknown(last["v"])
+        assert len(codes(past, "hcl.evaluation_limit")) == 1
+
+    def test_the_total_below_the_limit_gives_no_warning(self, tmp_path: Path) -> None:
+        full = self.LIMIT // terraform_hcl.MAX_DYNAMIC_EXPANSION
+        result = parse_snippet(tmp_path, self.siblings(full))
+        assert codes(result, "hcl.evaluation_limit") == []
+
+    def test_each_resource_has_its_own_total(self, tmp_path: Path) -> None:
+        full = self.LIMIT // terraform_hcl.MAX_DYNAMIC_EXPANSION
+        write(tmp_path, "one.tf", self.siblings(full, "one"))
+        write(tmp_path, "two.tf", self.siblings(full, "two"))
+        result = parse_dir(tmp_path)
+        assert len(result.resources) == 2
+        for resource in result.resources:
+            assert [len(resource.properties[f"s{i}"]) for i in range(full)] == [32] * full
+        assert codes(result, "hcl.evaluation_limit") == []
+
+    def test_a_collection_past_the_per_block_limit_is_not_a_total_overrun(
+        self, tmp_path: Path
+    ) -> None:
+        # a collection that is simply too long for one block keeps its own, older behaviour
+        # and does not count as having hit the total
+        items = ", ".join(str(i) for i in range(terraform_hcl.MAX_DYNAMIC_EXPANSION + 1))
+        result = parse_snippet(
+            tmp_path,
+            f'resource "a" "b" {{\ndynamic "r" {{\nfor_each = [{items}]\n'
+            "content {\nv = r.value\n}\n}\n}\n",
+        )
+        (block,) = only_resource(result).properties["r"]
+        assert is_unknown(block["v"])
+        assert codes(result, "hcl.evaluation_limit") == []
