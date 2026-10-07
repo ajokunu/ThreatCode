@@ -513,7 +513,7 @@ class TerraformHCLParser(BaseParser):
         """Parse a dictionary read from Terraform's JSON syntax."""
         if not isinstance(data, dict):
             raise ParseError("HCL parse result must be a dict")
-        document = _hcl_adapter.load_json_syntax(data)
+        document = _hcl_adapter.load_json_syntax(data, None, Path(source_path).name or "<input>")
         return self._parse_single(document, source_path)
 
     def parse_text(self, text: str, source_path: str = "") -> ParsedOutput:
@@ -556,7 +556,7 @@ class TerraformHCLParser(BaseParser):
     @staticmethod
     def _load_text(text: str, name: str) -> HclDocument:
         if is_terraform_json_name(name):
-            return _hcl_adapter.load_json_syntax(_load_json_syntax(text, name), text)
+            return _hcl_adapter.load_json_syntax(_load_json_syntax(text, name), text, name)
         return _hcl_adapter.load(text, name)
 
     def _parse_single(self, document: HclDocument, source_path: str) -> ParsedOutput:
@@ -636,6 +636,8 @@ def _load_json_syntax(text: str, name: str) -> dict[str, Any]:
         data = json.loads(text)
     except json.JSONDecodeError as e:
         raise ParseError(f"Invalid JSON in {name}, line {e.lineno}: {e.msg}") from e
+    except RecursionError as e:
+        raise ParseError(f"Invalid JSON in {name}: nested too deeply to read") from e
     if not isinstance(data, dict):
         raise ParseError(f"{name}: a Terraform JSON file must hold an object")
     return data

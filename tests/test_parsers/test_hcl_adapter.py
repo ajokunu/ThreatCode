@@ -366,12 +366,31 @@ class TestErrors:
         with pytest.raises(ParseError, match="python-hcl2 required"):
             load('resource "a" "b" {\n}\n')
 
-    def test_very_deep_nesting_is_an_error_not_a_crash(self) -> None:
-        text = 'resource "a" "b" {\n  x = ' + "[" * 2000 + "]" * 2000 + "\n}\n"
-        try:
-            load(text, "deep.tf")
-        except ParseError:
-            pass
+    @pytest.mark.parametrize("levels", [250, 600, 2000])
+    def test_nesting_past_the_limit_is_a_parse_error_naming_the_file(self, levels: int) -> None:
+        # python-hcl2 4.x and 8.x fail in different places; both must end as this one error
+        deep = "[" * levels + "]" * levels
+        with pytest.raises(ParseError, match=r"^deep\.tf: nested too deeply to read$"):
+            load(f'resource "a" "b" {{\n  x = {deep}\n}}\n', "deep.tf")
+        with pytest.raises(ParseError, match=r"^deep\.tf: nested too deeply to read$"):
+            load_attributes(f"x = {deep}\n", "deep.tf")
+
+    def test_json_syntax_nested_past_the_limit_is_a_parse_error(self) -> None:
+        deep: object = 1
+        for _ in range(250):
+            deep = [deep]
+        data = {"resource": {"a": {"b": {"x": deep}}}}
+        with pytest.raises(ParseError, match=r"^deep\.tf\.json: nested too deeply to read$"):
+            load_json_syntax(data, None, "deep.tf.json")
+
+    def test_nesting_inside_the_limit_is_read(self) -> None:
+        deep = "[" * 100 + "1" + "]" * 100
+        block = only(f'resource "a" "b" {{\n  x = {deep}\n}}\n')
+        value = block.body["x"]
+        for _ in range(100):
+            (value,) = value
+        assert value == 1
+        assert load_attributes(f"x = {deep}\n")["x"] is not None
 
 
 class TestDescribeError:

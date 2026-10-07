@@ -2192,3 +2192,90 @@ class TestDynamicBlockLimits:
         (block,) = only_resource(result).properties["r"]
         assert is_unknown(block["v"])
         assert codes(result, "hcl.evaluation_limit") == []
+
+
+class TestTooDeeplyNested:
+    """Input nested past the reader's limit is a ParseError that names the file."""
+
+    OK = 'resource "aws_s3_bucket" "ok" {\n  bucket = "x"\n}\n'
+
+    @staticmethod
+    def nested_dynamic(levels: int) -> str:
+        """One-element dynamic blocks inside each other: cheap to evaluate, deep to read."""
+        text = 'resource "a" "b" {\n'
+        for level in range(levels):
+            text += f'dynamic "d{level}" {{\n for_each = [1]\n content {{\n'
+        return text + "leaf = 1\n" + "}\n}\n" * levels + "}\n"
+
+    @staticmethod
+    def nested_lists(levels: int) -> str:
+        return "[" * levels + "]" * levels
+
+    def test_a_single_file_is_a_parse_error_not_a_recursion_error(self, tmp_path: Path) -> None:
+        path = write(tmp_path, "deep.tf", self.nested_dynamic(100))
+        with pytest.raises(ParseError, match=r"deep\.tf: nested too deeply"):
+            TerraformHCLParser().parse_file(path)
+
+    def test_the_registry_reports_it_as_the_files_own_error(self, tmp_path: Path) -> None:
+        path = write(tmp_path, "deep.tf", self.nested_dynamic(100))
+        with pytest.raises(ParseError, match=r"deep\.tf: nested too deeply"):
+            detect_and_parse(path)
+
+    def test_the_other_files_of_a_directory_are_still_read(self, tmp_path: Path) -> None:
+        write(tmp_path, "deep.tf", self.nested_dynamic(100))
+        write(tmp_path, "ok.tf", self.OK)
+        result = parse_dir(tmp_path)
+        assert [r.address for r in result.resources] == ["aws_s3_bucket.ok"]
+        (failure,) = codes(result, "parse.failed")
+        assert failure.level == "error"
+        assert failure.file is not None and failure.file.endswith("deep.tf")
+        assert "nested too deeply" in failure.message
+
+    def test_a_directory_with_nothing_else_raises(self, tmp_path: Path) -> None:
+        write(tmp_path, "deep.tf", self.nested_dynamic(100))
+        with pytest.raises(ParseError, match=r"deep\.tf: nested too deeply"):
+            parse_dir(tmp_path)
+
+    def test_a_real_nesting_depth_is_still_read(self, tmp_path: Path) -> None:
+        # 30 levels of dynamic blocks is 150 levels of data, well inside the limit
+        write(tmp_path, "main.tf", self.nested_dynamic(30))
+        result = parse_dir(tmp_path)
+        assert codes(result, "parse.failed") == []
+        block = only_resource(result).properties
+        for level in range(30):
+            (block,) = block[f"d{level}"]
+        assert block["leaf"] == 1
+
+    @pytest.mark.parametrize("levels", [250, 100_000])
+    def test_json_syntax_nested_too_deeply_does_not_fail_the_directory(
+        self, tmp_path: Path, levels: int
+    ) -> None:
+        # 250 passes the JSON reader and meets the limit in the adapter; 100,000 is past what
+        # the JSON reader itself can recurse
+        deep = '{"resource": {"a": {"b": {"x": ' + self.nested_lists(levels) + "}}}}"
+        write(tmp_path, "deep.tf.json", deep)
+        write(tmp_path, "ok.tf", self.OK)
+        result = parse_dir(tmp_path)
+        assert [r.address for r in result.resources] == ["aws_s3_bucket.ok"]
+        (failure,) = codes(result, "parse.failed")
+        assert "nested too deeply" in failure.message
+
+    def test_a_tfvars_file_nested_too_deeply_is_a_warning(self, tmp_path: Path) -> None:
+        write(tmp_path, "terraform.tfvars", f"x = {self.nested_lists(300)}\n")
+        write(tmp_path, "main.tf", self.OK)
+        result = parse_dir(tmp_path)
+        assert [r.address for r in result.resources] == ["aws_s3_bucket.ok"]
+        (failure,) = codes(result, "parse.failed")
+        assert failure.level == "warning"
+        assert failure.file is not None and failure.file.endswith("terraform.tfvars")
+
+    def test_data_already_read_from_json_syntax_is_checked_too(self) -> None:
+        # parse() takes the dictionary a caller read itself, so no file text is behind it
+        deep: Any = 1
+        for _ in range(250):
+            deep = [deep]
+        data = {"resource": {"a": {"b": {"x": deep}}}}
+        with pytest.raises(ParseError, match=r"^cdk\.tf\.json: nested too deeply to read$"):
+            TerraformHCLParser().parse(data, "out/cdk.tf.json")
+        shallow = TerraformHCLParser().parse({"resource": {"a": {"b": {"x": [[1]]}}}}, "x.tf.json")
+        assert only_resource(shallow).properties["x"] == [[1]]

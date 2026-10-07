@@ -28,6 +28,8 @@ import importlib
 import re
 from bisect import bisect_right
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -50,6 +52,23 @@ _HEREDOC_HEADER = re.compile(r"<<(-?)[ \t]*([A-Za-z_][\w-]*)[ \t]*\r?\n")
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
 _META_KEYS = frozenset({"__is_block__", "__start_line__", "__end_line__"})
 _MAX_NESTING = 200
+
+
+def _too_deep(name: str) -> str:
+    return f"{name}: nested too deeply to read"
+
+
+@contextmanager
+def _bounded(name: str) -> Iterator[None]:
+    """Input nested past ``_MAX_NESTING`` is a ``ParseError`` naming the file.
+
+    The walks below raise ``RecursionError`` when they are cut off, and python-hcl2 4.x and
+    8.x differ in where that surfaces, so both end up here as the same error.
+    """
+    try:
+        yield
+    except RecursionError as exc:
+        raise ParseError(_too_deep(name)) from exc
 
 
 @dataclass(frozen=True)
@@ -114,6 +133,8 @@ def _parse(text: str, name: str) -> dict[str, Any]:
         raise ParseError("python-hcl2 required: pip install python-hcl2") from exc
     try:
         return _canonical(_hcl2_loads(text), 0) if _is_modern() else _hcl2_loads(text)
+    except RecursionError as exc:
+        raise ParseError(_too_deep(name)) from exc
     except Exception as exc:
         raise ParseError(describe_error(exc, name)) from exc
 
@@ -397,7 +418,7 @@ def load(text: str, name: str = "<input>") -> HclDocument:
     """Parse Terraform source into canonical blocks.
 
     Raises:
-        ParseError: python-hcl2 is missing or the text is not valid HCL.
+        ParseError: python-hcl2 is missing, the text is not valid HCL or it is nested too deeply.
     """
     data = _parse(text, name)
     spans: dict[tuple[str, tuple[str, ...]], list[_Span]] = defaultdict(list)
@@ -405,7 +426,9 @@ def load(text: str, name: str = "<input>") -> HclDocument:
         spans[(span.kind, span.labels)].append(span)
     seen: dict[tuple[str, tuple[str, ...]], int] = defaultdict(int)
     document = HclDocument()
-    for kind, labels, body in _hcl_blocks(data):
+    with _bounded(name):
+        blocks = _hcl_blocks(data)
+    for kind, labels, body in blocks:
         key = (kind, labels)
         position = seen[key]
         seen[key] += 1
@@ -426,15 +449,24 @@ def load(text: str, name: str = "<input>") -> HclDocument:
 def load_attributes(text: str, name: str = "<input>") -> dict[str, Any]:
     """Parse a file that only assigns values, such as ``terraform.tfvars``."""
     data = _parse(text, name)
-    return {key: _strip_meta(value) for key, value in data.items() if key not in _META_KEYS}
+    with _bounded(name):
+        return {key: _strip_meta(value) for key, value in data.items() if key not in _META_KEYS}
 
 
-def load_json_syntax(data: dict[str, Any], text: str | None = None) -> HclDocument:
+def load_json_syntax(
+    data: dict[str, Any], text: str | None = None, name: str = "<input>"
+) -> HclDocument:
     """Convert Terraform's JSON syntax to the canonical blocks.
 
     ``text`` is the source the dictionary was read from. With it, a block's first line is
     taken from the key's line in the file; the last line is not known.
+    ``name`` is only used to say which file was nested too deeply (``ParseError``).
     """
+    with _bounded(name):
+        return _json_syntax_document(data, text)
+
+
+def _json_syntax_document(data: dict[str, Any], text: str | None) -> HclDocument:
     lines = json_line_index(text) if text else {}
 
     def line_for(*tokens: str) -> int | None:
