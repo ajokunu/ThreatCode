@@ -1,72 +1,149 @@
+# Rules on Cloud Functions, first generation (google_cloudfunctions_function) and second
+# generation (google_cloudfunctions2_function).
+#
+# The generations lay the same settings out differently: first generation keeps them at the top
+# level, second generation inside a service_config block.
+# A rule for both lists both layouts.
+#
+# Who may invoke a function comes from google_cloudfunctions_function_iam_member and _iam_binding
+# (and the cloudfunctions2 pair).
+# ir/enrichment/companions.py folds the members that hold an invoker role into
+# derived.invoker_members of the function, which GCFUNC_PUBLIC_INVOKER reads.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
-  - id: GCFUNC_PUBLIC_INGRESS
-    title: Cloud Function allows all ingress
+  - id: GCFUNC_PUBLIC_INVOKER
+    title: Cloud Function can be invoked by anyone
     description: >
-      The Cloud Function allows ingress from all sources.
-      It can be invoked from any network.
-    stride_category: information_disclosure
-    severity: medium
-    resource_type: google_cloudfunctions_function
+      An IAM member or binding grants the invoker role to allUsers or allAuthenticatedUsers.
+      Anyone on the internet, or anyone with a Google account, can call the function without
+      proving who they are.
+      This is intended for a public API or webhook; for anything else it exposes what the
+      function reads and the permissions of its service account.
+    stride_category: spoofing
+    severity: high
+    confidence: definitive
+    root_cause: gcp-public-iam-principal
+    resource_types: [google_cloudfunctions_function, google_cloudfunctions2_function]
     condition:
-      ingress_settings:
-        equals: "ALLOW_ALL"
+      any_of:
+        - derived.invoker_members:
+            contains: "allUsers"
+        - derived.invoker_members:
+            contains: "allAuthenticatedUsers"
     mitigation: >
-      Set ingress_settings to ALLOW_INTERNAL_ONLY or ALLOW_INTERNAL_AND_GCLB.
+      Remove the allUsers and allAuthenticatedUsers members from the invoker binding and grant
+      the invoker role to the specific callers.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
-  - id: GCFUNC_NO_VPC_CONNECTOR
-    title: Cloud Function without VPC connector
+  - id: GCFUNC_PUBLIC_INGRESS
+    title: HTTP Cloud Function accepts traffic from the internet
     description: >
-      The Cloud Function does not use a VPC connector.
-      It cannot securely access resources in private VPC networks.
+      An HTTP-triggered function does not restrict ingress_settings, so it accepts requests from
+      any network (ALLOW_ALL is the default).
+      Whether anyone can call it depends on its invoker bindings, which GCFUNC_PUBLIC_INVOKER
+      checks; with this setting the only barrier is that authentication.
+      Event-triggered functions have no URL and do not match.
     stride_category: information_disclosure
     severity: medium
-    resource_type: google_cloudfunctions_function
+    confidence: definitive
+    resource_types: [google_cloudfunctions_function, google_cloudfunctions2_function]
     condition:
-      vpc_connector:
-        not_exists: true
+      all_of:
+        - none_of:
+            - ingress_settings:
+                matches_any: ["ALLOW_INTERNAL_ONLY", "ALLOW_INTERNAL_AND_GCLB"]
+            - service_config.ingress_settings:
+                matches_any: ["ALLOW_INTERNAL_ONLY", "ALLOW_INTERNAL_AND_GCLB"]
+        - any_of:
+            - trigger_http:
+                is_true: true
+            - all_of:
+                - build_config:
+                    exists: true
+                - event_trigger:
+                    not_exists: true
     mitigation: >
-      Configure a Serverless VPC Access connector.
+      Set ingress_settings to ALLOW_INTERNAL_ONLY, or to ALLOW_INTERNAL_AND_GCLB behind a load
+      balancer, for functions that should not be called directly from the internet.
     metadata:
       mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+        techniques: ["T1190"]
+
+  - id: GCFUNC_NO_VPC_CONNECTOR
+    title: Cloud Function without a VPC connector
+    description: >
+      The function has no Serverless VPC Access connector.
+      Its outbound traffic leaves over the public internet and it cannot reach private
+      resources, such as a database, over private addresses.
+    stride_category: information_disclosure
+    severity: low
+    confidence: absence
+    root_cause: serverless-no-vpc-egress
+    resource_types: [google_cloudfunctions_function, google_cloudfunctions2_function]
+    condition:
+      all_of:
+        - vpc_connector:
+            not_exists: true
+        - service_config.vpc_connector:
+            not_exists: true
+    mitigation: >
+      Set vpc_connector (first generation) or service_config.vpc_connector (second generation).
 
   - id: GCFUNC_HTTP_NO_AUTH
-    title: Cloud Function HTTP trigger without authentication
+    title: HTTP trigger allows plain HTTP
     description: >
-      The HTTP-triggered Cloud Function does not require authentication.
-      Anyone with the URL can invoke the function.
-    stride_category: spoofing
-    severity: high
-    resource_type: google_cloudfunctions_function
+      The function's security level is SECURE_OPTIONAL, so its URL answers over HTTP as well as
+      HTTPS instead of redirecting to HTTPS.
+      Requests and responses sent in plain HTTP can be read or altered on the way.
+      This setting says nothing about authentication; who may call the function is set by its
+      invoker bindings, which GCFUNC_PUBLIC_INVOKER checks.
+    stride_category: information_disclosure
+    severity: low
+    confidence: definitive
+    root_cause: gcfunc-plain-http
+    resource_types: [google_cloudfunctions_function, google_cloudfunctions2_function]
     condition:
-      https_trigger_security_level:
-        equals: "SECURE_OPTIONAL"
+      any_of:
+        - https_trigger_security_level:
+            equals: "SECURE_OPTIONAL"
+        - service_config.security_level:
+            equals: "SECURE_OPTIONAL"
     mitigation: >
-      Require authentication for HTTP-triggered functions.
+      Set https_trigger_security_level (first generation) or service_config.security_level
+      (second generation) to SECURE_ALWAYS.
     metadata:
       mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0001"]
+        techniques: ["T1557"]
 
   - id: GCFUNC_NO_MAX_INSTANCES
-    title: Cloud Function without max instance limit
+    title: Cloud Function without a maximum instance count
     description: >
-      The Cloud Function does not set a maximum instance limit.
-      Unrestricted scaling can lead to cost explosion and resource exhaustion.
+      The function sets no maximum number of instances, or sets 0, which means no limit.
+      A flood of requests then scales it up to the project quota and the bill follows.
     stride_category: denial_of_service
-    severity: medium
-    resource_type: google_cloudfunctions_function
+    severity: low
+    confidence: absence
+    root_cause: serverless-unbounded-scaling
+    resource_types: [google_cloudfunctions_function, google_cloudfunctions2_function]
     condition:
-      max_instances:
-        not_exists: true
+      all_of:
+        - any_of:
+            - max_instances:
+                not_exists: true
+            - max_instances:
+                equals: 0
+        - any_of:
+            - service_config.max_instance_count:
+                not_exists: true
+            - service_config.max_instance_count:
+                equals: 0
     mitigation: >
-      Set max_instances to limit function scaling.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+      Set max_instances (first generation) or service_config.max_instance_count (second
+      generation).

@@ -7,7 +7,9 @@ resource "google_sql_database_instance" "main" {
     tier = "db-custom-2-7680"
 
     ip_configuration {
-      ipv4_enabled = false
+      ipv4_enabled    = false
+      private_network = "projects/shop-prod/global/networks/shop-vpc"
+      ssl_mode        = "ENCRYPTED_ONLY"
     }
   }
 }

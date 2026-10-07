@@ -1,90 +1,124 @@
+# Rules on Cloud SQL instances (google_sql_database_instance).
+#
+# Every setting sits in a nested settings block, which Terraform writes as a block and plan JSON
+# as a one-element list; a path such as settings.ip_configuration.ssl_mode reads through both.
+# Provider defaults are stated as negations (a public address unless ipv4_enabled is false), so
+# an omitted block is judged by what the provider does when it is omitted.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: CLOUDSQL_NO_SSL
-    title: Cloud SQL instance without SSL enforcement
+    title: Cloud SQL instance accepts unencrypted connections
     description: >
-      The Cloud SQL instance does not require SSL for connections.
-      Database traffic can be intercepted in transit.
+      The instance does not enforce SSL.
+      Neither require_ssl is true nor ssl_mode is ENCRYPTED_ONLY or TRUSTED_CLIENT_CERTIFICATE_REQUIRED,
+      and the default allows both encrypted and unencrypted connections.
+      Database traffic, including credentials, can then be read or altered in transit.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: cloudsql-plaintext-connections
     resource_type: google_sql_database_instance
     condition:
-      settings.ip_configuration.require_ssl:
-        equals: false
+      none_of:
+        - settings.ip_configuration.require_ssl:
+            is_true: true
+        - settings.ip_configuration.ssl_mode:
+            matches_any: ["ENCRYPTED_ONLY", "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"]
     mitigation: >
-      Enable require_ssl in ip_configuration settings.
+      Set ssl_mode to ENCRYPTED_ONLY (or TRUSTED_CLIENT_CERTIFICATE_REQUIRED) in ip_configuration.
+      On provider versions without ssl_mode set require_ssl to true.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
 
   - id: CLOUDSQL_PUBLIC_IP
-    title: Cloud SQL instance with public IP
+    title: Cloud SQL instance with a public IP open to the internet
     description: >
-      The Cloud SQL instance has a public IP address assigned.
-      The database is potentially accessible from the internet.
+      The instance has a public IPv4 address (ipv4_enabled is true, which is the default) and an
+      authorized network of 0.0.0.0/0.
+      Any address on the internet can reach the database port and only the database credentials
+      stand in the way.
+      A public address with no world-open authorized network accepts connections only from the
+      listed addresses and from the Cloud SQL connectors, and does not match.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: cloudsql-public-exposure
     resource_type: google_sql_database_instance
     condition:
-      settings.ip_configuration.ipv4_enabled:
-        equals: true
+      all_of:
+        - settings.ip_configuration.ipv4_enabled:
+            not_equals: false
+        - settings.ip_configuration.authorized_networks:
+            any_item:
+              value:
+                is_world_cidr: true
     mitigation: >
-      Disable public IP and use private IP with VPC peering.
+      Remove the 0.0.0.0/0 authorized network.
+      Prefer a private IP with a private_network and set ipv4_enabled to false.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: CLOUDSQL_NO_BACKUP
     title: Cloud SQL instance without automated backups
     description: >
-      Automated backups are not enabled for the Cloud SQL instance.
-      Data cannot be recovered in case of failure or attack.
+      Automated backups are not enabled in backup_configuration.
+      Data cannot be restored after deletion, corruption or ransomware.
+      Read replicas, which cannot hold backups, are not judged.
     stride_category: denial_of_service
-    severity: high
+    severity: medium
+    confidence: absence
+    root_cause: cloudsql-no-recovery
     resource_type: google_sql_database_instance
     condition:
-      settings.backup_configuration.enabled:
-        equals: false
+      all_of:
+        - settings.backup_configuration.enabled:
+            is_true: false
+        - master_instance_name:
+            not_exists: true
     mitigation: >
-      Enable automated backups in backup_configuration.
+      Set enabled to true in backup_configuration, and point_in_time_recovery_enabled where the
+      engine supports it.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
 
   - id: CLOUDSQL_NO_ENCRYPTION
-    title: Cloud SQL instance without customer-managed encryption
+    title: Cloud SQL instance not using a customer-managed key
     description: >
-      The Cloud SQL instance uses Google-managed encryption.
-      Customer-managed keys provide additional control.
+      The instance has no encryption_key_name, so its disks use Google-managed keys.
+      The data is encrypted at rest either way.
+      A customer-managed key adds control over rotation and lets you revoke access to the data.
     stride_category: information_disclosure
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: cloudsql-no-cmek
     resource_type: google_sql_database_instance
     condition:
       encryption_key_name:
         not_exists: true
     mitigation: >
-      Configure a Cloud KMS key for customer-managed encryption.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+      Set encryption_key_name to a Cloud KMS key in the instance's region when policy requires
+      customer-managed keys.
 
   - id: CLOUDSQL_NO_MAINTENANCE_WINDOW
-    title: Cloud SQL instance without maintenance window
+    title: Cloud SQL instance without a maintenance window
     description: >
-      No maintenance window is configured. Updates may occur during
-      peak hours causing unexpected downtime.
+      No maintenance_window is set, so Google applies maintenance at a time it chooses.
+      A brief outage then lands at an unplanned hour.
     stride_category: denial_of_service
     severity: low
+    confidence: absence
+    root_cause: cloudsql-no-maintenance-window
     resource_type: google_sql_database_instance
     condition:
       settings.maintenance_window:
         not_exists: true
     mitigation: >
-      Configure a maintenance window during off-peak hours.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+      Add a maintenance_window block with a day and hour outside peak traffic.

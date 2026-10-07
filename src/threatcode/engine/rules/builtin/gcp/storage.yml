@@ -1,51 +1,95 @@
+# Rules on Cloud Storage buckets (google_storage_bucket) and the resources that grant access to
+# one.
+#
+# A bucket is made public by an IAM member or binding (member or members) or by an ACL entry
+# (entity on an access control resource, role_entity on an acl resource), so GCP_BUCKET_PUBLIC
+# reads all of those attributes.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: GCP_BUCKET_PUBLIC
     title: GCP storage bucket publicly accessible
     description: >
-      The Cloud Storage bucket allows public access via allUsers or allAuthenticatedUsers.
+      An IAM member, IAM binding or ACL entry gives access to a bucket to allUsers or
+      allAuthenticatedUsers.
+      Anyone on the internet, or anyone with a Google account, can read the objects, and with a
+      write role can change them.
     stride_category: information_disclosure
     severity: critical
-    resource_type: google_storage_bucket_iam_member
+    confidence: definitive
+    root_cause: gcp-public-iam-principal
+    resource_types:
+      - google_storage_bucket_iam_member
+      - google_storage_bucket_iam_binding
+      - google_storage_bucket_access_control
+      - google_storage_default_object_access_control
+      - google_storage_bucket_acl
+      - google_storage_default_object_acl
     condition:
-      member:
-        matches_any: ["allUsers", "allAuthenticatedUsers"]
+      any_of:
+        - member:
+            matches_any: ["allUsers", "allAuthenticatedUsers"]
+        - members:
+            contains: "allUsers"
+        - members:
+            contains: "allAuthenticatedUsers"
+        - entity:
+            matches_any: ["allUsers", "allAuthenticatedUsers"]
+        - role_entity:
+            any_item:
+              _value:
+                matches_any:
+                  - "READER:allUsers"
+                  - "WRITER:allUsers"
+                  - "OWNER:allUsers"
+                  - "READER:allAuthenticatedUsers"
+                  - "WRITER:allAuthenticatedUsers"
+                  - "OWNER:allAuthenticatedUsers"
     mitigation: >
-      Remove public access and use IAM policies.
+      Remove allUsers and allAuthenticatedUsers, enable public access prevention on the bucket,
+      and grant access to specific principals.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: GCP_BUCKET_NO_VERSIONING
     title: GCP storage bucket without versioning
     description: >
-      Object versioning is not enabled.
-    stride_category: tampering
-    severity: medium
+      Object versioning is not enabled, so an overwritten or deleted object cannot be restored.
+      Ransomware, a faulty job or a compromised credential that deletes objects destroys the data.
+    stride_category: denial_of_service
+    severity: low
+    confidence: absence
+    root_cause: gcp-bucket-no-recovery
     resource_type: google_storage_bucket
     condition:
-      versioning:
-        not_exists: true
+      versioning.enabled:
+        is_true: false
     mitigation: >
-      Enable object versioning.
+      Set enabled to true in a versioning block, and add a lifecycle rule that expires old
+      versions.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
 
   - id: GCP_BUCKET_NO_LOGGING
-    title: GCP storage bucket without logging
+    title: GCP storage bucket without access logging
     description: >
-      Access logging is not enabled for the bucket.
+      The bucket has no logging block, so its usage and storage logs are not written to a log
+      bucket.
+      Reads and writes cannot be reconstructed after an incident.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: gcp-bucket-no-access-log
     resource_type: google_storage_bucket
     condition:
       logging:
         not_exists: true
     mitigation: >
-      Enable access logging.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add a logging block with a log_bucket, and enable Data Access audit logs for Cloud
+      Storage.

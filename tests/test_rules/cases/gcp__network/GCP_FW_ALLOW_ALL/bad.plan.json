@@ -1,0 +1,132 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_firewall.fw",
+          "mode": "managed",
+          "type": "google_compute_firewall",
+          "name": "fw",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "fw",
+            "network": "default",
+            "direction": "INGRESS",
+            "disabled": null,
+            "description": null,
+            "deny": [],
+            "priority": 1000,
+            "project": "shop-prod",
+            "source_ranges": [
+              "0.0.0.0/0"
+            ],
+            "source_service_accounts": null,
+            "source_tags": null,
+            "target_service_accounts": null,
+            "target_tags": [
+              "web"
+            ],
+            "destination_ranges": null,
+            "timeouts": null,
+            "allow": [
+              {
+                "protocol": "all",
+                "ports": []
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_compute_firewall.fw",
+      "mode": "managed",
+      "type": "google_compute_firewall",
+      "name": "fw",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "fw",
+          "network": "default",
+          "direction": "INGRESS",
+          "disabled": null,
+          "description": null,
+          "deny": [],
+          "priority": 1000,
+          "project": "shop-prod",
+          "source_ranges": [
+            "0.0.0.0/0"
+          ],
+          "source_service_accounts": null,
+          "source_tags": null,
+          "target_service_accounts": null,
+          "target_tags": [
+            "web"
+          ],
+          "destination_ranges": null,
+          "timeouts": null,
+          "allow": [
+            {
+              "protocol": "all",
+              "ports": []
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_firewall.fw",
+          "mode": "managed",
+          "type": "google_compute_firewall",
+          "name": "fw",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "fw"
+            },
+            "network": {
+              "constant_value": "default"
+            },
+            "direction": {
+              "constant_value": "INGRESS"
+            },
+            "priority": {
+              "constant_value": 1000
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

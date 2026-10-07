@@ -1,54 +1,31 @@
+# Rules on Pub/Sub topics (google_pubsub_topic).
+#
+# PUBSUB_NO_DEAD_LETTER and PUBSUB_NO_RETENTION are deprecated: a missing dead letter topic or
+# retention window is a reliability preference, and neither lets an attacker do anything.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  - PUBSUB_NO_DEAD_LETTER
+  - PUBSUB_NO_RETENTION
+
 rules:
   - id: PUBSUB_NO_ENCRYPTION
-    title: Pub/Sub topic without customer-managed encryption
+    title: Pub/Sub topic not using a customer-managed key
     description: >
-      The Pub/Sub topic uses Google-managed encryption.
-      Customer-managed keys provide additional control.
+      The topic has no kms_key_name, so its messages use Google-managed keys.
+      The messages are encrypted at rest either way.
+      A customer-managed key adds control over rotation and lets you revoke access to the data.
     stride_category: information_disclosure
-    severity: medium
+    severity: low
+    confidence: absence
+    root_cause: gcp-no-cmek
     resource_type: google_pubsub_topic
     condition:
       kms_key_name:
         not_exists: true
     mitigation: >
-      Configure a Cloud KMS key for topic encryption.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
-
-  - id: PUBSUB_NO_DEAD_LETTER
-    title: Pub/Sub subscription without dead letter policy
-    description: >
-      The subscription does not have a dead letter topic configured.
-      Undeliverable messages are silently dropped.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: google_pubsub_subscription
-    condition:
-      dead_letter_policy:
-        not_exists: true
-    mitigation: >
-      Configure a dead letter policy with a dead letter topic.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
-
-  - id: PUBSUB_NO_RETENTION
-    title: Pub/Sub topic without message retention
-    description: >
-      The Pub/Sub topic does not have message retention configured.
-      Messages cannot be replayed for recovery or debugging.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: google_pubsub_topic
-    condition:
-      message_retention_duration:
-        not_exists: true
-    mitigation: >
-      Configure message retention duration for the topic.
-    metadata:
-      mitre:
-        techniques: ["T1485"]
-        tactics: ["TA0040"]
+      Set kms_key_name to a Cloud KMS key when policy requires customer-managed keys.

@@ -1,0 +1,108 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_storage_bucket.assets",
+          "mode": "managed",
+          "type": "google_storage_bucket",
+          "name": "assets",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "shop-prod-assets",
+            "location": "US",
+            "project": "shop-prod",
+            "force_destroy": false,
+            "uniform_bucket_level_access": true,
+            "public_access_prevention": "inherited",
+            "storage_class": "STANDARD",
+            "versioning": [],
+            "logging": [],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_storage_bucket.assets",
+      "mode": "managed",
+      "type": "google_storage_bucket",
+      "name": "assets",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "shop-prod-assets",
+          "location": "US",
+          "project": "shop-prod",
+          "force_destroy": false,
+          "uniform_bucket_level_access": true,
+          "public_access_prevention": "inherited",
+          "storage_class": "STANDARD",
+          "versioning": [],
+          "logging": [],
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_storage_bucket.assets",
+          "mode": "managed",
+          "type": "google_storage_bucket",
+          "name": "assets",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "shop-prod-assets"
+            },
+            "location": {
+              "constant_value": "US"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            },
+            "force_destroy": {
+              "constant_value": false
+            },
+            "uniform_bucket_level_access": {
+              "constant_value": true
+            },
+            "public_access_prevention": {
+              "constant_value": "inherited"
+            },
+            "storage_class": {
+              "constant_value": "STANDARD"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

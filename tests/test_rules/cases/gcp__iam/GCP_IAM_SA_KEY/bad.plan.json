@@ -1,0 +1,98 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_service_account_key.ci",
+          "mode": "managed",
+          "type": "google_service_account_key",
+          "name": "ci",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "key_algorithm": "KEY_ALG_RSA_2048",
+            "private_key_type": "TYPE_GOOGLE_CREDENTIALS_FILE",
+            "public_key_type": "TYPE_X509_PEM_FILE",
+            "keepers": null,
+            "public_key_data": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_service_account_key.ci",
+      "mode": "managed",
+      "type": "google_service_account_key",
+      "name": "ci",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "key_algorithm": "KEY_ALG_RSA_2048",
+          "private_key_type": "TYPE_GOOGLE_CREDENTIALS_FILE",
+          "public_key_type": "TYPE_X509_PEM_FILE",
+          "keepers": null,
+          "public_key_data": null
+        },
+        "after_unknown": {
+          "service_account_id": true,
+          "private_key": true,
+          "public_key": true,
+          "name": true,
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_service_account_key.ci",
+          "mode": "managed",
+          "type": "google_service_account_key",
+          "name": "ci",
+          "provider_config_key": "google",
+          "expressions": {
+            "key_algorithm": {
+              "constant_value": "KEY_ALG_RSA_2048"
+            },
+            "private_key_type": {
+              "constant_value": "TYPE_GOOGLE_CREDENTIALS_FILE"
+            },
+            "public_key_type": {
+              "constant_value": "TYPE_X509_PEM_FILE"
+            },
+            "service_account_id": {
+              "references": [
+                "google_service_account.ci.name",
+                "google_service_account.ci"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}
