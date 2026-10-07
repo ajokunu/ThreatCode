@@ -32,7 +32,6 @@ from threatcode.engine.rules.loader import (
 from threatcode.ir import enrich as enrich_module
 from threatcode.ir.enrichment import aws_network
 from threatcode.ir.graph import InfraGraph
-from threatcode.ir.references import ReferenceIndex
 from threatcode.parsers import detect_and_parse
 from threatcode.parsers.terraform_plan import TerraformPlanParser
 from threatcode.values import Unknown, is_unknown

@@ -480,7 +480,7 @@ class TestLegacyInlineAttributes:
 
 
 class TestOtherCompanions:
-    def test_vpc_flow_log_by_reference_and_a_subnet_flow_log_counts_as_partial_coverage(self) -> None:
+    def test_a_subnet_flow_log_is_partial_vpc_coverage(self) -> None:
         graph = _hcl(
             """
 resource "aws_vpc" "a" {}
