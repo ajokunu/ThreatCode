@@ -15,7 +15,7 @@ from __future__ import annotations
 import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,17 @@ from threatcode.ir.graph import InfraGraph
 from threatcode.models.threat import Threat
 from threatcode.parsers import detect_and_parse
 from threatcode.parsers.base import ParsedOutput
+
+FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+REAL_SHAPES_DIR = FIXTURES_DIR / "real_shapes"
+
+
+def real_shape(relative: str) -> Path:
+    """Path of a file or directory in the real-shape corpus; fails loudly when it is absent."""
+    path = REAL_SHAPES_DIR / relative
+    if not path.exists():
+        raise FileNotFoundError(f"no real-shape fixture {relative} under {REAL_SHAPES_DIR}")
+    return path
 
 
 @dataclass
@@ -100,6 +111,15 @@ def scan_files(paths: Iterable[str | Path]) -> ScanResult:
     return ScanResult(
         parsed=outputs, graph=graph, report=report, input_files=[str(p) for p in resolved]
     )
+
+
+@cache
+def scan_real_shape(*relatives: str) -> ScanResult:
+    """Scan fixtures of the real-shape corpus, caching the result for the test session.
+
+    Tests only read the result. A test that mutates the graph must call ``scan_files``.
+    """
+    return scan_files([real_shape(r) for r in relatives])
 
 
 def scan_text(text: str, filename: str, directory: Path | None = None) -> ScanResult:

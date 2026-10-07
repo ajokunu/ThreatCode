@@ -1,0 +1,391 @@
+"""Graph-level assertions on real-shape ``terraform show -json`` plans.
+
+The fixtures under ``tests/fixtures/real_shapes/terraform/plan`` leave create-time ids unknown,
+list them in ``after_unknown`` and put relationships in ``configuration.expressions.references``,
+as real plans do. Hand-shaped plans store addresses as attribute values, which hides how rarely
+containment and security-group inference fire on real input.
+
+Assertions that hold on the current tree run now. Each assertion a later package delivers is its
+own test marked ``pending(package, deliverable)``, so one switch turns one expectation on.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from tests.helpers.graph_assert import (
+    assert_edge,
+    assert_exposure,
+    assert_no_edge,
+    assert_no_path,
+    assert_nodes,
+    assert_path,
+    assert_zone,
+)
+from tests.helpers.pending import pending
+from tests.helpers.plan_shape import plan_shape_problems
+from tests.helpers.scan import REAL_SHAPES_DIR, scan_real_shape
+
+WEBAPP = "terraform/plan/webapp.plan.json"
+MODULES = "terraform/plan/modules.plan.json"
+TWO_VPCS = "terraform/plan/two_vpcs.plan.json"
+
+PLAN_FIXTURES = sorted((REAL_SHAPES_DIR / "terraform" / "plan").glob("*.plan.json"))
+
+
+# ---------------------------------------------------------------------------------------
+# The corpus itself
+# ---------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("path", PLAN_FIXTURES, ids=lambda p: p.name)
+def test_every_plan_fixture_has_the_shape_terraform_emits(path: object) -> None:
+    """A plan that claims a format_version needs resource_changes and configuration.
+
+    Without them it is the hand-shaped kind that lets tests pass while real plans fail.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    assert plan_shape_problems(data) == []
+    assert "resource_changes" in data
+    assert "configuration" in data
+
+
+def test_the_corpus_has_the_three_plan_fixtures() -> None:
+    assert [p.name for p in PLAN_FIXTURES] == [
+        "modules.plan.json",
+        "two_vpcs.plan.json",
+        "webapp.plan.json",
+    ]
+
+
+# ---------------------------------------------------------------------------------------
+# webapp.plan.json
+# ---------------------------------------------------------------------------------------
+
+WEBAPP_NODES = {
+    "aws_vpc.main",
+    "aws_internet_gateway.gw",
+    "aws_subnet.public[0]",
+    "aws_subnet.public[1]",
+    "aws_subnet.private[0]",
+    "aws_subnet.private[1]",
+    "aws_route_table.public",
+    "aws_route_table_association.public[0]",
+    "aws_route_table_association.public[1]",
+    "aws_security_group.alb",
+    "aws_security_group.app",
+    "aws_security_group.db",
+    "aws_lb.front",
+    "aws_lb_target_group.app",
+    "aws_lb_listener.https",
+    "aws_lb_target_group_attachment.app[0]",
+    "aws_lb_target_group_attachment.app[1]",
+    "aws_iam_role.app",
+    "aws_iam_instance_profile.app",
+    "aws_iam_role_policy.app_data",
+    "aws_secretsmanager_secret.db",
+    "aws_instance.app[0]",
+    "aws_instance.app[1]",
+    "aws_db_subnet_group.db",
+    "aws_db_instance.orders",
+    "aws_s3_bucket.data",
+    "aws_s3_bucket_versioning.data",
+    "aws_s3_bucket_server_side_encryption_configuration.data",
+    "aws_s3_bucket_public_access_block.data",
+    "aws_lambda_function.worker",
+}
+
+
+class TestWebappNodes:
+    def test_every_planned_resource_is_a_node_one_per_counted_instance(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_nodes(graph, WEBAPP_NODES)
+
+    def test_a_counted_resource_is_never_collapsed_into_one_node(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert "aws_instance.app" not in graph.nodes
+        assert "aws_subnet.public" not in graph.nodes
+
+    def test_the_split_s3_resources_stay_separate_nodes(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        types = {
+            graph.nodes[n].resource_type
+            for n in graph.nodes
+            if n.startswith("aws_s3_bucket") and n.endswith(".data")
+        }
+        assert types == {
+            "aws_s3_bucket",
+            "aws_s3_bucket_versioning",
+            "aws_s3_bucket_server_side_encryption_configuration",
+            "aws_s3_bucket_public_access_block",
+        }
+
+
+class TestWebappTopLevelReferences:
+    """References in top-level expressions already become dependency edges."""
+
+    @pytest.mark.parametrize(
+        ("src", "dst"),
+        [
+            ("aws_lb.front", "aws_security_group.alb"),
+            ("aws_lb_listener.https", "aws_lb.front"),
+            ("aws_iam_instance_profile.app", "aws_iam_role.app"),
+            ("aws_iam_role_policy.app_data", "aws_iam_role.app"),
+            ("aws_db_instance.orders", "aws_db_subnet_group.db"),
+            ("aws_db_instance.orders", "aws_security_group.db"),
+            ("aws_s3_bucket_versioning.data", "aws_s3_bucket.data"),
+            ("aws_s3_bucket_public_access_block.data", "aws_s3_bucket.data"),
+            ("aws_internet_gateway.gw", "aws_vpc.main"),
+        ],
+    )
+    def test_dependency_edge(self, src: str, dst: str) -> None:
+        assert_edge(scan_real_shape(WEBAPP).graph, src, dst, type="dependency")
+
+    def test_references_never_run_backwards(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_no_edge(graph, "aws_vpc.main", "aws_internet_gateway.gw")
+        assert_no_edge(graph, "aws_security_group.alb", "aws_lb.front")
+
+
+class TestWebappZones:
+    @pytest.mark.parametrize(
+        ("node", "zone"),
+        [
+            ("aws_s3_bucket.data", "data"),
+            ("aws_lb.front", "dmz"),
+            ("aws_iam_role.app", "management"),
+            ("aws_instance.app[0]", "private"),
+            ("aws_internet_gateway.gw", "internet"),
+        ],
+    )
+    def test_zone(self, node: str, zone: str) -> None:
+        assert_zone(scan_real_shape(WEBAPP).graph, node, zone)
+
+    @pending("WP-3-1", "RDS and Aurora types have an explicit DATABASE category, so zone data")
+    def test_the_database_is_in_the_data_zone(self) -> None:
+        assert_zone(scan_real_shape(WEBAPP).graph, "aws_db_instance.orders", "data")
+
+    @pending("WP-3-1", "Secrets Manager secrets are the new SECRET category in the data zone")
+    def test_the_secret_is_in_the_data_zone(self) -> None:
+        assert_zone(scan_real_shape(WEBAPP).graph, "aws_secretsmanager_secret.db", "data")
+
+
+class TestWebappExposure:
+    @pending("WP-3-1", "an internet-facing load balancer has exposure internet")
+    def test_the_internet_facing_load_balancer_is_exposed(self) -> None:
+        assert_exposure(scan_real_shape(WEBAPP).graph, "aws_lb.front", "internet")
+
+    @pending("WP-3-1", "a security group with world-open ingress has exposure internet")
+    def test_the_world_open_security_group_is_exposed(self) -> None:
+        assert_exposure(scan_real_shape(WEBAPP).graph, "aws_security_group.alb", "internet")
+
+
+class TestWebappCountedInstancesInheritConfiguration:
+    @pending("WP-2-1", "instances inherit the references of their resource (base address lookup)")
+    def test_every_app_instance_is_attached_to_the_app_security_group(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        for node in ("aws_instance.app[0]", "aws_instance.app[1]"):
+            assert_edge(graph, node, "aws_security_group.app", type="dependency")
+
+    @pending("WP-2-1", "a reference to a counted resource without an index fans out to instances")
+    def test_instances_are_contained_in_the_private_subnets(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_instance.app[0]", "aws_subnet.private[0]", type="containment")
+        assert_edge(graph, "aws_instance.app[0]", "aws_subnet.private[1]", type="containment")
+
+    @pending("WP-2-1", "iam_instance_profile references become an iam_binding edge")
+    def test_instances_reference_their_instance_profile(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(
+            graph, "aws_instance.app[1]", "aws_iam_instance_profile.app", type="iam_binding"
+        )
+
+    @pending("WP-2-1", "subnets inherit the vpc_id reference of their counted resource")
+    def test_counted_subnets_are_contained_in_the_vpc(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        for node in ("aws_subnet.public[0]", "aws_subnet.private[1]"):
+            assert_edge(graph, node, "aws_vpc.main", type="containment")
+
+    @pending("WP-2-1", "target group attachments inherit the target_id reference")
+    def test_target_group_attachments_point_at_the_instances(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_lb_target_group_attachment.app[0]", "aws_instance.app[0]")
+
+
+class TestWebappNestedBlockReferences:
+    @pending("WP-2-1", "ingress[].security_groups references become dependency edges")
+    def test_the_app_group_depends_on_the_load_balancer_group(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_security_group.app", "aws_security_group.alb", type="dependency")
+
+    @pending("WP-2-1", "ingress[].security_groups references become dependency edges")
+    def test_the_database_group_depends_on_the_app_group(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_security_group.db", "aws_security_group.app", type="dependency")
+
+    @pending("WP-2-1", "vpc_config[].subnet_ids references become containment edges")
+    def test_the_lambda_is_contained_in_the_private_subnets(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(
+            graph, "aws_lambda_function.worker", "aws_subnet.private[0]", type="containment"
+        )
+
+    @pending("WP-2-1", "vpc_config[].security_group_ids references become dependency edges")
+    def test_the_lambda_uses_the_app_security_group(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_lambda_function.worker", "aws_security_group.app")
+
+
+class TestWebappUnknownValues:
+    @pending("WP-2-1", "after_unknown attributes become values.Unknown, not absent keys")
+    def test_an_unknown_id_is_unknown_not_missing(self) -> None:
+        from threatcode.values import is_unknown
+
+        node = scan_real_shape(WEBAPP).graph.nodes["aws_subnet.private[0]"]
+        assert "vpc_id" in node.properties
+        assert is_unknown(node.properties["vpc_id"])
+
+    @pending("WP-2-1", "data sources become mode data nodes that rules never evaluate")
+    def test_the_data_source_is_graph_context_only(self) -> None:
+        node = scan_real_shape(WEBAPP).graph.nodes["data.aws_iam_policy_document.assume"]
+        assert getattr(node, "mode", "managed") == "data"
+
+    @pending("WP-2-1", "after_unknown attributes become values.Unknown, not absent keys")
+    def test_the_unknown_endpoint_of_the_database_is_unknown(self) -> None:
+        from threatcode.values import is_unknown
+
+        node = scan_real_shape(WEBAPP).graph.nodes["aws_db_instance.orders"]
+        assert is_unknown(node.properties.get("endpoint"))
+
+
+class TestWebappAttackSurface:
+    @pending("WP-3-1", "role resolution links an instance, its profile and its role by iam_binding")
+    def test_the_instance_profile_is_bound_to_the_role(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        assert_edge(graph, "aws_iam_instance_profile.app", "aws_iam_role.app", type="iam_binding")
+
+    @pending("WP-4-1", "reachability: internet to the load balancer, app tier and database")
+    def test_the_internet_reaches_the_database_through_the_app_tier(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        path = assert_path(
+            graph, "internet", "aws_db_instance.orders", edge_types=["network_flow", "data_flow"]
+        )
+        assert "aws_lb.front" in path
+
+    @pending("WP-4-1", "reachability follows security group references, so nothing runs backwards")
+    def test_reachability_never_runs_from_the_database_back_to_the_internet(self) -> None:
+        graph = scan_real_shape(WEBAPP).graph
+        # Positive control: the walk reaches the app tier, so the absence below is meaningful
+        assert_path(graph, "internet", "aws_instance.app[0]", edge_types=["network_flow"])
+        assert_no_path(graph, "aws_security_group.db", "aws_lb.front", ["network_flow"])
+
+
+# ---------------------------------------------------------------------------------------
+# two_vpcs.plan.json
+# ---------------------------------------------------------------------------------------
+
+
+class TestTwoVpcs:
+    @pytest.mark.parametrize("key", ["prod", "dev"])
+    def test_each_vpc_keeps_its_own_dependency_edges(self, key: str) -> None:
+        graph = scan_real_shape(TWO_VPCS).graph
+        assert_edge(graph, f"aws_subnet.{key}", f"aws_vpc.{key}", type="dependency")
+        assert_edge(graph, f"aws_security_group.{key}", f"aws_vpc.{key}", type="dependency")
+        assert_edge(graph, f"aws_instance.{key}", f"aws_subnet.{key}", type="dependency")
+
+    @pytest.mark.parametrize(("a", "b"), [("prod", "dev"), ("dev", "prod")])
+    def test_nothing_in_one_vpc_attaches_to_the_other(self, a: str, b: str) -> None:
+        graph = scan_real_shape(TWO_VPCS).graph
+        for kind in ("subnet", "security_group", "instance"):
+            assert_no_edge(graph, f"aws_{kind}.{a}", f"aws_vpc.{b}")
+        assert_no_edge(graph, f"aws_instance.{a}", f"aws_subnet.{b}")
+
+    @pending("WP-2-1", "vpc_id references become containment edges to the right VPC")
+    def test_the_dev_subnet_is_contained_in_the_dev_vpc(self) -> None:
+        assert_edge(scan_real_shape(TWO_VPCS).graph, "aws_subnet.dev", "aws_vpc.dev", "containment")
+
+    @pending("WP-2-1", "subnet_id references become containment edges to the right subnet")
+    def test_the_dev_instance_is_contained_in_the_dev_subnet(self) -> None:
+        graph = scan_real_shape(TWO_VPCS).graph
+        assert_edge(graph, "aws_instance.dev", "aws_subnet.dev", type="containment")
+
+    @pending("WP-4-1", "attack paths never cross between two VPCs with no connection")
+    def test_there_is_no_path_between_the_vpcs(self) -> None:
+        graph = scan_real_shape(TWO_VPCS).graph
+        # Positive control: each instance is wired into its own VPC, so the walk has edges
+        assert_edge(graph, "aws_instance.prod", "aws_subnet.prod", type="containment")
+        assert_edge(graph, "aws_instance.dev", "aws_subnet.dev", type="containment")
+        assert_no_path(graph, "aws_instance.prod", "aws_instance.dev")
+        assert_no_path(graph, "aws_instance.dev", "aws_instance.prod")
+
+
+# ---------------------------------------------------------------------------------------
+# modules.plan.json
+# ---------------------------------------------------------------------------------------
+
+MODULE_NODES = {
+    "aws_vpc.main",
+    "aws_security_group.internal",
+    'aws_security_group_rule.ingress["https"]',
+    'aws_security_group_rule.ingress["ssh"]',
+    "aws_instance.worker",
+    "aws_flow_log.main",
+    "module.subnets[0].aws_subnet.this",
+    "module.subnets[0].aws_network_acl.this",
+    "module.subnets[1].aws_subnet.this",
+    "module.subnets[1].aws_network_acl.this",
+    "module.logging.aws_s3_bucket.this",
+}
+
+
+class TestModules:
+    def test_module_resources_are_nodes_one_per_module_instance(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_nodes(graph, MODULE_NODES, exact=True)
+
+    def test_for_each_instances_are_separate_nodes(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        https = graph.nodes['aws_security_group_rule.ingress["https"]']
+        assert https.properties["from_port"] == 443
+        assert graph.nodes['aws_security_group_rule.ingress["ssh"]'].properties["from_port"] == 22
+
+    def test_root_references_to_root_resources_are_dependency_edges(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_edge(graph, "aws_security_group.internal", "aws_vpc.main", type="dependency")
+        assert_edge(graph, "aws_instance.worker", "aws_security_group.internal", "dependency")
+
+    @pending("WP-2-1", "module resources resolve references inside their own module")
+    def test_the_nacl_is_attached_to_the_subnet_of_its_own_module_instance(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_edge(
+            graph,
+            "module.subnets[1].aws_network_acl.this",
+            "module.subnets[1].aws_subnet.this",
+        )
+
+    @pending("WP-2-1", "module inputs resolve through the parent's module_calls expressions")
+    def test_a_module_subnet_is_contained_in_the_vpc_passed_as_input(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_edge(graph, "module.subnets[0].aws_subnet.this", "aws_vpc.main", type="containment")
+
+    @pending("WP-2-1", "module outputs resolve to the child resource that produces them")
+    def test_the_worker_is_contained_in_the_subnet_its_module_output_names(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_edge(
+            graph, "aws_instance.worker", "module.subnets[0].aws_subnet.this", type="containment"
+        )
+        assert_no_edge(graph, "aws_instance.worker", "module.subnets[1].aws_subnet.this")
+
+    @pending("WP-2-1", "module outputs resolve to the child resource that produces them")
+    def test_the_flow_log_depends_on_the_logging_bucket(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_edge(graph, "aws_flow_log.main", "module.logging.aws_s3_bucket.this")
+
+    @pending("WP-2-1", "for_each instances inherit the references of their resource")
+    def test_for_each_rules_are_attached_to_the_security_group(self) -> None:
+        graph = scan_real_shape(MODULES).graph
+        assert_edge(
+            graph, 'aws_security_group_rule.ingress["https"]', "aws_security_group.internal"
+        )
