@@ -945,6 +945,14 @@ class TestPrepareRequest:
         with pytest.raises(UsageError, match="contradict"):
             prepare_request(["x"], ignore_file="a", no_ignore=True)
 
+    def test_flags_that_would_do_nothing_are_refused(self) -> None:
+        with pytest.raises(UsageError, match="--stdin-name only applies when reading standard"):
+            prepare_request(["x.tf"], stdin_name="main.tf")
+        with pytest.raises(UsageError, match="--dry-run-output only applies together with"):
+            prepare_request(["x.tf"], dry_run_output="out.txt")
+        assert prepare_request(["-"], stdin_name="main.tf").request.stdin_name == "main.tf"
+        assert prepare_request(["x.tf"], dry_run=True, dry_run_output="o").request.settings.dry_run
+
     @pytest.mark.parametrize(
         ("options", "message"),
         [
@@ -972,7 +980,7 @@ class TestPrepareRequest:
 
     def test_the_request_carries_every_option(self, tmp_path: Path) -> None:
         prepared = prepare_request(
-            [str(tmp_path)],
+            [str(tmp_path), "-"],
             strict=True,
             ignore_file="i",
             baseline="b",
@@ -989,7 +997,9 @@ class TestPrepareRequest:
         assert request.ingest == (Path("x.json"), Path("y.json"))
         assert request.stdin_name == "n"
         assert request.settings.extra_rule_paths == (Path("r.yml"),)
-        assert request.root == tmp_path
+
+    def test_the_root_is_the_common_parent_of_the_paths(self, tmp_path: Path) -> None:
+        assert prepare_request([str(tmp_path)]).request.root == tmp_path
 
     def test_the_environment_is_read_through_the_same_resolver(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

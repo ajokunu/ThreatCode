@@ -236,7 +236,7 @@ class TestFormatDiff:
         assert "## Resolved Threats (-1)" in text
         assert "## Changed Threats (1)" in text
         assert "low -> high" in text
-        assert "—" not in text
+        assert chr(0x2014) not in text
 
     def test_markdown_pluralizes(self, tmp_path: Path) -> None:
         text = format_diff(diff_of(tmp_path, [threat("a")], [threat("a"), threat("b")]), "markdown")

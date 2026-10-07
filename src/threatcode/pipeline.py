@@ -200,6 +200,10 @@ def prepare_request(
         raise UsageError("no input: name at least one file or directory, or - for standard input")
     if ignore_file is not None and no_ignore:
         raise UsageError("--ignore-file and --no-ignore contradict each other")
+    if stdin_name is not None and STDIN_PATH not in named:
+        raise UsageError("--stdin-name only applies when reading standard input (-)")
+    if dry_run_output is not None and not dry_run:
+        raise UsageError("--dry-run-output only applies together with --dry-run")
     if fail_on is not None and fail_on not in FAIL_ON_CHOICES:
         raise UsageError(f"fail_on must be one of {', '.join(FAIL_ON_CHOICES)}, got '{fail_on}'")
     if min_severity is not None and min_severity not in SEVERITY_CHOICES:

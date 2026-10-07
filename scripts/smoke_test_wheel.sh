@@ -46,17 +46,53 @@ assert importlib.util.find_spec("anthropic") is None, (
 )
 PY
 
-# threatcode scan exits 1 when it finds threats, which is the expected outcome here.
-"$WORK/venv/bin/threatcode" scan "$REPO/tests/fixtures/kubernetes/insecure_deployment.yml" \
-  --no-llm -o "$WORK/k8s.json" || true
+# threatcode scan exits 0 for a clean scan, 1 when it finds something at or above --fail-on
+# (the default is high) and 2 for a usage or input error. Findings are the expected outcome
+# here, so 0 and 1 pass and anything else fails the smoke test.
+expect_scan_exit() {
+  local label=$1 allowed=$2
+  shift 2
+  set +e
+  "$@"
+  local status=$?
+  set -e
+  case " $allowed " in
+    *" $status "*) ;;
+    *)
+      echo "FAIL: $label exited $status, expected one of: $allowed" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# A directory of manifests is scanned as one graph.
+expect_scan_exit "scan of a directory" "0 1" \
+  "$WORK/venv/bin/threatcode" scan "$REPO/tests/fixtures/kubernetes" -o "$WORK/k8s.json"
 "$WORK/venv/bin/python" - "$WORK/k8s.json" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as fh:
-    total = len(json.load(fh)["threats"])
-print(f"Findings on insecure_deployment.yml: {total}")
-assert total > 0, "the installed wheel found no threats in the insecure Kubernetes fixture"
+    report = json.load(fh)
+total = len(report["threats"])
+coverage = report["coverage"]
+print(f"Findings on the kubernetes fixtures: {total}, units parsed: {coverage['units_parsed']}")
+assert total > 0, "the installed wheel found no threats in the insecure Kubernetes fixtures"
+assert report["schema_version"] == "2", report["schema_version"]
+assert coverage["units_parsed"] == 3, coverage
+assert coverage["errors"] == [], coverage["errors"]
 PY
+
+# Standard input works with a name that selects the format.
+printf 'resource "aws_s3_bucket" "b" {\n  bucket = "b"\n}\n' > "$WORK/main.tf"
+expect_scan_exit "scan of standard input" "0 1" \
+  "$WORK/venv/bin/threatcode" scan - --stdin-name main.tf --fail-on none -o "$WORK/stdin.json" \
+  < "$WORK/main.tf"
+test -s "$WORK/stdin.json"
+
+# A scan that finds nothing to model must fail loudly, never exit 0.
+mkdir "$WORK/empty"
+expect_scan_exit "scan of an empty directory" "2" \
+  "$WORK/venv/bin/threatcode" scan "$WORK/empty" -o "$WORK/empty.json"
 
 echo "Wheel smoke test passed"
