@@ -1187,7 +1187,9 @@ class TestScanInputs:
         result = invoke("scan", SIMPLE_TF, K8S_FIXTURE, "--fail-on", "none")
         data = report_of(result)
         assert data["coverage"]["units_parsed"] == 2
-        assert data["input_file"] == "kubernetes/insecure_deployment.yml, terraform/simple_exposed.tf"
+        assert (
+            data["input_file"] == "kubernetes/insecure_deployment.yml, terraform/simple_exposed.tf"
+        )
 
     def test_state_json_is_rejected_with_the_corrective_command(self) -> None:
         result = invoke("scan", SHAPES / "terraform_state.json")

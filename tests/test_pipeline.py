@@ -416,8 +416,13 @@ class TestExitContract:
         assert scan(path, strict=True).exit_code == EXIT_USAGE
 
     def test_strict_without_gaps_changes_nothing(self) -> None:
-        assert scan(FIXTURES / "terraform/simple_exposed.tf", strict=True).exit_code == EXIT_FINDINGS
-        assert scan(FIXTURES / "terraform/simple_exposed.tf", strict=True, fail_on="none").exit_code == 0
+        assert (
+            scan(FIXTURES / "terraform/simple_exposed.tf", strict=True).exit_code == EXIT_FINDINGS
+        )
+        assert (
+            scan(FIXTURES / "terraform/simple_exposed.tf", strict=True, fail_on="none").exit_code
+            == 0
+        )
 
     def test_a_suppressed_gate_exits_zero(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", bucket("one"))
@@ -751,13 +756,17 @@ class TestSuppressionsAndBaseline:
 
     def test_min_severity_filters_the_listing_but_not_the_gate(self) -> None:
         full = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="high")
-        filtered = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="high", min_severity="critical")
+        filtered = scan(
+            FIXTURES / "terraform/simple_exposed.tf", fail_on="high", min_severity="critical"
+        )
         assert filtered.report.threats == []
         assert filtered.exit_code == full.exit_code == EXIT_FINDINGS
         assert filtered.report.to_dict()["total_threats"] == 0
 
     def test_min_severity_keeps_what_is_at_or_above_it(self) -> None:
-        result = scan(FIXTURES / "terraform/simple_exposed.tf", min_severity="medium", fail_on="none")
+        result = scan(
+            FIXTURES / "terraform/simple_exposed.tf", min_severity="medium", fail_on="none"
+        )
         assert result.report.threats
         assert all(t.severity >= Severity.MEDIUM for t in result.report.threats)
         assert len(result.report.threats) == 4

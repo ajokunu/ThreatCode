@@ -23,7 +23,6 @@ from tests.test_rules.harness import load_rules_by_group
 from threatcode.engine.mitre import TECHNIQUE_DB, is_revoked, tactics_for_techniques
 from threatcode.engine.rules.loader import Rule, deprecated_rule_ids, load_builtin_rules
 from threatcode.engine.rules.matcher import matches_rule
-from threatcode.ir import enrich as enrich_module
 from threatcode.ir.enrichment import aws_data
 from threatcode.values import Unknown, is_unknown
 
