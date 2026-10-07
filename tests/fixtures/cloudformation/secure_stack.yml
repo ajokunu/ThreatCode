@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A stack that sets every attribute the absence rules look for
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+  RetentionDays:
+    Type: Number
+    Default: 7
+
+Resources:
+  DataKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encrypts the data tier
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: kms:*
+            Resource: "*"
+
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Environment}-orders-data-${AWS::AccountId}"
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt DataKey.Arn
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: acme-central-access-logs
+        LogFilePrefix: orders-data/
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      Engine: postgres
+      DBInstanceClass: db.t3.medium
+      AllocatedStorage: "50"
+      StorageEncrypted: true
+      KmsKeyId: !Ref DataKey
+      PubliclyAccessible: false
+      BackupRetentionPeriod: !Ref RetentionDays
+      MultiAZ: true
+      DeletionProtection: true
+      ManageMasterUserPassword: true
+      MasterUsername: orders_admin
+
+  OrdersQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: orders
+      KmsMasterKeyId: !Ref DataKey
+      RedrivePolicy:
+        deadLetterTargetArn: arn:aws:sqs:us-east-1:111122223333:orders-dlq
+        maxReceiveCount: 5
+
+  ProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+
+  ProcessorSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Outbound only
+      VpcId: !Ref Vpc
+
+  ProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: orders-processor
+      Runtime: python3.12
+      Handler: app.handler
+      Role: !GetAtt ProcessorRole.Arn
+      Code:
+        S3Bucket: acme-artifacts
+        S3Key: orders-processor.zip
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet
+        SecurityGroupIds:
+          - !Ref ProcessorSecurityGroup
+      DeadLetterConfig:
+        TargetArn: arn:aws:sqs:us-east-1:111122223333:orders-dlq
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref OrdersQueue
+
+  AuditTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: orders-audit
+      IsLogging: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      KMSKeyId: !GetAtt DataKey.Arn
+      S3BucketName: acme-trail-logs

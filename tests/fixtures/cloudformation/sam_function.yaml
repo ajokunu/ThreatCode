@@ -1,0 +1,73 @@
+Transform: AWS::Serverless-2016-10-31
+Description: A serverless API with an administrator function
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    Environment:
+      Variables:
+        STAGE: prod
+
+Resources:
+  AdminFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: admin.handler
+      CodeUri: src/admin/
+      Policies:
+        - AdministratorAccess
+      Events:
+        Admin:
+          Type: Api
+          Properties:
+            Path: /admin
+            Method: any
+
+  ReaderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: reader.handler
+      CodeUri: src/reader/
+      Environment:
+        Variables:
+          TABLE: !Ref ItemsTable
+      Policies:
+        - AmazonDynamoDBReadOnlyAccess
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: "*"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ItemsTable
+      Events:
+        Read:
+          Type: HttpApi
+          Properties:
+            Path: /items
+            Method: get
+        Consume:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt WorkQueue.Arn
+            BatchSize: 5
+
+  PrivateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: private.handler
+      CodeUri: src/private/
+      Role: arn:aws:iam::111122223333:role/existing-role
+
+  ItemsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+      SSESpecification:
+        SSEEnabled: true
+
+  WorkQueue:
+    Type: AWS::SQS::Queue
