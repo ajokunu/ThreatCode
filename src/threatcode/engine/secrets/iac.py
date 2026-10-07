@@ -591,7 +591,7 @@ def _threat(
         id=hash_id(f"secret\x00{rule.id}\x00{relpath}\x00{match.line}\x00{ordinal}"),
         title=f"Hardcoded secret: {rule.title}",
         description=(
-            f"{rule.title} is written in plain text at {where}{on}{attr}. "
+            f"A credential ({rule.title}) is written in plain text at {where}{on}{attr}. "
             "Anyone who can read the repository, a plan, a state file or the deployed template "
             f"can use it. The value is not shown here ({match.preview})."
         ),

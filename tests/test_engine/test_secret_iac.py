@@ -280,6 +280,22 @@ class TestSingleFileForm:
         assert [t.id for t in single] == [t.id for t in piped]
         assert [t.resource_address for t in single] == ["WarehouseCluster"]
 
+    def test_terraform_file_with_an_absolute_node_path_still_attaches(self, tmp_path: Path) -> None:
+        path = tmp_path / "main.tf"
+        path.write_text(
+            'resource "aws_db_instance" "main" {\n  engine   = "postgres"\n'
+            f'  password = "{PASSWORD}"\n}}\n',
+            encoding="utf-8",
+        )
+        parsed = detect_and_parse(path)
+        graph = InfraGraph.from_parsed(parsed)
+        found = find_secrets_in_file(
+            path, path.read_text(encoding="utf-8"), parsed, graph, tmp_path
+        )
+        assert [(t.location_file, t.resource_address) for t in found] == [
+            ("main.tf", "aws_db_instance.main")
+        ]
+
     def test_a_chart_pulls_in_its_values_and_templates(self) -> None:
         path = FIXTURES / "helm" / "chart" / "Chart.yaml"
         parsed = detect_and_parse(path)
