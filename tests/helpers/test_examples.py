@@ -88,6 +88,9 @@ class TestFindingMatching:
         'resource "aws_instance" "app" {\n'
         '  ami = "ami-1"\n'
         "  associate_public_ip_address = true\n"
+        "  metadata_options {\n"
+        '    http_tokens = "required"\n'
+        "  }\n"
         "}\n"
     )
 

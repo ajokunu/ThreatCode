@@ -185,12 +185,6 @@ INSECURE_COUNTERPARTS = [
         id="kms-no-rotation",
     ),
     pytest.param(
-        "AWS::Lambda::Function",
-        {"Role": "arn:aws:iam::1:role/admin-role"},
-        "LAMBDA_OVERPERMISSIVE_ROLE",
-        id="lambda-admin-role-literal",
-    ),
-    pytest.param(
         "AWS::ECS::TaskDefinition",
         {"ContainerDefinitions": [{"Name": "a", "Image": "x", "Privileged": True}]},
         "ECS_PRIVILEGED_CONTAINER",
@@ -253,6 +247,45 @@ class TestInsecureCounterparts:
         template = {"Resources": {"Subject": {"Type": cfn_type, "Properties": properties}}}
         result = scan_text(json.dumps(template), "template.json")
         assert rule in result.rule_ids_for("Subject")
+
+
+class TestLambdaAdministratorRole:
+    """The permissions of the execution role decide, never its name."""
+
+    @staticmethod
+    def scan_function(role: object, *, with_admin_role: bool) -> set[str]:
+        import json
+
+        resources: dict[str, object] = {
+            "Subject": {"Type": "AWS::Lambda::Function", "Properties": {"Role": role}}
+        }
+        if with_admin_role:
+            resources["AdminRole"] = {
+                "Type": "AWS::IAM::Role",
+                "Properties": {
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    },
+                    "ManagedPolicyArns": ["arn:aws:iam::aws:policy/AdministratorAccess"],
+                },
+            }
+        result = scan_text(json.dumps({"Resources": resources}), "template.json")
+        return result.rule_ids_for("Subject")
+
+    def test_an_in_stack_role_with_administrator_access_fires(self) -> None:
+        fired = self.scan_function({"Fn::GetAtt": ["AdminRole", "Arn"]}, with_admin_role=True)
+        assert "LAMBDA_OVERPERMISSIVE_ROLE" in fired
+
+    def test_a_role_arn_outside_the_stack_never_fires_whatever_its_name(self) -> None:
+        fired = self.scan_function("arn:aws:iam::1:role/admin-role", with_admin_role=False)
+        assert "LAMBDA_OVERPERMISSIVE_ROLE" not in fired
 
 
 class TestUnresolvedValuesNeverFireARule:

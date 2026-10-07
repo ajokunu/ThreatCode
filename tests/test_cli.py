@@ -442,7 +442,7 @@ class TestSettingsPrecedence:
         monkeypatch.setenv("THREATCODE_MIN_SEVERITY", "high")
         assert len(report_of(invoke("scan", SIMPLE_TF, "-c", config))["threats"]) == 1
         flagged = invoke("scan", SIMPLE_TF, "-c", config, "--min-severity", "medium")
-        assert len(report_of(flagged)["threats"]) == 4
+        assert len(report_of(flagged)["threats"]) == 5
 
     def test_format_precedence(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config = write(tmp_path, "c.yml", "output_format: markdown\nfail_on: none\n")

@@ -174,11 +174,13 @@ def _derived(graph: InfraGraph, address: str) -> dict[str, Any]:
 
 
 def _with_formats(graph: InfraGraph, fmt: str) -> InfraGraph:
-    """Enrich a graph again with every node recorded as the given parser format."""
-    graph.node_formats = {node_id: fmt for node_id in graph.nodes}  # type: ignore[attr-defined]
-    for node in graph.nodes.values():
-        node.properties.pop("derived", None)
-    enrich_module.enrich(graph, ReferenceIndex(graph.nodes))
+    """Return the graph after checking that the build recorded every node as the given format.
+
+    The graph build records each node's parser format and enriches with it, so the defaults are
+    already applied (or withheld, for plan JSON) by the time the graph is returned.
+    """
+    assert graph.node_formats
+    assert set(graph.node_formats.values()) == {fmt}
     return graph
 
 
@@ -2861,7 +2863,7 @@ class TestDefaults:
         assert "internal" not in graph.nodes["aws_lb.front"].properties
 
     def test_the_rules_give_the_same_answer_with_and_without_the_defaults(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         source = """
             resource "aws_eks_cluster" "c" {
@@ -2878,7 +2880,13 @@ class TestDefaults:
               }
             }
             """
-        plain = _findings(_hcl_graph(tmp_path, source))
+        with monkeypatch.context() as patch:
+            patch.setattr(enrich_module, "DEFAULT_FORMATS", frozenset())
+            plain_graph = _hcl_graph(tmp_path, source)
+        assert "defaults_applied" not in plain_graph.nodes["aws_eks_cluster.c"].properties.get(
+            "derived", {}
+        )
+        plain = _findings(plain_graph)
         defaulted = _findings(_with_formats(_hcl_graph(tmp_path, source), "terraform_hcl"))
         assert plain == defaulted
         assert {"EKS_PUBLIC_ENDPOINT", "EKS_PUBLIC_ACCESS_ANY_CIDR"} <= plain["aws_eks_cluster.c"]

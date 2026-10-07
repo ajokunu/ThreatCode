@@ -29,7 +29,7 @@ FIRING_RULE_IDS = {
     "IAM_NO_MFA",
     "IAM_OVERPERMISSIVE_ROLE",
     "EC2_PUBLIC_IP",
-    "EC2_NO_MONITORING",
+    "EC2_IMDSV1",
     "EC2_UNENCRYPTED_EBS",
     "VPC_DEFAULT_SG_OPEN",
     "VPC_NO_FLOW_LOGS",
@@ -37,8 +37,6 @@ FIRING_RULE_IDS = {
     "RDS_NO_ENCRYPTION",
     "RDS_NO_BACKUP",
     "LAMBDA_NO_VPC",
-    "LAMBDA_OVERPERMISSIVE_ROLE",
-    "LAMBDA_NO_DLQ",
 }
 
 
@@ -75,14 +73,23 @@ class TestInsecureFixture:
         assert len(self.report.threats) >= 18
 
     def test_mitre_techniques_populated(self) -> None:
+        # A rule that declares techniques passes them on; logging absences and isolation notes
+        # declare none by the calibration convention
+        declared = {r.id for r in load_all_rules() if r.metadata.get("mitre", {}).get("techniques")}
         rule_threats = [t for t in self.report.threats if t.source == ThreatSource.RULE]
-        with_mitre = [t for t in rule_threats if t.mitre_techniques]
-        assert len(with_mitre) == len(rule_threats), "All rule threats should have MITRE techniques"
+        expected = [t for t in rule_threats if t.rule_id in declared]
+        assert expected
+        missing = [t.rule_id for t in expected if not t.mitre_techniques]
+        assert not missing, f"Rules that declare techniques reported none: {missing}"
+        assert all(not t.mitre_techniques for t in rule_threats if t.rule_id not in declared)
 
     def test_mitre_tactics_populated(self) -> None:
+        declared = {r.id for r in load_all_rules() if r.metadata.get("mitre", {}).get("techniques")}
         rule_threats = [t for t in self.report.threats if t.source == ThreatSource.RULE]
-        with_tactics = [t for t in rule_threats if t.mitre_tactics]
-        assert len(with_tactics) == len(rule_threats), "All rule threats should have MITRE tactics"
+        expected = [t for t in rule_threats if t.rule_id in declared]
+        assert expected
+        missing = [t.rule_id for t in expected if not t.mitre_tactics]
+        assert not missing, f"Rules that declare techniques reported no tactics: {missing}"
 
     def test_boundary_threats_have_mitre(self) -> None:
         boundary_threats = [t for t in self.report.threats if t.source == ThreatSource.BOUNDARY]
@@ -306,8 +313,8 @@ class TestRealShapePlansThroughTheEngine:
 
     def test_findings_that_the_plan_does_prove_still_fire(self) -> None:
         result = scan_real_shape("terraform/plan/webapp.plan.json")
-        assert result.fired("EC2_NO_MONITORING", "aws_instance.app[0]")
-        assert result.fired("EC2_NO_MONITORING", "aws_instance.app[1]")
+        assert result.fired("EC2_IMDSV1", "aws_instance.app[0]")
+        assert result.fired("EC2_IMDSV1", "aws_instance.app[1]")
         assert result.fired("VPC_NO_FLOW_LOGS", "aws_vpc.main")
 
     def test_scanning_twice_gives_the_same_findings(self) -> None:

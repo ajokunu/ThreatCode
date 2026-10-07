@@ -44,7 +44,7 @@ class TestSimpleModule:
         found = _scan(FIXTURES_DIR / "terraform" / "simple.tf")
         assert found == {
             "aws_s3_bucket.test": {"S3_NO_ENCRYPTION", "S3_NO_LOGGING", "S3_NO_VERSIONING"},
-            "aws_instance.web": {"EC2_NO_MONITORING", "EC2_UNENCRYPTED_EBS"},
+            "aws_instance.web": {"EC2_IMDSV1", "EC2_UNENCRYPTED_EBS"},
         }
 
 

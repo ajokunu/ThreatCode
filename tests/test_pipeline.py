@@ -749,7 +749,7 @@ class TestSuppressionsAndBaseline:
         result = scan(FIXTURES / "terraform/simple.tf", min_severity="medium", fail_on="none")
         assert result.report.threats
         assert all(t.severity >= Severity.MEDIUM for t in result.report.threats)
-        assert len(result.report.threats) == 4
+        assert len(result.report.threats) == 5
 
 
 class TestStdin:

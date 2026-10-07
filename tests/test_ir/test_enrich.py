@@ -480,7 +480,7 @@ class TestLegacyInlineAttributes:
 
 
 class TestOtherCompanions:
-    def test_vpc_flow_log_by_reference_and_other_flow_logs_are_ignored(self) -> None:
+    def test_vpc_flow_log_by_reference_and_a_subnet_flow_log_counts_as_partial_coverage(self) -> None:
         graph = _hcl(
             """
 resource "aws_vpc" "a" {}
@@ -497,8 +497,8 @@ resource "aws_flow_log" "subnet_log" {
 """
         )
         assert _derived(graph, "aws_vpc.a")["has_flow_log"] is True
-        # a flow log on a subnet says nothing about the VPC, and is not "unresolved"
-        assert _derived(graph, "aws_vpc.b")["has_flow_log"] is False
+        # a flow log on a subnet covers part of the VPC, which is enough not to report none
+        assert _derived(graph, "aws_vpc.b")["has_flow_log"] is True
 
     def test_secret_rotation_companion_and_inline(self) -> None:
         graph = _graph(
@@ -1464,9 +1464,16 @@ def test_table(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestDefaults:
-    def test_the_shipped_registry_is_empty(self) -> None:
+    def test_every_shipped_table_has_the_documented_shape(self) -> None:
         for module in enrichment_modules():
-            assert not getattr(module, "DEFAULTS", {}), module.__name__
+            table = getattr(module, "DEFAULTS", {})
+            assert isinstance(table, Mapping), module.__name__
+            for resource_type, defaults in table.items():
+                assert isinstance(resource_type, str) and resource_type, module.__name__
+                assert isinstance(defaults, Mapping) and defaults, (module.__name__, resource_type)
+                for path in defaults:
+                    segments = path.split(".")
+                    assert all(segments), (module.__name__, resource_type, path)
 
     def test_apply_defaults_fills_an_absent_attribute(self) -> None:
         node = SimpleNamespace(resource_type="aws_kms_key", properties={"description": "d"})

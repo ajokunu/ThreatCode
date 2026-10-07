@@ -54,7 +54,7 @@ class TestTextReport:
         text = format_text(analysis)
         lines = text.splitlines()
         assert lines[0] == "ThreatCode scan of simple.tf: 2 resources, 5 findings"
-        assert lines[2].startswith("critical 0  high 1  medium 3  low 1  info 0")
+        assert lines[2].startswith("critical 0  high 1  medium 4  low 0  info 0")
         findings = [line for line in lines if line.split(" ")[0] in {"HIGH", "MEDIUM", "LOW"}]
         assert len(findings) == 5
 
