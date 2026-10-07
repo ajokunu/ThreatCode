@@ -158,12 +158,15 @@ class TestLongFormProperties:
 
 
 class TestShortFormTemplate:
-    @pending("WP-1-4", "the YAML loader reads short-form intrinsic tags (!Ref, !GetAtt, !Sub, ...)")
+    @pending(
+        "WP-2-3",
+        "short-form tags load; the loader is WP-1-4, merged first, this package owns the inputs",
+    )
     def test_short_form_yaml_has_the_same_nodes_as_the_long_form(self) -> None:
         graph = scan_real_shape(WEB_YAML).graph
         assert_nodes(graph, WEB_NODES, exact=True)
 
-    @pending("WP-1-4", "a Resources-only template is claimed as CloudFormation")
+    @pending("WP-2-3", "a Resources-only template is claimed; the detector is WP-1-4, merged first")
     def test_a_resources_only_template_is_read(self) -> None:
         graph = scan_real_shape(RESOURCES_ONLY).graph
         assert_nodes(graph, ["AuditBucket", "AuditTopic", "AuditQueue"], exact=True)

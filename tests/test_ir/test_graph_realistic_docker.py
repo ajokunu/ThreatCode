@@ -240,7 +240,7 @@ class TestOnbuild:
 class TestContainerfile:
     PATH = "docker/Containerfile"
 
-    @pending("WP-1-4", "Containerfile is recognized as a Dockerfile name")
+    @pending("WP-2-5", "Containerfile is a Dockerfile name; the detector is WP-1-4, merged first")
     def test_a_containerfile_is_read(self) -> None:
         props = scan_real_shape(self.PATH).graph.nodes[SUMMARY].properties
         assert props["base_image"] == "registry.access.redhat.com/ubi9/ubi-minimal:9.4"

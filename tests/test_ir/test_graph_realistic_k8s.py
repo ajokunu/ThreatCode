@@ -245,7 +245,7 @@ class TestKubectlLists:
             exact=True,
         )
 
-    @pending("WP-1-4", "a .json Kubernetes manifest is claimed by the Kubernetes parser")
+    @pending("WP-2-4", "a .json manifest is claimed; the detector is WP-1-4, merged first")
     def test_a_json_manifest_is_claimed(self) -> None:
         assert scan_real_shape(LIST_JSON).graph.node_count >= 1
 
