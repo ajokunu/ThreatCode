@@ -8,7 +8,6 @@ from typing import Any
 
 import pytest
 
-from tests.helpers.pending import pending
 from tests.helpers.scan import scan_real_shape, scan_text
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.engine.rules.loader import load_all_rules
@@ -19,9 +18,8 @@ from threatcode.values import is_unknown
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
-# The rules the insecure fixture trips today. SG_UNRESTRICTED_INGRESS is not among them: the
-# fixture now holds security group ingress in the shape `terraform show -json` prints (a list of
-# objects), which the rule cannot read yet. WP-3-2 rewrites it, and the test below then expects it.
+# The rules the insecure fixture trips today. The security group rules are checked by
+# test_the_open_security_groups_are_reported, because they report on specific groups.
 FIRING_RULE_IDS = {
     "S3_NO_ENCRYPTION",
     "S3_PUBLIC_ACCESS",
@@ -61,16 +59,16 @@ class TestInsecureFixture:
         missing = FIRING_RULE_IDS - fired_rule_ids
         assert not missing, f"Rules did not fire: {missing}"
 
-    @pending(
-        "WP-3-2", "SG_UNRESTRICTED_INGRESS reads ingress as a list of objects with world CIDRs"
-    )
     def test_the_open_security_groups_are_reported(self) -> None:
-        flagged = {
-            t.resource_address
-            for t in self.report.threats
-            if t.rule_id == "SG_UNRESTRICTED_INGRESS"
+        def flagged(rule_id: str) -> set[str]:
+            return {t.resource_address for t in self.report.threats if t.rule_id == rule_id}
+
+        # wide_open allows the world to SSH (22) and HTTPS (443); ipv6_open allows ::/0 to port 80
+        assert flagged("SG_UNRESTRICTED_INGRESS") == {"aws_security_group.wide_open"}
+        assert flagged("SG_WEB_PORT_OPEN_TO_WORLD") == {
+            "aws_security_group.wide_open",
+            "aws_security_group.ipv6_open",
         }
-        assert flagged == {"aws_security_group.wide_open", "aws_security_group.ipv6_open"}
 
     def test_total_threats_reasonable(self) -> None:
         # At minimum 18 rule-based + some boundary threats
