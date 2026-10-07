@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "/Users/dev"]
+    },
+    "team-tools": {
+      "type": "http",
+      "url": "http://tools.team.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-live-4eC39HqLyjWDarjtT1zdp7dc"
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+# What a scan of examples/aws-webapp must produce. Read by tests/test_examples_paths.py and
+# tests/test_examples_ingest.py; the claims in the demo and the docs are exactly these lines.
+#
+# The story: an internet-facing ALB (443 open to the world) fronts two app instances that still
+# allow IMDSv1. Their instance profile lets the role read the customer data bucket and the database
+# secret, and the database accepts 5432 from the app tier only. The app image is built from a base
+# with one critical CVE, reported by Trivy in scanner/trivy-app-image.json.
+#
+# The plan is real-shape `terraform show -json` output (format 1.2, handbuilt: no Terraform binary
+# was available) with create-time ids unknown and relationships in configuration references.
+# The role policy uses literal ARNs on purpose: a policy built from the bucket's computed ARN is
+# unknown at plan time and cannot name its resources.
+# The image reference sits in the instances' plaintext user_data (a launch template would hold it
+# base64-encoded, which hides the join key); see the scanner section below.
+example: aws-webapp
+inputs:
+  - tfplan.json
+scanner_inputs:
+  - scanner/trivy-app-image.json
+
+# Nodes the scan must model. Checked today through the library path.
+nodes:
+  - aws_vpc.main
+  - aws_internet_gateway.gw
+  - aws_subnet.public_a
+  - aws_subnet.private_a
+  - aws_route_table.public
+  - aws_security_group.alb
+  - aws_security_group.app
+  - aws_security_group.db
+  - aws_lb.front
+  - aws_lb_listener.https
+  - aws_lb_target_group.app
+  - aws_instance.app[0]
+  - aws_instance.app[1]
+  - aws_iam_role.app
+  - aws_iam_role_policy.app_data
+  - aws_iam_instance_profile.app
+  - aws_db_instance.orders
+  - aws_db_subnet_group.db
+  - aws_s3_bucket.customer_data
+  - aws_secretsmanager_secret.db_credentials
+
+# Attack paths, from the synthetic internet node to a crown jewel. `via` lists nodes the path must
+# pass through, in order; other hops (security groups, the role) may sit between them.
+attack_paths:
+  - id: internet-to-customer-data
+    entry: internet
+    target: aws_s3_bucket.customer_data
+    via: [aws_lb.front, "aws_instance.app[0]"]
+    why: ALB to instance on 8080, then the instance role allows s3:GetObject on the bucket.
+  - id: internet-to-database-secret
+    entry: internet
+    target: aws_secretsmanager_secret.db_credentials
+    via: [aws_lb.front, "aws_instance.app[0]"]
+    why: The same role allows secretsmanager:GetSecretValue on orders/db-*.
+  - id: internet-to-database
+    entry: internet
+    target: aws_db_instance.orders
+    via: [aws_lb.front, "aws_instance.app[0]"]
+    why: The database security group accepts 5432 from the app security group only, so the path
+      runs through the app tier.
+
+# Findings the scan must report. `kind` classes are those of tests/test_quality/harness.py.
+# An entry with `pending` names the package that makes the finding appear.
+key_findings:
+  - resource: "aws_instance.app[0]"
+    kind: imdsv1
+    why: metadata_options.http_tokens is optional, so a request forgery reaches the instance role.
+    pending:
+      package: WP-3-2
+      reason: an IMDSv1 rule reads metadata_options.http_tokens on instances
+  - resource: aws_security_group.alb
+    kind: open_ingress
+    why: 443 open to 0.0.0.0/0 on an internet-facing load balancer; intentional, so informational.
+    pending:
+      package: WP-3-2
+      reason: security group rules read ingress as a list of mappings with world-open CIDRs
+
+# Scanner report joined to the graph when ingested (`--ingest`).
+scanner:
+  - file: scanner/trivy-app-image.json
+    tool: trivy
+    image: registry.example.com/shop/orders-api:3.2.1
+    finding: CVE-2022-37434
+    severity: critical
+    attaches_to: ["aws_instance.app[0]", "aws_instance.app[1]"]
+    join: the image reference appears in each instance's user_data
+    enables_path: internet-to-customer-data

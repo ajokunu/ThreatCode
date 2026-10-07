@@ -1,0 +1,39 @@
+# What a scan of examples/agent-workstation must produce. Read by tests/test_examples_paths.py.
+#
+# The story, an agent with all three legs of the lethal trifecta: it can read private data (a
+# filesystem server on the home directory), ingest untrusted content (a fetch server) and talk to
+# a remote tool server over plain http with a literal token in the header.
+example: agent-workstation
+inputs:
+  - .mcp.json
+
+nodes:
+  - mcp_server.fetch
+  - mcp_server.filesystem
+  - mcp_server.team-tools
+
+attack_paths:
+  - id: untrusted-content-to-home-directory
+    entry: internet
+    target: mcp_server.filesystem
+    via: [mcp_server.fetch]
+    why: Web content fetched by the agent can instruct it to read the home directory through the filesystem server.
+  - id: remote-tool-server-to-home-directory
+    entry: internet
+    target: mcp_server.filesystem
+    via: [mcp_server.team-tools]
+    why: A remote server reached over plain http with a literal token sits in the same agent as the filesystem server.
+
+key_findings:
+  - resource: mcp_server.filesystem
+    rule_ids: [MCP_BROAD_FILESYSTEM]
+    why: The filesystem server is rooted at /Users/dev, the whole home directory.
+  - resource: mcp_server.team-tools
+    rule_ids: [MCP_PLAINTEXT_TRANSPORT]
+    why: The URL is http, so the bearer token crosses the network in clear text.
+  - resource: mcp_server.team-tools
+    rule_ids: [MCP_SECRET_IN_CONFIG]
+    why: The Authorization header holds a literal key instead of an environment reference.
+  - resource: mcp_server.fetch
+    rule_ids: [MCP_UNPINNED_PACKAGE]
+    why: uvx mcp-server-fetch has no version pin, so every launch runs whatever is newest.

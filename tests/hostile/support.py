@@ -19,6 +19,8 @@ import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
+from tests.helpers.cli import CliRun, run_cli
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC = REPO_ROOT / "src"
 
@@ -101,51 +103,12 @@ def scan_in_child(path: Path, budget: float = DEFAULT_BUDGET_SECONDS) -> Outcome
     return Outcome("error", 0.0, exception="ChildCrashed", message=done.stderr[-300:])
 
 
-@dataclass(frozen=True)
-class CliRun:
-    exit_code: int | None  # None when the run timed out
-    stdout: str
-    stderr: str
-    seconds: float
-
-    @property
-    def timed_out(self) -> bool:
-        return self.exit_code is None
-
-
 def cli_scan(
     path: Path, budget: float = DEFAULT_BUDGET_SECONDS, extra_args: tuple[str, ...] = ()
 ) -> CliRun:
     """Run ``threatcode scan PATH -f json --fail-on none`` in a child process."""
-    import time
-
-    command = [
-        sys.executable,
-        "-m",
-        "threatcode",
-        "scan",
-        str(path),
-        "-f",
-        "json",
-        "--fail-on",
-        "none",
-        *extra_args,
-    ]
-    started = time.monotonic()
-    try:
-        done = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=budget,
-            env={**os.environ, "PYTHONPATH": str(SRC)},
-            cwd=str(path if path.is_dir() else path.parent),
-        )
-    except subprocess.TimeoutExpired as exc:
-        out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        err = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        return CliRun(None, out, err, time.monotonic() - started)
-    return CliRun(done.returncode, done.stdout, done.stderr, time.monotonic() - started)
+    args = ["scan", str(path), "-f", "json", "--fail-on", "none", *extra_args]
+    return run_cli(args, budget, cwd=path if path.is_dir() else path.parent)
 
 
 def run_python(code: str, budget: float) -> Outcome:

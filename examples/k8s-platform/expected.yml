@@ -1,0 +1,62 @@
+# What a scan of examples/k8s-platform must produce. Read by tests/test_examples_paths.py.
+#
+# The story: an Ingress routes to a Service, which selects a Deployment. The Deployment runs as a
+# ServiceAccount that a ClusterRoleBinding ties to a ClusterRole allowed to read every Secret in the
+# cluster, and it reads one Secret directly. A separate DaemonSet runs privileged on the host.
+example: k8s-platform
+inputs:
+  - namespace.yaml
+  - ingress.yaml
+  - service.yaml
+  - deployment.yaml
+  - secret.yaml
+  - rbac.yaml
+  - daemonset.yaml
+
+# Node ids. The Namespace and the cluster-scoped kinds are found by type, because their address
+# loses the namespace segment when cluster-scoped kinds are addressed as <type>.<name>. A finding's
+# resource may be written <type>.<name> for the same reason; the test resolves it to the node.
+nodes:
+  - kubernetes_ingress.platform.storefront
+  - kubernetes_service.platform.storefront
+  - kubernetes_deployment.platform.storefront
+  - kubernetes_service_account.platform.storefront-sa
+  - kubernetes_secret.platform.payment-api-key
+  - kubernetes_daemon_set.platform.node-exporter
+node_types:
+  - kubernetes_namespace
+  - kubernetes_cluster_role
+  - kubernetes_cluster_role_binding
+
+attack_paths:
+  - id: internet-to-secret-through-the-workload
+    entry: internet
+    target: kubernetes_secret.platform.payment-api-key
+    via:
+      - kubernetes_ingress.platform.storefront
+      - kubernetes_service.platform.storefront
+      - kubernetes_deployment.platform.storefront
+    why: Ingress to Service to Deployment, which reads the Secret through secretKeyRef.
+  - id: internet-to-secret-through-cluster-rbac
+    entry: internet
+    target: kubernetes_secret.platform.payment-api-key
+    via:
+      - kubernetes_ingress.platform.storefront
+      - kubernetes_service.platform.storefront
+      - kubernetes_deployment.platform.storefront
+      - kubernetes_service_account.platform.storefront-sa
+    why: The Deployment's ServiceAccount is bound to a ClusterRole that reads every Secret.
+
+key_findings:
+  - resource: kubernetes_daemon_set.platform.node-exporter
+    rule_ids: [K8S_PRIVILEGED_CONTAINER]
+    why: privileged true, host network, host PID and a hostPath mount of the node root.
+    pending:
+      package: WP-1-1
+      reason: workload rules apply to every pod workload kind, not only Deployment
+  - resource: kubernetes_cluster_role.secret-reader
+    kind: secrets_read
+    why: get, list and watch on secrets in every namespace.
+    pending:
+      package: WP-3-6
+      reason: RBAC rules read has_secrets_read from the ClusterRole rules

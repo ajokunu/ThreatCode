@@ -69,6 +69,7 @@ KIND_PATTERNS: dict[str, re.Pattern[str]] = {
         "registry_admin_enabled": r"admin (user|account|enabled)|admin_enabled",
         "https_not_enforced": r"https|tls|plaintext|unencrypted transport",
         "no_vpc": r"\bvpc\b",
+        "secrets_read": r"secrets?.*(read|get|list|access)|(read|get|list|access).*secrets?",
     }.items()
 }
 
