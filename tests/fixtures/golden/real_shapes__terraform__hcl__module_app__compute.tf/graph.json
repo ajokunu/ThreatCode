@@ -1,0 +1,28 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_db_instance.orders",
+      "target": "aws_db_subnet_group.db",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_db_instance.orders": {
+      "category": "database",
+      "zone": "private"
+    },
+    "aws_db_subnet_group.db": {
+      "category": "database",
+      "zone": "private"
+    },
+    "aws_instance.app": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_lb.front": {
+      "category": "network",
+      "zone": "dmz"
+    }
+  }
+}

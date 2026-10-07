@@ -10,4 +10,7 @@ source: handbuilt.
 | `two_vpcs.tf` | Two VPCs with one subnet, security group and instance each, referenced as `aws_vpc.prod.id` and `aws_vpc.dev.id`. |
 
 A directory of `.tf` files is one Terraform module.
-Until the directory parser lands, per-file parsing sees each file alone.
+Scanning the directory reads the files together, so variables, locals and references resolve across files and the local module is followed.
+Scanning one file reads only that file, so a reference to a resource or a variable declared in another file stays unresolved.
+The remote registry module in `module_app/modules.tf` is not read; it is reported as skipped and the parse is marked incomplete.
+`tests/test_ir/test_graph_realistic_hcl.py` asserts both readings, and the recordings under `tests/fixtures/golden/real_shapes__terraform__hcl__*` hold the one-file reading of each file, because the recording harness takes files as inputs.
