@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import builtins
 import json
+import os
 import socket
+import subprocess
+import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import pytest
 from click.testing import CliRunner
 
+from threatcode import __version__
 from threatcode.cli import cli
+from threatcode.exceptions import LLMError
 
 if TYPE_CHECKING:
     from tests.conftest import FakeLLMServer
 
+REPO_ROOT = Path(__file__).parent.parent
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SHAPES = FIXTURES_DIR / "input_shapes"
 K8S_FIXTURE = FIXTURES_DIR / "kubernetes" / "insecure_deployment.yml"
+
+REMOVED_COMMANDS = ["image", "vuln", "db", "sbom", "license", "repo", "fs", "secret"]
 
 
 class TestScanCommand:
@@ -294,3 +305,227 @@ class TestVersionOption:
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
         assert "threatcode" in result.output
+
+    def test_version_flag_prints_the_package_version(self) -> None:
+        result = CliRunner().invoke(cli, ["--version"])
+        assert result.output.strip().endswith(__version__)
+
+
+class TestSlimmedSurface:
+    """The scanning layer is gone: the CLI has scan and diff and nothing else."""
+
+    def test_only_scan_and_diff_are_commands(self) -> None:
+        assert sorted(cli.commands) == ["diff", "scan"]
+
+    @pytest.mark.parametrize("command", REMOVED_COMMANDS)
+    def test_removed_command_is_not_found(self, command: str) -> None:
+        result = CliRunner().invoke(cli, [command, str(K8S_FIXTURE)])
+        assert result.exit_code == 2
+        assert "No such command" in result.output
+        assert command in result.output
+
+    @pytest.mark.parametrize("option", ["--scanners=misconfig", "-s", "--ignore-unfixed"])
+    def test_removed_scan_options_are_not_found(self, option: str) -> None:
+        args = ["scan", str(K8S_FIXTURE), option]
+        if option == "-s":
+            args.append("misconfig")
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 2
+        assert "No such option" in result.output
+
+    def test_help_lists_scan_and_diff_only(self) -> None:
+        result = CliRunner().invoke(cli, ["--help"])
+        assert result.exit_code == 0
+        assert "scan" in result.output
+        assert "diff" in result.output
+        for command in REMOVED_COMMANDS:
+            assert f"\n  {command} " not in result.output
+
+    def test_short_help_flag(self) -> None:
+        result = CliRunner().invoke(cli, ["-h"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_scan_help_has_no_scanner_options(self) -> None:
+        result = CliRunner().invoke(cli, ["scan", "--help"])
+        assert result.exit_code == 0
+        assert "--scanners" not in result.output
+        assert "--ignore-unfixed" not in result.output
+        assert "--format" in result.output
+        assert "--min-severity" in result.output
+
+    def test_group_help_does_not_describe_the_removed_scanners(self) -> None:
+        result = CliRunner().invoke(cli, ["--help"])
+        for word in ("SBOM", "vulnerabilit", "license", "image"):
+            assert word not in result.output
+
+
+class TestScanInputs:
+    def _scan(self, tmp_path: Path, source: Path) -> tuple[int, str, dict[str, Any]]:
+        out = tmp_path / "report.json"
+        result = CliRunner().invoke(cli, ["scan", str(source), "--no-llm", "-o", str(out)])
+        report = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
+        return result.exit_code, result.output, report
+
+    def test_short_form_cloudformation_scans(self, tmp_path: Path) -> None:
+        code, output, report = self._scan(tmp_path, SHAPES / "cfn_short_form.yml")
+        assert code in (0, 1)
+        assert "Error" not in output
+        assert "threats" in report
+
+    def test_terraform_directory_scans_as_one_module(self, tmp_path: Path) -> None:
+        code, output, report = self._scan(tmp_path, SHAPES / "tf_module")
+        assert code in (0, 1)
+        assert "Error" not in output
+        assert report["scanned_resources"] == 3
+
+    def test_tofu_and_json_syntax_files_scan(self, tmp_path: Path) -> None:
+        for name in ("main.tofu", "cdk.tf.json"):
+            code, output, report = self._scan(tmp_path, SHAPES / name)
+            assert code in (0, 1), output
+            assert "threats" in report
+
+    def test_state_json_is_rejected_with_the_corrective_command(self) -> None:
+        result = CliRunner().invoke(cli, ["scan", str(SHAPES / "terraform_state.json"), "--no-llm"])
+        assert result.exit_code != 0
+        assert "This is Terraform state, not a plan" in result.output
+        assert "terraform plan -out tfplan && terraform show -json tfplan" in result.output
+        assert "Scanned 0 resources" not in result.output
+
+    def test_destroy_only_plan_is_rejected(self) -> None:
+        source = SHAPES / "terraform_destroy.plan.json"
+        result = CliRunner().invoke(cli, ["scan", str(source), "--no-llm"])
+        assert result.exit_code != 0
+        assert "destroys every resource" in result.output
+
+    def test_empty_file_is_reported_as_empty(self, tmp_path: Path) -> None:
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["scan", str(empty), "--no-llm"])
+        assert result.exit_code != 0
+        assert "file is empty" in result.output
+        assert "Traceback" not in result.output
+
+    def test_binary_file_is_reported_as_not_text(self, tmp_path: Path) -> None:
+        blob = tmp_path / "blob.json"
+        blob.write_bytes(b"\x89PNG\r\n\x1a\n\x00")
+        result = CliRunner().invoke(cli, ["scan", str(blob), "--no-llm"])
+        assert result.exit_code != 0
+        assert "not valid UTF-8 text" in result.output
+        assert "UnicodeDecodeError" not in result.output
+
+    def test_error_messages_do_not_carry_exception_class_names(self) -> None:
+        source = SHAPES / "terraform_state.json"
+        result = CliRunner().invoke(cli, ["scan", str(source), "--no-llm"])
+        assert "ParseError" not in result.output
+        assert "Error parsing input file: This is Terraform state" in result.output
+
+    def test_directory_without_terraform_files_names_the_problem(self, tmp_path: Path) -> None:
+        result = CliRunner().invoke(cli, ["scan", str(tmp_path), "--no-llm"])
+        assert result.exit_code != 0
+        assert "no Terraform files" in result.output
+        assert "IsADirectoryError" not in result.output
+
+    def test_unsupported_input_lists_what_is_supported(self, tmp_path: Path) -> None:
+        other = tmp_path / "notes.xml"
+        other.write_text("<root/>", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["scan", str(other), "--no-llm"])
+        assert result.exit_code != 0
+        assert "Cannot detect format for notes.xml" in result.output
+        assert "Supported inputs:" in result.output
+
+
+class TestCoreInstall:
+    """The anthropic SDK belongs to the llm extra; a rules-only run never needs it."""
+
+    def test_rules_only_scan_does_not_import_anthropic(self) -> None:
+        code = (
+            "import sys\n"
+            "import threatcode\n"
+            "import threatcode.cli\n"
+            f"threatcode.scan({str(K8S_FIXTURE)!r}, no_llm=True)\n"
+            "assert 'anthropic' not in sys.modules, 'anthropic was imported'\n"
+            "print('ok')\n"
+        )
+        env = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")}
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, env=env, check=False
+        )
+        assert result.returncode == 0, result.stderr
+        assert "ok" in result.stdout
+
+    def _block_anthropic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "anthropic" or name.startswith("anthropic."):
+                raise ImportError("No module named 'anthropic'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    def test_missing_sdk_error_names_the_extra(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from threatcode.engine.llm.client import AnthropicLLMClient
+
+        self._block_anthropic(monkeypatch)
+        with pytest.raises(LLMError, match=r"pip install 'threatcode\[llm\]'"):
+            AnthropicLLMClient(api_key="test")
+
+    def test_cli_reports_the_missing_sdk_without_a_traceback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        self._block_anthropic(monkeypatch)
+        result = CliRunner().invoke(cli, ["scan", str(K8S_FIXTURE)])
+        assert result.exit_code == 1
+        assert "pip install 'threatcode[llm]'" in result.output
+        assert "Traceback" not in result.output
+
+
+class TestPackagingMetadata:
+    @staticmethod
+    def _pyproject() -> dict[str, Any]:
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            import tomli as tomllib
+        with (REPO_ROOT / "pyproject.toml").open("rb") as handle:
+            return tomllib.load(handle)
+
+    def test_version_is_single_sourced(self) -> None:
+        data = self._pyproject()
+        assert "version" not in data["project"]
+        assert data["project"]["dynamic"] == ["version"]
+        assert data["tool"]["setuptools"]["dynamic"]["version"] == {
+            "attr": "threatcode.__version__"
+        }
+
+    def test_installed_metadata_matches_the_module_version(self) -> None:
+        from importlib import metadata
+
+        try:
+            installed = metadata.version("threatcode")
+        except metadata.PackageNotFoundError:
+            pytest.skip("threatcode is not installed as a distribution")
+        assert installed == __version__
+
+    def test_core_dependencies_exclude_the_removed_scanning_stack(self) -> None:
+        names = {
+            dep.split(";")[0].split(">")[0].split("<")[0].split("=")[0].strip().lower()
+            for dep in self._pyproject()["project"]["dependencies"]
+        }
+        assert {"click", "pydantic", "python-hcl2", "pyyaml", "networkx"} <= names
+        assert not names & {"anthropic", "httpx", "packaging"}
+
+    def test_llm_extra_is_the_only_runtime_path_to_anthropic(self) -> None:
+        extras = self._pyproject()["project"]["optional-dependencies"]
+        assert any(dep.startswith("anthropic") for dep in extras["llm"])
+        assert any(dep.startswith("anthropic") for dep in extras["all"])
+        assert any(dep.startswith("anthropic") for dep in extras["dev"])
+        for name in ("jsonschema", "hypothesis", "build"):
+            assert any(dep.startswith(name) for dep in extras["dev"])
+
+    def test_py_typed_is_shipped(self) -> None:
+        data = self._pyproject()
+        assert "py.typed" in data["tool"]["setuptools"]["package-data"]["threatcode"]
+        assert (REPO_ROOT / "src" / "threatcode" / "py.typed").is_file()

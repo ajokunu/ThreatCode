@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.9.1"
-description = "Automated security scanning and threat modeling from Infrastructure-as-Code and container images"
+dynamic = ["version"]
+description = "STRIDE threat models and attack paths from infrastructure code and AI-agent configs"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Security",
+    "Typing :: Typed",
 ]
 dependencies = [
     "click>=8.1,<9",
@@ -29,13 +30,21 @@ dependencies = [
     "python-hcl2>=4.3,<5",
     "pyyaml>=6.0.1,<7",
     "networkx>=3.1,<4",
-    "anthropic>=0.39,<1",
-    "httpx>=0.27,<1",
-    "packaging>=23.0,<25",
     "tomli>=2.0,<3;python_version<'3.11'",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ajokunu/ThreatCode"
+Repository = "https://github.com/ajokunu/ThreatCode"
+Issues = "https://github.com/ajokunu/ThreatCode/issues"
+
 [project.optional-dependencies]
+llm = [
+    "anthropic>=0.39,<2",
+]
+all = [
+    "anthropic>=0.39,<2",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -44,6 +53,10 @@ dev = [
     "pip-audit>=2.6",
     "types-networkx>=3.1",
     "types-PyYAML>=6.0",
+    "anthropic>=0.39,<2",
+    "jsonschema>=4.0",
+    "hypothesis>=6.0",
+    "build>=1.0",
 ]
 docs = [
     "mkdocs-material>=9.0",
@@ -54,11 +67,14 @@ docs = [
 [project.scripts]
 threatcode = "threatcode.cli:cli"
 
+[tool.setuptools.dynamic]
+version = { attr = "threatcode.__version__" }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-threatcode = ["engine/rules/builtin/**/*.yml"]
+threatcode = ["py.typed", "engine/rules/builtin/**/*.yml"]
 
 [tool.ruff]
 target-version = "py310"
