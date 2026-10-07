@@ -67,9 +67,9 @@ class TestSurvivedToday:
         outcome = scan_in_child(path)
         assert outcome.clean, f"{outcome.exception}: {outcome.message}"
 
-    def test_a_binary_file_with_an_iac_name_is_not_a_crash(self, tmp_path: Path) -> None:
+    def test_a_binary_file_with_an_iac_name_does_not_hang_the_scan(self, tmp_path: Path) -> None:
         path = tmp_path / "main.tf"
-        path.write_bytes(os.urandom(4096))
+        path.write_bytes(b"\x80\x81\x82" * 2000)  # not valid UTF-8, not a byte order mark
         outcome = scan_in_child(path)
         assert outcome.status in ("ok", "error")
         assert not outcome.timed_out
@@ -77,6 +77,14 @@ class TestSurvivedToday:
 
 
 class TestPendingParserFixes:
+    @pending("WP-1-4", "input is decoded strictly and a non-UTF-8 file is a ParseError naming it")
+    def test_a_binary_file_ends_in_a_parse_error_that_names_the_cause(self, tmp_path: Path) -> None:
+        path = tmp_path / "main.tf"
+        path.write_bytes(b"\x80\x81\x82" * 2000)
+        outcome = scan_in_child(path)
+        assert outcome.status == "error"
+        assert outcome.threatcode_error, f"raised {outcome.exception}, which the CLI cannot report"
+
     @pending(
         "WP-1-4", "loader exceptions, RecursionError included, become ParseError naming the file"
     )
