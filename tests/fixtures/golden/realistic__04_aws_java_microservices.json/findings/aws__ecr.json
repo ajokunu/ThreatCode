@@ -1,0 +1,18 @@
+[
+  {
+    "resource_address": "aws_ecr_repository.notification_service",
+    "rule_id": "ECR_MUTABLE_TAGS",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1525"
+    ]
+  },
+  {
+    "resource_address": "aws_ecr_repository.notification_service",
+    "rule_id": "ECR_NO_SCAN_ON_PUSH",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": []
+  }
+]

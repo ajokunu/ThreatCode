@@ -1,17 +1,8 @@
 [
   {
     "resource_address": "Distribution",
-    "rule_id": "CLOUDFRONT_NO_GEO_RESTRICTION",
-    "severity": "low",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1190"
-    ]
-  },
-  {
-    "resource_address": "Distribution",
     "rule_id": "CLOUDFRONT_NO_HTTPS",
-    "severity": "high",
+    "severity": "medium",
     "stride": "information_disclosure",
     "techniques": [
       "T1557"
@@ -20,16 +11,14 @@
   {
     "resource_address": "Distribution",
     "rule_id": "CLOUDFRONT_NO_LOGGING",
-    "severity": "medium",
+    "severity": "low",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   },
   {
     "resource_address": "Distribution",
     "rule_id": "CLOUDFRONT_NO_WAF",
-    "severity": "medium",
+    "severity": "low",
     "stride": "tampering",
     "techniques": [
       "T1190"

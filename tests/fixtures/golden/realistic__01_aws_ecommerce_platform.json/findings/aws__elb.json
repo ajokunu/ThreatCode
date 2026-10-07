@@ -2,10 +2,8 @@
   {
     "resource_address": "aws_lb.storefront",
     "rule_id": "ELB_NO_ACCESS_LOGS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "repudiation",
-    "techniques": [
-      "T1562.008"
-    ]
+    "techniques": []
   }
 ]
