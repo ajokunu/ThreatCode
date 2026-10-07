@@ -1,47 +1,29 @@
 [
   {
-    "resource_address": "kubernetes_network_policy.elsewhere-ns.other-namespace-policy",
+    "resource_address": "kubernetes_deployment.other.elsewhere",
     "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1048"
     ]
   },
   {
-    "resource_address": "kubernetes_network_policy.policy.deny-all-for-guarded",
+    "resource_address": "kubernetes_deployment.policy.exposed",
     "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
       "T1048"
     ]
   },
   {
-    "resource_address": "kubernetes_network_policy.policy.frontend-ingress-only",
-    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
-    "severity": "medium",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1048"
-    ]
-  },
-  {
-    "resource_address": "kubernetes_network_policy.elsewhere-ns.other-namespace-policy",
+    "resource_address": "kubernetes_deployment.other.elsewhere",
     "rule_id": "K8S_NO_NETWORK_POLICY",
-    "severity": "medium",
+    "severity": "low",
     "stride": "information_disclosure",
     "techniques": [
-      "T1040"
-    ]
-  },
-  {
-    "resource_address": "kubernetes_network_policy.policy.deny-all-for-guarded",
-    "rule_id": "K8S_NO_NETWORK_POLICY",
-    "severity": "medium",
-    "stride": "information_disclosure",
-    "techniques": [
-      "T1040"
+      "T1046"
     ]
   }
 ]

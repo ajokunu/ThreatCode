@@ -1,11 +1,11 @@
 [
   {
     "resource_address": "kubernetes_deployment.shop.web",
-    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
-    "severity": "medium",
-    "stride": "elevation_of_privilege",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
     "techniques": [
-      "T1528"
+      "T1499"
     ]
   },
   {

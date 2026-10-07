@@ -1,52 +1,330 @@
+# RBAC: Roles, ClusterRoles and their bindings.
+#
+# Severity and confidence belong to a rule, so a namespaced Role and a ClusterRole, or a
+# RoleBinding and a ClusterRoleBinding, are separate rules where the risk differs. A role rule
+# lists its role types explicitly and never matches a binding (a bare kubernetes_role prefix
+# would also have matched kubernetes_role_binding).
+#
+# Calibration: definitive (the configuration proves it), heuristic (inferred, never above
+# high) and absence (something is missing, never above medium). See workloads.yml.
+# Critical is reserved for definitive, direct control: a ClusterRoleBinding that hands a
+# powerful role to everyone who is anonymous or merely authenticated.
+#
+# Three bindings rules split one input between them, so that a binding yields one finding:
+#   K8S_ANONYMOUS_PRIVILEGED_BINDING  a ClusterRoleBinding of a privileged role to a broad group
+#   K8S_ANONYMOUS_BINDING             any other binding of a role to a broad group
+#   K8S_CLUSTER_ADMIN_BINDING         a ClusterRoleBinding of a privileged role to anyone else
+# A broad group is system:anonymous, system:unauthenticated or system:authenticated, as a User
+# or a Group. The discovery roles that Kubernetes itself binds to those groups
+# (system:public-info-viewer, system:basic-user, system:discovery) are never reported.
+
 rules:
+  # --- bindings ---------------------------------------------------------------------------
+
   - id: K8S_CLUSTER_ADMIN_BINDING
-    title: ClusterRoleBinding to cluster-admin
+    title: ClusterRoleBinding to cluster-admin or admin
     description: >
-      A ClusterRoleBinding grants cluster-admin privileges.
-      This gives full control over all resources in the cluster.
+      A ClusterRoleBinding grants the cluster-admin or admin ClusterRole in every namespace.
+      cluster-admin gives full control over every resource in the cluster, and admin does the
+      same for every namespace.
+      A binding to system:anonymous, system:unauthenticated or system:authenticated is
+      reported by K8S_ANONYMOUS_PRIVILEGED_BINDING instead.
     stride_category: elevation_of_privilege
-    severity: critical
+    severity: high
+    confidence: definitive
     resource_type: kubernetes_cluster_role_binding
     condition:
       role_ref_name:
-        equals: "cluster-admin"
+        matches_any: ["cluster-admin", "admin"]
+      binds_unauthenticated_group:
+        equals: false
+      binds_authenticated_group:
+        equals: false
     mitigation: >
-      Use more restrictive roles with least-privilege principles.
+      Bind a narrower role, and bind it in the namespaces that need it with a RoleBinding.
     metadata:
       mitre:
         techniques: ["T1078"]
-        tactics: ["TA0004"]
 
-  - id: K8S_WILDCARD_RBAC_VERBS
-    title: RBAC role with wildcard verbs
+  - id: K8S_ROLE_BINDING_ADMIN
+    title: RoleBinding to cluster-admin or admin
     description: >
-      An RBAC role grants wildcard (*) verbs, allowing all actions.
+      A RoleBinding grants the cluster-admin or admin ClusterRole inside its namespace.
+      The grant stops at the namespace, so this is less severe than a ClusterRoleBinding, but
+      the subject can still read every Secret and run anything in it.
+      A binding to system:anonymous, system:unauthenticated or system:authenticated is
+      reported by K8S_ANONYMOUS_BINDING instead.
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: definitive
+    resource_type: kubernetes_role_binding
+    condition:
+      role_ref_kind:
+        equals: "ClusterRole"
+      role_ref_name:
+        matches_any: ["cluster-admin", "admin"]
+      binds_unauthenticated_group:
+        equals: false
+      binds_authenticated_group:
+        equals: false
+    mitigation: >
+      Bind a role that lists only the verbs and resources the subject needs.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  - id: K8S_ANONYMOUS_PRIVILEGED_BINDING
+    title: Privileged ClusterRole bound to anonymous or authenticated users
+    description: >
+      A ClusterRoleBinding grants cluster-admin, admin or edit to system:anonymous,
+      system:unauthenticated or system:authenticated.
+      Anyone who can reach the API server, or any account the cluster knows, then holds that
+      role in every namespace.
+    stride_category: elevation_of_privilege
+    severity: critical
+    confidence: definitive
+    resource_type: kubernetes_cluster_role_binding
+    condition:
+      all_of:
+        - role_ref_name:
+            matches_any: ["cluster-admin", "admin", "edit"]
+        - any_of:
+            - binds_unauthenticated_group:
+                equals: true
+            - binds_authenticated_group:
+                equals: true
+    mitigation: >
+      Remove the broad subject from the binding and bind named users, groups or
+      ServiceAccounts instead.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  - id: K8S_ANONYMOUS_BINDING
+    title: Role bound to anonymous or authenticated users
+    description: >
+      A binding grants a role to system:anonymous, system:unauthenticated or
+      system:authenticated.
+      Anyone who can reach the API server, or any account the cluster knows, then holds the
+      permissions of the role, in one namespace for a RoleBinding and in all of them for a
+      ClusterRoleBinding.
+      The roles Kubernetes binds to those groups itself (system:public-info-viewer,
+      system:basic-user, system:discovery) are not reported, and neither is a privileged
+      ClusterRoleBinding, which K8S_ANONYMOUS_PRIVILEGED_BINDING reports.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: definitive
+    resource_types: ["kubernetes_role_binding", "kubernetes_cluster_role_binding"]
+    condition:
+      all_of:
+        - any_of:
+            - binds_unauthenticated_group:
+                equals: true
+            - binds_authenticated_group:
+                equals: true
+        - not:
+            role_ref_name:
+              matches_any: ["system:public-info-viewer", "system:basic-user", "system:discovery"]
+        - not:
+            all_of:
+              - kind:
+                  equals: "ClusterRoleBinding"
+              - role_ref_name:
+                  matches_any: ["cluster-admin", "admin", "edit"]
+    mitigation: >
+      Remove the broad subject and bind named users, groups or ServiceAccounts.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  # --- ClusterRole wildcards --------------------------------------------------------------
+
+  - id: K8S_WILDCARD_RBAC_VERBS
+    title: ClusterRole with wildcard verbs
+    description: >
+      A ClusterRole grants the wildcard (*) verb, which allows every action, including the
+      ones added in later Kubernetes versions, on the resources of its rule.
+      K8S_ROLE_WILDCARD_VERBS is the same finding for a namespaced Role.
+    stride_category: elevation_of_privilege
+    severity: high
+    confidence: definitive
+    root_cause: rbac_wildcard
     resource_type: kubernetes_cluster_role
     condition:
       has_wildcard_verbs:
         equals: true
     mitigation: >
-      Specify explicit verbs instead of wildcards.
+      List the verbs the role needs instead of using a wildcard.
     metadata:
       mitre:
         techniques: ["T1078"]
-        tactics: ["TA0004"]
 
   - id: K8S_WILDCARD_RBAC_RESOURCES
-    title: RBAC role with wildcard resources
+    title: ClusterRole with wildcard resources
     description: >
-      An RBAC role grants access to wildcard (*) resources.
+      A ClusterRole grants access to the wildcard (*) resource, which covers every resource
+      type in the API groups of its rule, including Secrets and custom resources added later.
+      K8S_ROLE_WILDCARD_RESOURCES is the same finding for a namespaced Role.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: definitive
+    root_cause: rbac_wildcard
     resource_type: kubernetes_cluster_role
     condition:
       has_wildcard_resources:
         equals: true
     mitigation: >
-      Specify explicit resources instead of wildcards.
+      List the resources the role needs instead of using a wildcard.
     metadata:
       mitre:
         techniques: ["T1078"]
-        tactics: ["TA0004"]
+
+  - id: K8S_WILDCARD_RBAC_API_GROUPS
+    title: ClusterRole with wildcard API groups
+    description: >
+      A ClusterRole names the wildcard (*) API group, so its rule also covers every API group
+      that is installed later, including custom resource definitions.
+      On its own this is weaker than a wildcard verb or resource.
+      K8S_ROLE_WILDCARD_API_GROUPS is the same finding for a namespaced Role.
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: definitive
+    root_cause: rbac_wildcard
+    resource_type: kubernetes_cluster_role
+    condition:
+      has_wildcard_api_groups:
+        equals: true
+    mitigation: >
+      List the API groups the role needs instead of using a wildcard.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  # --- Role wildcards ---------------------------------------------------------------------
+
+  - id: K8S_ROLE_WILDCARD_VERBS
+    title: Role with wildcard verbs
+    description: >
+      A namespaced Role grants the wildcard (*) verb on the resources of its rule.
+      The grant stops at the namespace, so this is less severe than the same rule in a
+      ClusterRole (K8S_WILDCARD_RBAC_VERBS).
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: definitive
+    root_cause: rbac_wildcard
+    resource_type: kubernetes_role
+    condition:
+      has_wildcard_verbs:
+        equals: true
+    mitigation: >
+      List the verbs the role needs instead of using a wildcard.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  - id: K8S_ROLE_WILDCARD_RESOURCES
+    title: Role with wildcard resources
+    description: >
+      A namespaced Role grants access to the wildcard (*) resource, which covers every
+      resource type of the namespace in the API groups of its rule, Secrets included.
+      The grant stops at the namespace, so this is less severe than the same rule in a
+      ClusterRole (K8S_WILDCARD_RBAC_RESOURCES).
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: definitive
+    root_cause: rbac_wildcard
+    resource_type: kubernetes_role
+    condition:
+      has_wildcard_resources:
+        equals: true
+    mitigation: >
+      List the resources the role needs instead of using a wildcard.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  - id: K8S_ROLE_WILDCARD_API_GROUPS
+    title: Role with wildcard API groups
+    description: >
+      A namespaced Role names the wildcard (*) API group, so its rule also covers every API
+      group that is installed later.
+      On its own this is weaker than a wildcard verb or resource.
+    stride_category: elevation_of_privilege
+    severity: low
+    confidence: definitive
+    root_cause: rbac_wildcard
+    resource_type: kubernetes_role
+    condition:
+      has_wildcard_api_groups:
+        equals: true
+    mitigation: >
+      List the API groups the role needs instead of using a wildcard.
+    metadata:
+      mitre:
+        techniques: ["T1078"]
+
+  # --- Both kinds of role: dangerous capabilities -----------------------------------------
+
+  - id: K8S_RBAC_ESCALATION_VERBS
+    title: Role can escalate, bind or impersonate
+    description: >
+      A Role or ClusterRole grants the escalate, bind or impersonate verb.
+      These verbs let a subject get around the rule that nobody can grant permissions they do
+      not hold: they can write roles with more permissions, bind roles they do not have, or
+      act as another user or group.
+    stride_category: elevation_of_privilege
+    severity: high
+    confidence: definitive
+    resource_types: ["kubernetes_role", "kubernetes_cluster_role"]
+    condition:
+      has_escalation_verbs:
+        equals: true
+    mitigation: >
+      Remove escalate, bind and impersonate from the role, or restrict them with resourceNames
+      to the single role or identity that is needed.
+    metadata:
+      mitre:
+        techniques: ["T1098.006"]
+
+  - id: K8S_RBAC_SECRETS_READ
+    title: Role can read Secrets
+    description: >
+      A Role or ClusterRole lets its subjects get, list or watch Secrets, directly or through
+      a wildcard resource, in the core API group.
+      A ClusterRole grants that in every namespace; a Role in its own.
+      list and watch return the contents of every Secret, not only their names.
+      The rule cannot tell that resourceNames limits the grant to a few Secrets, which is why
+      this finding is heuristic.
+    stride_category: information_disclosure
+    severity: high
+    confidence: heuristic
+    resource_types: ["kubernetes_role", "kubernetes_cluster_role"]
+    condition:
+      has_secrets_read:
+        equals: true
+    mitigation: >
+      Remove the read verbs on Secrets, or name the single Secret the subject needs in
+      resourceNames.
+    metadata:
+      mitre:
+        techniques: ["T1552.007"]
+
+  - id: K8S_RBAC_POD_EXEC
+    title: Role can exec into pods
+    description: >
+      A Role or ClusterRole lets its subjects create pods/exec, directly or through a wildcard
+      resource, in the core API group.
+      Anyone who holds it can run commands in any pod it covers and read the token, the
+      Secrets and the data in it.
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: definitive
+    resource_types: ["kubernetes_role", "kubernetes_cluster_role"]
+    condition:
+      has_pod_exec:
+        equals: true
+    mitigation: >
+      Remove pods/exec from the role and give debugging access to a dedicated, audited role.
+    metadata:
+      mitre:
+        techniques: ["T1609"]

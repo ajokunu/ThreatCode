@@ -1,3 +1,0 @@
-k8s:
-  package: WP-2-4
-  reason: an Ingress records has_tls from spec.tls
