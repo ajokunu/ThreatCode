@@ -239,11 +239,24 @@ class TestFallbackRender:
 class TestUnresolvedValues:
     def test_two_templated_deployments_stay_two_resources(self) -> None:
         output = fallback(TWO_DEPLOYMENTS)
-        assert len(output.resources) == 2
+        assert addresses(output) == [
+            "kubernetes_deployment.shop.web-frontend",
+            "kubernetes_deployment.shop.worker-backend",
+        ]
+
+    def test_two_templated_deployments_whose_names_the_chart_does_not_give_stay_distinct(
+        self, tmp_path: Path
+    ) -> None:
+        chart = copy_chart(TWO_DEPLOYMENTS, tmp_path / "c")
+        values = yaml.safe_load((chart / "values.yaml").read_text())
+        del values["web"]["name"]
+        del values["worker"]["name"]
+        (chart / "values.yaml").write_text(yaml.safe_dump(values))
+        output = fallback(chart)
         names = [r.name for r in output.resources]
-        assert names[0] == "web-frontend"
-        assert names[1].startswith("placeholder-templates-deployments-yaml-1-")
-        assert len(set(addresses(output))) == 2
+        assert len(set(names)) == 2
+        assert all(n.startswith("placeholder-templates-deployments-yaml-") for n in names)
+        assert names[0].split("-")[-2] == "0" and names[1].split("-")[-2] == "1"
 
     def test_a_privileged_deployment_among_them_produces_the_privileged_finding(self) -> None:
         graph = InfraGraph.from_parsed(fallback(TWO_DEPLOYMENTS))

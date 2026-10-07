@@ -1,11 +1,11 @@
 {
   "edges": [],
   "nodes": {
-    "kubernetes_deployment.shop.placeholder-templates-deployments-yaml-1-1": {
+    "kubernetes_deployment.shop.web-frontend": {
       "category": "container",
       "zone": "private"
     },
-    "kubernetes_deployment.shop.web-frontend": {
+    "kubernetes_deployment.shop.worker-backend": {
       "category": "container",
       "zone": "private"
     }

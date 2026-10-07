@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from threatcode.diagnostics import Diagnostic
+from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.exceptions import ParseError
 from threatcode.parsers._json_lines import json_line_index
 from threatcode.parsers._k8s_links import (
@@ -48,11 +48,20 @@ from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
 
 logger = logging.getLogger(__name__)
 
+register_code(
+    "k8s.truncated_value",
+    "A Kubernetes value was dropped because its YAML aliases expand without bound",
+)
+
 # Bounds on what one input may expand to
 MAX_LIST_DEPTH = 5
 MAX_DOCUMENTS = 20_000
-# Recovering line numbers re-reads the file, so it is skipped for very large inputs
-_MAX_LINE_INDEX_BYTES = 8 * 1024 * 1024
+# A value kept in a property is copied through its YAML aliases; one that expands past this many
+# nodes is dropped, because anything that serialized it later would run away
+MAX_PROPERTY_NODES = 10_000
+_MAX_PROPERTY_DEPTH = 64
+# Recovering line numbers re-reads the file, so it is skipped for larger inputs
+_MAX_LINE_INDEX_BYTES = 2 * 1024 * 1024
 # How many skipped documents are described in ``metadata['skipped_documents']``
 _MAX_SKIPPED_LISTED = 50
 
@@ -100,6 +109,17 @@ CLUSTER_SCOPED_KINDS = frozenset(
         "CertificateSigningRequest",
         "PodSecurityPolicy",
     }
+)
+
+# Properties that keep a value as the manifest wrote it
+_RAW_PROPERTIES = (
+    "labels",
+    "annotations",
+    "rbac_rules",
+    "subjects",
+    "ports",
+    "pod_selector",
+    "policy_types",
 )
 
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
@@ -168,7 +188,7 @@ class KubernetesParser(BaseParser):
         entries: list[Entry] = []
         seen: set[str] = set()
         for index, item in enumerate(items):
-            entries.append(self._build(item, index, source_path, seen))
+            entries.append(self._build(item, index, source_path, seen, diagnostics))
 
         manifests = ManifestSet(entries)
         derive_properties(manifests)
@@ -237,6 +257,10 @@ class KubernetesParser(BaseParser):
                     skip(position, f"List nested deeper than {MAX_LIST_DEPTH} levels", file, line)
                     continue
                 children = as_list(data.get("items"))
+                room = max(0, MAX_DOCUMENTS - len(items) - len(pending))
+                if len(children) > room:
+                    skip(position, f"more than {MAX_DOCUMENTS} documents in one input", file, line)
+                    children = children[:room]
                 pending.extend(
                     (child, source, f"{pointer}/items/{n}", depth + 1, position)
                     for n, child in reversed(list(enumerate(children)))
@@ -255,12 +279,19 @@ class KubernetesParser(BaseParser):
 
     # -- one resource --------------------------------------------------------------------
 
-    def _build(self, item: _Item, index: int, source_path: str, seen: set[str]) -> Entry:
+    def _build(
+        self,
+        item: _Item,
+        index: int,
+        source_path: str,
+        seen: set[str],
+        diagnostics: list[Diagnostic],
+    ) -> Entry:
         doc = item.doc
         kind = str(doc.get("kind"))
         metadata = as_dict(doc.get("metadata"))
         spec = as_dict(doc.get("spec"))
-        name = _resource_name(metadata, index)
+        name, name_source = _resource_name(metadata, index)
         cluster_scoped = kind in CLUSTER_SCOPED_KINDS
         namespace_value = metadata.get("namespace")
         namespace = (
@@ -303,6 +334,21 @@ class KubernetesParser(BaseParser):
         elif kind == "NetworkPolicy":
             props.update(_network_policy_properties(spec))
 
+        for prop in _RAW_PROPERTIES:
+            if prop in props:
+                props[prop], dropped = _bounded_copy(props[prop])
+                if dropped:
+                    diagnostics.append(
+                        Diagnostic(
+                            "warning",
+                            "k8s.truncated_value",
+                            f"{kind} {name}: {prop} expands to more than {MAX_PROPERTY_NODES} "
+                            "nodes through YAML aliases and was dropped",
+                            item.file or source_path,
+                            item.line,
+                        )
+                    )
+
         resource = ParsedResource(
             resource_type=resource_type,
             address=address,
@@ -311,6 +357,8 @@ class KubernetesParser(BaseParser):
             properties=props,
             source_location=item.file or source_path,
             start_line=item.line,
+            # How the name was found: a made-up name is worth knowing about in a report
+            meta={"name_source": name_source},
         )
         return Entry(
             resource=resource,
@@ -330,7 +378,7 @@ class KubernetesParser(BaseParser):
 
 def _documents_from_text(text: str, source_path: str, name: str) -> list[ManifestDocument]:
     """Documents of a YAML or JSON text, each with the line index of its keys and items."""
-    stripped = text.lstrip().lstrip("﻿")
+    stripped = text.lstrip("\ufeff").lstrip()
     if stripped.startswith(("{", "[")):
         # JSON that YAML would refuse (a tab between tokens) still loads as JSON
         try:
@@ -392,6 +440,34 @@ def _recover_lines(
     return [(index, "") for index in per_document]
 
 
+class _TooBigError(Exception):
+    pass
+
+
+def _bounded_copy(value: Any) -> tuple[Any, bool]:
+    """Copy a loaded value, or give an empty one of the same kind when it is too big.
+
+    Every visit counts, so aliases that expand to billions of nodes (or an anchor that holds
+    itself) stop at ``MAX_PROPERTY_NODES`` visits. Returns the copy and whether it was dropped.
+    """
+    budget = [MAX_PROPERTY_NODES]
+
+    def copy(node: Any, depth: int) -> Any:
+        budget[0] -= 1
+        if budget[0] < 0 or depth > _MAX_PROPERTY_DEPTH:
+            raise _TooBigError
+        if isinstance(node, dict):
+            return {key: copy(item, depth + 1) for key, item in node.items()}
+        if isinstance(node, list):
+            return [copy(item, depth + 1) for item in node]
+        return node
+
+    try:
+        return copy(value, 0), False
+    except _TooBigError:
+        return ({} if isinstance(value, dict) else [] if isinstance(value, list) else None), True
+
+
 def _is_list_kind(doc: Mapping[str, Any]) -> bool:
     """True for ``List`` and ``<Kind>List`` documents, which wrap objects under ``items``."""
     kind = doc.get("kind")
@@ -400,19 +476,23 @@ def _is_list_kind(doc: Mapping[str, Any]) -> bool:
     return kind == "List" or (kind.endswith("List") and "items" in doc)
 
 
-def _resource_name(metadata: Mapping[str, Any], index: int) -> str:
-    """The name, else the ``generateName`` stem plus ``-generated``, else ``unnamed-<index>``."""
+def _resource_name(metadata: Mapping[str, Any], index: int) -> tuple[str, str]:
+    """The name and where it came from.
+
+    ``metadata.name``, else the ``generateName`` stem plus ``-generated``, else
+    ``unnamed-<index>``.
+    """
     name = metadata.get("name")
     if isinstance(name, str) and name.strip():
-        return name
+        return name, "name"
     if isinstance(name, (int, float)) and not isinstance(name, bool):
-        return str(name)
+        return str(name), "name"
     generate = metadata.get("generateName")
     if isinstance(generate, str):
         stem = generate.strip().rstrip("-")
         if stem:
-            return f"{stem}-generated"
-    return f"unnamed-{index}"
+            return f"{stem}-generated", "generateName"
+    return f"unnamed-{index}", "index"
 
 
 def _optional_bool(value: object) -> bool | None:

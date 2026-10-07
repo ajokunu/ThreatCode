@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -718,3 +719,105 @@ class TestInputForms:
         with pytest.raises(ParseError) as caught:
             detect_and_parse(path)
         assert "corrupt.yaml" in str(caught.value)
+
+
+class TestHostileDocuments:
+    @staticmethod
+    def _bomb(levels: int = 12, fanout: int = 9) -> str:
+        """A ClusterRole whose ``rules`` alias themselves into ``fanout ** levels`` nodes."""
+        lines = ["apiVersion: rbac.authorization.k8s.io/v1", "kind: ClusterRole"]
+        lines.append("metadata: {name: bomb}")
+        lines.append("x-a0: &a0 [x, x, x, x, x, x, x, x, x]")
+        for level in range(1, levels):
+            refs = ", ".join([f"*a{level - 1}"] * fanout)
+            lines.append(f"x-a{level}: &a{level} [{refs}]")
+        lines.append(f"rules: *a{levels - 1}")
+        return "\n".join(lines) + "\n"
+
+    def test_a_value_whose_aliases_expand_without_bound_is_dropped_and_reported(
+        self, parser: KubernetesParser
+    ) -> None:
+        started = time.monotonic()
+        output = parser.parse(self._bomb() + "---\n" + yaml.safe_dump(POD))
+        assert time.monotonic() - started < 10
+        # the object itself is kept, only the value that cannot be copied is dropped
+        assert _addresses(output) == ["kubernetes_cluster_role.bomb", "kubernetes_pod.ops.debug"]
+        assert output.resources[0].properties["rbac_rules"] == []
+        (warning,) = output.diagnostics
+        assert warning.code == "k8s.truncated_value"
+        assert "rbac_rules" in warning.message and "aliases" in warning.message
+        assert warning.level == "warning"
+
+    def test_a_self_containing_anchor_is_dropped_not_followed_forever(
+        self, parser: KubernetesParser
+    ) -> None:
+        text = "apiVersion: v1\nkind: Service\nmetadata: {name: loop}\nspec: {ports: &a [*a, *a]}\n"
+        output = parser.parse(text)
+        (resource,) = output.resources
+        assert resource.properties["ports"] == []
+        assert [d.code for d in output.diagnostics] == ["k8s.truncated_value"]
+
+    def test_a_bomb_in_a_field_no_property_keeps_costs_nothing(
+        self, parser: KubernetesParser
+    ) -> None:
+        text = (
+            "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: data-bomb}\n"
+            "x-a: &a [x, x, x, x, x, x, x, x, x, x]\n"
+            + "".join(
+                f"x-{n}: &b{n} [{', '.join([('*a' if n == 0 else f'*b{n - 1}')] * 10)}]\n"
+                for n in range(10)
+            )
+            + "data: *b9\n"
+        )
+        output = parser.parse(text)
+        assert _addresses(output) == ["kubernetes_config_map.default.data-bomb"]
+        assert output.diagnostics == []
+
+    def test_an_ordinary_large_document_is_kept_whole(self, parser: KubernetesParser) -> None:
+        rules = [{"apiGroups": [""], "resources": [f"r{n}"], "verbs": ["get"]} for n in range(500)]
+        big = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": "big"},
+            "rules": rules,
+        }
+        (resource,) = parser.parse(big).resources
+        assert resource.properties["rbac_rules"] == rules
+
+    def test_the_copy_is_bounded_not_shared(self, parser: KubernetesParser) -> None:
+        rules = [{"apiGroups": [""], "resources": ["pods"], "verbs": ["get"]}]
+        doc = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": "r"},
+            "rules": rules,
+        }
+        (resource,) = parser.parse(doc).resources
+        assert resource.properties["rbac_rules"] == rules
+        assert resource.properties["rbac_rules"] is not rules
+
+    def test_a_giant_list_is_cut_at_the_document_cap_without_building_every_item(
+        self, parser: KubernetesParser, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("threatcode.parsers.kubernetes.MAX_DOCUMENTS", 100)
+        items = [{**POD, "metadata": {"name": f"p{n}"}} for n in range(5_000)]
+        output = parser.parse({"apiVersion": "v1", "kind": "List", "items": items})
+        assert len(output.resources) == 100
+        assert [d.code for d in output.diagnostics].count("k8s.skipped_document") >= 1
+
+
+class TestNameSource:
+    @pytest.mark.parametrize(
+        ("metadata", "source"),
+        [
+            ({"name": "real"}, "name"),
+            ({"generateName": "backup-"}, "generateName"),
+            ({}, "index"),
+            ({"name": ""}, "index"),
+        ],
+    )
+    def test_the_meta_records_where_the_name_came_from(
+        self, parser: KubernetesParser, metadata: dict[str, Any], source: str
+    ) -> None:
+        (resource,) = parser.parse(_object("Job", metadata, "batch/v1")).resources
+        assert resource.meta == {"name_source": source}

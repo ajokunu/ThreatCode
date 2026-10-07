@@ -2,8 +2,8 @@ web:
   name: web-frontend
   image: registry.example.com/shop/web
   privileged: true
-# worker.name is left for the installer to set, so the renderer cannot know it
 worker:
+  name: worker-backend
   image: registry.example.com/shop/worker
 service:
   enabled: false

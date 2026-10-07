@@ -1,6 +1,6 @@
 [
   {
-    "resource_address": "kubernetes_deployment.shop.placeholder-templates-deployments-yaml-1-1",
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
     "severity": "medium",
     "stride": "elevation_of_privilege",
@@ -9,7 +9,7 @@
     ]
   },
   {
-    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
     "severity": "medium",
     "stride": "elevation_of_privilege",
@@ -27,7 +27,7 @@
     ]
   },
   {
-    "resource_address": "kubernetes_deployment.shop.placeholder-templates-deployments-yaml-1-1",
+    "resource_address": "kubernetes_deployment.shop.web-frontend",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
     "severity": "medium",
     "stride": "elevation_of_privilege",
@@ -36,7 +36,7 @@
     ]
   },
   {
-    "resource_address": "kubernetes_deployment.shop.web-frontend",
+    "resource_address": "kubernetes_deployment.shop.worker-backend",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
     "severity": "medium",
     "stride": "elevation_of_privilege",
