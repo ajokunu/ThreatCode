@@ -372,7 +372,9 @@ class InfraGraph:
         return [self._nodes[n] for n in ids if n in self._nodes]
 
     def get_edges_for_node(self, node_id: str) -> list[InfraEdge]:
-        return [e for e in self._edges if e.source == node_id or e.target == node_id]
+        """Every edge that leaves or enters a node: the outgoing ones first, then the incoming."""
+        outgoing = self.edges_from(node_id)
+        return [*outgoing, *(e for e in self.edges_to(node_id) if e.source != node_id)]
 
     def get_boundary_crossing_edges(self) -> list[InfraEdge]:
         return [e for e in self._edges if e.crosses_trust_boundary]
