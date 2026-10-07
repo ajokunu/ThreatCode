@@ -504,6 +504,8 @@ def _brute_force(engine: HybridEngine, graph: InfraGraph) -> list[tuple[str, str
     """Every rule against every managed node, in load order, with no index."""
     found: list[tuple[str, str]] = []
     for node in graph.nodes.values():
+        if node.mode == "data":
+            continue
         for rule in engine._rules:
             if hybrid.matches_rule(rule, node):
                 found.append((rule.id, node.id))

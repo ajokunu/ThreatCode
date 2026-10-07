@@ -1575,3 +1575,93 @@ resource "aws_sns_topic_subscription" "s" {
         )
         assert _derived(graph, "aws_sns_topic.t")["subscribed"] is True
         assert _derived(graph, "aws_sns_topic.unused")["subscribed"] is False
+
+
+class TestAttachmentsAndRequiredLinks:
+    def test_a_users_only_attachment_says_nothing_about_roles(self) -> None:
+        graph = _graph(
+            _resource("aws_iam_role", "r", name="r"),
+            _resource(
+                "aws_iam_policy_attachment",
+                "users",
+                name="users",
+                users=["alice"],
+                policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
+            ),
+            _resource(
+                "aws_iam_policy_attachment",
+                "groups",
+                name="groups",
+                groups=["admins"],
+                policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
+            ),
+        )
+        derived = _derived(graph, "aws_iam_role.r")
+        assert derived["attached_policy_arns"] == []
+        assert derived["inline_policy_statements"] == []
+
+    def test_a_roles_attachment_applies_to_the_role_it_names(self) -> None:
+        graph = _graph(
+            _resource("aws_iam_role", "r", name="r"),
+            _resource("aws_iam_role", "other", name="other"),
+            _resource(
+                "aws_iam_policy_attachment",
+                "both",
+                name="both",
+                roles=["r"],
+                users=["alice"],
+                policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
+            ),
+        )
+        assert _derived(graph, "aws_iam_role.r")["attached_policy_arns"] == [
+            "arn:aws:iam::aws:policy/AdministratorAccess"
+        ]
+        assert _derived(graph, "aws_iam_role.other")["attached_policy_arns"] == []
+
+    def test_a_mandatory_role_that_a_plan_omits_is_unknown(self) -> None:
+        graph = _graph(
+            _resource("aws_iam_role", "r", name="r"),
+            _resource("aws_lambda_function", "f", function_name="f"),
+            _resource("aws_sagemaker_notebook_instance", "n", name="n"),
+            _resource("aws_eks_node_group", "g", node_group_name="g"),
+        )
+        for address in (
+            "aws_lambda_function.f",
+            "aws_sagemaker_notebook_instance.n",
+            "aws_eks_node_group.g",
+        ):
+            assert is_unknown(_derived(graph, address)["role_policy_statements"]), address
+
+    def test_an_optional_role_that_is_omitted_stays_silent(self) -> None:
+        graph = _graph(_resource("aws_ecs_task_definition", "t", family="t"))
+        assert "derived" not in graph.nodes["aws_ecs_task_definition.t"].properties
+
+
+class TestPartialAddressCollision:
+    def test_a_companion_that_cannot_see_its_parent_never_reports_a_confident_false(self) -> None:
+        """Two inputs share only the companion's address, so it is qualified and its parent is not.
+
+        The parent is then out of the companion's scope: the known limitation is that the link is
+        unresolved, and an unresolved link must not leave the parent looking unversioned.
+        """
+
+        def unit(path: str, bucket_label: str) -> ParsedOutput:
+            return ParsedOutput(
+                resources=[
+                    _resource("aws_s3_bucket", bucket_label),
+                    _resource(
+                        "aws_s3_bucket_versioning",
+                        "v",
+                        bucket=f"${{aws_s3_bucket.{bucket_label}.id}}",
+                        versioning_configuration=[{"status": "Enabled"}],
+                    ),
+                ],
+                source_path=path,
+                format_type="terraform_hcl",
+            )
+
+        graph = InfraGraph.from_units([unit("a/main.tf", "x"), unit("b/main.tf", "y")])
+        assert any("::aws_s3_bucket_versioning.v" in node_id for node_id in graph.nodes)
+        for address in ("aws_s3_bucket.x", "aws_s3_bucket.y"):
+            value = _derived(graph, address)["versioning_enabled"]
+            assert value is not False, address

@@ -14,7 +14,9 @@ node as:
 ``derived.role_ids``
     The graph ids of the role nodes the link resolved to.
 
-A compute node with no role attribute at all gets none of these keys.
+A compute node with no role attribute at all gets none of these keys, except where the attribute is
+mandatory (a function's ``role``, a notebook's ``role_arn``, a node group's ``node_role_arn``): a
+plan omits those when they are computed, so their absence makes the keys Unknown.
 A role the scan cannot find (a variable, a module output, an ARN of a role outside the inputs) makes
 all three keys Unknown, never empty.
 An ECS task definition names two roles; the keys hold the union of the task role and the execution
@@ -58,6 +60,7 @@ RELATIONS: tuple[RelationSpec, ...] = (
     RelationSpec(
         source_types=("aws_lambda_function",),
         link_attrs=("role",),
+        required=True,
         target_type="aws_iam_role",
         derive=_role_facts,
         absent=_ABSENT,
@@ -81,6 +84,7 @@ RELATIONS: tuple[RelationSpec, ...] = (
     RelationSpec(
         source_types=("aws_sagemaker_notebook_instance",),
         link_attrs=("role_arn",),
+        required=True,
         target_type="aws_iam_role",
         derive=_role_facts,
         absent=_ABSENT,
@@ -88,6 +92,7 @@ RELATIONS: tuple[RelationSpec, ...] = (
     RelationSpec(
         source_types=("aws_eks_node_group",),
         link_attrs=("node_role_arn",),
+        required=True,
         target_type="aws_iam_role",
         derive=_role_facts,
         absent=_ABSENT,

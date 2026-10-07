@@ -170,9 +170,11 @@ class RelationSpec:
     and that node is the one ``derive`` receives (an instance names a profile, the profile names a
     role).
     ``derive(targets, ctx)`` gets every resolved node.
+    A source that has none of the link attributes names nothing, unless ``required`` says the
+    attribute is mandatory, in which case its absence means a computed value and is Unknown.
     ``absent`` is written when the link attributes are present but name nothing (a null), and its
     keys are marked Unknown when the link cannot be resolved; a source with none of the link
-    attributes gets no derived keys at all.
+    attributes gets no derived keys at all, unless the spec is ``required``.
     """
 
     source_types: tuple[str, ...]
@@ -182,6 +184,9 @@ class RelationSpec:
     absent: Mapping[str, Any] = field(default_factory=dict)
     hop_attrs: tuple[str, ...] = ()
     hop_type: str = ""
+    # True when the link attribute is mandatory on the source, so an absent one means the value
+    # is computed (plan JSON omits it) and the result is Unknown instead of "no link"
+    required: bool = False
 
 
 @dataclass(frozen=True)
@@ -316,6 +321,9 @@ class EnrichContext:
         When several inputs define the same address the graph qualifies every copy with its input
         label, and a reference inside one of them is resolved among that input's qualified nodes
         only, so it never names a node of another input.
+        The graph does not say which unqualified nodes share an input with a qualified one, so a
+        companion whose parent sits on the other side of that line is unresolved, not resolved
+        to the wrong node (the keys it decides become Unknown on every candidate).
         """
         prefix = _unit_prefix(node.id)
         if not prefix:
@@ -327,15 +335,25 @@ class EnrichContext:
     def resolve(self, node: InfraNode, raw: Any, matcher: TypeMatcher) -> Resolution:
         return self.index_for(node).resolve_detailed(raw, node.module, required_type=matcher)
 
-    def peers(self, node: InfraNode, matcher: TypeMatcher) -> list[InfraNode]:
-        """Enrichable nodes of the same input as `node` whose type matches."""
+    def peers(
+        self, node: InfraNode, matcher: TypeMatcher, *, any_input: bool = False
+    ) -> list[InfraNode]:
+        """Enrichable nodes of the same input as `node` whose type matches.
+
+        With ``any_input`` the nodes of every input.
+        The graph qualifies only the addresses that collide between inputs, so an input can hold
+        both qualified and unqualified ids and the label prefix cannot say which nodes belong
+        together.
+        Marking candidates Unknown therefore uses every input: a link that cannot be resolved
+        must never leave a parent in another scope looking confidently unconfigured.
+        """
         prefix = _unit_prefix(node.id)
         return [
             n
             for resource_type, group in self._by_type.items()
             if matcher(resource_type)
             for n in group
-            if _unit_prefix(n.id) == prefix
+            if any_input or _unit_prefix(n.id) == prefix
         ]
 
     def contribute(self, node: InfraNode, values: Mapping[str, Any]) -> None:
@@ -564,7 +582,7 @@ def _run_companions(ctx: EnrichContext, modules: Sequence[ModuleType]) -> None:
             if link.unresolved:
                 keys = tuple(spec.touches(companion)) if spec.touches else tuple(spec.absent)
                 marker = {key: Unknown(link.reference) for key in keys}
-                for candidate in ctx.peers(companion, parent_only):
+                for candidate in ctx.peers(companion, parent_only, any_input=True):
                     ctx.contribute(candidate, marker)
 
 
@@ -594,7 +612,7 @@ def _apply_relation(ctx: EnrichContext, spec: RelationSpec) -> None:
         targets: list[InfraNode] = list(link.resolved)
         # A source that does not carry the link at all names nothing (no role, no profile)
         # An orphan is a role (or profile) outside the graph, whose policies are not known
-        unresolved = (link.unresolved and link.present) or link.orphan
+        unresolved = (link.unresolved and (link.present or spec.required)) or link.orphan
         reference = link.reference
         if spec.hop_attrs:
             hopped: dict[str, InfraNode] = {}

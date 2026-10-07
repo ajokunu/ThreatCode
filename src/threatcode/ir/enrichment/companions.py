@@ -505,6 +505,12 @@ def _inline_role_policy(companion: InfraNode, parent: InfraNode, ctx: EnrichCont
     return {"inline_policy_statements": found if found is not None else []}
 
 
+def _attaches_to_roles(companion: InfraNode) -> bool:
+    """A generic attachment lists roles, users or groups; only a role list concerns a role."""
+    props = companion.properties
+    return "roles" in props or not ("users" in props or "groups" in props)
+
+
 _ROLE_SPECS = (
     CompanionSpec(
         _ROLE,
@@ -519,6 +525,7 @@ _ROLE_SPECS = (
         ("roles",),
         _attachment,
         absent=_ROLE_ABSENT,
+        applies=_attaches_to_roles,
     ),
     CompanionSpec(
         _ROLE,
