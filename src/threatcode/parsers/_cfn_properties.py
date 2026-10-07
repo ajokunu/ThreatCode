@@ -107,7 +107,7 @@ _TEXT_KEYS = frozenset(
 _TEXT_SUFFIXES = (
     "_name", "_id", "_ids", "_arn", "_arns", "_key", "_identifier", "_prefix", "_version",
     "_password", "_description", "_pattern", "_endpoint", "_url", "_uri", "_text", "_value",
-    "_type", "_zone", "_cidr", "_cidrs", "_address", "_class", "_role", "_username",
+    "_type", "_zone", "_cidr", "_cidrs", "_class", "_role", "_username",
 )  # fmt: skip
 _INT_TEXT = re.compile(r"-?(?:0|[1-9][0-9]{0,14})")
 _FLOAT_TEXT = re.compile(r"-?(?:0|[1-9][0-9]{0,14})\.[0-9]{1,6}")
@@ -1071,13 +1071,11 @@ def _lb_attributes(conv: _Converter, raw: str, value: Any, out: dict[str, Any], 
             out[tf_key] = coerce_scalar(tf_key, attributes[key])
     enabled = coerce_scalar("flag", attributes.get("access_logs.s3.enabled"))
     if enabled is True or is_unknown(enabled):
-        out["access_logs"] = [
-            {
-                "enabled": enabled,
-                "bucket": attributes.get("access_logs.s3.bucket"),
-                "prefix": attributes.get("access_logs.s3.prefix"),
-            }
-        ]
+        block: dict[str, Any] = {"enabled": enabled}
+        for key in ("bucket", "prefix"):
+            if attributes.get(f"access_logs.s3.{key}") is not None:
+                block[key] = attributes[f"access_logs.s3.{key}"]
+        out["access_logs"] = [block]
 
 
 def _listener_certificates(
@@ -1117,7 +1115,7 @@ def _camel_keys(value: Any, depth: int = 0) -> Any:
     if isinstance(value, Mapping):
         result: dict[str, Any] = {}
         for key, child in value.items():
-            new_key = key[:1].lower() + key[1:] if key not in _CONTAINER_FREE_KEYS else key
+            new_key = key[:1].lower() + key[1:]
             result[new_key] = (
                 child if key in _CONTAINER_FREE_KEYS else _camel_keys(child, depth + 1)
             )
