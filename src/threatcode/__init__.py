@@ -1,137 +1,159 @@
-"""ThreatCode: STRIDE threat model generator from infrastructure code."""
+"""ThreatCode: STRIDE threat models and attack paths from infrastructure code and agent configs.
+
+The public API is ``scan`` (a report as a dict), ``analyze`` (the report and its graph) and
+``run_scan`` (everything, including the exit code and the coverage).
+All three go through the same pipeline as ``threatcode scan``, so a Python call and the command
+line cannot disagree.
+Names are loaded on first use, which keeps ``import threatcode`` and the CLI start-up fast.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
+import importlib
+import os
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from threatcode.exceptions import ThreatCodeError as ThreatCodeError
+from threatcode.exceptions import (
+    ConfigError,
+    LLMError,
+    ParseError,
+    RuleLoadError,
+    ThreatCodeError,
+    UnsupportedFormatError,
+    UsageError,
+)
 
 if TYPE_CHECKING:
-    from threatcode.ir.graph import InfraGraph
-    from threatcode.models.analysis import AnalysisResult
-    from threatcode.models.finding import ScanReport as ScanReport
-    from threatcode.models.report import ThreatReport
+    from threatcode.models.analysis import AnalysisResult as AnalysisResult
+    from threatcode.models.report import ThreatReport as ThreatReport
+    from threatcode.models.threat import Severity as Severity
+    from threatcode.models.threat import Threat as Threat
+    from threatcode.pipeline import ScanRequest as ScanRequest
+    from threatcode.pipeline import ScanResult as ScanResult
+    from threatcode.pipeline import run_scan as run_scan
 
 __version__ = "0.9.1"
 
+__all__ = [
+    "AnalysisResult",
+    "ConfigError",
+    "LLMError",
+    "ParseError",
+    "RuleLoadError",
+    "ScanRequest",
+    "ScanResult",
+    "Severity",
+    "Threat",
+    "ThreatCodeError",
+    "ThreatReport",
+    "UnsupportedFormatError",
+    "UsageError",
+    "__version__",
+    "analyze",
+    "run_scan",
+    "scan",
+]
 
-def _run_pipeline(
-    input_path: str | Path,
-    *,
-    no_llm: bool = True,
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
-) -> tuple[InfraGraph, ThreatReport]:
-    """Shared analysis pipeline for scan() and analyze().
+# Names loaded on first access: public name -> (module, attribute).
+_LAZY: dict[str, tuple[str, str]] = {
+    "AnalysisResult": ("threatcode.models.analysis", "AnalysisResult"),
+    "ThreatReport": ("threatcode.models.report", "ThreatReport"),
+    "Severity": ("threatcode.models.threat", "Severity"),
+    "Threat": ("threatcode.models.threat", "Threat"),
+    "ScanRequest": ("threatcode.pipeline", "ScanRequest"),
+    "ScanResult": ("threatcode.pipeline", "ScanResult"),
+    "run_scan": ("threatcode.pipeline", "run_scan"),
+}
 
-    Returns:
-        Tuple of (InfraGraph, ThreatReport).
 
-    Raises:
-        ThreatCodeError: On any analysis failure.
-    """
-    from threatcode.config import load_config
-    from threatcode.engine.hybrid import HybridEngine
-    from threatcode.ir.graph import InfraGraph
-    from threatcode.models.threat import Severity
-    from threatcode.parsers import detect_and_parse
+def __getattr__(name: str) -> Any:
+    target = _LAZY.get(name)
+    if target is None:
+        raise AttributeError(f"module 'threatcode' has no attribute '{name}'")
+    value = getattr(importlib.import_module(target[0]), target[1])
+    globals()[name] = value
+    return value
 
-    cfg_path = Path(config_path) if config_path else None
-    config = load_config(cfg_path)
-    config.no_llm = no_llm
 
-    parsed = detect_and_parse(input_path)
-    graph = InfraGraph.from_parsed(parsed)
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
 
-    extra = [Path(p) for p in (extra_rule_paths or [])]
-    engine = HybridEngine(config=config, extra_rule_paths=extra)
-    report = engine.analyze(graph, input_file=str(input_path))
 
-    if min_severity != "info":
-        try:
-            threshold = Severity(min_severity)
-        except ValueError as e:
-            raise ThreatCodeError(
-                f"Invalid severity '{min_severity}'. "
-                f"Valid values: critical, high, medium, low, info"
-            ) from e
-        report.threats = report.filter_by_severity(threshold)
+def _run(
+    paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    options: dict[str, Any],
+) -> ScanResult:
+    import logging
 
-    return graph, report
+    from threatcode.pipeline import prepare_request, run_scan
+
+    if "output_format" in options:
+        raise TypeError(
+            "scan() and analyze() take no output_format: scan() returns a dict, and "
+            "threatcode.formatters.render(name, analysis) renders any other format"
+        )
+    named = [paths] if isinstance(paths, (str, os.PathLike)) else list(paths)
+    prepared = prepare_request(named, **options)
+    for notice in prepared.config.notices:
+        logging.getLogger("threatcode").warning("%s", notice)
+    result = run_scan(prepared.request)
+    coverage = result.coverage
+    if coverage.errors:
+        shown = "; ".join(
+            f"{e.get('file') or '.'}: {str(e.get('message', '')).splitlines()[0]}"
+            for e in coverage.errors[:3]
+        )
+        more = len(coverage.errors) - 3
+        suffix = f" (and {more} more)" if more > 0 else ""
+        raise ThreatCodeError(
+            f"the scan could not analyse its input: {shown}{suffix}. "
+            "Use run_scan() to get the partial result with its coverage block."
+        )
+    if result.exit_code == 2:
+        # No input error, so this is strict mode with a coverage gap.
+        first = coverage.gaps[0] if coverage.gaps else {}
+        raise ThreatCodeError(
+            f"strict mode: the scan has {len(coverage.gaps) + coverage.rule_errors} coverage "
+            f"gap(s), the first is [{first.get('code', 'rule.error')}] "
+            f"{str(first.get('message', 'a rule failed')).splitlines()[0]}. "
+            "Use run_scan() to get the result with its coverage block."
+        )
+    return result
 
 
 def scan(
-    input_path: str | Path,
-    *,
-    no_llm: bool = True,
-    output_format: str = "json",
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
+    paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    **settings: Any,
 ) -> dict[str, Any]:
-    """Public API: scan an IaC file and return a threat report dict.
+    """Scan files and directories and return the threat report as a dict.
+
+    The dict is exactly what ``threatcode scan -f json`` prints: ``schema_version``, ``threats``,
+    ``attack_paths`` and a ``coverage`` block that says what was not analysed.
+    A finding never raises; an input that could not be analysed does.
 
     Args:
-        input_path: Path to terraform plan JSON, .tf file, or CFN template.
-        no_llm: If True, skip LLM analysis and use rules only.
-        output_format: Output format (json, sarif, markdown, bitbucket).
-        min_severity: Minimum severity to include (critical, high, medium, low, info).
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional YAML rule files to load.
-
-    Returns:
-        Threat report as a dictionary.
+        paths: A file or directory path, or several, or ``-`` for standard input.
+        **settings: ``fail_on``, ``min_severity``, ``strict``, ``config_path``,
+            ``extra_rule_paths``, ``llm`` (False unless set), ``dry_run``, ``ignore_file``,
+            ``no_ignore``, ``baseline``, ``write_baseline``, ``ingest``, ``stdin_name``,
+            ``no_timestamp``, ``max_nodes`` and ``max_edges``, each as the CLI flag of the same
+            name.
 
     Raises:
-        ThreatCodeError: On parsing, config, or analysis failures.
-        FileNotFoundError: If input_path does not exist.
+        ThreatCodeError: An input could not be analysed, or a setting is invalid.
+        UsageError: A named path does not exist.
     """
-    _graph, report = _run_pipeline(
-        input_path,
-        no_llm=no_llm,
-        min_severity=min_severity,
-        config_path=config_path,
-        extra_rule_paths=extra_rule_paths,
-    )
-    return report.to_dict()
+    return _run(paths, settings).to_dict()
 
 
 def analyze(
-    input_path: str | Path,
-    *,
-    no_llm: bool = True,
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
+    paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    **settings: Any,
 ) -> AnalysisResult:
-    """Public API: scan an IaC file and return graph + threat report.
+    """Like ``scan``, but return the graph and the report together.
 
-    Like scan(), but preserves the infrastructure graph for diagram rendering
-    and topology analysis.
-
-    Args:
-        input_path: Path to terraform plan JSON, .tf file, or CFN template.
-        no_llm: If True, skip LLM analysis and use rules only.
-        min_severity: Minimum severity to include (critical, high, medium, low, info).
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional YAML rule files to load.
-
-    Returns:
-        AnalysisResult with .graph (InfraGraph) and .report (ThreatReport).
-
-    Raises:
-        ThreatCodeError: On parsing, config, or analysis failures.
-        FileNotFoundError: If input_path does not exist.
+    The result has ``.graph`` (the infrastructure graph), ``.report`` and ``.attack_paths``, and
+    renders to SVG with ``.to_svg()``. Accepts the same settings as ``scan``.
     """
-    from threatcode.models.analysis import AnalysisResult
-
-    graph, report = _run_pipeline(
-        input_path,
-        no_llm=no_llm,
-        min_severity=min_severity,
-        config_path=config_path,
-        extra_rule_paths=extra_rule_paths,
-    )
-    return AnalysisResult(graph=graph, report=report)
+    return _run(paths, settings).analysis

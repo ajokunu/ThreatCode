@@ -23,3 +23,10 @@ class ConfigError(ThreatCodeError):
 
 class LLMError(ThreatCodeError):
     """Raised when LLM communication fails."""
+
+
+class UsageError(ThreatCodeError):
+    """Raised when the command line or a named input file is unusable.
+
+    The CLI reports it as ``Error: <message>`` and exits 2, like any other usage error.
+    """

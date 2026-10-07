@@ -118,7 +118,6 @@ class TestPendingParserFixes:
 class TestPendingDirectoryWalker:
     """``threatcode scan DIR`` reads regular files and never follows a link out of the tree."""
 
-    @pending("WP-2-8", "discovery walks with lstat, skips symlinks and counts them as skipped")
     def test_links_leading_out_of_the_tree_are_not_followed(self, tmp_path: Path) -> None:
         tree = gen.symlink_escape_tree(tmp_path)
         run = cli_scan(tree.scan_root)
@@ -127,7 +126,6 @@ class TestPendingDirectoryWalker:
         assert gen.INSIDE_RESOURCE in run.stdout, "positive control: the real file must be modeled"
         assert gen.OUTSIDE_RESOURCE not in run.stdout, "a file outside the scan root was read"
 
-    @pending("WP-2-8", "discovery never follows a directory link, so a link cycle cannot loop")
     def test_link_cycles_end_the_scan_within_budget(self, tmp_path: Path) -> None:
         tree = gen.symlink_escape_tree(tmp_path)
         run = cli_scan(tree.scan_root, budget=DEFAULT_BUDGET_SECONDS)
@@ -136,7 +134,6 @@ class TestPendingDirectoryWalker:
         assert gen.INSIDE_RESOURCE in run.stdout, "positive control: the real file must be modeled"
 
     @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes on this platform")
-    @pending("WP-2-8", "discovery reads only regular files, so a named pipe is never opened")
     def test_a_named_pipe_with_an_iac_name_is_not_opened(self, tmp_path: Path) -> None:
         root = gen.fifo_tree(tmp_path)
         run = cli_scan(root, budget=DEFAULT_BUDGET_SECONDS)
