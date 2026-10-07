@@ -417,6 +417,18 @@ class TestDeprecatedIds:
     def test_deprecated_ids_must_be_a_list_of_ids(self, tmp_path: Path, bad: Any) -> None:
         assert "deprecated_ids" in _error(tmp_path, _rule(), deprecated_ids=bad)
 
+    def test_extra_paths_get_the_same_symlink_guard_as_load_all_rules(self, tmp_path: Path) -> None:
+        real = _write(tmp_path, _rule(), deprecated_ids=["OLD"])
+        link = tmp_path / "link.yml"
+        try:
+            link.symlink_to(real)
+        except OSError:
+            pytest.skip("Symlinks not supported on this platform")
+        with pytest.raises(RuleLoadError, match="symlink"):
+            deprecated_rule_ids([link])
+        with pytest.raises(RuleLoadError, match="does not exist"):
+            deprecated_rule_ids([tmp_path / "missing.yml"])
+
     def test_no_builtin_rule_is_also_deprecated(self) -> None:
         assert not deprecated_rule_ids() & {r.id for r in load_builtin_rules()}
 

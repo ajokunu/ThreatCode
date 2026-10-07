@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from threatcode.engine.rules import matcher
 from threatcode.engine.rules.loader import Rule
 from threatcode.engine.rules.matcher import (
     MAX_CONDITION_DEPTH,
@@ -1024,13 +1025,19 @@ class TestConditionDepth:
 
 
 class TestMalformedConditionsAtRuntime:
-    def test_unknown_operator_is_unknown_not_false(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_unknown_operator_is_unknown_not_false(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(matcher, "_warned_operators", set())
         with caplog.at_level(logging.WARNING):
             assert _op("equal", "x", "x") is U
             assert evaluate_rule({"not": {"p": {"equal": "x"}}}, {"p": "x"}) is False
         assert any("equal" in r.message for r in caplog.records)
 
-    def test_unknown_operator_warns_once(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_unknown_operator_warns_once(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(matcher, "_warned_operators", set())
         with caplog.at_level(logging.WARNING):
             for _ in range(3):
                 _op("eqauls_once_only", "x", "x")

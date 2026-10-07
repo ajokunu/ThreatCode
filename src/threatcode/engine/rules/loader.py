@@ -639,6 +639,18 @@ def load_builtin_rules() -> tuple[Rule, ...]:
     return bundle.rules
 
 
+def _checked_extra_path(path: Path) -> Path:
+    """Reject symlinks and non-files among the extra rule paths; return the resolved path."""
+    # Security: block symlinks in extra rule paths
+    if path.is_symlink():
+        raise RuleLoadError(f"Extra rule path is a symlink (blocked for security): {path}")
+    resolved = path.resolve()
+    # Security: prevent path traversal via symlinks or .. components
+    if not resolved.is_file():
+        raise RuleLoadError(f"Extra rule path does not exist or is not a file: {path}")
+    return resolved
+
+
 def deprecated_rule_ids(extra_paths: list[Path] | None = None) -> frozenset[str]:
     """IDs that rule files list in ``deprecated_ids``: rules that were removed.
 
@@ -646,7 +658,7 @@ def deprecated_rule_ids(extra_paths: list[Path] | None = None) -> frozenset[str]
     """
     ids = set(_builtin_bundle().deprecated_ids)
     for path in extra_paths or []:
-        ids |= load_rule_file(path).deprecated_ids
+        ids |= load_rule_file(_checked_extra_path(path)).deprecated_ids
     return frozenset(ids)
 
 
@@ -664,15 +676,7 @@ def load_all_rules(extra_paths: list[Path] | None = None) -> list[Rule]:
         seen_ids.add(rule.id)
 
     for path in extra_paths or []:
-        # Security: block symlinks in extra rule paths
-        if path.is_symlink():
-            raise RuleLoadError(f"Extra rule path is a symlink (blocked for security): {path}")
-        resolved = path.resolve()
-
-        # Security: prevent path traversal via symlinks or .. components
-        if not resolved.is_file():
-            raise RuleLoadError(f"Extra rule path does not exist or is not a file: {path}")
-        extra_rules = load_rules_from_file(resolved)
+        extra_rules = load_rules_from_file(_checked_extra_path(path))
         for rule in extra_rules:
             if rule.id in seen_ids:
                 raise RuleLoadError(
