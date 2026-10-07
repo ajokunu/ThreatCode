@@ -482,7 +482,8 @@ class TestCloudFormationDetection:
     def test_sam_template_without_a_version(self, tmp_path: Path) -> None:
         result = detect_and_parse(_write(tmp_path, "template.yaml", SAM_TEMPLATE))
         assert result.format_type == "cloudformation"
-        assert [r.name for r in result.resources] == ["Fn"]
+        # the function and the execution role SAM creates for it (WP-2-3)
+        assert [r.name for r in result.resources] == ["Fn", "FnRole"]
 
     @pytest.mark.parametrize("resource_type", ["Custom::Thing", "Alexa::ASK::Skill"])
     def test_custom_and_alexa_types_are_claimed(self, tmp_path: Path, resource_type: str) -> None:
@@ -530,8 +531,9 @@ class TestCloudFormationDetection:
         assert {r.name for r in result.resources} == {"Bucket", "Instance", "Subnets"}
         bucket = next(r for r in result.resources if r.name == "Bucket")
         props = bucket.properties
-        assert props["BucketName"] == {"Fn::Sub": "${AWS::StackName}-data"}
-        assert props["AccessControl"] == {"Fn::If": ["IsProd", "Private", "PublicRead"]}
+        # the short forms are expanded to the long form and kept as written under _cfn (WP-2-3)
+        assert props["_cfn"]["BucketName"] == {"Fn::Sub": "${AWS::StackName}-data"}
+        assert props["_cfn"]["AccessControl"] == {"Fn::If": ["IsProd", "Private", "PublicRead"]}
         assert result.metadata["template_version"] == "2010-09-09"
 
     def test_short_form_output_is_json_serializable(self) -> None:
@@ -719,8 +721,15 @@ class TestTerraformDirectory:
         module = tmp_path / "module"
         shutil.copytree(SHAPES / "tf_module", module)
         (module / "zz_bad.tf").write_text("resource {{{\n", encoding="utf-8")
-        with pytest.raises(ParseError, match=r"zz_bad\.tf"):
-            detect_and_parse(module)
+        # a broken file is an error diagnostic that names it; the rest of the module is
+        # still read (WP-2-2), so the scan reports the file instead of aborting
+        result = detect_and_parse(module)
+        failed = [d for d in result.diagnostics if d.code == "parse.failed"]
+        assert len(failed) == 1
+        assert failed[0].level == "error"
+        assert "zz_bad.tf" in failed[0].message
+        assert len(result.resources) == 3
+        assert "zz_bad.tf" not in result.metadata["files"]
 
     def test_directory_without_terraform_files_is_unsupported(self, tmp_path: Path) -> None:
         (tmp_path / "README.md").write_text("# nothing here\n", encoding="utf-8")

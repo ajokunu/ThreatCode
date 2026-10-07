@@ -159,13 +159,19 @@ LEGACY_ZONES: dict[str, str] = {
     "kubernetes_deployment": "private",
     "kubernetes_pod": "private",
     "kubernetes_secret": "data",
-    "kubernetes_config_map": "data",
+    # deliberate change (WP-2-4): a ConfigMap holds non-secret configuration, so it is PRIVATE
+    "kubernetes_config_map": "private",
     "kubernetes_service_account": "management",
     "kubernetes_role": "management",
     "kubernetes_cluster_role": "management",
     "kubernetes_network_policy": "private",
     "mcp_server": "private",
 }
+
+
+# Zones that WP-2-4 deliberately made depend on properties (a Service by its type, an Ingress
+# by its rules); the legacy table cannot describe them, so they have their own tests.
+PROPERTY_DRIVEN_ZONES = frozenset({"kubernetes_service", "kubernetes_ingress"})
 
 
 def _legacy_categorize(resource_type: str) -> str:
@@ -272,6 +278,8 @@ class TestCatalogParity:
             if _legacy_categorize(rtype) != "unknown":
                 categorized += 1
                 assert categorize_resource(rtype).value == _legacy_categorize(rtype), rtype
+            if rtype in PROPERTY_DRIVEN_ZONES:
+                continue
             if _legacy_zone_is_decided(rtype, props):
                 zoned += 1
                 assert infer_trust_zone(rtype, props).value == _legacy_zone(rtype, props), rtype
