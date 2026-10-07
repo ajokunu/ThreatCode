@@ -136,18 +136,6 @@ def _build_line_index(root: yaml.Node) -> dict[str, int]:
     return index
 
 
-@overload
-def load_yaml_documents(
-    text: str, with_lines: Literal[False] = False, *, source: str = ...
-) -> list[Any]: ...
-
-
-@overload
-def load_yaml_documents(
-    text: str, with_lines: Literal[True], *, source: str = ...
-) -> tuple[list[Any], list[dict[str, int]]]: ...
-
-
 # libyaml composes flow collections recursively in C, so a document like "[[[[...]]]]"
 # a few thousand levels deep overflows the native stack and kills the process before Python
 # can raise RecursionError. Real manifests and templates nest flow collections a handful of
@@ -175,6 +163,18 @@ def _check_flow_depth(text: str, source: str) -> None:
                 )
         elif ch in "]}" and depth:
             depth -= 1
+
+
+@overload
+def load_yaml_documents(
+    text: str, with_lines: Literal[False] = False, *, source: str = ...
+) -> list[Any]: ...
+
+
+@overload
+def load_yaml_documents(
+    text: str, with_lines: Literal[True], *, source: str = ...
+) -> tuple[list[Any], list[dict[str, int]]]: ...
 
 
 def load_yaml_documents(

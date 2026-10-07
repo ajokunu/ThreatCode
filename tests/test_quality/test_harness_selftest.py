@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.pending import pending
 from tests.test_quality.harness import (
     ExpectationError,
     Expected,
