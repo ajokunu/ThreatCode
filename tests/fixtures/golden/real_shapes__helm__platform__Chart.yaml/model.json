@@ -1,0 +1,9 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_deployment.default.release-platform",
+      "stride": "tampering"
+    }
+  ]
+}

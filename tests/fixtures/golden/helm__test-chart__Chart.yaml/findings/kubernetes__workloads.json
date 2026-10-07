@@ -46,6 +46,15 @@
   },
   {
     "resource_address": "kubernetes_deployment.default.release-app",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.default.release-app",
     "rule_id": "K8S_NO_LIVENESS_PROBE",
     "severity": "low",
     "stride": "denial_of_service",

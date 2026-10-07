@@ -1,0 +1,30 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "kubernetes_deployment.default.release-scaffold",
+      "target": "kubernetes_service_account.default.release-scaffold",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service.default.release-scaffold",
+      "target": "kubernetes_deployment.default.release-scaffold",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "kubernetes_deployment.default.release-scaffold": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_service.default.release-scaffold": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_service_account.default.release-scaffold": {
+      "category": "iam",
+      "zone": "management"
+    }
+  }
+}

@@ -6,9 +6,11 @@ selecting it, an Ingress routing to the Service and two NetworkPolicies.
 ``workloads.yaml`` has every pod workload kind, ``kubectl_get_all.*`` the ``List`` that
 ``kubectl get -o yaml`` and ``-o json`` print.
 
-Today manifests make nodes and nothing connects them: no Ingress to Service to workload edge,
-no ServiceAccount binding, and a ``List`` is one node. Assertions that hold now run now; each one a
-later package delivers is its own pending test.
+Manifests make nodes and the parser connects them: an Ingress routes to its Service, a Service
+selects its workloads, a workload runs as its ServiceAccount and reads its Secrets and ConfigMaps,
+bindings grant roles and a NetworkPolicy selects the workloads it covers. A ``List`` expands to one
+node per item and a chart renders without the helm binary. What exposure and reachability add on
+top of those edges is pending on the packages that deliver it.
 """
 
 from __future__ import annotations
@@ -94,78 +96,63 @@ class TestShopStackNodes:
     def test_zone(self, node: str, zone: str) -> None:
         assert_zone(scan_real_shape(SHOP).graph, node, zone)
 
-    @pending("WP-2-4", "a ClusterIP Service is private; only LoadBalancer and NodePort are DMZ")
     def test_the_cluster_ip_service_is_private(self) -> None:
         assert_zone(scan_real_shape(SHOP).graph, SERVICE, "private")
 
-    @pending("WP-2-4", "a ConfigMap is PRIVATE, only a Secret is DATA")
     def test_the_config_map_is_private(self) -> None:
         assert_zone(scan_real_shape(SHOP).graph, CONFIG, "private")
 
-    @pending("WP-2-4", "cluster-scoped kinds use <type>.<name> addresses without a namespace")
     def test_the_namespace_address_has_no_namespace_segment(self) -> None:
         assert_nodes(scan_real_shape(SHOP).graph, ["kubernetes_namespace.shop"])
 
 
 class TestShopStackEffectiveProperties:
-    @pending("WP-2-4", "the effective security context applies pod-level runAsNonRoot")
     def test_pod_level_run_as_non_root_makes_the_workload_non_root(self) -> None:
         props = scan_real_shape(SHOP).graph.nodes[DEPLOYMENT].properties
         assert props["run_as_root"] is False
 
-    @pending("WP-2-4", "a NetworkPolicy podSelector marks the workloads it covers")
     def test_the_deployment_is_covered_by_an_ingress_policy(self) -> None:
         props = scan_real_shape(SHOP).graph.nodes[DEPLOYMENT].properties
         assert props["ingress_policy_covered"] is True
 
-    @pending("WP-2-4", "an Ingress records whether it has TLS")
     def test_the_ingress_has_tls(self) -> None:
         props = scan_real_shape(SHOP).graph.nodes[INGRESS].properties
         assert props["has_tls"] is True
 
-    @pending("WP-2-4", "the effective ServiceAccount token mount comes from the ServiceAccount")
     def test_the_account_setting_wins_over_the_default_mount(self) -> None:
         props = scan_real_shape(SHOP).graph.nodes[DEPLOYMENT].properties
         assert props["effective_automount_sa_token"] is False
 
 
 class TestShopStackEdges:
-    @pending("WP-2-4", "an Ingress backend becomes a network_flow edge to the Service")
     def test_the_ingress_routes_to_the_service(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, INGRESS, SERVICE, type="network_flow", relation="backend")
 
-    @pending("WP-2-4", "a Service selector becomes a network_flow edge to the matching workload")
     def test_the_service_selects_the_deployment(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, SERVICE, DEPLOYMENT, type="network_flow", relation="selects")
 
-    @pending("WP-2-4", "serviceAccountName becomes an iam_binding edge with relation runs_as")
     def test_the_deployment_runs_as_its_service_account(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, DEPLOYMENT, ACCOUNT, type="iam_binding", relation="runs_as")
 
-    @pending("WP-2-4", "secretKeyRef becomes a dependency edge from the workload to the Secret")
     def test_the_deployment_reads_the_secret(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, DEPLOYMENT, SECRET, type="dependency")
 
-    @pending("WP-2-4", "envFrom configMapRef becomes a dependency edge to the ConfigMap")
     def test_the_deployment_reads_the_config_map(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, DEPLOYMENT, CONFIG, type="dependency")
 
-    @pending("WP-2-4", "a RoleBinding roleRef becomes an iam_binding edge with relation grants")
     def test_the_binding_grants_the_role(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, BINDING, ROLE, type="iam_binding", relation="grants")
 
-    @pending("WP-2-4", "a RoleBinding subject becomes an iam_binding edge to the ServiceAccount")
     def test_the_binding_names_the_service_account(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, BINDING, ACCOUNT, type="iam_binding", relation="bound_subject")
 
-    @pending("WP-2-4", "a NetworkPolicy podSelector becomes an edge to the workloads it selects")
     def test_both_policies_select_the_deployment(self) -> None:
         graph = scan_real_shape(SHOP).graph
         assert_edge(graph, ALLOW_POLICY, DEPLOYMENT, type="dependency", relation="policy")
@@ -212,18 +199,15 @@ class TestWorkloadKinds:
         assert props.properties["host_pid"] is True
         assert props.properties["has_host_path_volume"] is True
 
-    @pending("WP-2-4", "pod-level runAsNonRoot and runAsUser make the effective context non-root")
     def test_a_stateful_set_with_pod_level_non_root_is_not_run_as_root(self) -> None:
         props = scan_real_shape(WORKLOADS).graph.nodes["kubernetes_stateful_set.platform.queue"]
         assert props.properties["run_as_root"] is False
 
-    @pending("WP-2-4", "one privileged sidecar makes the whole workload privileged")
     def test_the_privileged_sidecar_marks_the_deployment(self) -> None:
         props = scan_real_shape(WORKLOADS).graph.nodes["kubernetes_deployment.platform.api"]
         assert props.properties["privileged"] is True
         assert props.properties["container_findings"]["privileged"] == ["log-shipper"]
 
-    @pending("WP-2-4", "the CronJob pod spec is read from jobTemplate.spec.template.spec")
     def test_the_cron_job_security_context_comes_from_its_job_template(self) -> None:
         props = scan_real_shape(WORKLOADS).graph.nodes[
             "kubernetes_cron_job.platform.nightly-report"
@@ -232,7 +216,6 @@ class TestWorkloadKinds:
 
 
 class TestKubectlLists:
-    @pending("WP-2-4", "a List expands to one node per item")
     def test_the_yaml_list_expands_to_its_items(self) -> None:
         graph = scan_real_shape(LIST_YAML).graph
         assert_nodes(
@@ -245,18 +228,15 @@ class TestKubectlLists:
             exact=True,
         )
 
-    @pending("WP-2-4", "a .json manifest is claimed; the detector is WP-1-4, merged first")
     def test_a_json_manifest_is_claimed(self) -> None:
         assert scan_real_shape(LIST_JSON).graph.node_count >= 1
 
-    @pending("WP-2-4", "a JSON List expands exactly like the YAML List")
     def test_the_json_list_matches_the_yaml_list(self) -> None:
         yaml_nodes = set(scan_real_shape(LIST_YAML).graph.nodes)
         json_nodes = set(scan_real_shape(LIST_JSON).graph.nodes)
         assert json_nodes == yaml_nodes
         assert len(json_nodes) == 3
 
-    @pending("WP-2-4", "a Service selector links the Service to the Deployment inside a List")
     def test_the_service_selects_the_deployment_inside_the_list(self) -> None:
         graph = scan_real_shape(LIST_YAML).graph
         assert_edge(
@@ -283,7 +263,6 @@ class TestHelmCharts:
     def test_a_chart_without_include_helpers_renders_into_nodes(self) -> None:
         assert _types(REDIS_SUBCHART) >= {"kubernetes_stateful_set", "kubernetes_service"}
 
-    @pending("WP-2-4", "the safe renderer handles include, toYaml, nindent, with and range")
     def test_the_helm_create_scaffold_renders_its_default_resources(self) -> None:
         assert _types(SCAFFOLD) >= {
             "kubernetes_deployment",
@@ -291,17 +270,14 @@ class TestHelmCharts:
             "kubernetes_service_account",
         }
 
-    @pending("WP-2-4", "if blocks on literal values drop the disabled Ingress and HPA")
     def test_the_scaffold_renders_no_ingress_or_autoscaler_by_default(self) -> None:
         types = _types(SCAFFOLD)
         assert "kubernetes_ingress" not in types
         assert "kubernetes_horizontal_pod_autoscaler" not in types
 
-    @pending("WP-2-4", "templates/tests/ and NOTES.txt are not rendered as workloads")
     def test_the_helm_test_hook_pod_is_not_a_workload(self) -> None:
         assert "kubernetes_pod" not in _types(SCAFFOLD)
 
-    @pending("WP-2-4", "the renderer walks templates/** including subdirectories")
     def test_templates_in_subdirectories_are_rendered(self) -> None:
         assert _types(PLATFORM) >= {
             "kubernetes_role",
@@ -310,18 +286,15 @@ class TestHelmCharts:
             "kubernetes_deployment",
         }
 
-    @pending("WP-2-4", "subcharts under charts/ render with their scoped values")
     def test_the_redis_subchart_is_rendered_with_the_parent_chart(self) -> None:
         assert "kubernetes_stateful_set" in _types(PLATFORM)
 
-    @pending("WP-2-4", "range over values lists renders one rule entry per item")
     def test_range_over_a_values_list_fills_the_role(self) -> None:
         graph = scan_real_shape(PLATFORM).graph
         roles = [n for n in graph.nodes.values() if n.resource_type == "kubernetes_role"]
         assert roles
         assert "platform-api-credentials" in str(roles[0].properties["rbac_rules"])
 
-    @pending("WP-2-4", "every fallback render emits a helm.fallback_render warning")
     def test_a_fallback_render_is_reported(self) -> None:
         result = scan_real_shape(PLATFORM)
         codes = {d.code for output in result.parsed for d in output.diagnostics}

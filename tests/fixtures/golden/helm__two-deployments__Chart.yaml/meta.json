@@ -1,0 +1,3 @@
+{
+  "input": "tests/fixtures/helm/two-deployments/Chart.yaml"
+}
