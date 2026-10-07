@@ -1,0 +1,607 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_network.vpc",
+          "mode": "managed",
+          "type": "google_compute_network",
+          "name": "vpc",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "auto_create_subnetworks": false,
+            "delete_default_routes_on_create": false,
+            "description": null,
+            "enable_ula_internal_ipv6": null,
+            "name": "shop-vpc",
+            "network_firewall_policy_enforcement_order": "AFTER_CLASSIC_FIREWALL",
+            "project": "shop-prod",
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "google_compute_subnetwork.app",
+          "mode": "managed",
+          "type": "google_compute_subnetwork",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "description": null,
+            "ip_cidr_range": "10.40.0.0/24",
+            "log_config": [],
+            "name": "shop-app",
+            "project": "shop-prod",
+            "region": "us-central1",
+            "secondary_ip_range": [],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "google_compute_firewall.ssh",
+          "mode": "managed",
+          "type": "google_compute_firewall",
+          "name": "ssh",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "allow": [
+              {
+                "ports": [
+                  "22"
+                ],
+                "protocol": "tcp"
+              }
+            ],
+            "deny": [],
+            "description": null,
+            "destination_ranges": null,
+            "direction": "INGRESS",
+            "disabled": null,
+            "name": "allow-ssh",
+            "priority": 1000,
+            "project": "shop-prod",
+            "source_ranges": [
+              "0.0.0.0/0"
+            ],
+            "source_service_accounts": null,
+            "source_tags": null,
+            "target_service_accounts": null,
+            "target_tags": [
+              "ssh"
+            ],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "google_compute_firewall.internal",
+          "mode": "managed",
+          "type": "google_compute_firewall",
+          "name": "internal",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "allow": [
+              {
+                "ports": [],
+                "protocol": "icmp"
+              }
+            ],
+            "deny": [],
+            "description": null,
+            "destination_ranges": null,
+            "direction": "INGRESS",
+            "disabled": null,
+            "name": "allow-internal",
+            "priority": 1000,
+            "project": "shop-prod",
+            "source_ranges": [
+              "10.40.0.0/24"
+            ],
+            "source_service_accounts": null,
+            "source_tags": null,
+            "target_service_accounts": null,
+            "target_tags": null,
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "google_compute_instance.vm",
+          "mode": "managed",
+          "type": "google_compute_instance",
+          "name": "vm",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "boot_disk": [
+              {
+                "auto_delete": true,
+                "initialize_params": [
+                  {
+                    "image": "debian-cloud/debian-12"
+                  }
+                ]
+              }
+            ],
+            "can_ip_forward": false,
+            "machine_type": "e2-medium",
+            "name": "shop-vm",
+            "network_interface": [
+              {
+                "access_config": [
+                  {
+                    "nat_ip": null
+                  }
+                ],
+                "alias_ip_range": [],
+                "ipv6_access_config": [],
+                "network_ip": null,
+                "queue_count": null
+              }
+            ],
+            "project": "shop-prod",
+            "tags": [
+              "ssh"
+            ],
+            "timeouts": null,
+            "zone": "us-central1-a"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_compute_network.vpc",
+      "mode": "managed",
+      "type": "google_compute_network",
+      "name": "vpc",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "auto_create_subnetworks": false,
+          "delete_default_routes_on_create": false,
+          "description": null,
+          "enable_ula_internal_ipv6": null,
+          "name": "shop-vpc",
+          "network_firewall_policy_enforcement_order": "AFTER_CLASSIC_FIREWALL",
+          "project": "shop-prod",
+          "timeouts": null
+        },
+        "after_unknown": {
+          "gateway_ipv4": true,
+          "id": true,
+          "internal_ipv6_range": true,
+          "mtu": true,
+          "numeric_id": true,
+          "routing_mode": true,
+          "self_link": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_compute_subnetwork.app",
+      "mode": "managed",
+      "type": "google_compute_subnetwork",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "description": null,
+          "ip_cidr_range": "10.40.0.0/24",
+          "log_config": [],
+          "name": "shop-app",
+          "project": "shop-prod",
+          "region": "us-central1",
+          "secondary_ip_range": [],
+          "timeouts": null
+        },
+        "after_unknown": {
+          "creation_timestamp": true,
+          "external_ipv6_prefix": true,
+          "fingerprint": true,
+          "gateway_address": true,
+          "id": true,
+          "internal_ipv6_prefix": true,
+          "ipv6_cidr_range": true,
+          "network": true,
+          "private_ip_google_access": true,
+          "private_ipv6_google_access": true,
+          "purpose": true,
+          "role": true,
+          "secondary_ip_range": [],
+          "self_link": true,
+          "stack_type": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_compute_firewall.ssh",
+      "mode": "managed",
+      "type": "google_compute_firewall",
+      "name": "ssh",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "allow": [
+            {
+              "ports": [
+                "22"
+              ],
+              "protocol": "tcp"
+            }
+          ],
+          "deny": [],
+          "description": null,
+          "destination_ranges": null,
+          "direction": "INGRESS",
+          "disabled": null,
+          "name": "allow-ssh",
+          "priority": 1000,
+          "project": "shop-prod",
+          "source_ranges": [
+            "0.0.0.0/0"
+          ],
+          "source_service_accounts": null,
+          "source_tags": null,
+          "target_service_accounts": null,
+          "target_tags": [
+            "ssh"
+          ],
+          "timeouts": null
+        },
+        "after_unknown": {
+          "creation_timestamp": true,
+          "enable_logging": true,
+          "id": true,
+          "log_config": true,
+          "network": true,
+          "self_link": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_compute_firewall.internal",
+      "mode": "managed",
+      "type": "google_compute_firewall",
+      "name": "internal",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "allow": [
+            {
+              "ports": [],
+              "protocol": "icmp"
+            }
+          ],
+          "deny": [],
+          "description": null,
+          "destination_ranges": null,
+          "direction": "INGRESS",
+          "disabled": null,
+          "name": "allow-internal",
+          "priority": 1000,
+          "project": "shop-prod",
+          "source_ranges": [
+            "10.40.0.0/24"
+          ],
+          "source_service_accounts": null,
+          "source_tags": null,
+          "target_service_accounts": null,
+          "target_tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "creation_timestamp": true,
+          "enable_logging": true,
+          "id": true,
+          "log_config": true,
+          "network": true,
+          "self_link": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_compute_instance.vm",
+      "mode": "managed",
+      "type": "google_compute_instance",
+      "name": "vm",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "boot_disk": [
+            {
+              "auto_delete": true,
+              "initialize_params": [
+                {
+                  "image": "debian-cloud/debian-12"
+                }
+              ]
+            }
+          ],
+          "can_ip_forward": false,
+          "machine_type": "e2-medium",
+          "name": "shop-vm",
+          "network_interface": [
+            {
+              "access_config": [
+                {
+                  "nat_ip": null
+                }
+              ],
+              "alias_ip_range": [],
+              "ipv6_access_config": [],
+              "network_ip": null,
+              "queue_count": null
+            }
+          ],
+          "project": "shop-prod",
+          "tags": [
+            "ssh"
+          ],
+          "timeouts": null,
+          "zone": "us-central1-a"
+        },
+        "after_unknown": {
+          "cpu_platform": true,
+          "current_status": true,
+          "id": true,
+          "instance_id": true,
+          "metadata_fingerprint": true,
+          "self_link": true,
+          "tags_fingerprint": true,
+          "boot_disk": [
+            {
+              "source": true
+            }
+          ],
+          "network_interface": [
+            {
+              "access_config": [
+                {
+                  "nat_ip": true,
+                  "network_tier": true,
+                  "public_ptr_domain_name": true
+                }
+              ],
+              "name": true,
+              "network": true,
+              "subnetwork": true,
+              "subnetwork_project": true
+            }
+          ]
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google",
+        "expressions": {
+          "project": {
+            "constant_value": "shop-prod"
+          },
+          "region": {
+            "constant_value": "us-central1"
+          }
+        }
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_network.vpc",
+          "mode": "managed",
+          "type": "google_compute_network",
+          "name": "vpc",
+          "provider_config_key": "google",
+          "expressions": {
+            "auto_create_subnetworks": {
+              "constant_value": false
+            },
+            "name": {
+              "constant_value": "shop-vpc"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "google_compute_subnetwork.app",
+          "mode": "managed",
+          "type": "google_compute_subnetwork",
+          "name": "app",
+          "provider_config_key": "google",
+          "expressions": {
+            "ip_cidr_range": {
+              "constant_value": "10.40.0.0/24"
+            },
+            "name": {
+              "constant_value": "shop-app"
+            },
+            "network": {
+              "references": [
+                "google_compute_network.vpc.id",
+                "google_compute_network.vpc"
+              ]
+            },
+            "region": {
+              "constant_value": "us-central1"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "google_compute_firewall.ssh",
+          "mode": "managed",
+          "type": "google_compute_firewall",
+          "name": "ssh",
+          "provider_config_key": "google",
+          "expressions": {
+            "allow": [
+              {
+                "ports": {
+                  "constant_value": [
+                    "22"
+                  ]
+                },
+                "protocol": {
+                  "constant_value": "tcp"
+                }
+              }
+            ],
+            "name": {
+              "constant_value": "allow-ssh"
+            },
+            "network": {
+              "references": [
+                "google_compute_network.vpc.name",
+                "google_compute_network.vpc"
+              ]
+            },
+            "source_ranges": {
+              "constant_value": [
+                "0.0.0.0/0"
+              ]
+            },
+            "target_tags": {
+              "constant_value": [
+                "ssh"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "google_compute_firewall.internal",
+          "mode": "managed",
+          "type": "google_compute_firewall",
+          "name": "internal",
+          "provider_config_key": "google",
+          "expressions": {
+            "allow": [
+              {
+                "protocol": {
+                  "constant_value": "icmp"
+                }
+              }
+            ],
+            "name": {
+              "constant_value": "allow-internal"
+            },
+            "network": {
+              "references": [
+                "google_compute_network.vpc.name",
+                "google_compute_network.vpc"
+              ]
+            },
+            "source_ranges": {
+              "references": [
+                "google_compute_subnetwork.app.ip_cidr_range",
+                "google_compute_subnetwork.app"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "google_compute_instance.vm",
+          "mode": "managed",
+          "type": "google_compute_instance",
+          "name": "vm",
+          "provider_config_key": "google",
+          "expressions": {
+            "boot_disk": [
+              {
+                "initialize_params": [
+                  {
+                    "image": {
+                      "constant_value": "debian-cloud/debian-12"
+                    }
+                  }
+                ]
+              }
+            ],
+            "machine_type": {
+              "constant_value": "e2-medium"
+            },
+            "name": {
+              "constant_value": "shop-vm"
+            },
+            "network_interface": [
+              {
+                "access_config": [
+                  {}
+                ],
+                "network": {
+                  "references": [
+                    "google_compute_network.vpc.id",
+                    "google_compute_network.vpc"
+                  ]
+                },
+                "subnetwork": {
+                  "references": [
+                    "google_compute_subnetwork.app.id",
+                    "google_compute_subnetwork.app"
+                  ]
+                }
+              }
+            ],
+            "tags": {
+              "constant_value": [
+                "ssh"
+              ]
+            },
+            "zone": {
+              "constant_value": "us-central1-a"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

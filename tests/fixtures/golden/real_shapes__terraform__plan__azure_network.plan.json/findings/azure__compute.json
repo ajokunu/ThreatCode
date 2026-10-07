@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "azurerm_linux_virtual_machine.app",
+    "rule_id": "AZURE_VM_NO_MANAGED_IDENTITY",
+    "severity": "medium",
+    "stride": "spoofing",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

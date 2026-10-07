@@ -35,6 +35,8 @@ MODULES = "terraform/plan/modules.plan.json"
 TWO_VPCS = "terraform/plan/two_vpcs.plan.json"
 MODULE_SCOPES = "terraform/plan/module_scopes.plan.json"
 UNKNOWN_VALUES = "terraform/plan/unknown_values.plan.json"
+AZURE_NETWORK = "terraform/plan/azure_network.plan.json"
+GCP_NETWORK = "terraform/plan/gcp_network.plan.json"
 
 PLAN_FIXTURES = sorted((REAL_SHAPES_DIR / "terraform" / "plan").glob("*.plan.json"))
 
@@ -124,6 +126,8 @@ class TestNoUnrealisticPlanIsAddedSilently:
 
 def test_the_corpus_has_the_plan_fixtures() -> None:
     assert [p.name for p in PLAN_FIXTURES] == [
+        "azure_network.plan.json",
+        "gcp_network.plan.json",
         "module_scopes.plan.json",
         "modules.plan.json",
         "two_vpcs.plan.json",
@@ -633,3 +637,68 @@ class TestCountedFanOut:
         graph = scan_real_shape(WEBAPP).graph
         for edge in graph.edges:
             assert edge.source != edge.target
+
+
+class TestOtherProviders:
+    """References resolve the same way for the azurerm and google providers."""
+
+    def test_the_azure_edge_set(self) -> None:
+        graph = scan_real_shape(AZURE_NETWORK).graph
+        group = "azurerm_resource_group.main"
+        assert edge_set(graph) == {
+            ("azurerm_virtual_network.main", group, "dependency"),
+            ("azurerm_subnet.app", group, "dependency"),
+            ("azurerm_subnet.app", "azurerm_virtual_network.main", "dependency"),
+            ("azurerm_network_security_group.app", group, "dependency"),
+            ("azurerm_network_security_rule.rdp", group, "dependency"),
+            (
+                "azurerm_network_security_rule.rdp",
+                "azurerm_network_security_group.app",
+                "dependency",
+            ),
+            ("azurerm_network_interface.app", group, "dependency"),
+            ("azurerm_network_interface.app", "azurerm_subnet.app", "dependency"),
+            ("azurerm_linux_virtual_machine.app", group, "dependency"),
+            ("azurerm_linux_virtual_machine.app", "azurerm_network_interface.app", "dependency"),
+            (
+                "azurerm_subnet_network_security_group_association.app",
+                "azurerm_network_security_group.app",
+                "dependency",
+            ),
+            (
+                "azurerm_subnet_network_security_group_association.app",
+                "azurerm_subnet.app",
+                "dependency",
+            ),
+            (
+                "azurerm_subnet_network_security_group_association.app",
+                "azurerm_subnet.app",
+                "containment",
+            ),
+        }
+
+    def test_a_nested_block_reference_reaches_the_subnet(self) -> None:
+        graph = scan_real_shape(AZURE_NETWORK).graph
+        assert_edge(graph, "azurerm_network_interface.app", "azurerm_subnet.app")
+        ip_configuration = graph.nodes["azurerm_network_interface.app"].properties[
+            "ip_configuration"
+        ]
+        assert is_unknown(ip_configuration[0]["subnet_id"])
+
+    def test_the_gcp_edge_set(self) -> None:
+        graph = scan_real_shape(GCP_NETWORK).graph
+        network, subnet = "google_compute_network.vpc", "google_compute_subnetwork.app"
+        assert edge_set(graph) == {
+            (subnet, network, "dependency"),
+            ("google_compute_firewall.ssh", network, "dependency"),
+            ("google_compute_firewall.internal", network, "dependency"),
+            ("google_compute_firewall.internal", subnet, "dependency"),
+            ("google_compute_instance.vm", network, "dependency"),
+            ("google_compute_instance.vm", subnet, "dependency"),
+        }
+
+    def test_the_gcp_network_interface_block_keeps_its_unknown_network(self) -> None:
+        graph = scan_real_shape(GCP_NETWORK).graph
+        (nic,) = graph.nodes["google_compute_instance.vm"].properties["network_interface"]
+        assert is_unknown(nic["network"])
+        assert nic["network"].reference == "google_compute_network.vpc.id"

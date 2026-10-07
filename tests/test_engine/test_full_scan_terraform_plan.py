@@ -316,3 +316,29 @@ class TestRealShapePlansThroughTheEngine:
         first = scan_real_shape("terraform/plan/modules.plan.json")
         second = scan_real_shape("terraform/plan/modules.plan.json")
         assert [t.id for t in first.threats] == [t.id for t in second.threats]
+
+
+class TestProviderConformancePlans:
+    """Plans of the azurerm and google providers parse, and the rules read their shapes."""
+
+    def test_the_open_rdp_rule_fires_on_the_azure_rule_and_nothing_hides_it(self) -> None:
+        result = scan_real_shape("terraform/plan/azure_network.plan.json")
+        assert result.fired("AZURE_NSG_RDP_OPEN", "azurerm_network_security_rule.rdp")
+        assert result.fired("AZURE_NSG_ALLOW_ALL_INBOUND", "azurerm_network_security_rule.rdp")
+        assert result.fired("AZURE_VNET_NO_DDOS", "azurerm_virtual_network.main")
+
+    def test_inline_security_rules_are_a_list_of_objects_no_rule_reads_yet(self) -> None:
+        result = scan_real_shape("terraform/plan/azure_network.plan.json")
+        node = result.graph.nodes["azurerm_network_security_group.app"]
+        assert isinstance(node.properties["security_rule"], list)
+        assert result.rule_ids_for("azurerm_network_security_group.app") == set()
+
+    def test_the_open_firewall_is_reported_and_the_internal_one_is_not(self) -> None:
+        result = scan_real_shape("terraform/plan/gcp_network.plan.json")
+        assert result.fired("GCP_FW_ALLOW_ALL", "google_compute_firewall.ssh")
+        assert result.rule_ids_for("google_compute_firewall.internal") == set()
+
+    def test_a_restricted_source_range_stays_a_plain_list(self) -> None:
+        result = scan_real_shape("terraform/plan/gcp_network.plan.json")
+        ranges = result.graph.nodes["google_compute_firewall.internal"].properties["source_ranges"]
+        assert ranges == ["10.40.0.0/24"]

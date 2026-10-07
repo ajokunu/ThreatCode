@@ -1,0 +1,3 @@
+{
+  "input": "tests/fixtures/real_shapes/terraform/plan/gcp_network.plan.json"
+}
