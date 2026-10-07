@@ -473,6 +473,212 @@ class TestLimits:
         assert len(_hcl_eval._PARSE_CACHE) <= 5
 
 
+class Sized(Module):
+    """A module whose locals are big, that records what hit a limit and can run out of work."""
+
+    def __init__(self, locals_: dict[str, Any], work: int | None = None) -> None:
+        super().__init__(locals_=locals_)
+        self.work = work
+        self.exceeded_labels: list[str] = []
+
+    def charge(self, units: int) -> bool:
+        if self.work is None:
+            return True
+        self.work -= units
+        return self.work >= 0
+
+    def exceeded(self, limit: str) -> None:
+        self.exceeded_labels.append(limit)
+
+
+def sized(text: str, **locals_: Any) -> Any:
+    return evaluate_expression(text, Sized(locals_))
+
+
+class TestValueSizeLimits:
+    """What evaluation builds is limited, so a short hostile file cannot grow a value forever."""
+
+    HALF = _hcl_eval.MAX_VALUE_LENGTH // 2 + 1
+
+    def test_a_template_longer_than_the_limit_is_unknown(self) -> None:
+        text = "x" * self.HALF
+        assert is_unknown(sized('"${local.a}${local.a}"', a=text))
+
+    def test_a_template_under_the_limit_is_text(self) -> None:
+        text = "x" * (self.HALF - 10)
+        assert sized('"${local.a}${local.a}"', a=text) == text + text
+
+    def test_the_limit_counts_literal_text_between_the_parts(self) -> None:
+        text = "x" * (_hcl_eval.MAX_VALUE_LENGTH - 2)
+        assert sized('"${local.a}ab"', a=text) == text + "ab"
+        assert is_unknown(sized('"${local.a}abc"', a=text))
+
+    def test_a_lone_reference_to_a_long_string_is_unknown(self) -> None:
+        assert is_unknown(sized("local.a", a="x" * (_hcl_eval.MAX_VALUE_LENGTH + 1)))
+
+    def test_join_past_the_limit_is_unknown(self) -> None:
+        parts = ["x" * 1000] * 1100
+        assert is_unknown(sized('join(",", local.a)', a=parts))
+        assert len(sized('join(",", local.a)', a=parts[:1000])) == 1000 * 1000 + 999
+
+    def test_concat_past_the_limit_is_unknown(self) -> None:
+        items = list(range(_hcl_eval.MAX_COLLECTION_SIZE // 2 + 1))
+        assert is_unknown(sized("concat(local.a, local.a)", a=items))
+        assert len(sized("concat(local.a, local.a)", a=items[:4000])) == 8000
+
+    def test_merge_past_the_limit_is_unknown(self) -> None:
+        one = {f"a{i}": i for i in range(6000)}
+        two = {f"b{i}": i for i in range(6000)}
+        assert is_unknown(sized("merge(local.one, local.two)", one=one, two=two))
+        assert len(sized("merge(local.one, local.one)", one=one)) == 6000
+        assert len(sized("merge(local.one, local.two)", one=one, two={"b": 1})) == 6001
+
+    def test_flatten_past_the_limit_is_unknown(self) -> None:
+        nested = [list(range(100)) for _ in range(150)]
+        assert is_unknown(sized("flatten(local.a)", a=nested))
+        assert len(sized("flatten(local.a)", a=nested[:50])) == 5000
+
+    def test_a_list_that_repeats_a_big_list_counts_every_copy(self) -> None:
+        big = list(range(4000))
+        assert is_unknown(sized("[local.a, local.a, local.a]", a=big))
+        assert len(sized("[local.a, local.a]", a=big)) == 2
+
+    def test_an_object_that_repeats_a_big_list_counts_every_copy(self) -> None:
+        big = list(range(4000))
+        assert is_unknown(sized("{x = local.a, y = local.a, z = local.a}", a=big))
+        assert set(sized("{x = local.a, y = local.a}", a=big)) == {"x", "y"}
+
+    def test_a_splat_over_a_big_list_is_bounded(self) -> None:
+        rows = [{"v": list(range(3))} for _ in range(4000)]
+        assert is_unknown(sized("local.a[*].v", a=rows))
+
+    def test_looking_up_a_collection_over_the_limit_is_unknown(self) -> None:
+        big = list(range(_hcl_eval.MAX_COLLECTION_SIZE + 1))
+        assert is_unknown(sized("local.a", a=big))
+        assert len(sized("local.a", a=big[:-100])) == _hcl_eval.MAX_COLLECTION_SIZE - 99
+
+    def test_strings_inside_a_collection_count_toward_the_length_limit(self) -> None:
+        pieces = ["x" * 300_000] * 4
+        assert is_unknown(sized("local.a", a=pieces))
+        assert len(sized("local.a", a=pieces[:3])) == 3
+
+    def test_a_function_over_a_shared_structure_is_bounded(self) -> None:
+        # flatten walks the nesting, so a list of the same list many times must not be walked
+        layer: Any = [1, 2]
+        for _ in range(60):
+            layer = [layer, layer]
+        assert is_unknown(sized("flatten(local.a)", a=layer))
+        assert is_unknown(sized("jsonencode(local.a)", a=layer))
+        assert is_unknown(sized("local.a == local.a", a=layer))
+
+    def test_a_limit_is_reported_to_the_context(self) -> None:
+        context = Sized({"a": "x" * self.HALF})
+        evaluate_expression('"${local.a}${local.a}"', context)
+        assert context.exceeded_labels == ["value size"]
+
+    def test_a_value_within_the_limits_reports_nothing(self) -> None:
+        context = Sized({"a": list(range(100))})
+        assert len(evaluate_expression("concat(local.a, local.a)", context)) == 200
+        assert context.exceeded_labels == []
+
+    def test_scalars_and_small_values_cost_no_limit(self) -> None:
+        context = Sized({}, work=0)
+        assert evaluate_expression("1 + 1", context) == 2
+        assert evaluate_expression('"a${1 + 1}"', context) == "a2"
+
+    def test_an_exhausted_work_budget_makes_collections_unknown(self) -> None:
+        context = Sized({"a": [1, 2, 3]}, work=0)
+        assert is_unknown(evaluate_expression("[1, 2]", context))
+        assert is_unknown(evaluate_expression("local.a", context))
+        assert "value size" in context.exceeded_labels
+
+    def test_the_work_budget_is_spent_by_the_values_checked(self) -> None:
+        context = Sized({"a": list(range(500))}, work=2_000)
+        answers = [evaluate_expression("local.a", context) for _ in range(10)]
+        assert not is_unknown(answers[0])
+        assert is_unknown(answers[-1])
+
+    def test_a_deep_collection_does_not_overflow_the_stack(self) -> None:
+        deep: Any = 1
+        for _ in range(5000):
+            deep = [deep]
+        assert not is_unknown(sized("local.a", a=deep))
+
+    def test_a_limit_does_not_apply_to_a_literal_in_the_text(self) -> None:
+        items = ", ".join(["1"] * (_hcl_eval.MAX_TOKENS // 3))
+        assert len(evaluate_expression(f"[{items}]")) == _hcl_eval.MAX_TOKENS // 3
+
+    def test_the_limits_are_documented_constants(self) -> None:
+        assert _hcl_eval.MAX_VALUE_LENGTH == 1_048_576
+        assert _hcl_eval.MAX_COLLECTION_SIZE == 10_000
+
+
+class TestSetFunctions:
+    def test_distinct_keeps_the_first_of_equal_values(self) -> None:
+        assert evaluate_expression('distinct(["b", "a", "b", "a"])') == ["b", "a"]
+
+    def test_one_and_one_point_zero_are_the_same_number(self) -> None:
+        assert evaluate_expression("distinct([1, 1.0, 2])") == [1, 2]
+
+    def test_true_is_not_the_number_one(self) -> None:
+        assert evaluate_expression("distinct([true, 1, false, 0])") == [True, 1, False, 0]
+
+    def test_text_is_not_a_number(self) -> None:
+        assert evaluate_expression('distinct(["1", 1])') == ["1", 1]
+
+    def test_equal_collections_collapse_whatever_their_key_order(self) -> None:
+        assert evaluate_expression("distinct([{a = 1, b = 2}, {b = 2, a = 1}, [1], [1]])") == [
+            {"a": 1, "b": 2},
+            [1],
+        ]
+
+    def test_null_collapses(self) -> None:
+        assert evaluate_expression("distinct([null, null, 1])") == [None, 1]
+
+    def test_unknown_values_are_never_equal(self) -> None:
+        module = Module({"a": Unknown("var.a"), "b": Unknown("var.b")})
+        result = evaluate_expression("distinct([var.a, var.b, 1, 1])", module)
+        assert len(result) == 3 and [is_unknown(item) for item in result] == [True, True, False]
+
+    def test_collections_holding_an_unknown_are_never_equal(self) -> None:
+        module = Module({"a": Unknown("var.a")})
+        assert len(evaluate_expression("distinct([[var.a], [var.a]])", module)) == 2
+
+    def test_a_big_set_is_fast(self) -> None:
+        items = [f"item-{i}" for i in range(_hcl_eval.MAX_COLLECTION_SIZE // 2 - 100)]
+        started = time.monotonic()
+        result = evaluate_expression(
+            "toset(concat(local.a, local.a))", Module(locals_={"a": items})
+        )
+        assert len(result) == len(items)
+        assert time.monotonic() - started < 5
+
+    def test_flatten_is_linear(self) -> None:
+        nested = [[i, [i + 1]] for i in range(1500)]
+        started = time.monotonic()
+        assert len(sized("flatten(local.a)", a=nested)) == 3000
+        assert time.monotonic() - started < 5
+
+
+class TestParseCache:
+    def test_a_stack_overflow_while_parsing_is_not_remembered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = "1 + stack_overflow_marker"
+        real = _hcl_eval._Parser
+
+        class Overflowing(real):  # type: ignore[valid-type, misc]
+            def parse(self) -> Any:
+                raise RecursionError
+
+        monkeypatch.setattr(_hcl_eval, "_Parser", Overflowing)
+        with pytest.raises(ExpressionError, match="too deeply"):
+            parse_expression(text)
+        monkeypatch.setattr(_hcl_eval, "_Parser", real)
+        # The overflow said something about the stack at that moment, not about the text
+        assert parse_expression(text) is not None
+
+
 class TestEvaluateValue:
     def test_containers_and_scalars(self) -> None:
         raw = {"a": ["${var.n}", 2, None, True], "b": {"c": "${1 + 1}"}}

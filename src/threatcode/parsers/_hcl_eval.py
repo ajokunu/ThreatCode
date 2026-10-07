@@ -21,8 +21,16 @@ a variable with no value, a ``for`` expression and every function not listed abo
 An ``Unknown`` is a value that exists but cannot be known here, so a rule treats it as
 unknown instead of absent.
 
-Limits keep a hostile file cheap to read: an expression longer than ``MAX_EXPRESSION_LENGTH``
-or nested deeper than ``MAX_DEPTH`` is ``Unknown``, and so is a local that refers to itself.
+Limits keep a hostile file cheap to read, because threatcode scans untrusted code in CI.
+An expression longer than ``MAX_EXPRESSION_LENGTH`` or nested deeper than ``MAX_DEPTH`` is
+``Unknown``, and so is a local that refers to itself.
+What evaluation builds is limited too, since a few short lines can double a value many times
+(a local that is its predecessor twice, as a template, a ``concat`` or a list):
+a computed string longer than ``MAX_VALUE_LENGTH``, or a computed collection with more than
+``MAX_COLLECTION_SIZE`` elements counted through nesting and sharing, is ``Unknown``.
+The context also keeps a budget of ``MAX_EVALUATION_WORK`` for all the size checks of one parse,
+so many values just under the limits cannot add up to unbounded work.
+A literal that the file itself spells out is bounded by the size of the file and is not limited.
 
 References are found separately by ``string_references``, token by token, so a reference
 inside a function call, a conditional or a ``for`` expression is found even though the value
@@ -49,6 +57,13 @@ from threatcode.values import UNKNOWN_TEXT, Unknown, is_unknown
 MAX_EXPRESSION_LENGTH = 20_000
 MAX_DEPTH = 48
 MAX_TOKENS = 5_000
+# Longest string evaluation may build, in characters
+MAX_VALUE_LENGTH = 1_048_576
+# Most elements (lists, objects and everything nested in them, shared ones counted each time)
+# a collection that evaluation builds or looks up may hold
+MAX_COLLECTION_SIZE = 10_000
+# Work one parse may spend on size checks: one unit per element visited, one per 64 characters
+MAX_EVALUATION_WORK = 4_000_000
 _MAX_CACHE = 4_096
 _MAX_REFERENCE_LENGTH = 200
 # The name `self` and the other roots that never name a declared resource
@@ -542,7 +557,9 @@ def _cached(key: tuple[str, bool], build: Callable[[], Any]) -> Any:
     except ExpressionError as exc:
         node = exc
     except RecursionError:
-        node = ExpressionError("expression nested too deeply")
+        # How deep the Python stack is decides this, not the text, so it is never remembered:
+        # the same expression read from a shallower place must still parse
+        return ExpressionError("expression nested too deeply")
     if len(_PARSE_CACHE) >= _MAX_CACHE:
         _PARSE_CACHE.clear()
     _PARSE_CACHE[key] = node
@@ -617,6 +634,16 @@ class Context:
     def module_references(self, module: str, output: str) -> list[str]:
         return []
 
+    def charge(self, units: int) -> bool:
+        """Spend ``units`` of the work budget for size checks; False once it is used up.
+
+        The base context has no budget. A module context keeps one for the whole parse.
+        """
+        return True
+
+    def exceeded(self, limit: str) -> None:
+        """Note that a value became Unknown because it hit ``limit`` (a short label)."""
+
 
 EMPTY_CONTEXT = Context()
 
@@ -663,6 +690,12 @@ class IteratorContext(Context):
 
     def module_references(self, module: str, output: str) -> list[str]:
         return self._base.module_references(module, output)
+
+    def charge(self, units: int) -> bool:
+        return self._base.charge(units)
+
+    def exceeded(self, limit: str) -> None:
+        self._base.exceeded(limit)
 
 
 # --- evaluation --------------------------------------------------------------------------
@@ -774,19 +807,72 @@ def _stringify(value: Any) -> str | None:
     return None
 
 
+class _TooLargeError(Exception):
+    """A function would build a value past the size limits."""
+
+
+def _fits(value: Any, ctx: Context) -> bool:
+    """Whether ``value`` is within the size limits; the work done is charged to ``ctx``.
+
+    Elements are counted through nesting, and a list that is shared is counted each time it
+    is used, so ``[x, x]`` over a big ``x`` weighs what it would weigh printed.
+    The walk is iterative and stops at the limit, so it costs at most the limit however
+    the value is built.
+    """
+    if isinstance(value, str):
+        return len(value) <= MAX_VALUE_LENGTH
+    if not isinstance(value, (list, tuple, dict)):
+        return True
+    if not ctx.charge(1):
+        return False
+    elements = 0
+    chars = 0
+    fits = True
+    pending: list[Any] = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            chars += len(item)
+        elif isinstance(item, (list, tuple, dict)):
+            elements += len(item)
+            if elements > MAX_COLLECTION_SIZE:
+                fits = False
+                break
+            if isinstance(item, dict):
+                chars += sum(len(key) for key in item if isinstance(key, str))
+                pending.extend(item.values())
+            else:
+                pending.extend(item)
+        if chars > MAX_VALUE_LENGTH:
+            fits = False
+            break
+    return ctx.charge(elements + chars // 64) and fits
+
+
+def _bounded(value: Any, ctx: Context) -> Any:
+    """``value`` when it is within the size limits, else Unknown."""
+    if _fits(value, ctx):
+        return value
+    ctx.exceeded("value size")
+    return _unknown()
+
+
 def _eval_template(node: Tpl, ctx: Context, depth: int, lenient: bool) -> Any:
     if node.directive and not lenient:
         return _unknown()
     if len(node.parts) == 1 and not isinstance(node.parts[0], (str, Part)):
         return _eval(node.parts[0], ctx, depth + 1, lenient)
     out: list[str] = []
+    total = 0
     first_unknown: Unknown | None = None
     for part in node.parts:
         if isinstance(part, str):
             out.append(part)
+            total += len(part)
             continue
         if isinstance(part, Part):  # a directive, only reached in lenient mode
             out.append(UNKNOWN_TEXT)
+            total += len(UNKNOWN_TEXT)
             continue
         value = _eval(part, ctx, depth + 1, lenient)
         text = _stringify(value)
@@ -797,6 +883,12 @@ def _eval_template(node: Tpl, ctx: Context, depth: int, lenient: bool) -> Any:
                 return first_unknown
             text = UNKNOWN_TEXT
         out.append(text)
+        total += len(text)
+        if total > MAX_VALUE_LENGTH:
+            break
+    if total > MAX_VALUE_LENGTH or not ctx.charge(total // 64):
+        ctx.exceeded("value size")
+        return _unknown()
     return "".join(out)
 
 
@@ -921,6 +1013,8 @@ def _fn_merge(args: list[Any]) -> Any:
         if not isinstance(arg, dict):
             return _unknown()
         merged.update(arg)
+        if len(merged) > MAX_COLLECTION_SIZE:
+            raise _TooLargeError
     return merged
 
 
@@ -929,6 +1023,8 @@ def _fn_concat(args: list[Any]) -> Any:
     for arg in args:
         if not isinstance(arg, (list, tuple)):
             return _unknown()
+        if len(out) + len(arg) > MAX_COLLECTION_SIZE:
+            raise _TooLargeError
         out.extend(arg)
     return out
 
@@ -958,7 +1054,10 @@ def _fn_join(args: list[Any]) -> Any:
     if len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], (list, tuple)):
         texts = [_stringify(item) for item in args[1]]
         if all(text is not None for text in texts):
-            return args[0].join(t for t in texts if t is not None)
+            joined = [t for t in texts if t is not None]
+            if sum(map(len, joined)) + len(args[0]) * len(joined) > MAX_VALUE_LENGTH:
+                raise _TooLargeError
+            return args[0].join(joined)
     return _unknown()
 
 
@@ -1010,13 +1109,42 @@ def _fn_tolist(args: list[Any]) -> Any:
     return _unknown()
 
 
+def _identity(item: Any) -> tuple[str, Any] | None:
+    """A hashable key that two items share exactly when ``_equal`` says they are equal.
+
+    An Unknown is never equal to anything, so it has no key, and neither does a collection
+    that holds one.
+    """
+    if is_unknown(item):
+        return None
+    if isinstance(item, bool):
+        return ("bool", item)
+    if _is_number(item):
+        return ("number", item)  # 1 and 1.0 hash and compare equal, as _equal reads them
+    if isinstance(item, (str, type(None))):
+        return ("scalar", item)
+    if isinstance(item, (list, tuple, dict)):
+        if has_unknown(item):
+            return None
+        try:
+            return ("collection", canonical_json(_jsonable(item)))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def _fn_toset(args: list[Any]) -> Any:
     if len(args) == 1 and isinstance(args[0], (list, tuple, set, frozenset)):
-        seen: list[Any] = []
+        seen: set[tuple[str, Any]] = set()
+        kept: list[Any] = []
         for item in args[0]:
-            if not any(_equal(item, other) for other in seen):
-                seen.append(item)
-        return seen
+            key = _identity(item)
+            if key is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
+            kept.append(item)
+        return kept
     return _unknown()
 
 
@@ -1030,13 +1158,17 @@ def _fn_flatten(args: list[Any]) -> Any:
     if len(args) != 1 or not isinstance(args[0], (list, tuple)):
         return _unknown()
     out: list[Any] = []
-    pending = list(args[0])
-    while pending:
-        item = pending.pop(0)
-        if isinstance(item, (list, tuple)):
-            pending[0:0] = list(item)
-        else:
+    stack = [iter(args[0])]
+    while stack:
+        for item in stack[-1]:
+            if isinstance(item, (list, tuple)):
+                stack.append(iter(item))
+                break
             out.append(item)
+            if len(out) > MAX_COLLECTION_SIZE:
+                raise _TooLargeError
+        else:
+            stack.pop()
     return out
 
 
@@ -1096,9 +1228,13 @@ def _eval_call(node: Call, ctx: Context, depth: int, lenient: bool) -> Any:
     if node.name not in _UNKNOWN_TOLERANT and any(is_unknown(a) for a in args):
         return _unknown()
     try:
-        return function(args)
+        result = function(args)
+    except _TooLargeError:
+        ctx.exceeded("value size")
+        return _unknown()
     except (TypeError, ValueError, KeyError, IndexError, OverflowError, AttributeError):
         return _unknown()
+    return _bounded(result, ctx)
 
 
 def _eval_key(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
@@ -1119,13 +1255,13 @@ def _eval(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
     if isinstance(node, (Attr, Idx)):
         root, steps = _flatten_chain(node)
         if isinstance(root, Name):
-            return _eval_name_chain(root.ident, steps, ctx, depth)
+            return _bounded(_eval_name_chain(root.ident, steps, ctx, depth), ctx)
         value = _eval(root, ctx, depth + 1, lenient)
         for kind, key in steps:
             value = _step(value, kind, _eval_step_key(kind, key, ctx, depth))
         return value
     if isinstance(node, Name):
-        return _eval_name_chain(node.ident, [], ctx, depth)
+        return _bounded(_eval_name_chain(node.ident, [], ctx, depth), ctx)
     if isinstance(node, Cond):
         test = _eval(node.test, ctx, depth + 1, lenient)
         flag = _tri_bool(test)
@@ -1145,7 +1281,7 @@ def _eval(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
     if isinstance(node, Call):
         return _eval_call(node, ctx, depth, lenient)
     if isinstance(node, Tup):
-        return [_eval(item, ctx, depth + 1, lenient) for item in node.items]
+        return _bounded([_eval(item, ctx, depth + 1, lenient) for item in node.items], ctx)
     if isinstance(node, Obj):
         result: dict[str, Any] = {}
         for key_node, value_node in node.items:
@@ -1153,7 +1289,7 @@ def _eval(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
             if is_unknown(key):
                 return _unknown()
             result[str(key)] = _eval(value_node, ctx, depth + 1, lenient)
-        return result
+        return _bounded(result, ctx)
     if isinstance(node, Splat):
         base = _eval(node.base, ctx, depth + 1, lenient)
         if not isinstance(base, (list, tuple)):
@@ -1164,7 +1300,7 @@ def _eval(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
             for kind, key in node.steps:
                 value = _step(value, kind, _eval_step_key(kind, key, ctx, depth))
             out.append(value)
-        return out
+        return _bounded(out, ctx)
     return _unknown()
 
 
