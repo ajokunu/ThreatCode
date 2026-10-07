@@ -602,7 +602,6 @@ class TestUnknownIsNeverALiteral:
 
 
 class TestWebappDataSources:
-    @pending("WP-2-7", "scanned_resources counts managed resources only, not mode data nodes")
     def test_a_data_source_is_not_counted_as_a_scanned_resource(self) -> None:
         result = scan_real_shape(WEBAPP)
         data_nodes = [n for n in result.graph.nodes.values() if n.mode == "data"]
