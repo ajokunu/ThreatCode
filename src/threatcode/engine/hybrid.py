@@ -1,20 +1,35 @@
-"""Hybrid threat engine: rules -> boundaries -> LLM -> merge."""
+"""Hybrid threat engine: a phase orchestrator.
+
+``HybridEngine.analyze`` runs these phases in order, each in its own module so
+later work fills a module instead of editing this file:
+
+1. rules: every rule against every node (this module)
+2. context: secret and ingested scanner findings from the ``AnalysisContext``
+3. boundaries: ``engine.boundaries.analyze(graph)``
+4. severity: ``engine.severity.apply(report, graph)``
+5. paths: ``engine.paths.find(graph, threats)``
+6. LLM: ``engine.llm.phase.run_llm_phase(graph, threats, client, config)``
+
+The signatures of the phase functions are contracts.
+"""
 
 from __future__ import annotations
 
-import hashlib
+import copy
 import logging
+import os
 from typing import TYPE_CHECKING
 
-from threatcode.engine.mitre import BOUNDARY_TACTICS, BOUNDARY_TECHNIQUES, tactics_for_techniques
-from threatcode.engine.rules.loader import Rule, load_all_rules
+from threatcode.engine import boundaries, paths, severity
+from threatcode.engine.context import AnalysisContext
+from threatcode.engine.llm.phase import run_llm_phase
+from threatcode.engine.mitre import tactics_for_techniques
+from threatcode.engine.rules.loader import Rule, load_all_rules, load_rules_from_file
 from threatcode.engine.rules.matcher import matches_rule
-from threatcode.engine.stride import StrideCategory
-from threatcode.exceptions import LLMError
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode
 from threatcode.models.report import ThreatReport
-from threatcode.models.threat import Severity, Threat, ThreatSource
+from threatcode.models.threat import Severity, Threat, ThreatSource, hash_id
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -23,6 +38,9 @@ if TYPE_CHECKING:
     from threatcode.engine.llm.client import BaseLLMClient
 
 logger = logging.getLogger(__name__)
+
+STRICT_RULES_ENV = "THREATCODE_STRICT_RULES"
+"""When set to ``1``, an exception in a built-in rule propagates instead of being recorded."""
 
 
 class HybridEngine:
@@ -37,11 +55,22 @@ class HybridEngine:
         self._rules = load_all_rules(extra_rule_paths)
         self._llm_client = llm_client
         self._config = config
+        # Rule ids are unique across built-in and extra files (the loader
+        # enforces it), so the extra ids identify every custom rule.
+        self._custom_rule_ids: set[str] = set()
+        for path in extra_rule_paths or []:
+            self._custom_rule_ids.update(r.id for r in load_rules_from_file(path.resolve()))
 
-    def analyze(self, graph: InfraGraph, input_file: str = "") -> ThreatReport:
+    def analyze(
+        self,
+        graph: InfraGraph,
+        input_file: str = "",
+        context: AnalysisContext | None = None,
+    ) -> ThreatReport:
         """Run full analysis pipeline."""
         from threatcode import __version__
 
+        context = context or AnalysisContext(input_label=input_file)
         logger.info(
             "Analysis started: resources=%d, rules=%d, llm_enabled=%s",
             graph.node_count,
@@ -55,160 +84,101 @@ class HybridEngine:
             version=__version__,
         )
 
-        # Phase 1: Rule-based threats
-        rule_threats = self._run_rules(graph)
+        # Phase 1: rule-based threats
+        rule_threats = self._run_rules(graph, report)
         for t in rule_threats:
             report.add(t)
 
-        # Phase 2: Trust boundary crossing threats
-        boundary_threats = self._run_boundary_analysis(graph)
+        # Phase 2: findings produced outside the rule engine
+        context_threats = self._merge_context(report, context)
+
+        # Phase 3: trust boundary crossing threats
+        boundary_threats = boundaries.analyze(graph)
         for t in boundary_threats:
             report.add(t)
 
-        # Phase 3: LLM-augmented analysis (if client available)
-        llm_threats: list[Threat] = []
-        if self._llm_client is not None:
-            try:
-                llm_threats = self._run_llm_analysis(graph, rule_threats)
-                for t in llm_threats:
-                    report.add(t)
-            except LLMError as e:
-                # Expected failures (server down, bad response): one line, no traceback.
-                logger.warning("LLM analysis failed (%s) - returning rule-based results only", e)
-            except Exception:
-                logger.exception("LLM analysis failed - returning rule-based results only")
+        # Phase 4: contextual severity
+        severity.apply(report, graph)
+
+        # Phase 5: attack paths
+        report.attack_paths = paths.find(graph, report.threats)
+
+        # Phase 6: LLM-augmented analysis
+        llm_threats, llm_status = run_llm_phase(
+            graph, list(report.threats), self._llm_client, self._config
+        )
+        for t in llm_threats:
+            report.add(t)
+        report.llm = llm_status
 
         logger.info(
-            "Analysis complete: total_threats=%d (rule=%d, boundary=%d, llm=%d)",
+            "Analysis complete: total_threats=%d (rule=%d, context=%d, boundary=%d, llm=%d)",
             len(report.threats),
             len(rule_threats),
+            len(context_threats),
             len(boundary_threats),
-            len(report.threats) - len(rule_threats) - len(boundary_threats),
+            len(llm_threats),
         )
 
         return report
 
-    def _run_rules(self, graph: InfraGraph) -> list[Threat]:
-        """Evaluate all rules against all nodes."""
+    def _run_rules(self, graph: InfraGraph, report: ThreatReport) -> list[Threat]:
+        """Evaluate all rules against all nodes.
+
+        A rule that raises on a node does not abort the analysis: the failure is
+        recorded in ``report.rule_errors`` and logged once per rule. Built-in
+        rules re-raise when ``THREATCODE_STRICT_RULES=1`` so tests catch them.
+        """
+        strict = os.environ.get(STRICT_RULES_ENV) == "1"
+        logged: set[str] = set()
         threats: list[Threat] = []
         for node in graph.nodes.values():
             for rule in self._rules:
-                if matches_rule(rule, node):
-                    threat = _rule_to_threat(rule, node)
-                    threats.append(threat)
+                try:
+                    matched = matches_rule(rule, node)
+                except Exception as e:
+                    if strict and rule.id not in self._custom_rule_ids:
+                        raise
+                    report.rule_errors.append(
+                        {
+                            "rule_id": rule.id,
+                            "node_id": node.id,
+                            "error": f"{type(e).__name__}: {e}",
+                        }
+                    )
+                    if rule.id not in logged:
+                        logged.add(rule.id)
+                        logger.warning(
+                            "Rule %s failed on node %s (%s: %s) - recorded in rule_errors",
+                            rule.id,
+                            node.id,
+                            type(e).__name__,
+                            e,
+                        )
+                    continue
+                if matched:
+                    threats.append(_rule_to_threat(rule, node))
         return threats
 
-    def _run_boundary_analysis(self, graph: InfraGraph) -> list[Threat]:
-        """Generate threats for trust boundary crossings."""
-        threats: list[Threat] = []
-        for edge in graph.get_boundary_crossing_edges():
-            src = graph.get_node(edge.source)
-            tgt = graph.get_node(edge.target)
-            if not src or not tgt:
+    @staticmethod
+    def _merge_context(report: ThreatReport, context: AnalysisContext) -> list[Threat]:
+        """Add secret and scanner findings to the report, dropping repeated ids."""
+        seen = {t.id for t in report.threats}
+        merged: list[Threat] = []
+        for threat in [*context.secret_findings, *context.external_findings]:
+            if threat.id in seen:
                 continue
-
-            src_zone = edge.metadata.get("source_zone", "unknown")
-            tgt_zone = edge.metadata.get("target_zone", "unknown")
-            threat_id = _hash_id(f"BOUNDARY_{edge.source}_{edge.target}")
-
-            threats.append(
-                Threat(
-                    id=threat_id,
-                    title=f"Trust boundary crossing: {src_zone} -> {tgt_zone}",
-                    description=(
-                        f"Data flows from {src.id} ({src_zone} zone) to "
-                        f"{tgt.id} ({tgt_zone} zone), crossing a trust boundary. "
-                        f"This flow should be authenticated, encrypted, and validated."
-                    ),
-                    stride_category=StrideCategory.TAMPERING.value,
-                    severity=_boundary_severity(src_zone, tgt_zone),
-                    source=ThreatSource.BOUNDARY,
-                    resource_type=src.resource_type,
-                    resource_address=src.id,
-                    mitigation=(
-                        "Ensure all data crossing trust boundaries is encrypted in transit "
-                        "(TLS/mTLS), authenticated, and validated at the receiving end."
-                    ),
-                    mitre_techniques=list(BOUNDARY_TECHNIQUES),
-                    mitre_tactics=list(BOUNDARY_TACTICS),
-                )
-            )
-        return threats
-
-    def _run_llm_analysis(self, graph: InfraGraph, existing_threats: list[Threat]) -> list[Threat]:
-        """Run LLM-augmented threat analysis."""
-        if self._llm_client is None:
-            return []
-
-        from threatcode.engine.llm.parser import parse_llm_threats
-        from threatcode.engine.llm.prompts import build_analysis_prompt
-        from threatcode.engine.llm.redactor import Redactor
-
-        strategy = "placeholder"
-        if self._config and self._config.redaction:
-            strategy = self._config.redaction.strategy
-        redactor = Redactor(strategy=strategy)
-        graph_data = graph.to_dict()
-        redacted_data = redactor.redact(graph_data)
-        existing_ids = {t.rule_id for t in existing_threats if t.rule_id}
-
-        prompt = build_analysis_prompt(redacted_data, existing_ids)
-        response = self._llm_client.analyze(prompt)
-
-        raw_threats = parse_llm_threats(response)
-
-        # Build set of known resource addresses for validation
-        known_addresses = set(graph.nodes.keys())
-
-        threats: list[Threat] = []
-        for raw in raw_threats:
-            # Unredact LLM-sourced fields that may contain redacted placeholders
-            address = redactor.unredact_string(raw.get("resource_address", ""))
-            raw["title"] = redactor.unredact_string(raw.get("title", ""))
-            raw["description"] = redactor.unredact_string(raw.get("description", ""))
-            raw["mitigation"] = redactor.unredact_string(raw.get("mitigation", ""))
-            confidence = raw.get("confidence", 0.7)
-
-            # Cap confidence if resource_address is not in the graph
-            if address and address not in known_addresses:
-                logger.debug(
-                    "LLM threat references unknown resource '%s' — capping confidence at 0.5",
-                    address,
-                )
-                confidence = min(confidence, 0.5)
-
-            techniques = raw.get("mitre_techniques", [])
-            tactics = raw.get("mitre_tactics", [])
-            if techniques and not tactics:
-                tactics = tactics_for_techniques(techniques)
-            try:
-                sev = Severity(raw.get("severity", "medium"))
-            except ValueError:
-                sev = Severity.MEDIUM
-            threats.append(
-                Threat(
-                    id=_hash_id(f"LLM_{address}_{raw.get('title', '')}"),
-                    title=raw.get("title", "LLM-identified threat"),
-                    description=raw.get("description", ""),
-                    stride_category=raw.get("stride_category", "tampering"),
-                    severity=sev,
-                    source=ThreatSource.LLM,
-                    resource_type=raw.get("resource_type", ""),
-                    resource_address=address,
-                    mitigation=raw.get("mitigation", ""),
-                    confidence=confidence,
-                    mitre_techniques=techniques,
-                    mitre_tactics=tactics,
-                )
-            )
-        return threats
+            seen.add(threat.id)
+            report.add(threat)
+            merged.append(threat)
+        return merged
 
 
 def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
-    threat_id = _hash_id(f"{rule.id}_{node.id}")
+    threat_id = hash_id(f"{rule.id}_{node.id}")
     mitre = rule.metadata.get("mitre", {})
-    techniques = mitre.get("techniques", [])
-    tactics = mitre.get("tactics", [])
+    techniques = list(mitre.get("techniques", []))
+    tactics = list(mitre.get("tactics", []))
     if techniques and not tactics:
         tactics = tactics_for_techniques(techniques)
     return Threat(
@@ -222,26 +192,9 @@ def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
         resource_address=node.id,
         mitigation=rule.mitigation,
         rule_id=rule.id,
-        metadata=rule.metadata,
+        # Copied so mutating one threat's metadata never reaches the rule or
+        # the other threats the same rule produced.
+        metadata=copy.deepcopy(rule.metadata),
         mitre_techniques=techniques,
         mitre_tactics=tactics,
     )
-
-
-def _hash_id(seed: str) -> str:
-    return hashlib.sha256(seed.encode()).hexdigest()[:12]
-
-
-def _boundary_severity(src_zone: str, tgt_zone: str) -> Severity:
-    """Higher severity for more sensitive boundary crossings."""
-    high_risk = {
-        ("internet", "private"),
-        ("internet", "data"),
-        ("dmz", "data"),
-        ("internet", "management"),
-    }
-    pair = (src_zone, tgt_zone)
-    reverse = (tgt_zone, src_zone)
-    if pair in high_risk or reverse in high_risk:
-        return Severity.HIGH
-    return Severity.MEDIUM
