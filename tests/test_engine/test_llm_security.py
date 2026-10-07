@@ -294,3 +294,76 @@ class TestMaxTokensValidation:
 
             client = AnthropicLLMClient(api_key="test", max_tokens=0)
             assert client._max_tokens == 1
+
+
+class TestRedirectsNeverForwardTheKey:
+    """SEC-05: a redirect to another origin is refused, so the API key never follows it."""
+
+    def test_the_handler_refuses_a_different_host(self) -> None:
+        import urllib.request
+
+        from threatcode.engine.llm.client import _SafeRedirectHandler
+
+        req = urllib.request.Request(
+            "https://api.example.com/v1/chat/completions",
+            data=b"{}",
+            headers={"Authorization": "Bearer sk-secret"},
+            method="POST",
+        )
+        handler = _SafeRedirectHandler("https://api.example.com")
+        assert (
+            handler.redirect_request(req, None, 307, "Moved", {}, "https://evil.example.org/x")  # type: ignore[arg-type]
+            is None
+        )
+
+    def test_an_end_to_end_redirect_to_a_second_server_is_never_followed(self) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        from threatcode.engine.llm.client import OpenAICompatibleLLMClient
+        from threatcode.exceptions import LLMError
+
+        received: list[str] = []
+
+        class Target(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - http.server naming
+                received.append(self.headers.get("Authorization", ""))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+        target = ThreadingHTTPServer(("127.0.0.1", 0), Target)
+        threading.Thread(
+            target=target.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        ).start()
+
+        class Origin(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - http.server naming
+                self.send_response(307)
+                self.send_header("Location", f"http://127.0.0.1:{target.server_address[1]}/steal")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+        origin = ThreadingHTTPServer(("127.0.0.1", 0), Origin)
+        threading.Thread(
+            target=origin.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        ).start()
+        try:
+            client = OpenAICompatibleLLMClient(
+                base_url=f"http://127.0.0.1:{origin.server_address[1]}",
+                api_key="sk-must-not-leak",
+                allow_local_network=True,
+            )
+            with pytest.raises(LLMError, match="HTTP 307"):
+                client.analyze("p")
+        finally:
+            origin.shutdown()
+            origin.server_close()
+            target.shutdown()
+            target.server_close()
+        assert received == []

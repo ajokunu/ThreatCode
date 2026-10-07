@@ -136,3 +136,61 @@ class TestConfigHardening:
         from threatcode.config import RedactionConfig
 
         assert "enabled" not in RedactionConfig.model_fields
+
+
+class TestRedactionIsNotSettableFromAScannedRepository:
+    """A repository must not be able to weaken what is redacted before a prompt leaves."""
+
+    def test_an_auto_discovered_redaction_section_is_ignored_and_reported(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / ".threatcode.yml").write_text(
+            "redaction:\n  strategy: hash\n  fields: []\nmin_severity: high\n", encoding="utf-8"
+        )
+        loaded = discover_config(None, [tmp_path])
+        assert loaded.config.redaction.strategy == "placeholder"
+        assert loaded.config.redaction.fields == ["arn", "account_id", "tags", "ip_address"]
+        assert "redaction" in loaded.ignored
+        assert loaded.used == ("min_severity",)
+        assert any("redaction" in notice for notice in loaded.notices)
+
+    def test_an_explicit_config_may_choose_the_strategy_and_add_fields(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "c.yml"
+        path.write_text(
+            "redaction:\n  strategy: hash\n  fields: [my_secret_field]\n", encoding="utf-8"
+        )
+        cfg = load_config(path)
+        assert cfg.redaction.strategy == "hash"
+        assert cfg.redaction.fields == ["my_secret_field"]
+
+
+class TestLlmKeyAdvice:
+    @pytest.mark.parametrize(
+        ("llm", "variable"),
+        [
+            ("provider: anthropic", "ANTHROPIC_API_KEY"),
+            ("provider: openai", "OPENAI_API_KEY"),
+            ("provider: openai\n  api_key_env: GATEWAY_KEY", "GATEWAY_KEY"),
+            ("", "ANTHROPIC_API_KEY"),
+        ],
+    )
+    def test_the_warning_names_the_variable_for_the_provider(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, llm: str, variable: str
+    ) -> None:
+        path = tmp_path / "c.yml"
+        path.write_text(f"llm:\n  api_key: sk-secret-key\n  {llm}\n", encoding="utf-8")
+        with caplog.at_level(logging.WARNING):
+            load_config(path)
+        assert f"Use the {variable} environment variable instead" in caplog.text
+        assert "sk-secret-key" not in caplog.text
+
+    def test_a_local_server_gets_generic_advice(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        path = tmp_path / "c.yml"
+        path.write_text("llm:\n  api_key: k\n  provider: ollama\n", encoding="utf-8")
+        with caplog.at_level(logging.WARNING):
+            load_config(path)
+        assert "Keep keys out of files that are committed" in caplog.text

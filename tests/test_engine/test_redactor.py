@@ -379,3 +379,25 @@ class TestExtraFieldsBeatTheAllowlist:
         )
         assert out["acl"] == "private"
         assert out["engine"].startswith("REDACTED_engine_")
+
+
+class TestPlaceholderFormat:
+    """The documented shape: REDACTED_<label>_<n>, or REDACTED_<label>_<16 hex> for hash."""
+
+    def test_counter_placeholders(self) -> None:
+        out = Redactor().redact(
+            {"note": "role arn:aws:iam::1:role/x from 10.0.0.9 mail a@b.example"}
+        )["note"]
+        assert re.findall(r"REDACTED_[a-z0-9_]+_\d+", out) == [
+            "REDACTED_aws_arn_1",
+            "REDACTED_ip_v4_3",
+            "REDACTED_email_2",
+        ]
+
+    def test_hash_placeholders(self) -> None:
+        out = Redactor(strategy="hash").redact({"arn": "arn:aws:s3:::b"})["arn"]
+        assert re.fullmatch(r"REDACTED_arn_[0-9a-f]{16}", out)
+
+    def test_labels_are_lowercase_words(self) -> None:
+        out = Redactor().redact({"Some-Odd.Password": "p4ssw0rd-long"})
+        assert re.fullmatch(r"REDACTED_some_odd_password_1", out["Some-Odd.Password"])

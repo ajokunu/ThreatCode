@@ -215,16 +215,38 @@ _FLAGS = (
     "enable_shielded_nodes",
 )
 
+_BLOCK_DEVICE_KEYS: dict[str, Any] = {
+    "encrypted": True,
+    "volume_type": True,
+    "volume_size": True,
+    "delete_on_termination": True,
+}
+
+# Blocks whose useful content is a few flags; their other keys (bucket names, ids) are dropped.
 _NESTED_FLAGS: dict[str, Any] = {
     "ingress": _RULE_KEYS,
     "egress": _RULE_KEYS,
-    "metadata_options": True,
-    "root_block_device": True,
-    "ebs_block_device": True,
-    "server_side_encryption_configuration": True,
-    "versioning": True,
-    "logging": True,
-    "vpc_config": True,
+    "metadata_options": {
+        "http_tokens": True,
+        "http_endpoint": True,
+        "http_put_response_hop_limit": True,
+        "instance_metadata_tags": True,
+    },
+    "root_block_device": _BLOCK_DEVICE_KEYS,
+    "ebs_block_device": _BLOCK_DEVICE_KEYS,
+    "server_side_encryption_configuration": {
+        "rule": {
+            "apply_server_side_encryption_by_default": {"sse_algorithm": True},
+            "bucket_key_enabled": True,
+        }
+    },
+    "versioning": {"enabled": True, "mfa_delete": True, "status": True},
+    "logging": {"enabled": True},
+    "vpc_config": {
+        "endpoint_public_access": True,
+        "endpoint_private_access": True,
+        "public_access_cidrs": True,
+    },
     "derived": _DERIVED_KEYS,
 }
 
@@ -673,9 +695,9 @@ def _reduce(
     node_map: dict[str, str] = {}  # summarized handle -> group handle
 
     for threshold in GROUP_THRESHOLDS:
-        buckets: dict[tuple[str, str, str, str], list[str]] = defaultdict(list)
+        buckets: dict[tuple[str, str, str, str, str], list[str]] = defaultdict(list)
         for handle in plain_handles:
-            if handle not in nodes or handle in crossing:
+            if handle not in nodes:
                 continue
             entry = nodes[handle]
             key = (
@@ -683,9 +705,10 @@ def _reduce(
                 str(entry.get("zone")),
                 str(entry.get("exposure", "")),
                 str(entry.get("evidence", "")),
+                str(handle in crossing),
             )
             buckets[key].append(handle)
-        for (kind, zone, _exposure, _evidence), members in sorted(buckets.items()):
+        for (kind, zone, *_rest), members in sorted(buckets.items()):
             if len(members) < threshold:
                 continue
             group_handle = f"{_TYPE_RE.sub('_', kind)[:64] or 'resource'}.g{len(groups) + 1}"
