@@ -121,8 +121,10 @@ def read_document(value: Any) -> Any:
         return value
     if not isinstance(value, str):
         return Unknown()
+    if len(value) > MAX_POLICY_CHARS:
+        return Unknown()
     text = value.strip()
-    if not text or len(text) > MAX_POLICY_CHARS:
+    if not text:
         return Unknown()
     encoded = _JSONENCODE.match(text)
     if encoded:

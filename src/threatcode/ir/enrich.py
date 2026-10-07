@@ -299,6 +299,9 @@ class EnrichContext:
             for _node_id, node in sorted(graph.nodes.items())
             if node.evidence == "config" and node.mode == "managed"
         ]
+        self._by_type: dict[str, list[InfraNode]] = {}
+        for node in self.nodes:
+            self._by_type.setdefault(node.resource_type, []).append(node)
         self._scoped: dict[str, ReferenceIndex] = {}
         self._by_prefix: dict[str, dict[str, InfraNode]] = {}
         for node in self.nodes:
@@ -327,7 +330,13 @@ class EnrichContext:
     def peers(self, node: InfraNode, matcher: TypeMatcher) -> list[InfraNode]:
         """Enrichable nodes of the same input as `node` whose type matches."""
         prefix = _unit_prefix(node.id)
-        return [n for n in self.nodes if matcher(n.resource_type) and _unit_prefix(n.id) == prefix]
+        return [
+            n
+            for resource_type, group in self._by_type.items()
+            if matcher(resource_type)
+            for n in group
+            if _unit_prefix(n.id) == prefix
+        ]
 
     def contribute(self, node: InfraNode, values: Mapping[str, Any]) -> None:
         derived = node.properties.get(DERIVED)
@@ -370,9 +379,13 @@ class EnrichContext:
         unresolved = False
         orphan = False
         reference = ""
-        candidates = self.peers(node, matcher)
+        candidates: list[InfraNode] | None = None
         for value in values:
-            found, status, ref = self._resolve_value(node, value, matcher, candidates, literal_keys)
+            if candidates is None and _needs_candidates(value):
+                candidates = self.peers(node, matcher)
+            found, status, ref = self._resolve_value(
+                node, value, matcher, candidates or [], literal_keys
+            )
             for target in found:
                 resolved.setdefault(target.id, target)
             if status == "unresolved" and not unresolved:
@@ -420,6 +433,11 @@ class EnrichContext:
             if not _looks_like_reference(raw):
                 return [], "orphan", label
         return [], "unresolved", label
+
+
+def _needs_candidates(value: Any) -> bool:
+    """Only a plain string can be a literal name, which is matched against the candidates."""
+    return isinstance(value, str) and not is_unknown(value) and "${" not in value
 
 
 def _excluding(matcher: TypeMatcher, excluded: str) -> TypeMatcher:

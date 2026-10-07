@@ -781,6 +781,8 @@ def _s3_inline(node: InfraNode, ctx: EnrichContext) -> Facts:
     if versioning is not None:
         enabled = dig(versioning, "enabled")
         status = dig(versioning, "status")
+        if status is None:
+            status = dig(versioning, "Status")
         if enabled is None and status is not None:
             facts["versioning_enabled"] = _equals(status, "enabled")
         elif enabled is not None or is_unknown(versioning):
