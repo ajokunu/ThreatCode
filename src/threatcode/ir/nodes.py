@@ -11,14 +11,18 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from threatcode.ir.catalog import (
+    CATEGORY_DEFAULT_ZONE,
     CATEGORY_MAP,
+    DATA_CATEGORIES,
     TRUST_ZONE_MAP,
+    TriState,
     _rebuild_category_prefixes,
     _rebuild_trust_zone_prefixes,
     categorize_resource,
     infer_trust_zone,
     register_category,
     register_trust_zone,
+    tri_state,
 )
 from threatcode.ir.catalog.types import NodeCategory, TrustZone
 
@@ -26,12 +30,15 @@ if TYPE_CHECKING:
     from threatcode.parsers.base import Evidence, Mode
 
 __all__ = [
+    "CATEGORY_DEFAULT_ZONE",
     "CATEGORY_MAP",
     "CONTAINER_TYPES",
+    "DATA_CATEGORIES",
     "TRUST_ZONE_MAP",
     "Exposure",
     "InfraNode",
     "NodeCategory",
+    "TriState",
     "TrustZone",
     "_rebuild_category_prefixes",
     "_rebuild_trust_zone_prefixes",
@@ -39,6 +46,7 @@ __all__ = [
     "infer_trust_zone",
     "register_category",
     "register_trust_zone",
+    "tri_state",
 ]
 
 # Whether a node can be reached from the internet: "internal" is a finding of
@@ -57,6 +65,35 @@ CONTAINER_TYPES: frozenset[str] = frozenset(
         "google_compute_subnetwork",
         "kubernetes_namespace",
     }
+)
+
+
+# Resource types that only configure traffic: they hold rules, routes and permissions, and send
+# and receive nothing themselves, so a flow can never start or end at one
+NON_TRAFFIC_PREFIXES: tuple[str, ...] = (
+    "aws_security_group",
+    "aws_default_security_group",
+    "aws_network_acl",
+    "aws_default_network_acl",
+    "aws_route_table",
+    "aws_route",
+    "aws_main_route_table_association",
+    "azurerm_network_security_group",
+    "azurerm_network_security_rule",
+    "azurerm_route",
+    "google_compute_firewall",
+    "google_compute_route",
+    "kubernetes_network_policy",
+)
+# Companion resources that attach a rule, a policy or a setting to another resource
+NON_TRAFFIC_SUFFIXES: tuple[str, ...] = (
+    "_policy",
+    "_association",
+    "_attachment",
+    "_rule",
+    "_acl",
+    "_subnet_group",
+    "_parameter_group",
 )
 
 
@@ -86,3 +123,19 @@ class InfraNode:
     def is_container(self) -> bool:
         """Whether this node is a network or namespace that holds other nodes."""
         return self.resource_type in CONTAINER_TYPES
+
+    @property
+    def can_exchange_traffic(self) -> bool:
+        """Whether this node can send or receive traffic.
+
+        False for a container (a network or namespace), for identities and permissions (every
+        IAM category node), and for resources that only configure traffic: security groups, network
+        ACLs, route tables, firewall rules, network policies and the companions that attach a
+        rule, policy or setting to another resource.
+        A trust boundary is crossed by a flow between two nodes that pass this test.
+        """
+        if self.is_container or self.category is NodeCategory.IAM:
+            return False
+        if self.resource_type.startswith(NON_TRAFFIC_PREFIXES):
+            return False
+        return not self.resource_type.endswith(NON_TRAFFIC_SUFFIXES)
