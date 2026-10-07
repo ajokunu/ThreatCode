@@ -166,7 +166,7 @@ class TestRedactorImprovements:
         assert "overflow" in overflow
 
     def test_aws_account_id_requires_context(self) -> None:
-        """Improved regex requires context — plain 12-digit numbers not matched."""
+        """Improved regex requires context - plain 12-digit numbers not matched."""
         from threatcode.engine.llm.redactor import Redactor
 
         r = Redactor()

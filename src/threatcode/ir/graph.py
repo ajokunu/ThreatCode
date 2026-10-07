@@ -127,6 +127,8 @@ _REFERENCES_RULE = AttachmentRule((), None, EdgeType.DEPENDENCY, "references")
 _RULE_BY_ATTRIBUTE: dict[str, AttachmentRule] = {
     attribute: rule for rule in ATTACHMENT_RULES for attribute in rule.attributes
 }
+# How many dangling edges get "closest known node" suggestions in the error
+_MAX_HINTED_EDGES = 20
 # A relation a more specific reference may replace on an existing edge
 _GENERIC_RELATIONS = ("", "references")
 
@@ -510,8 +512,14 @@ class InfraGraph:
     def _report_dangling(self, dangling: list[tuple[str, str, str, str]]) -> None:
         known = sorted(self._nodes)
         lines: list[str] = []
-        for source, target, role, address in dangling:
-            hint = difflib.get_close_matches(address, known, n=3, cutoff=0.6)
+        for position, (source, target, role, address) in enumerate(dangling):
+            # Suggestions cost a similarity score per known node, so only the
+            # first few dangling edges get them; the rest are still listed
+            hint = (
+                difflib.get_close_matches(address, known, n=3, cutoff=0.6)
+                if position < _MAX_HINTED_EDGES
+                else []
+            )
             suffix = f" (closest known: {', '.join(hint)})" if hint else ""
             lines.append(f"{source} -> {target}: unknown {role} '{address}'{suffix}")
         if self.strict_edges:
@@ -544,7 +552,7 @@ class InfraGraph:
                         self._add_edge(node.id, nid, EdgeType.CONTAINMENT)
                         break
 
-        # Subnet containment — match only if we have a reference
+        # Subnet containment - match only if we have a reference
         subnet_id = literal("subnet_id")
         subnet_ids = literal("subnet_ids") or literal("subnets") or []
         if subnet_id:
@@ -565,7 +573,7 @@ class InfraGraph:
                             if _is_referenced(unit, other, ref_ids):
                                 self._add_edge(node.id, nid, EdgeType.CONTAINMENT)
 
-        # Security group attachment — match only if we have a reference
+        # Security group attachment - match only if we have a reference
         sg_ids = literal("security_groups") or literal("vpc_security_group_ids") or []
         if isinstance(sg_ids, list) and sg_ids:
             ref_ids = set(str(s) for s in sg_ids if s)

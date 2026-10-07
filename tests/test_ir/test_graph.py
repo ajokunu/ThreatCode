@@ -1027,6 +1027,17 @@ class TestDeclaredEdgeStrictness:
         with pytest.raises(ThreatCodeError, match="closest known: design_database.orders"):
             InfraGraph.from_parsed(parsed)
 
+    def test_suggestions_are_limited_to_the_first_dangling_edges_but_every_edge_is_listed(
+        self,
+    ) -> None:
+        edges = [ParsedEdge("design_service.api", f"design_database.order{i}") for i in range(25)]
+        parsed = ParsedOutput(resources=self._resources(), edges=edges)
+        with pytest.raises(ThreatCodeError) as excinfo:
+            InfraGraph.from_parsed(parsed)
+        lines = [ln for ln in str(excinfo.value).splitlines() if "design_database.order" in ln]
+        assert len(lines) == 25
+        assert sum("closest known" in ln for ln in lines) == 20
+
     def test_error_offers_the_non_strict_mode(self) -> None:
         parsed = ParsedOutput(
             resources=self._resources(),
