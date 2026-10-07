@@ -6,6 +6,7 @@ import copy
 import json
 import logging
 import pickle
+import re
 from pathlib import Path
 from typing import Any
 
@@ -795,3 +796,73 @@ class TestNoRuleFiresOutsideItsDeclaredTypes:
             rule = rules[threat.rule_id]
             node_type = graph.nodes[threat.resource_address].resource_type
             assert rule.matches_type(node_type), (rule.id, node_type, rule.resource_types)
+
+
+class TestDocumentationExamples:
+    """The examples in docs/writing-rules.md must load, so the guide cannot drift."""
+
+    DOC = Path(__file__).parent.parent.parent / "docs" / "writing-rules.md"
+
+    @classmethod
+    def _blocks(cls) -> list[str]:
+        text = cls.DOC.read_text(encoding="utf-8")
+        return re.findall(r"```yaml\n(.*?)```", text, flags=re.DOTALL)
+
+    @classmethod
+    def _conditions(cls) -> list[dict[str, Any]]:
+        """Every top-level ``condition:`` in the guide's YAML examples, parsed one by one."""
+        conditions: list[dict[str, Any]] = []
+        for block in cls._blocks():
+            for segment in re.split(r"(?m)^(?=condition:)", block):
+                if segment.startswith("condition:"):
+                    conditions.append(yaml.safe_load(segment)["condition"])
+        return conditions
+
+    def test_the_guide_has_examples(self) -> None:
+        assert len(self._blocks()) >= 15
+        assert len(self._conditions()) >= 24
+
+    def test_every_condition_example_validates(self) -> None:
+        for condition in self._conditions():
+            validate_condition(condition, rule_id="DOC", source="docs/writing-rules.md")
+
+    def test_the_condition_examples_cover_every_operator(self) -> None:
+        used: set[str] = set()
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    used.add(str(key))
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        for condition in self._conditions():
+            walk(condition)
+        assert VALID_OPERATORS <= used, sorted(VALID_OPERATORS - used)
+
+    def test_every_complete_rule_example_loads(self, tmp_path: Path) -> None:
+        loaded: list[Rule] = []
+        for index, block in enumerate(self._blocks()):
+            if "# ..." in block:
+                continue  # a template with placeholders, not a rule
+            if block.startswith("rules:"):
+                text = block
+            elif block.startswith("  - id:"):
+                text = "rules:\n" + block
+            else:
+                continue
+            path = tmp_path / f"example{index}.yml"
+            path.write_text(text, encoding="utf-8")
+            loaded.extend(load_rules_from_file(path))
+        ids = {r.id for r in loaded}
+        assert {
+            "S3_PUBLIC_ACCESS",
+            "RDS_NO_ENCRYPTION",
+            "MYORG_SG_ADMIN_OPEN",
+            "K8S_PRIVILEGED_CONTAINER",
+        } <= ids
+
+    def test_the_guide_uses_no_em_dashes(self) -> None:
+        assert "\u2014" not in self.DOC.read_text(encoding="utf-8")
