@@ -32,15 +32,18 @@ CORPUS: dict[str, tuple[str, str | None, str]] = {
         "rules read pod-level security context, probes on the right containers and NetworkPolicy",
     ),
     "docker": ("docker/hardened.Dockerfile", None, ""),
-    "mcp": (
-        "mcp/.mcp.json",
-        "WP-2-6",
-        "a loopback server and an environment-referenced header count as configured auth",
-    ),
+    "mcp": ("mcp/.mcp.json", None, ""),
 }
 
 # fixture file -> {rule id: why this finding is correct on a hardened input}
-ALLOWED: dict[str, dict[str, str]] = {}
+ALLOWED: dict[str, dict[str, str]] = {
+    "mcp/.mcp.json": {
+        "MCP_LETHAL_TRIFECTA": (
+            "the agent reads private files through the filesystem server, ingests untrusted "
+            "content through mcp-server-fetch and can exfiltrate through a remote issues server"
+        ),
+    },
+}
 
 
 def rule_findings(relative: str) -> dict[str, list[str]]:
