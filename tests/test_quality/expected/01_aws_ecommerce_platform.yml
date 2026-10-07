@@ -1,0 +1,38 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/01_aws_ecommerce_platform.json.
+# The fixture carries no comments; each why quotes the attribute that plants the issue.
+fixture: 01_aws_ecommerce_platform.json
+must_find:
+  - resource: aws_s3_bucket.product_images
+    rule_ids: [S3_PUBLIC_ACCESS]
+    kind: public_access
+    why: 'acl is "public-read" and the tags say Public=true'
+  - resource: aws_iam_policy.s3_full_access
+    rule_ids: [IAM_WILDCARD_ACTION]
+    kind: wildcard_iam
+    why: 'description "Full S3 access for application servers" with "Action":"*"'
+  - resource: aws_instance.bastion
+    rule_ids: [EC2_PUBLIC_IP]
+    kind: public_ip
+    why: 'associate_public_ip_address is true on the bastion host'
+  - resource: aws_db_instance.sessions
+    rule_ids: [RDS_NO_ENCRYPTION]
+    kind: unencrypted_storage
+    why: 'storage_encrypted is false on the sessions database'
+  - resource: aws_instance.web_b
+    rule_ids: [EC2_UNENCRYPTED_EBS]
+    kind: unencrypted_storage
+    why: 'root_block_device encrypted is false while web_a encrypts its volume'
+  - resource: aws_lambda_function.order_processor
+    rule_ids: [LAMBDA_OVERPERMISSIVE_ROLE]
+    kind: wildcard_iam
+    why: 'role is ecommerce-lambda-admin-role'
+must_not_find:
+  - resource: aws_s3_bucket.order_invoices
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING, S3_PUBLIC_ACCESS]
+    why: 'KMS encryption, versioning and logging are configured and the acl is private'
+  - resource: aws_db_instance.orders
+    why: 'encrypted, not publicly accessible, backups on'
+  - resource: aws_instance.web_a
+    why: 'encrypted volume, monitoring on, no public address'
+  - resource: aws_lambda_function.inventory_sync
+    why: 'VPC config, dead letter queue and tracing are set'

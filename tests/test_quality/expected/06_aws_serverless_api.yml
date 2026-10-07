@@ -1,0 +1,18 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/06_aws_serverless_api.yaml.
+fixture: 06_aws_serverless_api.yaml
+must_find:
+  - resource: AuditLogAdminRole
+    rule_ids: [IAM_WILDCARD_ACTION]
+    kind: wildcard_iam
+    why: 'This role has wildcard admin permissions - needs to be scoped down ASAP (BANK-1456)'
+  - resource: PartnerDocsBucket
+    rule_ids: [S3_PUBLIC_ACCESS]
+    kind: public_access
+    why: 'AccessControl PublicRead; tagged PublicAccess approved-by-ciso, so the finding is real and its severity may be lowered'
+must_not_find:
+  - resource: PartnerDocsBucketPolicy
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a bucket policy companion is not a bucket'
+  - resource: AuthFunctionRole
+    rule_ids: [IAM_WILDCARD_ACTION]
+    why: 'a scoped role for one function'

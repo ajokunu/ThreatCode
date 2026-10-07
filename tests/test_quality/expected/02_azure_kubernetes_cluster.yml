@@ -1,0 +1,19 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/02_azure_kubernetes_cluster.tf.
+fixture: 02_azure_kubernetes_cluster.tf
+must_find:
+  - resource: azurerm_kubernetes_cluster.platform
+    rule_ids: [AKS_NO_RBAC]
+    kind: rbac_disabled
+    why: '# RBAC is not enabled - flagged in last security review (TODO: PLAT-901 enable Azure AD RBAC)'
+  - resource: azurerm_container_registry.platform
+    kind: registry_admin_enabled
+    why: 'admin_enabled = true  # Should be false, using managed identity instead'
+  - resource: azurerm_network_security_group.aks
+    kind: open_ingress
+    why: 'inline security_rule AllowHTTP allows port 80 from source_address_prefix "*"'
+must_not_find:
+  - resource: azurerm_kubernetes_cluster_node_pool.workloads
+    rule_ids: [AKS_NO_NETWORK_POLICY]
+    why: 'network policy (calico) is set once on the cluster network_profile, not per node pool'
+  - resource: azurerm_mssql_database.orders
+    why: 'a database resource, not the server; the server-level rules apply to azurerm_mssql_server'
