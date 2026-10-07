@@ -1,0 +1,10 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+
+RUN microdnf install -y --nodocs python3.12 && microdnf clean all
+
+WORKDIR /opt/app
+COPY app.py .
+
+USER 1001
+EXPOSE 8080
+CMD ["python3.12", "app.py"]

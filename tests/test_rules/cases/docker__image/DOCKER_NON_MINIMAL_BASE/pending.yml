@@ -1,0 +1,3 @@
+docker:
+  package: WP-2-5
+  reason: is_non_minimal is emitted from the final stage base image family

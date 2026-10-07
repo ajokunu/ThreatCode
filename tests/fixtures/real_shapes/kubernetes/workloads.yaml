@@ -1,0 +1,153 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: api}
+  template:
+    metadata:
+      labels: {app: api}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: migrate
+          image: registry.example.com/platform/api:2.8.0
+          command: ["api", "migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+      containers:
+        - name: api
+          image: registry.example.com/platform/api:2.8.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+        - name: log-shipper
+          image: registry.example.com/platform/shipper:0.9.1
+          securityContext:
+            privileged: true
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: queue
+  namespace: platform
+spec:
+  serviceName: queue
+  replicas: 3
+  selector:
+    matchLabels: {app: queue}
+  template:
+    metadata:
+      labels: {app: queue}
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+        - name: queue
+          image: registry.example.com/platform/queue:5.1.0
+          securityContext:
+            readOnlyRootFilesystem: true
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: platform
+spec:
+  selector:
+    matchLabels: {app: node-agent}
+  template:
+    metadata:
+      labels: {app: node-agent}
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: agent
+          image: registry.example.com/platform/node-agent:latest
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: legacy-worker
+  namespace: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: legacy-worker}
+  template:
+    metadata:
+      labels: {app: legacy-worker}
+    spec:
+      containers:
+        - name: worker
+          image: registry.example.com/platform/legacy-worker:1.0.0
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: reindex
+  namespace: platform
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: reindex
+          image: registry.example.com/platform/reindex:3.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-report
+  namespace: platform
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: report
+              image: registry.example.com/platform/report:4.2.1
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-shell
+  namespace: platform
+spec:
+  containers:
+    - name: shell
+      image: busybox
+      command: ["sleep", "3600"]
+      securityContext:
+        capabilities:
+          add: ["NET_ADMIN", "SYS_PTRACE"]

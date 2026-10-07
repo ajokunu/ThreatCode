@@ -1,0 +1,30 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/05_hybrid_vpn_datacenter.tf.
+fixture: 05_hybrid_vpn_datacenter.tf
+must_find:
+  - resource: aws_security_group.temp_debug
+    rule_ids: [SG_UNRESTRICTED_INGRESS]
+    kind: open_ingress
+    why: 'FIXME: Wei - opened for debugging the BGP peering issue; all protocols from 0.0.0.0/0 (NET-1247)'
+  - resource: aws_instance.vpn_concentrator
+    kind: imdsv1
+    why: 'http_tokens = "optional" # should be "required" but StrongSwan health check script uses IMDSv1'
+  - resource: aws_instance.vpn_concentrator
+    rule_ids: [EC2_UNENCRYPTED_EBS]
+    kind: unencrypted_storage
+    why: 'encrypted = false # TODO: enable EBS encryption'
+  - resource: aws_s3_bucket.vpn_logs
+    rule_ids: [S3_NO_ENCRYPTION]
+    kind: unencrypted_storage
+    why: 'TODO "Add SSE-KMS encryption - blocked on KMS key policy (SEC-445)"'
+must_not_find:
+  - resource: aws_instance.internal_proxy
+    why: 'encrypted volume, http_tokens required, monitoring on, no public address'
+  - resource: aws_s3_bucket_versioning.vpn_logs
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a versioning companion is not a bucket'
+  - resource: aws_s3_bucket_lifecycle_configuration.vpn_logs
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a lifecycle companion is not a bucket'
+  - resource: aws_s3_bucket_public_access_block.vpn_logs
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a public access block companion is not a bucket'

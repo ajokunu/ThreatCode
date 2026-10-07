@@ -1,0 +1,11 @@
+# The verified-download remediation in DOCKER_RUN_CURL_PIPE/ is pending WP-2-5, which fixes
+# the "| sha256sum" false positive. This inline pair covers the rule today.
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN curl -fsSL https://get.example.com/install.sh | sh
+    good: |
+      FROM debian:12-slim
+      RUN curl -fsSLo /tmp/install.sh https://get.example.com/install.sh
+      RUN sh /tmp/install.sh

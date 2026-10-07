@@ -1,0 +1,33 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/04_aws_java_microservices.json.
+fixture: 04_aws_java_microservices.json
+must_find:
+  - resource: aws_db_instance.payment_service_db
+    rule_ids: [RDS_NO_ENCRYPTION]
+    kind: unencrypted_storage
+    why: 'TODO "Jake - enable encryption before Q3 audit, ticket INFRA-2847": storage_encrypted is false'
+  - resource: aws_iam_role.payment_service_task_role
+    rule_ids: [IAM_WILDCARD_ACTION]
+    kind: wildcard_iam
+    why: 'TODO "Raghav - scope this down, copied from dev for launch. INFRA-2201": inline policy Action "*"'
+  - resource: aws_security_group.bastion_sg
+    rule_ids: [SG_UNRESTRICTED_INGRESS]
+    kind: open_ingress
+    why: 'ingress description "SSH from anywhere - TODO: restrict to VPN CIDR after migration (INFRA-3102)"'
+  - resource: aws_instance.bastion
+    kind: imdsv1
+    why: 'metadata_options http_tokens is "optional" on the bastion host'
+must_not_find:
+  - resource: aws_db_instance.user_service_db
+    why: 'encrypted, 14-day backups, deletion protection, private subnet group'
+  - resource: aws_s3_bucket.artifact_store
+    rule_ids: [S3_NO_ENCRYPTION]
+    why: 'the companion aws_s3_bucket_server_side_encryption_configuration enables aws:kms encryption'
+  - resource: aws_s3_bucket_versioning.artifact_store
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a versioning companion is not a bucket'
+  - resource: aws_s3_bucket_server_side_encryption_configuration.artifact_store
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'the encryption companion is the encryption'
+  - resource: aws_s3_bucket_public_access_block.artifact_store
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a public access block companion is not a bucket'

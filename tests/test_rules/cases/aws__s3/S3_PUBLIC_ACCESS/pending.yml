@@ -1,0 +1,3 @@
+cfn:
+  package: WP-2-3
+  reason: S3 AccessControl is translated to the acl attribute the rule reads

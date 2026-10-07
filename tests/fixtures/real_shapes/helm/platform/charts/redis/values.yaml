@@ -1,0 +1,8 @@
+enabled: true
+image:
+  repository: redis
+  tag: "7.2.5-alpine"
+auth:
+  existingSecret: ""
+persistence:
+  size: 1Gi

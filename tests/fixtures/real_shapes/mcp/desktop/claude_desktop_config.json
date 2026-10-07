@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "remote-docs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@0.1.12",
+        "https://mcp.docs.example.com/sse",
+        "--header",
+        "Authorization: Bearer ${DOCS_MCP_TOKEN}"
+      ]
+    },
+    "legacy-http-bridge": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://tools.internal.example.com:8080/sse", "--allow-http"]
+    },
+    "windows-files": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\Users\\dev"
+      ]
+    },
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_16C7e42F292c6912E7710c838347Ae178B4a",
+        "ghcr.io/github/github-mcp-server:v0.5.0"
+      ]
+    },
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git", "--repository", "/Users/dev/work/api"]
+    }
+  }
+}

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: storefront
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: storefront
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: storefront
+    spec:
+      serviceAccountName: storefront-sa
+      containers:
+        - name: storefront
+          image: registry.example.com/platform/storefront:5.4.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PAYMENT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-api-key
+                  key: api-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

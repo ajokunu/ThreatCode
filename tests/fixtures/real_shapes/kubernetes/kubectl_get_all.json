@@ -1,0 +1,164 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/revision": "3"
+                },
+                "creationTimestamp": "2026-09-12T08:14:03Z",
+                "generation": 3,
+                "labels": {
+                    "app": "inventory"
+                },
+                "name": "inventory",
+                "namespace": "stock",
+                "resourceVersion": "48211973",
+                "uid": "6f1b6a5e-6c1c-4f0e-9d5b-3b7e9a0c1e11"
+            },
+            "spec": {
+                "progressDeadlineSeconds": 600,
+                "replicas": 2,
+                "revisionHistoryLimit": 10,
+                "selector": {
+                    "matchLabels": {
+                        "app": "inventory"
+                    }
+                },
+                "strategy": {
+                    "rollingUpdate": {
+                        "maxSurge": "25%",
+                        "maxUnavailable": "25%"
+                    },
+                    "type": "RollingUpdate"
+                },
+                "template": {
+                    "metadata": {
+                        "creationTimestamp": null,
+                        "labels": {
+                            "app": "inventory"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "image": "registry.example.com/stock/inventory:2.3.1",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "inventory",
+                                "ports": [
+                                    {
+                                        "containerPort": 8080,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "resources": {
+                                    "limits": {
+                                        "memory": "256Mi"
+                                    }
+                                },
+                                "securityContext": {
+                                    "allowPrivilegeEscalation": false
+                                },
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "runAsNonRoot": true
+                        },
+                        "serviceAccount": "inventory",
+                        "serviceAccountName": "inventory",
+                        "terminationGracePeriodSeconds": 30
+                    }
+                }
+            },
+            "status": {
+                "availableReplicas": 2,
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-09-12T08:14:20Z",
+                        "lastUpdateTime": "2026-09-12T08:14:20Z",
+                        "message": "Deployment has minimum availability.",
+                        "reason": "MinimumReplicasAvailable",
+                        "status": "True",
+                        "type": "Available"
+                    }
+                ],
+                "observedGeneration": 3,
+                "readyReplicas": 2,
+                "replicas": 2,
+                "updatedReplicas": 2
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "creationTimestamp": "2026-09-12T08:13:58Z",
+                "labels": {
+                    "app": "inventory"
+                },
+                "name": "inventory",
+                "namespace": "stock",
+                "resourceVersion": "48211801",
+                "uid": "0c9f9e44-1a52-4d4e-8f1f-0d6d9f7b2a22"
+            },
+            "spec": {
+                "clusterIP": "10.100.44.21",
+                "clusterIPs": [
+                    "10.100.44.21"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [
+                    {
+                        "name": "http",
+                        "port": 80,
+                        "protocol": "TCP",
+                        "targetPort": 8080
+                    }
+                ],
+                "selector": {
+                    "app": "inventory"
+                },
+                "sessionAffinity": "None",
+                "type": "LoadBalancer"
+            },
+            "status": {
+                "loadBalancer": {
+                    "ingress": [
+                        {
+                            "hostname": "a1b2c3d4e5f6-1234567890.us-east-1.elb.amazonaws.com"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "data": {
+                "LOG_LEVEL": "debug"
+            },
+            "kind": "ConfigMap",
+            "metadata": {
+                "creationTimestamp": "2026-09-12T08:13:50Z",
+                "name": "inventory-config",
+                "namespace": "stock",
+                "resourceVersion": "48211790",
+                "uid": "5d2d3f77-8b64-4bb2-8c3b-4a1d1c0f3b33"
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}
