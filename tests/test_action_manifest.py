@@ -466,7 +466,7 @@ class TestRepositoryAutomation:
         assert hook["language"] == "python"
         # One graph across all files: a list of changed files would hide half of an attack path.
         assert hook["pass_filenames"] is False
-        assert hook["entry"] == "threatcode scan . --fail-on high"
+        assert hook["entry"] == "threatcode scan . --fail-on high --format text"
         assert "terraform" in hook["types_or"] and "yaml" in hook["types_or"]
 
     def test_make_smoke_builds_and_installs_the_wheel(self) -> None:
