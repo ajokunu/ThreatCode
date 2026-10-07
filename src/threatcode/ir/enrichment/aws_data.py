@@ -411,6 +411,10 @@ def _managed_arn_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
 # ---------------------------------------------------------------------------
 
 
+def _is_bucket(node: InfraNode | None) -> bool:
+    return node is not None and node.resource_type == "aws_s3_bucket"
+
+
 def _bucket_policies_by_edge(
     bucket: InfraNode, ctx: EnrichContext
 ) -> tuple[list[Statements | Unknown | None], bool]:
@@ -426,7 +430,7 @@ def _bucket_policies_by_edge(
         targets = {
             edge.target
             for edge in ctx.graph.edges_from(policy_node.id)
-            if ctx.graph.nodes[edge.target].resource_type == "aws_s3_bucket"
+            if _is_bucket(ctx.graph.get_node(edge.target))
         }
         if not targets:
             complete = False
