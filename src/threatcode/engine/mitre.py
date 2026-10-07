@@ -1,211 +1,102 @@
-"""MITRE ATT&CK Cloud Matrix reference data and lookups."""
+"""MITRE ATT&CK reference data and lookups.
+
+The data lives in the generated module ``mitre_data`` (built from the official enterprise-attack
+STIX bundle by ``scripts/gen_mitre_db.py``).
+This module is the stable API over it.
+Revoked and deprecated techniques stay in ``TECHNIQUE_DB`` with their flags, so rules and user
+input that still carry an old ID keep resolving; ``normalize_technique`` maps them to the
+current ID.
+"""
 
 from __future__ import annotations
 
-# ATT&CK Tactic definitions (Cloud Matrix)
-TACTIC_DB: dict[str, dict[str, str]] = {
-    "TA0001": {"name": "Initial Access", "url": "https://attack.mitre.org/tactics/TA0001/"},
-    "TA0002": {"name": "Execution", "url": "https://attack.mitre.org/tactics/TA0002/"},
-    "TA0003": {"name": "Persistence", "url": "https://attack.mitre.org/tactics/TA0003/"},
-    "TA0004": {"name": "Privilege Escalation", "url": "https://attack.mitre.org/tactics/TA0004/"},
-    "TA0005": {"name": "Defense Evasion", "url": "https://attack.mitre.org/tactics/TA0005/"},
-    "TA0006": {"name": "Credential Access", "url": "https://attack.mitre.org/tactics/TA0006/"},
-    "TA0007": {"name": "Discovery", "url": "https://attack.mitre.org/tactics/TA0007/"},
-    "TA0008": {"name": "Lateral Movement", "url": "https://attack.mitre.org/tactics/TA0008/"},
-    "TA0009": {"name": "Collection", "url": "https://attack.mitre.org/tactics/TA0009/"},
-    "TA0010": {"name": "Exfiltration", "url": "https://attack.mitre.org/tactics/TA0010/"},
-    "TA0011": {"name": "Command and Control", "url": "https://attack.mitre.org/tactics/TA0011/"},
-    "TA0040": {"name": "Impact", "url": "https://attack.mitre.org/tactics/TA0040/"},
-    "TA0042": {"name": "Resource Development", "url": "https://attack.mitre.org/tactics/TA0042/"},
-}
+from threatcode.engine.mitre_data import (
+    ATTACK_SOURCE_URL,
+    ATTACK_VERSION,
+    REVOKED_ALIASES,
+    TACTICS,
+    TECHNIQUES,
+    TacticEntry,
+    TechniqueEntry,
+)
 
-# ATT&CK Technique definitions relevant to cloud IaC threats
-TECHNIQUE_DB: dict[str, dict[str, str | list[str]]] = {
-    "T1040": {
-        "name": "Network Sniffing",
-        "tactic_ids": ["TA0006", "TA0007"],
-        "url": "https://attack.mitre.org/techniques/T1040/",
-    },
-    "T1046": {
-        "name": "Network Service Discovery",
-        "tactic_ids": ["TA0007"],
-        "url": "https://attack.mitre.org/techniques/T1046/",
-    },
-    "T1078": {
-        "name": "Valid Accounts",
-        "tactic_ids": ["TA0001", "TA0003", "TA0004", "TA0005"],
-        "url": "https://attack.mitre.org/techniques/T1078/",
-    },
-    "T1078.004": {
-        "name": "Valid Accounts: Cloud Accounts",
-        "tactic_ids": ["TA0001", "TA0003", "TA0004", "TA0005"],
-        "url": "https://attack.mitre.org/techniques/T1078/004/",
-    },
-    "T1098": {
-        "name": "Account Manipulation",
-        "tactic_ids": ["TA0003", "TA0004"],
-        "url": "https://attack.mitre.org/techniques/T1098/",
-    },
-    "T1190": {
-        "name": "Exploit Public-Facing Application",
-        "tactic_ids": ["TA0001"],
-        "url": "https://attack.mitre.org/techniques/T1190/",
-    },
-    "T1485": {
-        "name": "Data Destruction",
-        "tactic_ids": ["TA0040"],
-        "url": "https://attack.mitre.org/techniques/T1485/",
-    },
-    "T1499": {
-        "name": "Endpoint Denial of Service",
-        "tactic_ids": ["TA0040"],
-        "url": "https://attack.mitre.org/techniques/T1499/",
-    },
-    "T1530": {
-        "name": "Data from Cloud Storage",
-        "tactic_ids": ["TA0009"],
-        "url": "https://attack.mitre.org/techniques/T1530/",
-    },
-    "T1537": {
-        "name": "Transfer Data to Cloud Account",
-        "tactic_ids": ["TA0010"],
-        "url": "https://attack.mitre.org/techniques/T1537/",
-    },
-    "T1557": {
-        "name": "Adversary-in-the-Middle",
-        "tactic_ids": ["TA0006", "TA0009"],
-        "url": "https://attack.mitre.org/techniques/T1557/",
-    },
-    "T1562.008": {
-        "name": "Impair Defenses: Disable or Modify Cloud Logs",
-        "tactic_ids": ["TA0005"],
-        "url": "https://attack.mitre.org/techniques/T1562/008/",
-    },
-    "T1580": {
-        "name": "Cloud Infrastructure Discovery",
-        "tactic_ids": ["TA0007"],
-        "url": "https://attack.mitre.org/techniques/T1580/",
-    },
-    "T1059": {
-        "name": "Command and Scripting Interpreter",
-        "tactic_ids": ["TA0002"],
-        "url": "https://attack.mitre.org/techniques/T1059/",
-    },
-    "T1005": {
-        "name": "Data from Local System",
-        "tactic_ids": ["TA0009"],
-        "url": "https://attack.mitre.org/techniques/T1005/",
-    },
-    "T1611": {
-        "name": "Escape to Host",
-        "tactic_ids": ["TA0004"],
-        "url": "https://attack.mitre.org/techniques/T1611/",
-    },
-    "T1610": {
-        "name": "Deploy Container",
-        "tactic_ids": ["TA0002", "TA0005"],
-        "url": "https://attack.mitre.org/techniques/T1610/",
-    },
-    "T1552.001": {
-        "name": "Unsecured Credentials: Credentials In Files",
-        "tactic_ids": ["TA0006"],
-        "url": "https://attack.mitre.org/techniques/T1552/001/",
-    },
-    "T1195.002": {
-        "name": "Supply Chain Compromise: Compromise Software Supply Chain",
-        "tactic_ids": ["TA0001"],
-        "url": "https://attack.mitre.org/techniques/T1195/002/",
-    },
-    "T1021": {
-        "name": "Remote Services",
-        "tactic_ids": ["TA0008"],
-        "url": "https://attack.mitre.org/techniques/T1021/",
-    },
-    "T1528": {
-        "name": "Steal Application Access Token",
-        "tactic_ids": ["TA0006"],
-        "url": "https://attack.mitre.org/techniques/T1528/",
-    },
-    "T1565.001": {
-        "name": "Data Manipulation: Stored Data Manipulation",
-        "tactic_ids": ["TA0040"],
-        "url": "https://attack.mitre.org/techniques/T1565/001/",
-    },
-    "T1613": {
-        "name": "Container and Resource Discovery",
-        "tactic_ids": ["TA0007"],
-        "url": "https://attack.mitre.org/techniques/T1613/",
-    },
-    "T1609": {
-        "name": "Container Administration Command",
-        "tactic_ids": ["TA0002"],
-        "url": "https://attack.mitre.org/techniques/T1609/",
-    },
-    "T1552": {
-        "name": "Unsecured Credentials",
-        "tactic_ids": ["TA0006"],
-        "url": "https://attack.mitre.org/techniques/T1552/",
-    },
-    "T1195": {
-        "name": "Supply Chain Compromise",
-        "tactic_ids": ["TA0001"],
-        "url": "https://attack.mitre.org/techniques/T1195/",
-    },
-    "T1565": {
-        "name": "Data Manipulation",
-        "tactic_ids": ["TA0040"],
-        "url": "https://attack.mitre.org/techniques/T1565/",
-    },
-    "T1548": {
-        "name": "Abuse Elevation Control Mechanism",
-        "tactic_ids": ["TA0004", "TA0005"],
-        "url": "https://attack.mitre.org/techniques/T1548/",
-    },
-    "T1053": {
-        "name": "Scheduled Task/Job",
-        "tactic_ids": ["TA0002", "TA0003", "TA0004"],
-        "url": "https://attack.mitre.org/techniques/T1053/",
-    },
-    "T1068": {
-        "name": "Exploitation for Privilege Escalation",
-        "tactic_ids": ["TA0004"],
-        "url": "https://attack.mitre.org/techniques/T1068/",
-    },
-    "T1048": {
-        "name": "Exfiltration Over Alternative Protocol",
-        "tactic_ids": ["TA0010"],
-        "url": "https://attack.mitre.org/techniques/T1048/",
-    },
-    "T1189": {
-        "name": "Drive-by Compromise",
-        "tactic_ids": ["TA0001"],
-        "url": "https://attack.mitre.org/techniques/T1189/",
-    },
-    "T1587.001": {
-        "name": "Develop Capabilities: Malware",
-        "tactic_ids": ["TA0042"],
-        "url": "https://attack.mitre.org/techniques/T1587/001/",
-    },
-    "T1587": {
-        "name": "Develop Capabilities",
-        "tactic_ids": ["TA0042"],
-        "url": "https://attack.mitre.org/techniques/T1587/",
-    },
-}
+__all__ = [
+    "ATTACK_SOURCE_URL",
+    "ATTACK_VERSION",
+    "BOUNDARY_TACTICS",
+    "BOUNDARY_TECHNIQUES",
+    "REVOKED_ALIASES",
+    "TACTIC_DB",
+    "TACTIC_SHORTNAME",
+    "TECHNIQUE_DB",
+    "TacticEntry",
+    "TechniqueEntry",
+    "is_deprecated",
+    "is_revoked",
+    "lookup_tactic",
+    "lookup_technique",
+    "normalize_technique",
+    "tactic_shortname",
+    "tactics_for_techniques",
+]
 
-# Default MITRE techniques for trust boundary crossings
+# ATT&CK tactics keyed by TA id: {name, shortname, url}.
+TACTIC_DB: dict[str, TacticEntry] = TACTICS
+
+# Every enterprise technique and sub-technique, including revoked and deprecated entries:
+# {name, tactic_ids, url, platforms, deprecated, revoked, revoked_by}.
+TECHNIQUE_DB: dict[str, TechniqueEntry] = TECHNIQUES
+
+# TA id -> ATT&CK Navigator tactic shortname (for example "TA0001" -> "initial-access").
+TACTIC_SHORTNAME: dict[str, str] = {ta_id: t["shortname"] for ta_id, t in TACTICS.items()}
+
+# Default MITRE techniques for trust boundary crossings.
+# Their redesign belongs to the boundary work, so the values stay as they were.
 BOUNDARY_TECHNIQUES: list[str] = ["T1040", "T1557"]
 BOUNDARY_TACTICS: list[str] = ["TA0006", "TA0009"]
 
 
-def lookup_technique(technique_id: str) -> dict[str, str | list[str]] | None:
+def lookup_technique(technique_id: str) -> TechniqueEntry | None:
     """Look up a technique by ID. Returns None if not found."""
     return TECHNIQUE_DB.get(technique_id)
 
 
-def lookup_tactic(tactic_id: str) -> dict[str, str] | None:
+def lookup_tactic(tactic_id: str) -> TacticEntry | None:
     """Look up a tactic by ID. Returns None if not found."""
     return TACTIC_DB.get(tactic_id)
+
+
+def tactic_shortname(tactic_id: str) -> str | None:
+    """Navigator shortname for a TA id, or None for an unknown tactic."""
+    return TACTIC_SHORTNAME.get(tactic_id)
+
+
+def normalize_technique(technique_id: str) -> str:
+    """Map a revoked technique ID to the ID that replaced it.
+
+    Follows revoked-by chains to the current ID.
+    IDs that are current, deprecated without a replacement or unknown come back unchanged.
+    """
+    seen = {technique_id}
+    current = technique_id
+    while current in REVOKED_ALIASES:
+        current = REVOKED_ALIASES[current]
+        if current in seen:  # defensive: a cycle in the data must not hang the caller
+            break
+        seen.add(current)
+    return current
+
+
+def is_revoked(technique_id: str) -> bool:
+    """True when ATT&CK has revoked this technique ID (it was replaced or folded in)."""
+    tech = TECHNIQUE_DB.get(technique_id)
+    return bool(tech and tech["revoked"])
+
+
+def is_deprecated(technique_id: str) -> bool:
+    """True when ATT&CK has deprecated this technique ID without a replacement."""
+    tech = TECHNIQUE_DB.get(technique_id)
+    return bool(tech and tech["deprecated"])
 
 
 def tactics_for_techniques(technique_ids: list[str]) -> list[str]:
@@ -214,7 +105,5 @@ def tactics_for_techniques(technique_ids: list[str]) -> list[str]:
     for tid in technique_ids:
         tech = TECHNIQUE_DB.get(tid)
         if tech:
-            tactic_ids = tech.get("tactic_ids", [])
-            if isinstance(tactic_ids, list):
-                tactics.update(tactic_ids)
+            tactics.update(tech["tactic_ids"])
     return sorted(tactics)
