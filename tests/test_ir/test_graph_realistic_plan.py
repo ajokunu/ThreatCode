@@ -52,6 +52,72 @@ def test_every_plan_fixture_has_the_shape_terraform_emits(path: object) -> None:
     assert "configuration" in data
 
 
+# Plan fixtures that claim a format_version but are the hand-shaped kind: planned_values and
+# configuration with attribute values that hold addresses, and no resource_changes. They stay as
+# they are because golden recordings and older tests read them. The list is the explicit marker the
+# next test demands: it may only shrink, and a fixture leaves it when it is rewritten to the shape
+# `terraform show -json` prints.
+LEGACY_HAND_SHAPED = frozenset(
+    {
+        "tests/fixtures/realistic/01_aws_ecommerce_platform.json",
+        "tests/fixtures/realistic/04_aws_java_microservices.json",
+        "tests/fixtures/realistic/08_aws_ml_training_platform.json",
+        "tests/fixtures/realistic/10_aws_gaming_backend.json",
+        "tests/fixtures/terraform/multi_service_insecure.plan.json",
+        "tests/fixtures/terraform/multi_service_secure.plan.json",
+        "tests/fixtures/terraform/simple_s3.plan.json",
+    }
+)
+
+
+def _claimed_plans() -> dict[str, dict[str, object]]:
+    """Every JSON fixture outside the corpus that claims to be a Terraform plan."""
+    repo = REAL_SHAPES_DIR.parent.parent.parent
+    found: dict[str, dict[str, object]] = {}
+    patterns = (("tests/fixtures/terraform", "*.plan.json"), ("tests/fixtures/realistic", "*.json"))
+    for directory, pattern in patterns:
+        for path in sorted((repo / directory).glob(pattern)):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "format_version" in data:
+                found[str(path.relative_to(repo))] = data
+    return found
+
+
+def unlisted_hand_shaped(plans: dict[str, dict[str, object]], legacy: frozenset[str]) -> list[str]:
+    """Plans that claim a format_version, lack resource_changes and are not marked legacy."""
+    return sorted(
+        name
+        for name, data in plans.items()
+        if "resource_changes" not in data and name not in legacy
+    )
+
+
+class TestNoUnrealisticPlanIsAddedSilently:
+    def test_a_plan_without_resource_changes_must_be_listed_as_legacy(self) -> None:
+        unlisted = unlisted_hand_shaped(_claimed_plans(), LEGACY_HAND_SHAPED)
+        assert not unlisted, (
+            f"{unlisted} claim a format_version but have no resource_changes block. Write them in "
+            "the shape `terraform show -json` prints (see tests/fixtures/real_shapes/terraform/"
+            "plan) or, for a deliberate hand-shaped fixture, list it in LEGACY_HAND_SHAPED."
+        )
+
+    def test_the_legacy_list_names_only_files_that_are_still_hand_shaped(self) -> None:
+        plans = _claimed_plans()
+        stale = sorted(
+            name
+            for name in LEGACY_HAND_SHAPED
+            if name not in plans or "resource_changes" in plans[name]
+        )
+        assert not stale, f"remove {stale} from LEGACY_HAND_SHAPED: gone or now real-shaped"
+
+    def test_a_new_hand_shaped_plan_would_be_caught_and_a_real_shaped_one_would_not(self) -> None:
+        hand_shaped = {"format_version": "1.0", "planned_values": {"root_module": {}}}
+        real = {**hand_shaped, "resource_changes": []}
+        plans = {"new/hand.plan.json": hand_shaped, "new/real.plan.json": real}
+        assert unlisted_hand_shaped(plans, frozenset()) == ["new/hand.plan.json"]
+        assert unlisted_hand_shaped(plans, frozenset({"new/hand.plan.json"})) == []
+
+
 def test_the_corpus_has_the_three_plan_fixtures() -> None:
     assert [p.name for p in PLAN_FIXTURES] == [
         "modules.plan.json",

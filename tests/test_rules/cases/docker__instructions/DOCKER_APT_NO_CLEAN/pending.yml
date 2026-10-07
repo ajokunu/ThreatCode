@@ -1,0 +1,3 @@
+docker:
+  package: WP-2-5
+  reason: has_apt_no_clean is emitted on RUN instructions

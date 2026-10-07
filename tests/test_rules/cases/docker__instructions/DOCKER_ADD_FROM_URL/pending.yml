@@ -1,0 +1,3 @@
+docker:
+  package: WP-2-5
+  reason: is_url_add is emitted on ADD instructions

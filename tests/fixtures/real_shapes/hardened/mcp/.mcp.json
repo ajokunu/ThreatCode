@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch==2025.4.7"]
+    },
+    "docs": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.1", "./docs"]
+    },
+    "local-index": {
+      "type": "http",
+      "url": "http://127.0.0.1:8931/mcp"
+    },
+    "issues": {
+      "type": "http",
+      "url": "https://issues.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${ISSUES_TOKEN}"
+      }
+    }
+  }
+}
