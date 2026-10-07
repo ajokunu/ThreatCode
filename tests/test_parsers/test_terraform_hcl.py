@@ -1785,11 +1785,17 @@ class TestValueSizeLimits:
         assert is_unknown(value)
         assert "kms_key_id" in only_resource(parse_dir(tmp_path)).properties
 
-    def test_a_module_without_a_limit_has_no_note(self) -> None:
-        for name in ("module_dir", "modules_root"):
-            path = HCL_FIXTURES / name
-            if path.is_dir():
-                assert codes(parse_dir(path), "hcl.evaluation_limit") == []
+    @pytest.mark.parametrize("name", ["module_dir", "local_modules"])
+    def test_a_realistic_module_has_no_limit_note(self, name: str) -> None:
+        assert codes(parse_dir(HCL_FIXTURES / name), "hcl.evaluation_limit") == []
+
+    @pytest.mark.skipif(not MODERN, reason="python-hcl2 4.x cannot parse every real module")
+    def test_the_real_terraform_aws_modules_hit_no_limit(self) -> None:
+        # the largest real input there is: a cap that starts warning here is too tight
+        assert codes(parse_dir(REAL_MODULES), "hcl.evaluation_limit") == []
+        for path in sorted(REAL_MODULES.glob("*.tf")):
+            result = TerraformHCLParser().parse_file(path)
+            assert codes(result, "hcl.evaluation_limit") == [], path.name
 
     def test_references_through_doubling_locals_are_found_without_reading_them_twice(
         self, tmp_path: Path
