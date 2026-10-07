@@ -13,11 +13,11 @@ Where a setting comes from, in order of precedence:
 
 Trust: a config file named with ``--config`` is trusted and every key is honored.
 An auto-discovered ``.threatcode.yml`` (in the scan root or the current directory) comes from the
-repository being scanned, so only ``min_severity``, ``output_format`` and ``redaction`` are read
-from it.
-``fail_on``, ``extra_rule_paths``, ``llm`` and the graph limits are ignored and reported, because a
-scanned repository must not be able to disable its own gate, load its own rules, point the tool at
-its own model server or raise the resource limits.
+repository being scanned, so only ``min_severity`` and ``output_format`` are read from it.
+``fail_on``, ``extra_rule_paths``, ``llm``, ``redaction`` and the graph limits are ignored and
+reported, because a scanned repository must not be able to disable its own gate, load its own
+rules, point the tool at its own model server, weaken what is redacted before a prompt leaves the
+machine or raise the resource limits.
 Every model rejects unknown keys, so a typo is an error that names the key.
 """
 
@@ -26,6 +26,7 @@ from __future__ import annotations
 import difflib
 import logging
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,7 +58,7 @@ ENV_FORMAT = "THREATCODE_FORMAT"
 ENV_LLM = "THREATCODE_LLM"
 
 # Keys read from an auto-discovered (untrusted) config file; everything else is ignored.
-_SAFE_AUTO_FIELDS = frozenset({"min_severity", "output_format", "redaction"})
+_SAFE_AUTO_FIELDS = frozenset({"min_severity", "output_format"})
 
 # Keys that earlier versions accepted and that no longer do, with what to use instead.
 _REMOVED_KEYS: dict[str, str] = {
@@ -68,6 +69,21 @@ _REMOVED_KEYS: dict[str, str] = {
 # Providers that talk to a self-hosted model server and may opt in to
 # loopback and private base_url addresses via llm.allow_local_network.
 _LOCAL_PROVIDERS = frozenset({"ollama", "local"})
+# The Anthropic provider may opt in too, for a gateway or proxy on a private network that fronts
+# the API (set with base_url or ANTHROPIC_BASE_URL).
+_LOCAL_NETWORK_PROVIDERS = _LOCAL_PROVIDERS | {"anthropic"}
+
+# The model a fresh config uses. The installed anthropic SDK lists it among its known model ids.
+DEFAULT_LLM_MODEL = "claude-sonnet-5-5"
+# Seconds a single model call may take, and how many times the SDK or client retries it.
+DEFAULT_LLM_TIMEOUT = 120
+DEFAULT_LLM_MAX_RETRIES = 1
+# The estimated size, in tokens, above which the request is refused rather than sent.
+DEFAULT_LLM_MAX_INPUT_TOKENS = 60_000
+
+# The environment variable each provider's API key is read from unless llm.api_key_env names
+# another; ollama and local servers take no key by default.
+DEFAULT_API_KEY_ENV: dict[str, str] = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
 
 _TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
 _FALSE_WORDS = frozenset({"0", "false", "no", "off"})
@@ -80,24 +96,45 @@ class LLMConfig(BaseModel):
     # (or --llm is given). Honored only from a config named with --config.
     enabled: bool = False
     provider: Literal["anthropic", "openai", "ollama", "local"] = "anthropic"
-    model: str = "claude-sonnet-4-20250514"
+    model: str = DEFAULT_LLM_MODEL
     api_key: str = ""
+    # The environment variable the API key is read from when api_key is empty.
+    # Default: ANTHROPIC_API_KEY for anthropic, OPENAI_API_KEY for openai, none for ollama/local.
+    api_key_env: str | None = None
     base_url: str = ""
     max_tokens: int = 4096
-    temperature: float = 0.2
-    # Explicit opt-in for local model servers: lets base_url use plain http
-    # and resolve to loopback or private addresses. Only valid for the
-    # ollama and local providers, and only honored from a --config file
-    # because the whole llm section is stripped from auto-discovered configs.
+    # None sends no temperature at all, which is what current models require. A value is sent
+    # as configured; a model that rejects it gets one retry without it.
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    # Seconds a single call may take, and retries on a transient failure.
+    timeout: int = Field(default=DEFAULT_LLM_TIMEOUT, ge=1, le=3600)
+    max_retries: int = Field(default=DEFAULT_LLM_MAX_RETRIES, ge=0, le=5)
+    # Requests estimated above this many tokens (characters / 3.5) are refused, not truncated.
+    max_input_tokens: int = Field(default=DEFAULT_LLM_MAX_INPUT_TOKENS, ge=1_000)
+    # Explicit opt-in for model servers on a private network: lets base_url use plain http
+    # and resolve to loopback or private addresses. Only valid for the ollama, local and
+    # anthropic providers, and only honored from a --config file because the whole llm
+    # section is stripped from auto-discovered configs.
     allow_local_network: bool = False
+
+    @field_validator("api_key_env")
+    @classmethod
+    def _check_api_key_env(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+            raise ValueError(f"'{value}' is not an environment variable name")
+        return value
 
     @model_validator(mode="after")
     def _check_allow_local_network(self) -> LLMConfig:
-        if self.allow_local_network and self.provider not in _LOCAL_PROVIDERS:
+        if self.allow_local_network and self.provider not in _LOCAL_NETWORK_PROVIDERS:
             raise ValueError(
                 f"allow_local_network requires provider 'ollama' or 'local', not '{self.provider}'"
             )
         return self
+
+    def api_key_variable(self) -> str:
+        """The environment variable the key comes from, or '' when the provider takes none."""
+        return self.api_key_env or DEFAULT_API_KEY_ENV.get(self.provider, "")
 
 
 class RedactionConfig(BaseModel):
@@ -219,10 +256,14 @@ def _load_from_file(path: Path, *, trusted: bool) -> LoadedConfig:
 
     llm_data = data.get("llm")
     if isinstance(llm_data, dict) and llm_data.get("api_key"):
-        notices.append(
-            f"api_key found in config file {path}. "
-            "Use the ANTHROPIC_API_KEY environment variable instead."
+        provider = str(llm_data.get("provider") or "anthropic")
+        variable = str(llm_data.get("api_key_env") or DEFAULT_API_KEY_ENV.get(provider, ""))
+        advice = (
+            f"Use the {variable} environment variable instead."
+            if variable
+            else "Keep keys out of files that are committed."
         )
+        notices.append(f"api_key found in config file {path}. {advice}")
 
     ignored: tuple[str, ...] = ()
     if not trusted:

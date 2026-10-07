@@ -63,7 +63,13 @@ class TestThreatCodeConfig:
     def test_llm_defaults(self) -> None:
         cfg = ThreatCodeConfig()
         assert cfg.llm.max_tokens == 4096
-        assert cfg.llm.temperature == 0.2
+        # No temperature is sent unless one is configured: current models reject it
+        assert cfg.llm.temperature is None
+        assert cfg.llm.model == "claude-sonnet-5-5"
+        assert cfg.llm.timeout == 120
+        assert cfg.llm.max_retries == 1
+        assert cfg.llm.max_input_tokens == 60_000
+        assert cfg.llm.api_key_env is None
 
     def test_redaction_defaults(self) -> None:
         assert ThreatCodeConfig().redaction.strategy == "placeholder"
@@ -276,18 +282,21 @@ class TestLlmConfigValidation:
         )
         assert cfg.llm.allow_local_network is True
 
-    @pytest.mark.parametrize("provider", ["openai", "anthropic"])
-    def test_allow_local_network_rejected_for_hosted_providers(
-        self, tmp_path: Path, provider: str
-    ) -> None:
-        path = write_config(
-            tmp_path, f"llm:\n  provider: {provider}\n  allow_local_network: true\n"
-        )
-        expected = (
-            f"llm: allow_local_network requires provider 'ollama' or 'local', not '{provider}'"
-        )
+    def test_allow_local_network_rejected_for_hosted_openai(self, tmp_path: Path) -> None:
+        path = write_config(tmp_path, "llm:\n  provider: openai\n  allow_local_network: true\n")
+        expected = "llm: allow_local_network requires provider 'ollama' or 'local', not 'openai'"
         with pytest.raises(ConfigError, match=expected):
             load_config(path)
+
+    def test_allow_local_network_is_accepted_for_anthropic_behind_a_gateway(
+        self, tmp_path: Path
+    ) -> None:
+        path = write_config(
+            tmp_path,
+            "llm:\n  provider: anthropic\n  base_url: http://10.0.0.5:8080\n"
+            "  allow_local_network: true\n",
+        )
+        assert load_config(path).llm.allow_local_network is True
 
     def test_allow_local_network_defaults_off(self) -> None:
         assert ThreatCodeConfig().llm.allow_local_network is False
@@ -466,3 +475,69 @@ class TestResolveSettings:
         settings = ResolvedSettings()
         with pytest.raises(AttributeError):
             settings.fail_on = "none"  # type: ignore[misc]
+
+
+class TestLlmSection:
+    def test_unknown_llm_keys_are_rejected_with_a_hint(self, tmp_path: Path) -> None:
+        with pytest.raises(
+            ConfigError, match=r"llm\.max_retry: unknown key \(did you mean 'max_retries'"
+        ):
+            load_config(write_config(tmp_path, "llm:\n  max_retry: 2\n"))
+
+    @pytest.mark.parametrize(
+        ("text", "message"),
+        [
+            ("temperature: 3", "temperature"),
+            ("temperature: -0.1", "temperature"),
+            ("timeout: 0", "timeout"),
+            ("max_retries: 9", "max_retries"),
+            ("max_retries: -1", "max_retries"),
+            ("max_input_tokens: 10", "max_input_tokens"),
+            ("api_key_env: 'NOT A VAR'", "not an environment variable name"),
+        ],
+    )
+    def test_out_of_range_values_name_the_key(
+        self, tmp_path: Path, text: str, message: str
+    ) -> None:
+        with pytest.raises(ConfigError, match=message):
+            load_config(write_config(tmp_path, f"llm:\n  {text}\n"))
+
+    def test_every_new_key_is_read_from_an_explicit_config(self, tmp_path: Path) -> None:
+        cfg = load_config(
+            write_config(
+                tmp_path,
+                "llm:\n  enabled: true\n  provider: openai\n  model: gpt-x\n  api_key_env: MY_KEY\n"
+                "  base_url: https://gateway.example.com\n  max_tokens: 2048\n  temperature: 0.3\n"
+                "  timeout: 30\n  max_retries: 2\n  max_input_tokens: 20000\n",
+            )
+        )
+        llm = cfg.llm
+        assert (llm.provider, llm.model, llm.api_key_env) == ("openai", "gpt-x", "MY_KEY")
+        assert (llm.temperature, llm.timeout, llm.max_retries) == (0.3, 30, 2)
+        assert (llm.max_input_tokens, llm.max_tokens) == (20_000, 2048)
+        assert llm.api_key_variable() == "MY_KEY"
+
+    def test_the_default_key_variable_follows_the_provider(self) -> None:
+        from threatcode.config import LLMConfig
+
+        assert LLMConfig().api_key_variable() == "ANTHROPIC_API_KEY"
+        assert LLMConfig(provider="openai").api_key_variable() == "OPENAI_API_KEY"
+        assert LLMConfig(provider="ollama").api_key_variable() == ""
+        assert LLMConfig(provider="local", api_key_env="K").api_key_variable() == "K"
+
+    def test_auto_discovery_ignores_every_llm_key(self, tmp_path: Path) -> None:
+        path = write_config(
+            tmp_path,
+            "llm:\n  timeout: 1\n  max_retries: 5\n  api_key_env: EVIL\n"
+            "  max_input_tokens: 1000000\n",
+        )
+        loaded = discover_config(None, [path.parent])
+        assert loaded.config.llm.api_key_env is None
+        assert loaded.config.llm.timeout == 120
+        assert "llm" in loaded.ignored
+
+    def test_the_default_model_is_not_deprecated(self) -> None:
+        from threatcode.config import DEFAULT_LLM_MODEL
+        from threatcode.engine.llm.client import DEPRECATED_MODELS
+
+        assert DEFAULT_LLM_MODEL not in DEPRECATED_MODELS

@@ -1,20 +1,38 @@
 """LLM phase of the analysis pipeline.
 
-``run_llm_phase`` redacts the graph, asks the model for additional threats,
-validates what comes back and reports how the phase went. It never raises: a
-failed call returns no threats and a ``failed`` status, so rule results are
+``run_llm_phase`` serializes the graph into a pseudonymous, redacted, budgeted context, asks the
+model for additional threats, parses and merges what comes back and reports how the phase went.
+It never raises: a failed call returns no threats and a ``failed`` status, so rule results are
 always kept.
+
+The status mapping holds ``provider``, ``model``, ``status`` (``ran``, ``skipped`` or ``failed``),
+``error``, ``threat_count`` and, once a request was built, the redaction strategy, a hash of the
+prompt (with the per-request delimiter held constant, so the same input hashes the same), the
+estimated input size, what the budget summarized or dropped, how many items were skipped,
+salvaged, deduplicated or left unattributed, and the unattributed items themselves.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import TYPE_CHECKING, Any
 
-from threatcode.engine.mitre import tactics_for_techniques
+from threatcode.config import LLMConfig, RedactionConfig
+from threatcode.engine.llm.client import CHARS_PER_TOKEN, estimate_tokens
+from threatcode.engine.llm.context import build_context
+from threatcode.engine.llm.merge import merge_llm_threats
+from threatcode.engine.llm.parser import parse_llm_response
+from threatcode.engine.llm.prompts import (
+    SYSTEM_PROMPT,
+    build_analysis_prompt,
+    new_delimiter,
+    prompt_overhead_chars,
+)
+from threatcode.engine.llm.redactor import Redactor
 from threatcode.exceptions import LLMError
 from threatcode.ir.graph import InfraGraph
-from threatcode.models.threat import Severity, Threat, ThreatSource, hash_id
+from threatcode.models.threat import Threat
 
 if TYPE_CHECKING:
     from threatcode.config import ThreatCodeConfig
@@ -23,6 +41,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MAX_ERROR_LENGTH = 500
+# Below this many characters of JSON there is no room for even one resource.
+_MIN_CONTEXT_CHARS = 2_000
+_CANONICAL_DELIMITER = "infrastructure_data_0000000000000000"
 
 
 def run_llm_phase(
@@ -33,10 +54,10 @@ def run_llm_phase(
 ) -> tuple[list[Threat], dict[str, Any]]:
     """Run LLM-augmented threat analysis.
 
-    ``threats`` are the findings gathered before this phase; their rule ids are
-    passed to the model so it does not repeat them. Returns the new LLM threats
-    and a status mapping with ``provider``, ``model``, ``status`` (``ran``,
-    ``skipped`` or ``failed``), ``error`` and ``threat_count``.
+    ``threats`` are the findings gathered before this phase; the ids of the rules that fired on
+    each resource are shown to the model so it does not repeat them, and a model finding that
+    restates one is dropped.
+    Returns the new LLM threats and a status mapping (see the module docstring).
     """
     provider, model = _describe_client(client, config)
     status: dict[str, Any] = {
@@ -50,17 +71,19 @@ def run_llm_phase(
         return [], status
 
     try:
-        llm_threats = _analyze(graph, threats, client, config)
+        llm_threats = _analyze(graph, threats, client, config, status)
     except LLMError as e:
         # Expected failures (server down, bad response): one line, no traceback.
         logger.warning("LLM analysis failed (%s) - returning rule-based results only", e)
         status["status"] = "failed"
         status["error"] = str(e)[:_MAX_ERROR_LENGTH]
+        status["threat_count"] = 0
         return [], status
     except Exception as e:
         logger.exception("LLM analysis failed - returning rule-based results only")
         status["status"] = "failed"
         status["error"] = f"{type(e).__name__}: {e}"[:_MAX_ERROR_LENGTH]
+        status["threat_count"] = 0
         return [], status
 
     status["status"] = "ran"
@@ -71,24 +94,16 @@ def run_llm_phase(
 def _describe_client(
     client: BaseLLMClient | None, config: ThreatCodeConfig | None
 ) -> tuple[str, str]:
-    """Best-effort provider and model names for the status block."""
+    """Provider and model names for the status block: the client's own, else the configuration's."""
     config_provider = config.llm.provider if config else ""
     config_model = config.llm.model if config else ""
     if client is None:
         return config_provider, config_model
 
-    class_name = type(client).__name__
-    provider = getattr(client, "provider", None)
+    provider = getattr(client, "provider", "")
     if not isinstance(provider, str) or not provider:
-        if class_name == "DryRunLLMClient":
-            provider = "dry-run"
-        elif class_name == "AnthropicLLMClient":
-            provider = "anthropic"
-        else:
-            provider = config_provider
-    model = getattr(client, "model", None)
-    if not isinstance(model, str) or not model:
-        model = getattr(client, "_model", None)
+        provider = config_provider
+    model = getattr(client, "model", "")
     if not isinstance(model, str) or not model:
         model = "" if provider == "dry-run" else config_model
     return provider, model
@@ -99,71 +114,52 @@ def _analyze(
     existing_threats: list[Threat],
     client: BaseLLMClient,
     config: ThreatCodeConfig | None,
+    status: dict[str, Any],
 ) -> list[Threat]:
-    from threatcode.engine.llm.parser import parse_llm_threats
-    from threatcode.engine.llm.prompts import build_analysis_prompt
-    from threatcode.engine.llm.redactor import Redactor
+    llm_config = config.llm if config else LLMConfig()
+    redaction = config.redaction if config else RedactionConfig()
+    redactor = Redactor(strategy=redaction.strategy, extra_fields=redaction.fields)
+    status["redaction"] = redaction.strategy
 
-    strategy = "placeholder"
-    if config and config.redaction:
-        strategy = config.redaction.strategy
-    redactor = Redactor(strategy=strategy)
-    graph_data = graph.to_dict()
-    redacted_data = redactor.redact(graph_data)
-    existing_ids = {t.rule_id for t in existing_threats if t.rule_id}
+    # The token limit covers the system prompt and the text around the JSON as well.
+    limit = llm_config.max_input_tokens
+    budget_chars = int(limit * CHARS_PER_TOKEN) - len(SYSTEM_PROMPT) - prompt_overhead_chars()
+    if budget_chars < _MIN_CONTEXT_CHARS:
+        raise LLMError(
+            f"llm.max_input_tokens ({limit}) leaves no room for the infrastructure context"
+        )
 
-    prompt = build_analysis_prompt(redacted_data, existing_ids)
+    context = build_context(graph, existing_threats, redactor, max_chars=budget_chars)
+    status["context"] = context.stats.to_dict()
+
+    prompt = build_analysis_prompt(context.data, delimiter=new_delimiter())
+    canonical = build_analysis_prompt(context.data, delimiter=_CANONICAL_DELIMITER)
+    status["prompt_hash"] = hashlib.sha256((SYSTEM_PROMPT + "\n" + canonical).encode()).hexdigest()[
+        :16
+    ]
+    estimate = estimate_tokens(SYSTEM_PROMPT) + estimate_tokens(prompt)
+    status["input_tokens_estimate"] = estimate
+    if estimate > limit:
+        raise LLMError(
+            f"The request is about {estimate} tokens, over llm.max_input_tokens ({limit}); "
+            "nothing was sent"
+        )
+    logger.info("Sending about %d input tokens to the model", estimate)
+
     response = client.analyze(prompt)
 
-    raw_threats = parse_llm_threats(response)
-
-    # Build set of known resource addresses for validation
-    known_addresses = set(graph.nodes.keys())
-
-    threats: list[Threat] = []
-    for raw in raw_threats:
-        # Unredact LLM-sourced fields that may contain redacted placeholders
-        address = redactor.unredact_string(raw.get("resource_address", ""))
-        raw["title"] = redactor.unredact_string(raw.get("title", ""))
-        raw["description"] = redactor.unredact_string(raw.get("description", ""))
-        raw["mitigation"] = redactor.unredact_string(raw.get("mitigation", ""))
-        confidence = raw.get("confidence", 0.7)
-
-        # Cap confidence if resource_address is not in the graph
-        if address and address not in known_addresses:
-            logger.debug(
-                "LLM threat references unknown resource '%s' - capping confidence at 0.5",
-                address,
-            )
-            confidence = min(confidence, 0.5)
-
-        techniques = raw.get("mitre_techniques", [])
-        tactics = raw.get("mitre_tactics", [])
-        if techniques and not tactics:
-            tactics = tactics_for_techniques(techniques)
-        try:
-            sev = Severity(raw.get("severity", "medium"))
-        except ValueError:
-            sev = Severity.MEDIUM
-        try:
-            threat = Threat(
-                id=hash_id(f"LLM_{address}_{raw.get('title', '')}"),
-                title=raw.get("title", "LLM-identified threat"),
-                description=raw.get("description", ""),
-                stride_category=raw.get("stride_category", "tampering"),
-                severity=sev,
-                source=ThreatSource.LLM,
-                resource_type=raw.get("resource_type", ""),
-                resource_address=address,
-                mitigation=raw.get("mitigation", ""),
-                confidence=confidence,
-                mitre_techniques=techniques,
-                mitre_tactics=tactics,
-            )
-        except ValueError as e:
-            # The parser already filters unknown STRIDE categories; a bad item
-            # that gets through anyway is dropped rather than failing the phase.
-            logger.warning("Dropping invalid LLM threat: %s", e)
-            continue
-        threats.append(threat)
-    return threats
+    parsed = parse_llm_response(response)
+    merged = merge_llm_threats(parsed.threats, graph, existing_threats, context.addresses, redactor)
+    status["parsed_count"] = len(parsed.threats)
+    status["skipped_items"] = parsed.skipped
+    status["salvaged_items"] = parsed.salvaged
+    status["duplicate_count"] = merged.duplicates
+    status["unattributed_count"] = merged.unattributed_count
+    status["unattributed"] = merged.unattributed
+    if merged.unattributed_count:
+        logger.warning(
+            "%d LLM finding(s) named no resource in the scan and were set aside "
+            "(see llm.unattributed in the report)",
+            merged.unattributed_count,
+        )
+    return merged.threats
