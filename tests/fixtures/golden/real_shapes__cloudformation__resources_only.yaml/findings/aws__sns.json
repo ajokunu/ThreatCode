@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AuditTopic",
+    "rule_id": "SNS_NO_HTTPS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1557"
+    ]
+  }
+]

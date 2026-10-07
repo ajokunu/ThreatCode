@@ -1,7 +1,7 @@
 {
   "boundary": [
     {
-      "severity": "medium",
+      "severity": "high",
       "source": "PublicDatabase",
       "stride": "tampering"
     }

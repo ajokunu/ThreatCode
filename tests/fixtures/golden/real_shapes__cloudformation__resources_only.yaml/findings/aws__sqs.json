@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AuditQueue",
+    "rule_id": "SQS_NO_DLQ",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  }
+]

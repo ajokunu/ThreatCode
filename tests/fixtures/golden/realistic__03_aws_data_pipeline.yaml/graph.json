@@ -2,9 +2,141 @@
   "edges": [
     {
       "crosses_trust_boundary": false,
+      "source": "AnalyticsSG",
+      "target": "ClickstreamVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
       "source": "ClickstreamFirehose",
       "target": "ClickstreamStream",
       "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ClickstreamFirehose",
+      "target": "FirehoseRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ClickstreamFirehose",
+      "target": "RawDataBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EventProcessorFunction",
+      "target": "AnalyticsSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EventProcessorFunction",
+      "target": "LambdaProcessorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EventProcessorFunction",
+      "target": "PrivateSubnetA",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EventProcessorFunction",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EventProcessorFunction",
+      "target": "ProcessedDataBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EventProcessorFunction",
+      "target": "RedshiftCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "FirehoseRole",
+      "target": "RawDataBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "GlueCrawler",
+      "target": "GlueCrawlerRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "GlueCrawler",
+      "target": "GlueDatabase",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "GlueCrawler",
+      "target": "RawDataBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetA",
+      "target": "ClickstreamVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetB",
+      "target": "ClickstreamVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ProcessingAlarm",
+      "target": "AlertTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ProcessingAlarm",
+      "target": "EventProcessorFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RedshiftCluster",
+      "target": "AnalyticsSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RedshiftCluster",
+      "target": "RedshiftSubnetGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RedshiftSubnetGroup",
+      "target": "PrivateSubnetA",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RedshiftSubnetGroup",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "SessionAggregator",
+      "target": "LambdaProcessorRole",
+      "type": "iam_binding"
     }
   ],
   "nodes": {

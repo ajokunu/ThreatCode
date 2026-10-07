@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: One hardened resource per first-wave type; a scan reports nothing
+
+Resources:
+  Key:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encrypts the data tier
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: arn:aws:iam::111122223333:root
+            Action: kms:*
+            Resource: "*"
+
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: hardened-example-data
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt Key.Arn
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: hardened-example-access-logs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      DBInstanceClass: db.t3.medium
+      AllocatedStorage: "50"
+      StorageEncrypted: "true"
+      KmsKeyId: !Ref Key
+      PubliclyAccessible: "false"
+      BackupRetentionPeriod: "7"
+      ManageMasterUserPassword: true
+      MasterUsername: app_admin
+
+  Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: hardened-example
+      KmsMasterKeyId: !Ref Key
+      RedrivePolicy:
+        deadLetterTargetArn: arn:aws:sqs:us-east-1:111122223333:hardened-example-dlq
+        maxReceiveCount: 3
+
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: hardened-example
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref Key
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: read-table
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt Table.Arn
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: hardened-example
+      Runtime: python3.12
+      Handler: app.handler
+      Role: !GetAtt FunctionRole.Arn
+      Code:
+        S3Bucket: hardened-example-artifacts
+        S3Key: function.zip
+      VpcConfig:
+        SubnetIds:
+          - subnet-0a1b2c3d4e5f60789
+        SecurityGroupIds:
+          - sg-0a1b2c3d4e5f60789
+      DeadLetterConfig:
+        TargetArn: arn:aws:sqs:us-east-1:111122223333:hardened-example-dlq
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Internal HTTPS only
+      VpcId: vpc-0a1b2c3d4e5f60789
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/8
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0c101f26f147fa7fd
+      InstanceType: t3.small
+      SubnetId: subnet-0a1b2c3d4e5f60789
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      Monitoring: true
+      MetadataOptions:
+        HttpTokens: required
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            Encrypted: true
+            VolumeSize: 30
+
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: hardened-example
+      IsLogging: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      KMSKeyId: !GetAtt Key.Arn
+      S3BucketName: hardened-example-trail-logs

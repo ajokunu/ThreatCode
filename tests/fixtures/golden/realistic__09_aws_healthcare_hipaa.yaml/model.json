@@ -2,7 +2,212 @@
   "boundary": [
     {
       "severity": "medium",
+      "source": "AuditLogsBucket",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraCluster",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraCluster",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraCluster",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraInstanceA",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraInstanceA",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraInstanceB",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "AuroraInstanceB",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "CloudTrailLogGroup",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
       "source": "HIPAACloudTrail",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HIPAACloudTrail",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HIPAACloudTrail",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HIPAACloudTrail",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HIPAACloudTrail",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "HL7ProcessorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "MedVaultKMSKey",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "MedVaultKMSKey",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "MedVaultKMSKey",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "PatientRecordsBucket",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "RecordsApiRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReportGeneratorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReportGeneratorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReportGeneratorFunction",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReportGeneratorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReportGeneratorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ReportGeneratorRole",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "SessionCacheTable",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "UnauthorizedAPICallsAlarm",
       "stride": "tampering"
     }
   ]

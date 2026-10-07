@@ -1,15 +1,6 @@
 [
   {
-    "resource_address": "SessionCacheTable",
-    "rule_id": "DYNAMODB_NO_AUTOSCALING",
-    "severity": "low",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1499"
-    ]
-  },
-  {
-    "resource_address": "SessionCacheTable",
+    "resource_address": "OrdersTable",
     "rule_id": "DYNAMODB_NO_ENCRYPTION",
     "severity": "medium",
     "stride": "information_disclosure",
@@ -18,7 +9,7 @@
     ]
   },
   {
-    "resource_address": "SessionCacheTable",
+    "resource_address": "OrdersTable",
     "rule_id": "DYNAMODB_NO_PITR",
     "severity": "medium",
     "stride": "denial_of_service",

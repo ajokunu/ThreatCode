@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "Database",
+    "rule_id": "RDS_NO_BACKUP",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1485"
+    ]
+  }
+]

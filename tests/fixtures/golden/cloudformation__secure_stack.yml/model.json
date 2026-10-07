@@ -1,0 +1,14 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "DataBucket",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "ProcessorFunction",
+      "stride": "tampering"
+    }
+  ]
+}

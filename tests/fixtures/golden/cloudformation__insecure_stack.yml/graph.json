@@ -18,7 +18,7 @@
     },
     "PublicDatabase": {
       "category": "database",
-      "zone": "private"
+      "zone": "dmz"
     },
     "UnencryptedBucket": {
       "category": "storage",

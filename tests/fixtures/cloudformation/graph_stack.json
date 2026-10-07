@@ -1,0 +1,276 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "A public web tier with a database, a function, a table and a distribution",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "Default": "prod"
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsHostnames": true
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway"
+    },
+    "GatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "PublicSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.0.1.0/24",
+        "MapPublicIpOnLaunch": true
+      }
+    },
+    "PrivateSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.0.2.0/24"
+      }
+    },
+    "WebSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "HTTPS from anywhere",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Postgres from the web tier",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "SourceSecurityGroupId": {
+              "Fn::GetAtt": [
+                "WebSecurityGroup",
+                "GroupId"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "WebInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-0c101f26f147fa7fd",
+        "InstanceType": "t3.small",
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": true,
+            "SubnetId": {
+              "Ref": "PublicSubnet"
+            },
+            "GroupSet": [
+              {
+                "Ref": "WebSecurityGroup"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "DatabaseSubnets": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Subnets for the database",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateSubnet"
+          },
+          {
+            "Ref": "PublicSubnet"
+          }
+        ]
+      }
+    },
+    "Database": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "Engine": "postgres",
+        "DBInstanceClass": "db.t3.medium",
+        "AllocatedStorage": "20",
+        "StorageEncrypted": false,
+        "PubliclyAccessible": true,
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnets"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "DatabaseSecurityGroup"
+          }
+        ]
+      }
+    },
+    "ApiRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "read-orders",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "dynamodb:GetItem",
+                  "Resource": {
+                    "Fn::Sub": "${OrdersTable.Arn}"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ApiFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Runtime": "python3.12",
+        "Handler": "api.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "ApiRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "ZipFile": "def handler(event, context): return {}"
+        },
+        "VpcConfig": {
+          "SubnetIds": [
+            {
+              "Ref": "PrivateSubnet"
+            }
+          ],
+          "SecurityGroupIds": [
+            {
+              "Ref": "DatabaseSecurityGroup"
+            }
+          ]
+        },
+        "Environment": {
+          "Variables": {
+            "TABLE_NAME": {
+              "Ref": "OrdersTable"
+            }
+          }
+        }
+      }
+    },
+    "OrdersTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ]
+      }
+    },
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Scheme": "internet-facing",
+        "Subnets": [
+          {
+            "Ref": "PublicSubnet"
+          },
+          {
+            "Ref": "PrivateSubnet"
+          }
+        ],
+        "SecurityGroups": [
+          {
+            "Ref": "WebSecurityGroup"
+          }
+        ]
+      }
+    },
+    "Distribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": true,
+          "Origins": [
+            {
+              "Id": "web",
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "LoadBalancer",
+                  "DNSName"
+                ]
+              },
+              "CustomOriginConfig": {
+                "OriginProtocolPolicy": "http-only"
+              }
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "web",
+            "ViewerProtocolPolicy": "allow-all"
+          }
+        }
+      }
+    }
+  }
+}
