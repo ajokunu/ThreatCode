@@ -2,19 +2,28 @@
   {
     "resource_address": "kubernetes_deployment.ops.metrics",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1078"
+      "T1078.001"
     ]
   },
   {
     "resource_address": "kubernetes_pod.ops.debug-shell",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.001"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.ops.metrics",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
     "severity": "medium",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1078"
+      "T1611"
     ]
   },
   {
@@ -29,7 +38,7 @@
   {
     "resource_address": "kubernetes_deployment.ops.metrics",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"
@@ -38,7 +47,7 @@
   {
     "resource_address": "kubernetes_pod.ops.debug-shell",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"

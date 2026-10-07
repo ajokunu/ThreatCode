@@ -2,7 +2,34 @@
   {
     "resource_address": "kubernetes_cluster_role_binding.test-admin-binding",
     "rule_id": "K8S_CLUSTER_ADMIN_BINDING",
-    "severity": "critical",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cluster_role.overly-permissive",
+    "rule_id": "K8S_RBAC_POD_EXEC",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1609"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cluster_role.overly-permissive",
+    "rule_id": "K8S_RBAC_SECRETS_READ",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.007"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cluster_role.overly-permissive",
+    "rule_id": "K8S_WILDCARD_RBAC_API_GROUPS",
+    "severity": "medium",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1078"

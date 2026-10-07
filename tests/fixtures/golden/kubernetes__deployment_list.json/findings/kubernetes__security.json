@@ -2,19 +2,19 @@
   {
     "resource_address": "kubernetes_deployment.finance.billing",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1078"
+      "T1078.001"
     ]
   },
   {
     "resource_address": "kubernetes_deployment.finance.ledger",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1078"
+      "T1078.001"
     ]
   },
   {
@@ -27,9 +27,18 @@
     ]
   },
   {
+    "resource_address": "kubernetes_deployment.finance.ledger",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
     "resource_address": "kubernetes_deployment.finance.billing",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"
@@ -38,7 +47,7 @@
   {
     "resource_address": "kubernetes_deployment.finance.ledger",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"

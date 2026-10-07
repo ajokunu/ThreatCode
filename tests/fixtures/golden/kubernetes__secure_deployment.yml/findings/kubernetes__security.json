@@ -2,10 +2,10 @@
   {
     "resource_address": "kubernetes_deployment.production.secure-app",
     "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1078"
+      "T1078.001"
     ]
   },
   {

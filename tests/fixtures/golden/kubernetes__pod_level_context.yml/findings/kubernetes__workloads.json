@@ -2,16 +2,16 @@
   {
     "resource_address": "kubernetes_deployment.apps.pod-level",
     "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
-    "severity": "high",
+    "severity": "medium",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1068"
+      "T1548"
     ]
   },
   {
     "resource_address": "kubernetes_deployment.apps.pod-level",
     "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1528"
@@ -20,7 +20,7 @@
   {
     "resource_address": "kubernetes_deployment.apps.pod-level",
     "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"
@@ -29,24 +29,6 @@
   {
     "resource_address": "kubernetes_deployment.apps.pod-level",
     "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
-    "severity": "medium",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1499"
-    ]
-  },
-  {
-    "resource_address": "kubernetes_deployment.apps.pod-level",
-    "rule_id": "K8S_NO_LIVENESS_PROBE",
-    "severity": "low",
-    "stride": "denial_of_service",
-    "techniques": [
-      "T1499"
-    ]
-  },
-  {
-    "resource_address": "kubernetes_deployment.apps.pod-level",
-    "rule_id": "K8S_NO_READINESS_PROBE",
     "severity": "low",
     "stride": "denial_of_service",
     "techniques": [
@@ -65,7 +47,7 @@
   {
     "resource_address": "kubernetes_deployment.apps.pod-level",
     "rule_id": "K8S_RUN_AS_ROOT",
-    "severity": "high",
+    "severity": "medium",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"
@@ -74,10 +56,10 @@
   {
     "resource_address": "kubernetes_deployment.apps.pod-level",
     "rule_id": "K8S_WRITABLE_ROOT_FS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "tampering",
     "techniques": [
-      "T1565.001"
+      "T1105"
     ]
   }
 ]

@@ -1,24 +1,15 @@
 [
   {
-    "resource_address": "kubernetes_service_account.default.platform-api",
-    "rule_id": "K8S_AUTOMOUNT_DEFAULT",
-    "severity": "medium",
+    "resource_address": "kubernetes_stateful_set.default.release-redis",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
-      "T1528"
+      "T1078.001"
     ]
   },
   {
     "resource_address": "kubernetes_stateful_set.default.release-redis",
-    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
-    "severity": "medium",
-    "stride": "elevation_of_privilege",
-    "techniques": [
-      "T1078"
-    ]
-  },
-  {
-    "resource_address": "kubernetes_deployment.default.release-platform",
     "rule_id": "K8S_NO_SECCOMP_PROFILE",
     "severity": "medium",
     "stride": "elevation_of_privilege",
@@ -29,7 +20,7 @@
   {
     "resource_address": "kubernetes_stateful_set.default.release-redis",
     "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
-    "severity": "medium",
+    "severity": "low",
     "stride": "elevation_of_privilege",
     "techniques": [
       "T1611"
