@@ -148,6 +148,8 @@ _STORE_COMPANIONS = frozenset(
     }
 )
 _NOT_STORES = frozenset({"kubernetes_config_map"})
+# A Dockerfile COPY or a lockfile entry is not a data store, whatever its category says
+_NOT_CLOUD_RESOURCES = ("dockerfile_", "dependency_")
 # Ports of remote administration services: reaching them is initial access through T1133
 REMOTE_SERVICE_PORTS = frozenset({"22", "23", "3389", "5900", "5985", "5986"})
 # Findings that do not help an attacker move along a path
@@ -178,6 +180,8 @@ def crown_jewel_kind(graph: InfraGraph, node: InfraNode) -> str:
     cluster-wide control and ``private data`` for an MCP server that reads files or credentials.
     """
     if node.mode == "data" or node.is_internet or node.is_container:
+        return ""
+    if node.resource_type.startswith(_NOT_CLOUD_RESOURCES):
         return ""
     if node.resource_type.startswith("kubernetes_"):
         return _kubernetes_kind(node)

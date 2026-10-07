@@ -266,6 +266,8 @@ class TestCrownJewels:
             ("kubernetes_config_map", "settings"),
             ("kubernetes_namespace", "prod"),
             ("dockerfile_instruction", "run"),
+            ("dockerfile_copy", "app"),
+            ("dockerfile_add", "archive"),
         ],
     )
     def test_monitoring_networks_compute_and_companions_are_never_targets(
