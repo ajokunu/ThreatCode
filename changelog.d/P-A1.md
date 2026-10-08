@@ -41,3 +41,4 @@
   A rule that names its objects no longer sets either fact; a broad rule next to it still does.
   The wording of `K8S_RBAC_SECRETS_READ`, which says it cannot tell, is in a rule file this change does not own.
 - A CloudFormation `AWS::WAFv2::RuleGroup` now reads like the web ACL: its `Rules` is the Terraform `rule` and its `VisibilityConfig` is the `visibility_config` block.
+- A Terraform plan, a CloudFormation template and a Kubernetes manifest are read from disk once: the registry passes the text it decoded to the parser, which finds its line numbers in it instead of reading the file a second time (and so cannot read a file that changed in between).

@@ -185,8 +185,9 @@ PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({"*": frozenset({RAW_K
 class CloudFormationParser(BaseParser):
     """Parse CloudFormation YAML or JSON templates, including AWS SAM templates."""
 
-    def parse(self, data: Any, source_path: str = "") -> ParsedOutput:
-        return self._parse(data, source_path, None)
+    def parse(self, data: Any, source_path: str = "", text: str | None = None) -> ParsedOutput:
+        """Parse a loaded template; ``text`` is what it was loaded from, for its lines."""
+        return self._parse(data, source_path, text)
 
     def parse_text(self, text: str, source_path: str = "") -> ParsedOutput:
         """Parse template text, as YAML (with short-form intrinsics) or JSON."""

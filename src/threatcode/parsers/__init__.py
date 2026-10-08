@@ -8,6 +8,8 @@ as "unsupported format": it surfaces as a ``ParseError`` that names the parser a
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 import re
@@ -250,11 +252,24 @@ def _call_parser(name: str, path: Path, call: Callable[[], ParsedOutput]) -> Par
         ) from exc
 
 
+@functools.cache
+def _takes_text(parser_class: type[BaseParser]) -> bool:
+    """Whether ``parse`` of a parser class accepts the decoded text it was loaded from."""
+    try:
+        return "text" in inspect.signature(parser_class.parse).parameters
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
 def _run_parser(entry: ParserEntry, path: Path, text: str, data: Any) -> ParsedOutput:
     def call() -> ParsedOutput:
         parser = entry.factory()
         if data is None and isinstance(parser, ParseFileParser):
             return parser.parse_text(text, source_path=str(path))
+        if data is not None and _takes_text(type(parser)):
+            # The loaded value and its text, so the parser finds line numbers without reading
+            # the file again (and cannot read a different file than the one that was loaded)
+            return parser.parse(data, source_path=str(path), text=text)  # type: ignore[call-arg]
         return parser.parse(data if data is not None else text, source_path=str(path))
 
     return _call_parser(entry.name, path, call)

@@ -921,3 +921,82 @@ class TestLooksLikeInfrastructure:
         late = tmp_path / "late.yaml"
         late.write_text("x: 1\n" * 40000 + "apiVersion: v1\nkind: Pod\n", encoding="utf-8")
         assert not looks_like_infrastructure(late)
+
+
+class TestTheLoadedTextIsPassedOn:
+    """A parser that finds its line numbers in the text gets the text the registry decoded."""
+
+    @staticmethod
+    def count_reads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        from threatcode.parsers import cloudformation, kubernetes
+        from threatcode.parsers._text import decode_input
+
+        reads: list[str] = []
+
+        def counting(path: Path, **kwargs: bool) -> str:
+            reads.append(path.name)
+            return decode_input(path, **kwargs)
+
+        for module in (cloudformation, kubernetes):
+            monkeypatch.setattr(module, "decode_input", counting)
+        monkeypatch.setattr("threatcode.parsers.decode_input", counting)
+        return reads
+
+    def test_a_cloudformation_template_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "stack.yaml"
+        path.write_text(RESOURCES_ONLY, encoding="utf-8")
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["stack.yaml"]
+        assert result.resources[0].start_line == 2
+
+    def test_a_json_cloudformation_template_is_read_once_and_keeps_its_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "stack.json"
+        path.write_text(
+            '{\n  "Resources": {\n    "B": {\n      "Type": "AWS::S3::Bucket"\n    }\n  }\n}\n',
+            encoding="utf-8",
+        )
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["stack.json"]
+        assert (result.resources[0].start_line, result.resources[0].end_line) == (3, 5)
+
+    def test_a_kubernetes_manifest_is_read_once_and_keeps_its_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "pod.yaml"
+        path.write_text(
+            "apiVersion: v1\nkind: Pod\nmetadata:\n  name: a\n---\n"
+            "apiVersion: v1\nkind: Pod\nmetadata:\n  name: b\n",
+            encoding="utf-8",
+        )
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["pod.yaml"]
+        assert [r.start_line for r in result.resources] == [1, 6]
+
+    def test_a_kubernetes_json_list_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "pod.json"
+        path.write_text(
+            '{"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "a"}}\n', encoding="utf-8"
+        )
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["pod.json"]
+        assert result.resources[0].start_line == 1
+
+    def test_a_parser_that_does_not_take_text_still_gets_what_it_did(self) -> None:
+        from threatcode.parsers import _takes_text
+        from threatcode.parsers.cloudformation import CloudFormationParser
+        from threatcode.parsers.dockerfile import DockerfileParser
+        from threatcode.parsers.kubernetes import KubernetesParser
+
+        assert _takes_text(CloudFormationParser)
+        assert _takes_text(KubernetesParser)
+        assert not _takes_text(DockerfileParser)

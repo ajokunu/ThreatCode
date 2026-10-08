@@ -276,8 +276,9 @@ class _Item:
 class KubernetesParser(BaseParser):
     """Parse Kubernetes YAML and JSON manifests into ParsedResource objects."""
 
-    def parse(self, data: Any, source_path: str = "") -> ParsedOutput:
-        return self.parse_documents(self._load(data, source_path), source_path)
+    def parse(self, data: Any, source_path: str = "", text: str | None = None) -> ParsedOutput:
+        """Parse loaded manifests; ``text`` is what they were loaded from, for their lines."""
+        return self.parse_documents(self._load(data, source_path, text), source_path)
 
     def parse_documents(
         self, documents: Sequence[ManifestDocument], source_path: str = ""
@@ -310,12 +311,12 @@ class KubernetesParser(BaseParser):
 
     # -- loading -------------------------------------------------------------------------
 
-    def _load(self, data: Any, source_path: str) -> list[ManifestDocument]:
+    def _load(self, data: Any, source_path: str, text: str | None = None) -> list[ManifestDocument]:
         name = Path(source_path).name if source_path else "<input>"
         if isinstance(data, str):
             return _documents_from_text(data, source_path, name)
         documents = data if isinstance(data, list) else [data]
-        return _attach_lines(documents, source_path, isinstance(data, list))
+        return _attach_lines(documents, source_path, isinstance(data, list), text)
 
     def _flatten(
         self,
@@ -506,15 +507,16 @@ def _documents_from_text(text: str, source_path: str, name: str) -> list[Manifes
 
 
 def _attach_lines(
-    documents: list[Any], source_path: str, from_list: bool
+    documents: list[Any], source_path: str, from_list: bool, text: str | None = None
 ) -> list[ManifestDocument]:
-    """Wrap documents the registry already loaded, recovering their lines from the file.
+    """Wrap documents the registry already loaded, recovering their lines from their text.
 
-    The registry hands over loaded values, never text, so the lines come from reading the file
-    once more. A file that cannot be read, is too large or does not hold as many documents as
-    were loaded simply has no line numbers.
+    The registry passes the text it loaded them from; without it the lines come from reading
+    the file once more.
+    A file that cannot be read, is too large or does not hold as many documents as were loaded
+    simply has no line numbers.
     """
-    indexes = _recover_lines(source_path, len(documents), from_list)
+    indexes = _recover_lines(source_path, len(documents), from_list, text)
     if indexes is None:
         return [ManifestDocument(doc, source_path) for doc in documents]
     return [
@@ -524,17 +526,20 @@ def _attach_lines(
 
 
 def _recover_lines(
-    source_path: str, count: int, from_list: bool
+    source_path: str, count: int, from_list: bool, text: str | None = None
 ) -> list[tuple[Mapping[str, int], str]] | None:
     if not source_path or count == 0:
         return None
     path = Path(source_path)
     try:
-        if not path.is_file() or path.stat().st_size > min(
-            _MAX_LINE_INDEX_BYTES, MAX_INPUT_SIZE_BYTES
-        ):
+        if text is None:
+            if not path.is_file() or path.stat().st_size > min(
+                _MAX_LINE_INDEX_BYTES, MAX_INPUT_SIZE_BYTES
+            ):
+                return None
+            text = decode_input(path)
+        elif len(text) > _MAX_LINE_INDEX_BYTES:
             return None
-        text = decode_input(path)
         if path.suffix.lower() == ".json":
             index = json_line_index(text)
             if from_list:
