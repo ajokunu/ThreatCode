@@ -976,8 +976,12 @@ _DEFS = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 def cited_pending_tests(cited: list[tuple[str, str]], root: Path) -> list[str]:
     """The cited ``(file, "Class::test")`` pairs that the suite skips as pending.
 
-    A citation of a whole file (an empty name) is pending when any test in the file is.
-    A citation of a class or a test is pending when it, an enclosing class, or the module is.
+    It sees the two forms a marker takes on a whole test or class: a ``@pending(...)`` decorator
+    and a module-level ``pytestmark = pending(...)``. A marker applied to one parameter through
+    ``pytest.param(..., marks=...)`` is not seen.
+    A citation of a whole file (an empty name) is pending when any test in the file carries
+    either form. A citation of a class or a test is pending when it, an enclosing class, or the
+    module does.
     """
     found: list[str] = []
     for relative, name in cited:
