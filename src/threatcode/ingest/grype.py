@@ -49,7 +49,7 @@ def load(data: dict[str, Any]) -> list[ScannerReport]:
     target = source.get("target")
     image_scope = clean_text(source.get("type")) == "image" and isinstance(target, dict)
     refs = _image_refs(target) if image_scope and isinstance(target, dict) else ()
-    scan_dir = _scan_root(source, target)
+    scan_dir = _scan_root(target)
     label = refs[0] if refs else scan_dir
     for match in data["matches"]:
         if isinstance(match, dict) and isinstance(match.get("vulnerability"), dict):
@@ -72,7 +72,7 @@ def _image_refs(target: dict[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(r for r in refs if r))
 
 
-def _scan_root(source: dict[str, Any], target: object) -> str:
+def _scan_root(target: object) -> str:
     if isinstance(target, str):
         return target
     if isinstance(target, dict):

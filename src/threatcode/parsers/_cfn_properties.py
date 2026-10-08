@@ -211,7 +211,7 @@ class TemplateContext:
 _LIST_PARAMETER_TYPES = ("CommaDelimitedList", "List<", "AWS::SSM::Parameter::Value<List<")
 
 
-def _parameter_default(name: str, spec: Any) -> Any:
+def _parameter_default(spec: Any) -> Any:
     """The value a parameter takes when nobody overrides its default, or `_UNRESOLVED`."""
     if not isinstance(spec, Mapping) or "Default" not in spec:
         return _UNRESOLVED
@@ -322,7 +322,7 @@ class _Resolver:
         if name.startswith("AWS::"):
             return _UNRESOLVED
         if name in self.context.parameters:
-            return _parameter_default(name, self.context.parameters[name])
+            return _parameter_default(self.context.parameters[name])
         return _UNRESOLVED
 
     def _ref(self, argument: Any, depth: int) -> Any:
@@ -358,7 +358,7 @@ class _Resolver:
             name = match.group(1).strip()
             if name.startswith("!"):
                 return "${" + name[1:] + "}"
-            value = values[name] if name in values else _UNRESOLVED
+            value = values.get(name, _UNRESOLVED)
             if value is _UNRESOLVED and "." not in name:
                 value = self._ref_value(name)
             text = _text(value) if value is not _UNRESOLVED else None
@@ -394,9 +394,13 @@ class _Resolver:
         if inner is not None:
             return inner
         position = _text(index)
-        if isinstance(items, list) and position is not None and position.lstrip("-").isdigit():
-            if 0 <= int(position) < len(items):
-                return items[int(position)]
+        if (
+            isinstance(items, list)
+            and position is not None
+            and position.lstrip("-").isdigit()
+            and 0 <= int(position) < len(items)
+        ):
+            return items[int(position)]
         return self._unknown("Fn::Select")
 
     def _split(self, argument: Any, depth: int) -> Any:
@@ -720,9 +724,12 @@ def _tags(conv: _Converter, raw: str, value: Any, out: dict[str, Any], tf: str) 
     tags: dict[str, Any] = {}
     if isinstance(value, list):
         for item in value:
-            if isinstance(item, Mapping) and isinstance(item.get("Key"), str):
-                if not is_unknown(item["Key"]):
-                    tags[item["Key"]] = _tag_value(item.get("Value"))
+            if (
+                isinstance(item, Mapping)
+                and isinstance(item.get("Key"), str)
+                and not is_unknown(item["Key"])
+            ):
+                tags[item["Key"]] = _tag_value(item.get("Value"))
     elif isinstance(value, Mapping):
         tags = {str(key): _tag_value(item) for key, item in value.items()}
     out["tags"] = tags

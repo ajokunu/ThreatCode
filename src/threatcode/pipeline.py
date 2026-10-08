@@ -402,11 +402,9 @@ def _save_stdin(name: str | None, directory: Path) -> tuple[str, Path]:
     """Read standard input into ``directory`` under a name the format detection can use."""
     stream = sys.stdin
     buffer = getattr(stream, "buffer", None)
-    raw: bytes
-    if buffer is not None:
-        raw = buffer.read(_MAX_STDIN_BYTES + 1)
-    else:
-        raw = stream.read().encode("utf-8")
+    raw: bytes = (
+        buffer.read(_MAX_STDIN_BYTES + 1) if buffer is not None else stream.read().encode("utf-8")
+    )
     if len(raw) > _MAX_STDIN_BYTES:
         raise UsageError(f"standard input is larger than {_MAX_STDIN_BYTES // (1024 * 1024)} MB")
     if not raw.strip():

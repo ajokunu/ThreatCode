@@ -395,7 +395,10 @@ def _documents_from_text(text: str, source_path: str, name: str) -> list[Manifes
                 ]
             return [ManifestDocument(value, source_path, lines, "")]
     documents, indexes = load_yaml_documents(text, with_lines=True, source=name)
-    return [ManifestDocument(doc, source_path, index) for doc, index in zip(documents, indexes)]
+    return [
+        ManifestDocument(doc, source_path, index)
+        for doc, index in zip(documents, indexes, strict=False)
+    ]
 
 
 def _attach_lines(
@@ -412,7 +415,7 @@ def _attach_lines(
         return [ManifestDocument(doc, source_path) for doc in documents]
     return [
         ManifestDocument(doc, source_path, lines, pointer)
-        for doc, (lines, pointer) in zip(documents, indexes)
+        for doc, (lines, pointer) in zip(documents, indexes, strict=False)
     ]
 
 

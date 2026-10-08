@@ -291,6 +291,21 @@ def _value_redactor(secret: str) -> Callable[[str], str]:
     return redact
 
 
+def _redact_markers(text: str, markers: list[str]) -> str:
+    """Replace each marker (``:pw@``, ``//user@``, ``/token`` or ``name=value``) in a URL text."""
+    for marker in markers:
+        if marker.startswith(":"):
+            text = text.replace(marker, f":{REDACTED}@")
+        elif marker.startswith("//"):
+            text = text.replace(marker, f"//{REDACTED}@")
+        elif marker.startswith("/"):
+            text = text.replace(marker, f"/{REDACTED}")
+        else:
+            name = marker.split("=", 1)[0]
+            text = text.replace(marker, f"{name}={REDACTED}")
+    return text
+
+
 def _scan_url(
     url: str, label: str, *, path_tokens: bool, suffix: bool = True
 ) -> tuple[list[SecretHit], bool, Callable[[str], str] | None]:
@@ -340,17 +355,7 @@ def _scan_url(
                 secrets.append(f"/{segment}")
 
     def redact(text: str) -> str:
-        for marker in secrets:
-            if marker.startswith(":"):
-                text = text.replace(marker, f":{REDACTED}@")
-            elif marker.startswith("//"):
-                text = text.replace(marker, f"//{REDACTED}@")
-            elif marker.startswith("/"):
-                text = text.replace(marker, f"/{REDACTED}")
-            else:
-                name = marker.split("=", 1)[0]
-                text = text.replace(marker, f"{name}={REDACTED}")
-        return text
+        return _redact_markers(text, secrets)
 
     return hits, query_credential, redact if secrets else None
 
@@ -402,12 +407,7 @@ def _after_equals(text: str) -> str:
     return f"{key}{sep}{REDACTED}"
 
 
-def scan_args(launch: EffectiveLaunch) -> list[SecretHit]:
-    """Literal credentials in the effective launch arguments.
-
-    Docker ``-e KEY`` with no value is a reference to the environment, not a credential.
-    """
-    tokens = launch.inner_argv[1:]
+def _scan_env_overrides(launch: EffectiveLaunch) -> list[SecretHit]:
     hits: list[SecretHit] = []
     for key, value in launch.env_overrides.items():
         confidence = score_value(key, value)
@@ -421,73 +421,102 @@ def scan_args(launch: EffectiveLaunch) -> list[SecretHit]:
                     redact=_value_redactor(value),
                 )
             )
+    return hits
+
+
+def _scan_env_flag(tok: Token, nxt: Token | None) -> tuple[list[SecretHit], int] | None:
+    """A docker style ``-e KEY=VALUE`` argument: its hits and the tokens it used, else None."""
+    env_item: Token | None = None
+    consumed = 1
+    text = tok.text
+    if text in ("-e", "--env") and nxt is not None:
+        env_item, consumed = nxt, 2
+    elif text.startswith("--env="):
+        env_item = Token(text.split("=", 1)[1], tok.origin)
+    elif re.match(r"^-e[A-Za-z_]\w*=", text):
+        env_item = Token(text[2:], tok.origin)
+    if env_item is None:
+        return None
+    key, sep, value = env_item.text.partition("=")
+    if sep:
+        confidence = score_value(key, value)
+        if confidence is not None:
+            return [_arg_hit(f"arg:{key}", confidence, env_item, value, _after_equals)], consumed
+    return [], consumed
+
+
+def _scan_option_value(tok: Token, nxt: Token | None) -> tuple[list[SecretHit], int] | None:
+    """A ``--name value`` or ``--name=value`` option that holds a credential, else None."""
+    text = tok.text
+    if not (text.startswith("--") and len(text) > 2):
+        return None
+    name, eq, inline = text[2:].partition("=")
+    value_token: Token | None
+    consumed = 1
+    if eq:
+        value_token = Token(inline, tok.origin)
+    elif nxt is not None and not nxt.text.startswith("-"):
+        value_token, consumed = nxt, 2
+    else:
+        value_token = None
+    if value_token is None or key_strength(name) is None:
+        return None
+    confidence = score_value(name, value_token.text)
+    if confidence is None:
+        return None
+    redact = _after_equals if eq else _whole_value
+    hit = _arg_hit(f"arg:--{name}", confidence, value_token, value_token.text, redact)
+    return [hit], consumed
+
+
+def _scan_arg(launch: EffectiveLaunch, tokens: list[Token], i: int) -> tuple[list[SecretHit], int]:
+    """The hits in ``tokens[i]`` and how many tokens it used."""
+    tok = tokens[i]
+    text = tok.text
+    nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+
+    env_result = _scan_env_flag(tok, nxt)
+    if env_result is not None:
+        return env_result
+
+    if text in _HEADER_FLAGS and nxt is not None:
+        return _scan_header_arg(nxt), 2
+    if text.startswith(("--header=", "--headers=")):
+        return _scan_header_arg(Token(text.split("=", 1)[1], tok.origin)), 1
+
+    option_result = _scan_option_value(tok, nxt)
+    if option_result is not None:
+        return option_result
+
+    if launch.bridge and tok.origin == launch.remote_url_origin and text == launch.remote_url:
+        return [], 1  # the bridge URL is scanned as the server URL, with its path token
+    direct = _scan_auth_string(tok)
+    if direct:
+        return direct, 1
+    hits: list[SecretHit] = []
+    if _URL_LIKE.match(text):
+        url_hits, _query, redact_url_text = _scan_url(
+            text, "arg:url", path_tokens=False, suffix=False
+        )
+        for hit in url_hits:
+            hit.origin = tok.origin
+            hit.redact = redact_url_text
+            hits.append(hit)
+    return hits, 1
+
+
+def scan_args(launch: EffectiveLaunch) -> list[SecretHit]:
+    """Literal credentials in the effective launch arguments.
+
+    Docker ``-e KEY`` with no value is a reference to the environment, not a credential.
+    """
+    tokens = launch.inner_argv[1:]
+    hits = _scan_env_overrides(launch)
     i = 0
     while i < len(tokens):
-        tok = tokens[i]
-        text = tok.text
-        nxt = tokens[i + 1] if i + 1 < len(tokens) else None
-        consumed = 1
-
-        env_item: Token | None = None
-        if text in ("-e", "--env") and nxt is not None:
-            env_item, consumed = nxt, 2
-        elif text.startswith("--env="):
-            env_item = Token(text.split("=", 1)[1], tok.origin)
-        elif re.match(r"^-e[A-Za-z_]\w*=", text):
-            env_item = Token(text[2:], tok.origin)
-        if env_item is not None:
-            key, sep, value = env_item.text.partition("=")
-            if sep:
-                confidence = score_value(key, value)
-                if confidence is not None:
-                    hits.append(_arg_hit(f"arg:{key}", confidence, env_item, value, _after_equals))
-            i += consumed
-            continue
-
-        if text in _HEADER_FLAGS and nxt is not None:
-            hits.extend(_scan_header_arg(nxt))
-            i += 2
-            continue
-        if text.startswith(("--header=", "--headers=")):
-            hits.extend(_scan_header_arg(Token(text.split("=", 1)[1], tok.origin)))
-            i += 1
-            continue
-
-        if text.startswith("--") and len(text) > 2:
-            name, eq, inline = text[2:].partition("=")
-            value_token: Token | None
-            if eq:
-                value_token, consumed = Token(inline, tok.origin), 1
-            elif nxt is not None and not nxt.text.startswith("-"):
-                value_token, consumed = nxt, 2
-            else:
-                value_token = None
-            strength = key_strength(name)
-            if value_token is not None and strength is not None:
-                confidence = score_value(name, value_token.text)
-                if confidence is not None:
-                    redact = _after_equals if eq else _whole_value
-                    hits.append(
-                        _arg_hit(f"arg:--{name}", confidence, value_token, value_token.text, redact)
-                    )
-                    i += consumed
-                    continue
-
-        if launch.bridge and tok.origin == launch.remote_url_origin and text == launch.remote_url:
-            i += 1  # the bridge URL is scanned as the server URL, with its path token
-            continue
-        direct = _scan_auth_string(tok)
-        if direct:
-            hits.extend(direct)
-        elif _URL_LIKE.match(text):
-            url_hits, _query, redact_url_text = _scan_url(
-                text, "arg:url", path_tokens=False, suffix=False
-            )
-            for hit in url_hits:
-                hit.origin = tok.origin
-                hit.redact = redact_url_text
-                hits.append(hit)
-        i += 1
+        found, used = _scan_arg(launch, tokens, i)
+        hits.extend(found)
+        i += used
     return _dedupe(hits)
 
 

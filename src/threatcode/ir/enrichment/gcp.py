@@ -156,9 +156,8 @@ def _world_source(props: Mapping[str, Any]) -> Any:
         for item in [source] if is_unknown(source) else as_list(source):
             if is_unknown(item) and unreadable is None:
                 unreadable = item
-    if not is_unknown(ranges):
-        if any(_is_world(item) for item in as_list(ranges)):
-            return True
+    if not is_unknown(ranges) and any(_is_world(item) for item in as_list(ranges)):
+        return True
     if unreadable is not None:
         return Unknown(unreadable.reference)
     # No ranges, no tags and no service accounts: Compute Engine admits every source address

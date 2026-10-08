@@ -399,9 +399,12 @@ def _azure_paas(a: _Analysis, node: InfraNode) -> Verdict | None:
 
 def _kubernetes_service(a: _Analysis, node: InfraNode) -> Verdict | None:
     service_type = node.properties.get("service_type")
-    if isinstance(service_type, str) and not is_unknown(service_type):
-        if service_type.strip().lower() in ("loadbalancer", "nodeport"):
-            return Verdict("internet")
+    if (
+        isinstance(service_type, str)
+        and not is_unknown(service_type)
+        and service_type.strip().lower() in ("loadbalancer", "nodeport")
+    ):
+        return Verdict("internet")
     return None
 
 

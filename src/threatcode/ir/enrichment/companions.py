@@ -685,7 +685,7 @@ _SG_SPECS = (
         ("security_group_id",),
         _vpc_rule("ingress"),
         absent=_SG_ABSENT,
-        touches=lambda companion: ("ingress",),
+        touches=lambda _companion: ("ingress",),
     ),
     CompanionSpec(
         _SG,
@@ -693,7 +693,7 @@ _SG_SPECS = (
         ("security_group_id",),
         _vpc_rule("egress"),
         absent=_SG_ABSENT,
-        touches=lambda companion: ("egress",),
+        touches=lambda _companion: ("egress",),
     ),
 )
 

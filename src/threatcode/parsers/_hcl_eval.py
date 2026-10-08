@@ -39,6 +39,7 @@ is unknown.
 
 from __future__ import annotations
 
+import operator
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -489,9 +490,8 @@ class _Parser:
         self.i += 1  # the 'for'
         if self.next().kind != "ident":
             raise ExpressionError("expected an iterator name")
-        if self.accept(","):
-            if self.next().kind != "ident":
-                raise ExpressionError("expected an iterator name")
+        if self.accept(",") and self.next().kind != "ident":
+            raise ExpressionError("expected an iterator name")
         follower = self.next()
         if follower.kind != "ident" or follower.value != "in":
             raise ExpressionError("expected 'in'")
@@ -900,20 +900,44 @@ def _tri_bool(value: Any) -> bool | None:
     return None
 
 
+def _divide(left: Any, right: Any) -> Any:
+    result = left / right
+    return int(result) if float(result).is_integer() else result
+
+
+# The operators on two known numbers; ``==`` and ``!=`` are handled apart, for any two values.
+_NUMERIC_OPERATORS: dict[str, Callable[[Any, Any], Any]] = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": _divide,
+    "%": operator.mod,
+    "<": operator.lt,
+    "<=": operator.le,
+    ">": operator.gt,
+    ">=": operator.ge,
+}
+
+
+def _eval_logical(node: Binary, left: Any, ctx: Context, depth: int, lenient: bool) -> Any:
+    """``&&`` and ``||`` with three-valued operands: a known short-circuit value wins."""
+    short = node.op == "||"
+    left_bool = _tri_bool(left)
+    if left_bool is short:
+        return short
+    right = _eval(node.right, ctx, depth + 1, lenient)
+    right_bool = _tri_bool(right)
+    if right_bool is short:
+        return short
+    if left_bool is None or right_bool is None:
+        return _unknown()
+    return not short
+
+
 def _eval_binary(node: Binary, ctx: Context, depth: int, lenient: bool) -> Any:
     left = _eval(node.left, ctx, depth + 1, lenient)
     if node.op in ("&&", "||"):
-        short = node.op == "||"
-        left_bool = _tri_bool(left)
-        if left_bool is short:
-            return short
-        right = _eval(node.right, ctx, depth + 1, lenient)
-        right_bool = _tri_bool(right)
-        if right_bool is short:
-            return short
-        if left_bool is None or right_bool is None:
-            return _unknown()
-        return not short
+        return _eval_logical(node, left, ctx, depth, lenient)
     right = _eval(node.right, ctx, depth + 1, lenient)
     if is_unknown(left) or is_unknown(right):
         return _unknown()
@@ -921,31 +945,13 @@ def _eval_binary(node: Binary, ctx: Context, depth: int, lenient: bool) -> Any:
     if op in ("==", "!="):
         same = _equal(left, right)
         return same if op == "==" else not same
-    if not (_is_number(left) and _is_number(right)):
+    function = _NUMERIC_OPERATORS.get(op)
+    if function is None or not (_is_number(left) and _is_number(right)):
         return _unknown()
     try:
-        if op == "+":
-            return left + right
-        if op == "-":
-            return left - right
-        if op == "*":
-            return left * right
-        if op == "/":
-            result = left / right
-            return int(result) if float(result).is_integer() else result
-        if op == "%":
-            return left % right
-        if op == "<":
-            return left < right
-        if op == "<=":
-            return left <= right
-        if op == ">":
-            return left > right
-        if op == ">=":
-            return left >= right
+        return function(left, right)
     except (ZeroDivisionError, OverflowError, ValueError):
         return _unknown()
-    return _unknown()
 
 
 def _equal(left: Any, right: Any) -> bool:
@@ -954,7 +960,9 @@ def _equal(left: Any, right: Any) -> bool:
     if _is_number(left) and _is_number(right):
         return bool(left == right)
     if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
-        return len(left) == len(right) and all(_equal(a, b) for a, b in zip(left, right))
+        return len(left) == len(right) and all(
+            _equal(a, b) for a, b in zip(left, right, strict=True)
+        )
     if isinstance(left, dict) and isinstance(right, dict):
         return left.keys() == right.keys() and all(_equal(left[k], right[k]) for k in left)
     if is_unknown(left) or is_unknown(right):
@@ -1245,6 +1253,56 @@ def _eval_key(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
     return _unknown() if text is None else text
 
 
+def _eval_chain(node: Attr | Idx, ctx: Context, depth: int, lenient: bool) -> Any:
+    root, steps = _flatten_chain(node)
+    if isinstance(root, Name):
+        return _bounded(_eval_name_chain(root.ident, steps, ctx, depth), ctx)
+    value = _eval(root, ctx, depth + 1, lenient)
+    for kind, key in steps:
+        value = _step(value, kind, _eval_step_key(kind, key, ctx, depth))
+    return value
+
+
+def _eval_cond(node: Cond, ctx: Context, depth: int, lenient: bool) -> Any:
+    flag = _tri_bool(_eval(node.test, ctx, depth + 1, lenient))
+    if flag is None:
+        return _unknown()
+    return _eval(node.yes if flag else node.no, ctx, depth + 1, lenient)
+
+
+def _eval_unary(node: Unary, ctx: Context, depth: int, lenient: bool) -> Any:
+    operand = _eval(node.operand, ctx, depth + 1, lenient)
+    if is_unknown(operand):
+        return _unknown()
+    if node.op == "!":
+        flag = _tri_bool(operand)
+        return _unknown() if flag is None else not flag
+    return -operand if _is_number(operand) else _unknown()
+
+
+def _eval_object(node: Obj, ctx: Context, depth: int, lenient: bool) -> Any:
+    result: dict[str, Any] = {}
+    for key_node, value_node in node.items:
+        key = _eval_key(key_node, ctx, depth, lenient)
+        if is_unknown(key):
+            return _unknown()
+        result[str(key)] = _eval(value_node, ctx, depth + 1, lenient)
+    return _bounded(result, ctx)
+
+
+def _eval_splat(node: Splat, ctx: Context, depth: int, lenient: bool) -> Any:
+    base = _eval(node.base, ctx, depth + 1, lenient)
+    if not isinstance(base, (list, tuple)):
+        return _unknown()
+    out: list[Any] = []
+    for element in base:
+        value = element
+        for kind, key in node.steps:
+            value = _step(value, kind, _eval_step_key(kind, key, ctx, depth))
+        out.append(value)
+    return _bounded(out, ctx)
+
+
 def _eval(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
     if depth > MAX_DEPTH:
         return _unknown()
@@ -1253,54 +1311,23 @@ def _eval(node: Any, ctx: Context, depth: int, lenient: bool) -> Any:
     if isinstance(node, Tpl):
         return _eval_template(node, ctx, depth, lenient)
     if isinstance(node, (Attr, Idx)):
-        root, steps = _flatten_chain(node)
-        if isinstance(root, Name):
-            return _bounded(_eval_name_chain(root.ident, steps, ctx, depth), ctx)
-        value = _eval(root, ctx, depth + 1, lenient)
-        for kind, key in steps:
-            value = _step(value, kind, _eval_step_key(kind, key, ctx, depth))
-        return value
+        return _eval_chain(node, ctx, depth, lenient)
     if isinstance(node, Name):
         return _bounded(_eval_name_chain(node.ident, [], ctx, depth), ctx)
     if isinstance(node, Cond):
-        test = _eval(node.test, ctx, depth + 1, lenient)
-        flag = _tri_bool(test)
-        if flag is None:
-            return _unknown()
-        return _eval(node.yes if flag else node.no, ctx, depth + 1, lenient)
+        return _eval_cond(node, ctx, depth, lenient)
     if isinstance(node, Binary):
         return _eval_binary(node, ctx, depth, lenient)
     if isinstance(node, Unary):
-        operand = _eval(node.operand, ctx, depth + 1, lenient)
-        if is_unknown(operand):
-            return _unknown()
-        if node.op == "!":
-            flag = _tri_bool(operand)
-            return _unknown() if flag is None else not flag
-        return -operand if _is_number(operand) else _unknown()
+        return _eval_unary(node, ctx, depth, lenient)
     if isinstance(node, Call):
         return _eval_call(node, ctx, depth, lenient)
     if isinstance(node, Tup):
         return _bounded([_eval(item, ctx, depth + 1, lenient) for item in node.items], ctx)
     if isinstance(node, Obj):
-        result: dict[str, Any] = {}
-        for key_node, value_node in node.items:
-            key = _eval_key(key_node, ctx, depth, lenient)
-            if is_unknown(key):
-                return _unknown()
-            result[str(key)] = _eval(value_node, ctx, depth + 1, lenient)
-        return _bounded(result, ctx)
+        return _eval_object(node, ctx, depth, lenient)
     if isinstance(node, Splat):
-        base = _eval(node.base, ctx, depth + 1, lenient)
-        if not isinstance(base, (list, tuple)):
-            return _unknown()
-        out: list[Any] = []
-        for element in base:
-            value = element
-            for kind, key in node.steps:
-                value = _step(value, kind, _eval_step_key(kind, key, ctx, depth))
-            out.append(value)
-        return _bounded(out, ctx)
+        return _eval_splat(node, ctx, depth, lenient)
     return _unknown()
 
 

@@ -325,7 +325,7 @@ class _Builder:
             props: dict[str, Any] = self._from_properties(self._open_stage(ins))
         else:
             if self.stage is None and ins.name != "ARG":
-                self._open_implicit_stage(ins)
+                self._open_implicit_stage()
             props = {}
         stage = self.stage
         position = len(self.resources)
@@ -363,7 +363,7 @@ class _Builder:
             )
         )
 
-    def _open_implicit_stage(self, ins: Instruction) -> None:
+    def _open_implicit_stage(self) -> None:
         stage = _Stage(index=len(self.stages), name="", ident=str(len(self.stages)), from_line=None)
         stage.kind = "none"
         self.stages.append(stage)

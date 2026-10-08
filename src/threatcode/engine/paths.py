@@ -440,7 +440,7 @@ class _Finder:
                     edge_type_to_next=edge.edge_type.value if edge is not None else None,
                     via=_edge_details(edge) if edge is not None else {},
                     enabled_by=[t.id for t in _worst_first(hop_threats)],
-                    techniques=self._techniques(node, arrival, route, hop_threats),
+                    techniques=self._techniques(node, arrival, hop_threats),
                 )
             )
         if not used:
@@ -475,7 +475,6 @@ class _Finder:
         self,
         node: InfraNode,
         arrival: InfraEdge | None,
-        route: _Route,
         hop_threats: list[Threat],
     ) -> list[str]:
         found: list[str] = []

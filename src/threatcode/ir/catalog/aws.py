@@ -221,9 +221,13 @@ def zone_override(resource_type: str, properties: dict[str, Any]) -> TrustZone |
         return TrustZone.PRIVATE
     if resource_type == "aws_api_gateway_rest_api":
         types = _endpoint_types(properties)
-        if types and _contains(types, "PRIVATE") and not _contains(types, "EDGE"):
-            if not _contains(types, "REGIONAL"):
-                return TrustZone.PRIVATE
+        if (
+            types
+            and _contains(types, "PRIVATE")
+            and not _contains(types, "EDGE")
+            and not _contains(types, "REGIONAL")
+        ):
+            return TrustZone.PRIVATE
     if resource_type == "aws_lambda_function_url":
         auth = properties.get("authorization_type")
         if isinstance(auth, str) and auth.strip().upper() == "NONE":

@@ -78,7 +78,7 @@ class ThreatSource(str, Enum):
     RULE = "rule"
     LLM = "llm"
     BOUNDARY = "boundary"
-    SECRET = "secret"
+    SECRET = "secret"  # noqa: S105 - a finding source name, not a credential
     SCANNER = "scanner"
 
 

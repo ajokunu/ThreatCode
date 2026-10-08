@@ -153,9 +153,7 @@ class SecretRule:
 
     def matches_path(self, file_path: str) -> bool:
         """Check if this rule applies to the given file path."""
-        if self.path_filter and not self.path_filter.search(file_path):
-            return False
-        return True
+        return not (self.path_filter and not self.path_filter.search(file_path))
 
     @staticmethod
     def secret_of(match: re.Match[str]) -> tuple[str, int, int]:

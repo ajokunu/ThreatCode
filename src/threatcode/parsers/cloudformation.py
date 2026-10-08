@@ -303,7 +303,7 @@ class _Run:
                 [*_depends_on(definition), *(i for i in scan.logical_ids if i not in covered)]
             )
         )
-        meta = self._meta(logical_id, cfn_type, definition, origin, scan.imports)
+        meta = self._meta(cfn_type, definition, origin, scan.imports)
         start, end = self.lines.span(span_id) if self.lines is not None else (None, None)
         if cfn_type == NESTED_STACK_TYPE:
             url = properties.get("TemplateURL")
@@ -347,7 +347,6 @@ class _Run:
 
     def _meta(
         self,
-        logical_id: str,
         cfn_type: str,
         definition: Mapping[str, Any],
         origin: _sam.SamOrigin | None,

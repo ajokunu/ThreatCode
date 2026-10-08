@@ -147,7 +147,9 @@ class HelmParser(BaseParser):
         state = {"size": 0, "overflow": False}
         with tempfile.TemporaryFile() as stderr:
             try:
-                process = subprocess.Popen(
+                # An argv list (no shell). The binary comes from shutil.which and the chart
+                # path cannot start with '-', so scanned content never becomes an option
+                process = subprocess.Popen(  # noqa: S603
                     command,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
@@ -159,9 +161,11 @@ class HelmParser(BaseParser):
                 return None, f"helm could not be started: {exc}"
 
             def pump() -> None:
-                assert process.stdout is not None
+                stream = process.stdout
+                if stream is None:  # stdout is a pipe above, so this does not happen
+                    return
                 while True:
-                    block = process.stdout.read(65536)
+                    block = stream.read(65536)
                     if not block:
                         return
                     state["size"] += len(block)
@@ -248,7 +252,7 @@ def _documents_from_render(
                 file,
             )
             continue
-        for data, index in zip(loaded, indexes):
+        for data, index in zip(loaded, indexes, strict=False):
             if _is_test_hook(data):
                 continue
             line = rendered.template_line(index.get("", 0)) if index else None

@@ -43,7 +43,7 @@ def _decode_key(literal: str) -> str:
     return decoded if isinstance(decoded, str) else literal[1:-1]
 
 
-def json_line_index(text: str) -> dict[str, int]:
+def json_line_index(text: str) -> dict[str, int]:  # noqa: C901 - one-pass scanner, a branch per token class
     """Map JSON pointers to the 1-based line where each key or item starts.
 
     The root value is recorded under ``""``. An object member is recorded at the line of

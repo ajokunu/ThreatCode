@@ -330,7 +330,7 @@ def _uses_host_port(container: dict[str, Any]) -> bool:
 
 
 def _names(views: list[ContainerView], keep: list[bool]) -> list[str]:
-    return sorted({view.name for view, flag in zip(views, keep) if flag})
+    return sorted({view.name for view, flag in zip(views, keep, strict=False) if flag})
 
 
 def security_properties(pod_spec: dict[str, Any]) -> dict[str, Any]:
@@ -358,7 +358,7 @@ def security_properties(pod_spec: dict[str, Any]) -> dict[str, Any]:
         """Mask a per-container list to the containers the check applies to."""
         if not only_ongoing:
             return flags
-        return [flag and run for flag, run in zip(flags, ongoing)]
+        return [flag and run for flag, run in zip(flags, ongoing, strict=False)]
 
     privileged = record("privileged", [c.privileged for c in contexts])
     run_as_root = record("run_as_root", [c.run_as_root for c in contexts])

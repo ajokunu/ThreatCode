@@ -473,8 +473,8 @@ class DiagramRenderer:
         parts.append(self._svg_header())
         parts.append(self._svg_summary_bar())
         parts.append(self._svg_notice())
-        for zone, y, h, nodes in self._zone_lanes:
-            parts.append(self._svg_zone_lane(zone, y, h, nodes))
+        for zone, y, h, _nodes in self._zone_lanes:
+            parts.append(self._svg_zone_lane(zone, y, h))
         parts.append(self._svg_frames())
         glowing: set[tuple[str, str]] = set()
         for edge in self._dedges:
@@ -749,6 +749,36 @@ class DiagramRenderer:
         """Nodes of one lane with the members of each container side by side."""
         return sorted(nodes, key=lambda n: self._chain.get(n.id, ()))
 
+    def _layout_attack_paths(self) -> float:
+        """Number the report's attack paths, size their section, and return its width."""
+        # Attack paths come from the report; number them and find their edges
+        self._attack_paths = [
+            (i + 1, path) for i, path in enumerate(self.report.attack_paths[:ATTACK_PATH_MAX_PATHS])
+        ]
+        self._build_edge_attack_path_map()
+
+        # Attack path section height
+        attack_path_h = 0.0
+        if self._attack_paths:
+            attack_path_h = (
+                ATTACK_PATH_SECTION_TITLE_H
+                + len(self._attack_paths) * ATTACK_PATH_ROW_H
+                + ATTACK_PATH_PAD * 2
+            )
+            if len(self.report.attack_paths) > len(self._attack_paths):
+                attack_path_h += ATTACK_PATH_NOTE_H / 2
+        elif self._dnodes:
+            attack_path_h = ATTACK_PATH_SECTION_TITLE_H + ATTACK_PATH_NOTE_H + ATTACK_PATH_PAD
+        self._attack_paths_h = attack_path_h
+
+        # Width the section needs
+        attack_path_w = 0.0
+        for _, path in self._attack_paths:
+            n = max(len(path.hops), 1)
+            pw = ATTACK_PATH_PAD * 2 + n * ATTACK_PATH_NODE_W + (n - 1) * ATTACK_PATH_ARROW_W
+            attack_path_w = max(attack_path_w, pw)
+        return attack_path_w
+
     def _compute_layout(self) -> None:
         zones_map: dict[TrustZone, list[_DNode]] = defaultdict(list)
         for dnode in self._dnodes.values():
@@ -820,33 +850,7 @@ class DiagramRenderer:
             max_lane_w = 400
 
         self._compute_frames(lane_cells)
-
-        # Attack paths come from the report; number them and find their edges
-        self._attack_paths = [
-            (i + 1, path) for i, path in enumerate(self.report.attack_paths[:ATTACK_PATH_MAX_PATHS])
-        ]
-        self._build_edge_attack_path_map()
-
-        # Attack path section height
-        attack_path_h = 0.0
-        if self._attack_paths:
-            attack_path_h = (
-                ATTACK_PATH_SECTION_TITLE_H
-                + len(self._attack_paths) * ATTACK_PATH_ROW_H
-                + ATTACK_PATH_PAD * 2
-            )
-            if len(self.report.attack_paths) > len(self._attack_paths):
-                attack_path_h += ATTACK_PATH_NOTE_H / 2
-        elif self._dnodes:
-            attack_path_h = ATTACK_PATH_SECTION_TITLE_H + ATTACK_PATH_NOTE_H + ATTACK_PATH_PAD
-        self._attack_paths_h = attack_path_h
-
-        # Compute attack path section width requirement
-        attack_path_w = 0.0
-        for _, path in self._attack_paths:
-            n = max(len(path.hops), 1)
-            pw = ATTACK_PATH_PAD * 2 + n * ATTACK_PATH_NODE_W + (n - 1) * ATTACK_PATH_ARROW_W
-            attack_path_w = max(attack_path_w, pw)
+        attack_path_w = self._layout_attack_paths()
 
         # Ensure canvas is wide enough for legend, attack paths, and expanded table
         min_legend_w = 900
@@ -865,7 +869,7 @@ class DiagramRenderer:
             )
 
         self._attack_paths_y = y_cursor
-        y_cursor += attack_path_h
+        y_cursor += self._attack_paths_h
         self._threat_table_y = y_cursor
         y_cursor += threat_table_h
         self._legend_y = y_cursor
@@ -885,7 +889,7 @@ class DiagramRenderer:
                         containers.append(c)
             for container in containers:
                 members = [n for n in lane_nodes if container in self._chain.get(n.id, ())]
-                for segment in self._frame_segments(container, members, lane_nodes, cells):
+                for segment in self._frame_segments(members, lane_nodes, cells):
                     x0 = y0 = math.inf
                     x1 = y1 = -math.inf
                     height = 1
@@ -910,7 +914,6 @@ class DiagramRenderer:
 
     @staticmethod
     def _frame_segments(
-        container: str,
         members: list[_DNode],
         lane_nodes: list[_DNode],
         cells: dict[str, tuple[int, int]],
@@ -1317,7 +1320,7 @@ class DiagramRenderer:
         parts.append("</g>")
         return "\n".join(parts)
 
-    def _svg_zone_lane(self, zone: TrustZone, y: float, h: float, nodes: list[_DNode]) -> str:
+    def _svg_zone_lane(self, zone: TrustZone, y: float, h: float) -> str:
         w = self._canvas_w
         fill, border = ZONE_COLORS.get(zone, ("#f8fafc", "#cbd5e1"))
         label = ZONE_LABELS.get(zone, zone.value.upper())
@@ -1357,9 +1360,8 @@ class DiagramRenderer:
                 f'<text x="{rect.x + 8:.1f}" y="{rect.y + FRAME_LABEL_H - 3:.1f}" '
                 f'fill="#475569" font-size="9" font-weight="600">{_esc(label)}</text>'
             )
-            if frame.badge and info.threats:
-                worst = _worst(info.threats)
-                assert worst is not None
+            worst = _worst(info.threats)
+            if frame.badge and worst is not None:
                 parts.append(
                     self._svg_threat_badge(
                         rect.right - 12,

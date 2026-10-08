@@ -46,10 +46,7 @@ def cvss3_base_score(vector: str) -> float | None:
         iss = 1 - (1 - _CIA[metrics["C"]]) * (1 - _CIA[metrics["I"]]) * (1 - _CIA[metrics["A"]])
     except KeyError:
         return None
-    if scope_changed:
-        impact = 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15
-    else:
-        impact = 6.42 * iss
+    impact = 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15 if scope_changed else 6.42 * iss
     if impact <= 0:
         return 0.0
     total = impact + exploitability

@@ -240,7 +240,7 @@ def route_edges(grid: Grid, pairs: list[tuple[str, str]]) -> dict[tuple[str, str
     _assign_channel_tracks(grid, plans)
     _assign_gap_tracks(grid, plans)
 
-    routes = {key: _simplify(_polyline(grid, plan)) for key, plan in plans.items()}
+    routes = {key: _simplify(_polyline(plan)) for key, plan in plans.items()}
     routes.update(loops)
     return routes
 
@@ -419,7 +419,8 @@ def _assign_channel_tracks(grid: Grid, plans: dict[tuple[str, str], _Plan]) -> N
             runs.setdefault(plan.channel_1, []).append(run)
         else:
             xg = _gap_center(grid, plan.gap)
-            assert plan.channel_2 is not None
+            if plan.channel_2 is None:
+                raise ValueError("a route through a gap needs a second channel")
             down = plan.src_side == "bottom"
             run_1 = _Run(min(xs, xg), max(xs, xg), key, 1, (src_stub, (xg, _DOWN if down else _UP)))
             run_2 = _Run(min(xg, xt), max(xg, xt), key, 2, ((xg, _UP if down else _DOWN), tgt_stub))
@@ -529,7 +530,7 @@ def _spread_tracks(
     return [place(start + c * spacing) for c in colors]
 
 
-def _polyline(grid: Grid, plan: _Plan) -> list[Point]:
+def _polyline(plan: _Plan) -> list[Point]:
     ps = plan.src_port
     pt = plan.tgt_port
     if plan.channel_1 is None:

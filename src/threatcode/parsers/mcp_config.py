@@ -659,9 +659,7 @@ def _filesystem_candidates(launch: EffectiveLaunch) -> list[str]:
         if text.startswith("-"):
             flag, eq, value = text.partition("=")
             previous_flag = flag
-            if eq and _PATH_FLAG_RE.match(flag) and _is_pathlike(value):
-                found.append(value)
-            elif eq and fs_server and _is_pathlike(value):
+            if eq and _is_pathlike(value) and (_PATH_FLAG_RE.match(flag) or fs_server):
                 found.append(value)
             continue
         if _is_pathlike(text) and (fs_server or _PATH_FLAG_RE.match(previous_flag)):

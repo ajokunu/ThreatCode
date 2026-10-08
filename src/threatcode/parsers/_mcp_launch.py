@@ -226,6 +226,62 @@ def _take_assignments(argv: list[Token]) -> tuple[list[Token], dict[str, tuple[s
     return argv[index:], env
 
 
+def _unwrap_cmd(args: list[Token]) -> _Unwrapped | None:
+    for i, tok in enumerate(args):
+        if tok.text.lower() in ("/c", "/k", "/r"):
+            rest = args[i + 1 :]
+            if len(rest) == 1 and re.search(r"\s", rest[0].text):
+                words = _split_windows(rest[0].text)
+                return _Unwrapped(
+                    _tokens(words, rest[0].origin), "cmd", split_origin=rest[0].origin
+                )
+            return _Unwrapped(rest, "cmd") if rest else None
+    return None
+
+
+def _unwrap_shell(cmd: str, args: list[Token]) -> _Unwrapped | None:
+    for i, tok in enumerate(args):
+        text = tok.text
+        if text.startswith("-") and not text.startswith("--") and "c" in text[1:]:
+            if i + 1 < len(args):
+                command = args[i + 1]
+                words = _split_posix(command.text)
+                return _Unwrapped(_tokens(words, command.origin), cmd, split_origin=command.origin)
+            return None
+    return None
+
+
+def _unwrap_nice(args: list[Token]) -> _Unwrapped | None:
+    i = 0
+    while i < len(args) and args[i].text.startswith("-"):
+        i += 2 if args[i].text in ("-n", "--adjustment") else 1
+    return _Unwrapped(args[i:], "nice") if args[i:] else None
+
+
+def _unwrap_timeout(args: list[Token]) -> _Unwrapped | None:
+    i = 0
+    while i < len(args) and args[i].text.startswith("-"):
+        i += 2 if args[i].text in ("-s", "--signal", "-k", "--kill-after") else 1
+    i += 1  # the duration
+    return _Unwrapped(args[i:], "timeout") if args[i:] else None
+
+
+def _unwrap_wsl(args: list[Token]) -> _Unwrapped | None:
+    i = 0
+    while i < len(args):
+        text = args[i].text
+        if text in ("--", "-e", "--exec"):
+            i += 1
+            break
+        if text in _WSL_VALUE_FLAGS:
+            i += 2
+        elif text.startswith("-"):
+            i += 1
+        else:
+            break
+    return _Unwrapped(args[i:], "wsl") if args[i:] else None
+
+
 def _unwrap_once(argv: list[Token]) -> _Unwrapped | None:
     """Remove one launcher layer from ``argv``, or return None when none applies."""
     if not argv:
@@ -238,77 +294,26 @@ def _unwrap_once(argv: list[Token]) -> _Unwrapped | None:
         return _Unwrapped(stripped, "env", assigned)
 
     if cmd == "cmd":
-        for i, tok in enumerate(args):
-            if tok.text.lower() in ("/c", "/k", "/r"):
-                rest = args[i + 1 :]
-                if len(rest) == 1 and re.search(r"\s", rest[0].text):
-                    words = _split_windows(rest[0].text)
-                    return _Unwrapped(
-                        _tokens(words, rest[0].origin), "cmd", split_origin=rest[0].origin
-                    )
-                return _Unwrapped(rest, "cmd") if rest else None
-        return None
-
+        return _unwrap_cmd(args)
     if cmd in _PWSH:
         return _unwrap_powershell(args)
-
     if cmd in _SHELLS:
-        for i, tok in enumerate(args):
-            text = tok.text
-            if text.startswith("-") and not text.startswith("--") and "c" in text[1:]:
-                if i + 1 < len(args):
-                    command = args[i + 1]
-                    words = _split_posix(command.text)
-                    return _Unwrapped(
-                        _tokens(words, command.origin), cmd, split_origin=command.origin
-                    )
-                return None
-        return None
-
+        return _unwrap_shell(cmd, args)
     if cmd == "env":
         return _unwrap_env(args)
-
-    if cmd == "sudo" or cmd == "doas":
+    if cmd in ("sudo", "doas"):
         return _unwrap_sudo(args)
-
     if cmd in ("nohup", "time", "setsid", "winpty"):
         return _Unwrapped(args, cmd) if args else None
-
     if cmd in ("exec", "command"):
         first = next((i for i, t in enumerate(args) if not t.text.startswith("-")), None)
         return _Unwrapped(args[first:], cmd) if first is not None else None
-
     if cmd == "nice":
-        i = 0
-        while i < len(args) and args[i].text.startswith("-"):
-            i += 2 if args[i].text in ("-n", "--adjustment") else 1
-        return _Unwrapped(args[i:], cmd) if args[i:] else None
-
+        return _unwrap_nice(args)
     if cmd == "timeout":
-        i = 0
-        while i < len(args) and args[i].text.startswith("-"):
-            i += 2 if args[i].text in ("-s", "--signal", "-k", "--kill-after") else 1
-        i += 1  # the duration
-        return _Unwrapped(args[i:], cmd) if args[i:] else None
-
+        return _unwrap_timeout(args)
     if cmd == "wsl":
-        i = 0
-        while i < len(args):
-            text = args[i].text
-            if text == "--":
-                i += 1
-                break
-            if text in ("-e", "--exec"):
-                i += 1
-                break
-            if text in _WSL_VALUE_FLAGS:
-                i += 2
-            elif text.startswith("-"):
-                i += 1
-            else:
-                break
-        return _Unwrapped(args[i:], cmd) if args[i:] else None
-
+        return _unwrap_wsl(args)
     return None
 
 

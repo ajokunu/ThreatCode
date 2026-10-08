@@ -458,46 +458,70 @@ def _apply_after_unknown(
             return _PlannedUnknown(_reference_for(path, references))
         return current
     if isinstance(tree, dict) and tree:
-        if current is _MISSING or current is None:
-            base: dict[str, Any] = {}
-        elif isinstance(current, dict):
-            base = current
-        else:
-            return current
-        changed: dict[str, Any] | None = None
-        for key, sub in tree.items():
-            child = base.get(key, _MISSING)
-            updated = _apply_after_unknown(
-                child, sub, _join(path, str(key)), references, counter, depth + 1
-            )
-            if updated is not child:
-                if changed is None:
-                    changed = dict(base)
-                changed[key] = updated
-        return current if changed is None else changed
+        return _apply_unknown_to_mapping(current, tree, path, references, counter, depth)
     if isinstance(tree, list) and tree:
-        if current is _MISSING or current is None:
-            items: list[Any] = []
-        elif isinstance(current, list):
-            items = current
-        else:
-            return current
-        grown: list[Any] | None = None
-        for index, sub in enumerate(tree):
-            child = items[index] if index < len(items) else _MISSING
-            updated = _apply_after_unknown(child, sub, f"{path}[]", references, counter, depth + 1)
-            if updated is child:
-                continue
-            if grown is None:
-                grown = list(items)
-            while len(grown) < index:
-                grown.append(_filler(tree[len(grown)]))
-            if index < len(grown):
-                grown[index] = updated
-            else:
-                grown.append(updated)
-        return current if grown is None else grown
+        return _apply_unknown_to_list(current, tree, path, references, counter, depth)
     return current
+
+
+def _apply_unknown_to_mapping(
+    current: Any,
+    tree: dict[str, Any],
+    path: str,
+    references: dict[str, str],
+    counter: _Counter,
+    depth: int,
+) -> Any:
+    base: dict[str, Any]
+    if current is _MISSING or current is None:
+        base = {}
+    elif isinstance(current, dict):
+        base = current
+    else:
+        return current
+    changed: dict[str, Any] | None = None
+    for key, sub in tree.items():
+        child = base.get(key, _MISSING)
+        updated = _apply_after_unknown(
+            child, sub, _join(path, str(key)), references, counter, depth + 1
+        )
+        if updated is not child:
+            if changed is None:
+                changed = dict(base)
+            changed[key] = updated
+    return current if changed is None else changed
+
+
+def _apply_unknown_to_list(
+    current: Any,
+    tree: list[Any],
+    path: str,
+    references: dict[str, str],
+    counter: _Counter,
+    depth: int,
+) -> Any:
+    items: list[Any]
+    if current is _MISSING or current is None:
+        items = []
+    elif isinstance(current, list):
+        items = current
+    else:
+        return current
+    grown: list[Any] | None = None
+    for index, sub in enumerate(tree):
+        child = items[index] if index < len(items) else _MISSING
+        updated = _apply_after_unknown(child, sub, f"{path}[]", references, counter, depth + 1)
+        if updated is child:
+            continue
+        if grown is None:
+            grown = list(items)
+        while len(grown) < index:
+            grown.append(_filler(tree[len(grown)]))
+        if index < len(grown):
+            grown[index] = updated
+        else:
+            grown.append(updated)
+    return current if grown is None else grown
 
 
 def _apply_config_unknown(current: Any, expression: Any, counter: _Counter, depth: int = 0) -> Any:

@@ -366,19 +366,32 @@ def _validate_property(key: str, check: Any, ctx: _Context, path: str, depth: in
         ctx.fail(path, "null is not a comparison value; use 'not_exists: true' to test for absence")
 
 
+def _fail_not_a_property_operator(op: Any, ctx: _Context, path: str) -> NoReturn:
+    """Reject a key under a property that is not a property operator, with the likely cause."""
+    if isinstance(op, str) and op in LOGICAL_OPERATORS:
+        ctx.fail(path, f"the logical operator '{op}' goes around properties, not under one")
+    if isinstance(op, str) and op in ELEMENT_PREDICATES:
+        ctx.fail(path, f"'{op}' is checked on a whole mapping; use it as a key, not as an operator")
+    ctx.fail(
+        path,
+        f"Unknown operator {op!r}{_suggest(str(op), VALID_OPERATORS)}. "
+        f"Valid operators: {', '.join(sorted(VALID_OPERATORS))}",
+    )
+
+
 def _validate_operator(op: Any, argument: Any, ctx: _Context, path: str, depth: int) -> None:
     if not isinstance(op, str) or op not in PROPERTY_OPERATORS:
-        if isinstance(op, str) and op in LOGICAL_OPERATORS:
-            ctx.fail(path, f"the logical operator '{op}' goes around properties, not under one")
-        if isinstance(op, str) and op in ELEMENT_PREDICATES:
-            ctx.fail(
-                path, f"'{op}' is checked on a whole mapping; use it as a key, not as an operator"
-            )
-        ctx.fail(
-            path,
-            f"Unknown operator {op!r}{_suggest(str(op), VALID_OPERATORS)}. "
-            f"Valid operators: {', '.join(sorted(VALID_OPERATORS))}",
-        )
+        _fail_not_a_property_operator(op, ctx, path)
+    if op in QUANTIFIER_OPERATORS:
+        if not isinstance(argument, Mapping):
+            ctx.fail(path, f"'{op}' takes a condition mapping, got {type(argument).__name__}")
+        _validate_node(argument, ctx, path, depth + 1)
+        return
+    _validate_value_argument(op, argument, ctx, path)
+
+
+def _validate_value_argument(op: str, argument: Any, ctx: _Context, path: str) -> None:
+    """Check the argument of an operator that compares a value (every one but the quantifiers)."""
     if op in _BOOL_OPERATORS:
         if not isinstance(argument, bool):
             ctx.fail(path, f"'{op}' takes true or false, got {argument!r}")
@@ -396,13 +409,8 @@ def _validate_operator(op: Any, argument: Any, ctx: _Context, path: str, depth: 
     elif op in ("contains", "not_contains"):
         if not isinstance(argument, _SCALAR):
             ctx.fail(path, f"'{op}' takes a string, number or boolean, got {argument!r}")
-    elif op in ("equals", "not_equals"):
-        if argument is None:
-            ctx.fail(path, f"'{op}' cannot compare with null; use 'exists' or 'not_exists'")
-    elif op in QUANTIFIER_OPERATORS:
-        if not isinstance(argument, Mapping):
-            ctx.fail(path, f"'{op}' takes a condition mapping, got {type(argument).__name__}")
-        _validate_node(argument, ctx, path, depth + 1)
+    elif op in ("equals", "not_equals") and argument is None:
+        ctx.fail(path, f"'{op}' cannot compare with null; use 'exists' or 'not_exists'")
 
 
 def _validate_ports(argument: Any, ctx: _Context, path: str) -> None:

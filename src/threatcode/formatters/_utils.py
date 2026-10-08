@@ -170,7 +170,7 @@ def plural(count: int, noun: str, plural_form: str | None = None) -> str:
 
 def severity_counts(threats: Iterable[Threat]) -> dict[str, int]:
     """Findings per effective severity, in severity order, zero counts left out."""
-    counts = {name: 0 for name in SEVERITY_ORDER}
+    counts = dict.fromkeys(SEVERITY_ORDER, 0)
     for threat in threats:
         counts[threat_severity(threat).value] += 1
     return {name: n for name, n in counts.items() if n}

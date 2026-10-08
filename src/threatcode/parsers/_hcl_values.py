@@ -32,7 +32,6 @@ from threatcode.values import UNKNOWN_TEXT
 # JSON documents longer than this are kept as written rather than re-serialised
 MAX_JSON_TEXT = 2_000_000
 
-_IDENT_START = re.compile(r"[A-Za-z_]")
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
 _PYTHON_LITERALS = {"True": "true", "False": "false", "None": "null"}
 _SIMPLE_ESCAPES = {
@@ -211,17 +210,17 @@ def unpythonize_expression(expression: str) -> str:
             end = _skip_string(expression, i)
             out.append(expression[i:end])
             i = end
-        elif _IDENT_START.match(ch):
+        else:
             match = _IDENT.match(expression, i)
-            assert match is not None
+            if match is None:
+                out.append(ch)
+                i += 1
+                continue
             word = match.group(0)
             previous = expression[i - 1] if i else ""
             replacement = _PYTHON_LITERALS.get(word)
             out.append(replacement if replacement and previous != "." else word)
             i = match.end()
-        else:
-            out.append(ch)
-            i += 1
     return "".join(out)
 
 
