@@ -23,3 +23,10 @@
   The lower bound of the dependency is unchanged; raising it to 8.x would be simpler, and it is recorded as a request in the package report because the CI matrix and its test are not part of this change.
 - The parsed text of a Terraform file is kept for the rest of the run (8 million characters, oldest dropped first).
   A module directory is read as a unit of its own and again by every caller, and python-hcl2 8.x parses about 2.5 times slower than 4.x, so a scan of cloud-foundation-fabric took 27 seconds and now takes 11, terraform-aws-vpc took 5.8 seconds and now takes 1.7, with the same findings.
+- **A resource that a variable default switches off no longer hides a missing companion.**
+  `aws_flow_log` with `count = var.enable ? 1 : 0` and `default = false` was kept as present, so `VPC_NO_FLOW_LOGS` never fired: terraform-aws-vpc reported no findings in 1758 resources, even for `examples/simple` that calls the module without any flow log setting.
+  A count of 0 or an empty `for_each` now drops the resource whatever it comes from.
+  Inside a followed module the caller is in the repository and did not pass the variable, so its default is the value and the resource is dropped with an info note.
+  In the module that is scanned itself a value from `-var`, `-var-file` or `TF_VAR_*` could replace the default, so the drop is also one `hcl.default_disabled` warning per module that names the resources left out and the variables, and `--strict` fails on it; a `terraform.tfvars` or `*.auto.tfvars` value settles it.
+  terraform-aws-vpc now reports `VPC_NO_FLOW_LOGS` for 10 VPCs, with the same result under python-hcl2 4.x and 8.x.
+  A default that enables the resource still keeps it, flagged `count_from_default` in its meta.

@@ -18,8 +18,14 @@ What the parser does with a module
   Indexes and splats are dropped so a reference names every instance of a counted resource.
 - ``count``, ``for_each``, ``depends_on``, ``lifecycle`` and ``provider`` move to
   ``ParsedResource.meta`` and are never rule-visible properties.
-  A literal ``count = 0`` resource creates nothing and is dropped; a ``count`` that is
-  not literal keeps one node flagged in ``meta``.
+  A ``count`` of 0 (or an empty ``for_each``) creates nothing and the resource is dropped,
+  whether it comes from a literal, a local, ``tfvars`` or a variable default; a ``count`` that
+  is not known keeps one node flagged in ``meta``.
+  A default only counts as a value when nothing outside the repository can override it: in a
+  followed module the caller is in the repository, so a default is what the module gets;
+  in the module that is scanned itself a default may be replaced by ``-var``, ``-var-file`` or
+  ``TF_VAR_*``, so the drop is reported as one ``hcl.default_disabled`` warning naming what was
+  left out.
 - A ``dynamic`` block becomes the repeated block it generates.
 - ``module`` blocks with a local source (``./`` or ``../``) are followed with their inputs, and
   their resources are addressed ``module.<name>.<type>.<name>``.
@@ -73,6 +79,10 @@ register_code(
     "hcl.evaluation_limit",
     "A Terraform value was treated as unknown because evaluating it reached a size or depth limit",
 )
+register_code(
+    "hcl.default_disabled",
+    "Terraform resources were left out because a variable default sets their count to 0",
+)
 
 # Followed modules: nesting depth and the total number of module instances read
 MAX_MODULE_DEPTH = 8
@@ -112,6 +122,16 @@ class _Miss:
 
 
 @dataclass
+class _Disabled:
+    """A resource left out because the default of a variable of the scanned module disables it."""
+
+    address: str
+    variables: tuple[str, ...]
+    file: str
+    line: int | None
+
+
+@dataclass
 class _Session:
     """What one parse run shares: diagnostics, the module budget and evaluation counters."""
 
@@ -130,6 +150,8 @@ class _Session:
     cut: int = 0
     work_left: int = field(default_factory=lambda: MAX_EVALUATION_WORK)
     limits: dict[str, int] = field(default_factory=dict)
+    # Resources dropped because a variable default of the scanned module sets their count to 0
+    disabled: list[_Disabled] = field(default_factory=list)
 
     def begin(self) -> None:
         self.misses = []
@@ -310,7 +332,10 @@ class _Scope(Context):
             self._variable_cache[name] = cached
         value, status, misses, defaults = cached
         self.replay(misses, defaults)
-        if status == "default":
+        if status == "default" and self.parent is None:
+            # Only the module that is scanned itself can have its default replaced from outside
+            # the repository; in a followed module the caller is in the repository and did not
+            # pass the variable, so the default is the value
             self.session.defaults.add(name)
         elif status in ("no_value", "undeclared"):
             self.session.misses.append(_Miss(self.path, "var", name, status))
@@ -594,6 +619,7 @@ class TerraformHCLParser(BaseParser):
         _emit(scope, resources, session)
         _drop_shadowed_references(resources, session)
         _report_limits(session)
+        _report_disabled(session)
         if tfvars_files:
             metadata["tfvars"] = tfvars_files
         if session.followed_modules:
@@ -634,6 +660,39 @@ def _report_limits(session: _Session) -> None:
         "warning",
         "hcl.evaluation_limit",
         f"some values are treated as unknown because evaluating them reached a limit: {reasons}",
+    )
+
+
+_DISABLED_LISTED = 5
+
+
+def _report_disabled(session: _Session) -> None:
+    """One warning for the resources a variable default of the scanned module left out.
+
+    Terraform creates nothing with that configuration, so they are not modelled and a rule that
+    looks for the absence of a companion can fire.
+    A value from ``-var``, ``-var-file`` or ``TF_VAR_*`` can enable them, which is a part of the
+    input that was not analysed, so it is a coverage gap and ``--strict`` fails on it.
+    """
+    if not session.disabled:
+        return
+    first = session.disabled[0]
+    shown = ", ".join(item.address for item in session.disabled[:_DISABLED_LISTED])
+    more = len(session.disabled) - _DISABLED_LISTED
+    names = sorted({name for item in session.disabled for name in item.variables})
+    plural = len(session.disabled) != 1
+    noun = "resources are" if plural else "resource is"
+    pronoun = "them" if plural else "it"
+    session.diagnose(
+        "warning",
+        "hcl.default_disabled",
+        f"{len(session.disabled)} {noun} not modelled because the default of "
+        f"{', '.join(f'var.{n}' for n in names)} sets count to 0 or for_each to empty "
+        f"({shown}{f', and {more} more' if more > 0 else ''}); a value from -var, -var-file or "
+        f"TF_VAR_* may enable {pronoun}, so put the real values in terraform.tfvars or a "
+        f"*.auto.tfvars file to have {pronoun} analysed",
+        first.file,
+        first.line,
     )
 
 
@@ -859,8 +918,9 @@ def _drop_shadowed_references(resources: list[ParsedResource], session: _Session
 @dataclass
 class _Instances:
     drop: bool = False
+    # The default of these variables of the scanned module is what disabled it
+    defaults: tuple[str, ...] = ()
     reason: str = ""
-    note: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -890,10 +950,11 @@ def _keys_of(value: Any) -> list[str] | None:
 def _instances(scope: _Scope, body: dict[str, Any]) -> _Instances:
     """What ``count`` and ``for_each`` say about how many instances a block creates.
 
-    A count of zero that comes from literals, locals or ``tfvars`` creates nothing and drops
-    the block. A zero that only a variable default produces keeps the block, because a value
-    supplied outside the repository may enable it. A count that is not known keeps one node,
-    flagged ``instances_unknown`` in ``meta``.
+    A count of zero (or an empty ``for_each``) creates nothing and drops the block.
+    When the zero comes from the default of a variable of the module that is scanned itself, the
+    block is dropped all the same and ``defaults`` names those variables, so the pipeline can say
+    what was left out.
+    A count that is not known keeps one node, flagged ``instances_unknown`` in ``meta``.
     """
     result = _Instances()
     session = scope.session
@@ -902,7 +963,7 @@ def _instances(scope: _Scope, body: dict[str, Any]) -> _Instances:
             continue
         session.begin()
         value = evaluate_value(body[key], scope)
-        by_default = bool(session.defaults)
+        defaults = tuple(sorted(session.defaults))
         if key == "count":
             number = _as_int(value)
             empty = number == 0
@@ -913,19 +974,14 @@ def _instances(scope: _Scope, body: dict[str, Any]) -> _Instances:
             known = None if keys is None else keys[:MAX_RECORDED_KEYS]
         if known is None:
             result.meta["instances_unknown"] = True
-        elif empty and not by_default:
+        elif empty:
             result.drop = True
+            result.defaults = defaults
             result.reason = "count 0" if key == "count" else "an empty for_each"
         else:
             result.meta[key] = known
-            if by_default:
+            if defaults:
                 result.meta[f"{key}_from_default"] = True
-                if empty:
-                    shown = "0" if key == "count" else "empty"
-                    result.note = (
-                        f"{key} is {shown} with the variable default, so the block is kept: "
-                        "a value supplied outside the repository may enable it"
-                    )
         break
     return result
 
@@ -1127,18 +1183,22 @@ def _make_resource(
 
     instances = _instances(scope, body)
     if instances.drop:
+        origin = (
+            f" from the default of {', '.join(f'var.{v}' for v in instances.defaults)}"
+            if instances.defaults
+            else ""
+        )
         session.diagnose(
             "info",
             "hcl.count_zero",
-            f"{address} has {instances.reason}; it creates no instances and is not modelled",
+            f"{address} has {instances.reason}{origin}; it creates no instances and is not "
+            "modelled",
             label,
             block.start_line,
         )
+        if instances.defaults:
+            session.disabled.append(_Disabled(address, instances.defaults, label, block.start_line))
         return None
-    if instances.note:
-        session.diagnose(
-            "info", "hcl.count_zero", f"{address}: {instances.note}", label, block.start_line
-        )
     meta: dict[str, Any] = dict(instances.meta)
     if scope.module_instances_unknown:
         meta["module_instances"] = "unknown"

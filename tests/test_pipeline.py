@@ -543,6 +543,70 @@ class TestNothingToModelWording:
         assert error["message"].startswith("2 inputs were parsed but produced no resources")
 
 
+class TestAVariableDefaultThatDisablesAResource:
+    """A flow log gated by `count = var.enable ? 1 : 0` must not hide a missing flow log."""
+
+    NET = (
+        'variable "enable" {\n  default = false\n}\n'
+        'resource "aws_vpc" "this" {\n  cidr_block = "10.0.0.0/16"\n}\n'
+        'resource "aws_flow_log" "this" {\n  count           = var.enable ? 1 : 0\n'
+        '  vpc_id          = aws_vpc.this.id\n  traffic_type    = "ALL"\n'
+        '  log_destination = "arn:aws:s3:::logs"\n}\n'
+    )
+
+    @staticmethod
+    def rule_ids(result: ScanResult) -> list[str]:
+        return [t.rule_id for t in result.report.threats]
+
+    def test_a_module_called_without_the_variable_has_no_flow_log(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", 'module "net" {\n  source = "./net"\n}\n')
+        write(tmp_path, "net/main.tf", self.NET)
+        result = scan(tmp_path / "main.tf", fail_on="none")
+        assert [
+            (t.rule_id, t.resource_address)
+            for t in result.report.threats
+            if t.rule_id == "VPC_NO_FLOW_LOGS"
+        ] == [("VPC_NO_FLOW_LOGS", "module.net.aws_vpc.this")]
+        assert result.coverage.gaps == []
+
+    def test_a_module_called_with_the_variable_has_one(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", 'module "net" {\n  source = "./net"\n  enable = true\n}\n')
+        write(tmp_path, "net/main.tf", self.NET)
+        result = scan(tmp_path / "main.tf", fail_on="none")
+        assert "VPC_NO_FLOW_LOGS" not in self.rule_ids(result)
+        assert "module.net.aws_flow_log.this" in result.graph.nodes
+
+    def test_the_module_scanned_itself_reports_the_missing_flow_log_and_the_gap(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", self.NET)
+        result = scan(tmp_path, fail_on="none")
+        assert "VPC_NO_FLOW_LOGS" in self.rule_ids(result)
+        (gap,) = result.coverage.gaps
+        assert gap["code"] == "hcl.default_disabled"
+        assert gap["level"] == "warning"
+        assert "aws_flow_log.this" in gap["message"]
+        assert gap["file"] == "main.tf"
+        assert result.exit_code == EXIT_OK
+
+    def test_strict_fails_on_that_gap(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.NET)
+        assert scan(tmp_path, fail_on="none", strict=True).exit_code == EXIT_USAGE
+
+    def test_a_tfvars_file_in_the_directory_settles_it(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.NET)
+        write(tmp_path, "terraform.tfvars", "enable = true\n")
+        result = scan(tmp_path, fail_on="none", strict=True)
+        assert "VPC_NO_FLOW_LOGS" not in self.rule_ids(result)
+        assert result.coverage.gaps == []
+        assert result.exit_code == EXIT_OK
+
+    def test_a_flow_log_that_is_not_gated_still_counts(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.NET.replace("var.enable ? 1 : 0", "1"))
+        result = scan(tmp_path, fail_on="none")
+        assert "VPC_NO_FLOW_LOGS" not in self.rule_ids(result)
+
+
 class TestExitContract:
     @pytest.mark.parametrize(
         ("fail_on", "expected"),

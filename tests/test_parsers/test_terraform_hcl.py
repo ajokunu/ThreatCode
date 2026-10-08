@@ -632,16 +632,29 @@ class TestMetaArguments:
         assert result.resources == []
         assert len(codes(result, "hcl.count_zero")) == 1
 
-    def test_a_count_that_only_a_default_makes_zero_keeps_the_resource(self) -> None:
-        resources = by_address(parse_dir(HCL_FIXTURES / "tfvars_dir"))
-        audit = resources["aws_cloudtrail.audit"]
-        assert audit.meta == {"count": 0, "count_from_default": True}
+    def test_a_count_that_only_a_default_makes_zero_drops_the_resource(self) -> None:
+        result = parse_dir(HCL_FIXTURES / "tfvars_dir")
+        resources = by_address(result)
+        assert "aws_cloudtrail.audit" not in resources
+        assert "aws_instance.bastion" in resources
 
     def test_that_decision_is_explained_in_an_info_diagnostic(self) -> None:
         result = parse_dir(HCL_FIXTURES / "tfvars_dir")
-        notes = [d.message for d in codes(result, "hcl.count_zero")]
-        assert len(notes) == 1
-        assert "aws_cloudtrail.audit" in notes[0] and "default" in notes[0]
+        (note,) = codes(result, "hcl.count_zero")
+        assert note.level == "info"
+        assert "aws_cloudtrail.audit" in note.message
+        assert "count 0 from the default of var.enable_audit" in note.message
+
+    def test_and_it_is_one_warning_gap_because_a_value_from_outside_may_enable_it(self) -> None:
+        result = parse_dir(HCL_FIXTURES / "tfvars_dir")
+        (gap,) = codes(result, "hcl.default_disabled")
+        assert gap.level == "warning"
+        assert "1 resource is not modelled" in gap.message
+        assert "aws_cloudtrail.audit" in gap.message
+        assert "var.enable_audit" in gap.message
+        assert "terraform.tfvars" in gap.message
+        assert gap.file.endswith("main.tf")
+        assert gap.line == 19
 
     def test_a_count_that_a_tfvars_value_makes_positive_is_kept_as_one_node(self) -> None:
         resources = by_address(parse_dir(HCL_FIXTURES / "tfvars_dir"))
@@ -677,6 +690,147 @@ class TestMetaArguments:
             '  provisioner "local-exec" {\n    command = "echo"\n  }\n}\n',
         )
         assert set(by_address(result)["a.b"].properties) == {"connection", "provisioner"}
+
+
+class TestADefaultThatDisablesAResource:
+    """Which defaults are values (RW-08).
+
+    In a followed module the caller is in the repository and did not pass the variable, so the
+    default is the value.
+    In the module that is scanned itself a default can be replaced from outside the repository,
+    so the resource is left out and the scan says so.
+    """
+
+    FLOW_LOG = (
+        'variable "enable" {\n  default = false\n}\n'
+        'resource "aws_vpc" "this" {\n  cidr_block = "10.0.0.0/16"\n}\n'
+        'resource "aws_flow_log" "this" {\n  count  = var.enable ? 1 : 0\n'
+        "  vpc_id = aws_vpc.this.id\n}\n"
+    )
+
+    def test_in_the_scanned_module_the_resource_is_left_out_and_a_warning_names_it(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", self.FLOW_LOG)
+        result = parse_dir(tmp_path)
+        assert set(by_address(result)) == {"aws_vpc.this"}
+        (gap,) = codes(result, "hcl.default_disabled")
+        assert gap.level == "warning"
+        assert "aws_flow_log.this" in gap.message and "var.enable" in gap.message
+
+    def test_the_same_holds_for_one_file_parsed_alone(self, tmp_path: Path) -> None:
+        path = write(tmp_path, "main.tf", self.FLOW_LOG)
+        result = TerraformHCLParser().parse_file(path)
+        assert set(by_address(result)) == {"aws_vpc.this"}
+        assert len(codes(result, "hcl.default_disabled")) == 1
+
+    def test_in_a_followed_module_the_caller_did_not_pass_it_so_the_default_is_the_value(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", 'module "net" {\n  source = "./net"\n}\n')
+        write(tmp_path, "net/main.tf", self.FLOW_LOG)
+        result = parse_dir(tmp_path)
+        assert set(by_address(result)) == {"module.net.aws_vpc.this"}
+        assert codes(result, "hcl.default_disabled") == []
+        (note,) = codes(result, "hcl.count_zero")
+        assert note.level == "info"
+        assert "module.net.aws_flow_log.this" in note.message
+
+    def test_a_value_the_caller_passes_wins_over_the_default(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", 'module "net" {\n  source = "./net"\n  enable = true\n}\n')
+        write(tmp_path, "net/main.tf", self.FLOW_LOG)
+        result = parse_dir(tmp_path)
+        assert set(by_address(result)) == {
+            "module.net.aws_vpc.this",
+            "module.net.aws_flow_log.this",
+        }
+        assert codes(result, "hcl.default_disabled") == []
+        assert by_address(result)["module.net.aws_flow_log.this"].meta == {"count": 1}
+
+    def test_a_default_of_the_scanned_module_passed_down_is_still_uncertain(
+        self, tmp_path: Path
+    ) -> None:
+        write(
+            tmp_path,
+            "main.tf",
+            'variable "on" {\n  default = false\n}\n'
+            'module "net" {\n  source = "./net"\n  enable = var.on\n}\n',
+        )
+        write(tmp_path, "net/main.tf", self.FLOW_LOG)
+        result = parse_dir(tmp_path)
+        assert set(by_address(result)) == {"module.net.aws_vpc.this"}
+        (gap,) = codes(result, "hcl.default_disabled")
+        assert "var.on" in gap.message and "module.net.aws_flow_log.this" in gap.message
+
+    def test_a_tfvars_value_is_not_a_default(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.FLOW_LOG)
+        write(tmp_path, "terraform.tfvars", "enable = false\n")
+        result = parse_dir(tmp_path)
+        assert set(by_address(result)) == {"aws_vpc.this"}
+        assert codes(result, "hcl.default_disabled") == []
+        assert len(codes(result, "hcl.count_zero")) == 1
+
+    def test_a_default_that_enables_the_resource_keeps_it_and_says_where_the_count_came_from(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", self.FLOW_LOG.replace("default = false", "default = true"))
+        result = parse_dir(tmp_path)
+        flow = by_address(result)["aws_flow_log.this"]
+        assert flow.meta == {"count": 1, "count_from_default": True}
+        assert codes(result, "hcl.default_disabled") == []
+
+    def test_an_empty_for_each_default_leaves_the_resource_out_too(self, tmp_path: Path) -> None:
+        write(
+            tmp_path,
+            "main.tf",
+            'variable "things" {\n  default = {}\n}\n'
+            'resource "a" "b" {\n  for_each = var.things\n}\n',
+        )
+        result = parse_dir(tmp_path)
+        assert result.resources == []
+        (gap,) = codes(result, "hcl.default_disabled")
+        assert "a.b" in gap.message
+
+    def test_a_default_through_a_local_counts_as_a_default(self, tmp_path: Path) -> None:
+        write(
+            tmp_path,
+            "main.tf",
+            'variable "on" {\n  default = false\n}\nlocals {\n  enabled = var.on\n}\n'
+            'resource "a" "b" {\n  count = local.enabled ? 1 : 0\n}\n',
+        )
+        result = parse_dir(tmp_path)
+        assert result.resources == []
+        assert len(codes(result, "hcl.default_disabled")) == 1
+
+    def test_a_count_no_variable_decides_is_a_literal_and_needs_no_warning(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", 'resource "a" "b" {\n  count = 0\n}\n')
+        result = parse_dir(tmp_path)
+        assert result.resources == []
+        assert codes(result, "hcl.default_disabled") == []
+
+    def test_a_variable_without_a_default_is_unknown_and_keeps_one_node(
+        self, tmp_path: Path
+    ) -> None:
+        write(
+            tmp_path,
+            "main.tf",
+            'variable "on" {}\nresource "a" "b" {\n  count = var.on ? 1 : 0\n}\n',
+        )
+        result = parse_dir(tmp_path)
+        assert by_address(result)["a.b"].meta == {"instances_unknown": True}
+        assert codes(result, "hcl.default_disabled") == []
+
+    def test_the_warning_lists_five_names_and_counts_the_rest(self, tmp_path: Path) -> None:
+        blocks = "".join(
+            f'resource "a" "r{i}" {{\n  count = var.on ? 1 : 0\n}}\n' for i in range(8)
+        )
+        write(tmp_path, "main.tf", 'variable "on" {\n  default = false\n}\n' + blocks)
+        (gap,) = codes(parse_dir(tmp_path), "hcl.default_disabled")
+        assert gap.message.startswith("8 resources are not modelled")
+        assert "a.r0, a.r1, a.r2, a.r3, a.r4, and 3 more" in gap.message
+        assert "a.r5" not in gap.message
 
 
 @pytest.fixture(scope="module")

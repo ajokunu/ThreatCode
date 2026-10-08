@@ -292,6 +292,7 @@ _PARSE_CACHE = _ParseCache(8_000_000)
 # --- layout normalization: the retry for grammar gaps ---------------------------------------
 
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+_CARRIAGE_RETURNS = re.compile(r"\r+\n")
 _NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
 _TWO_CHAR_OPERATORS = frozenset({"==", "!=", "<=", ">=", "&&", "||", "=>", "::"})
 _COMPARISONS = frozenset({"==", "!=", "<=", ">=", "&&", "||", "<", ">"})
@@ -555,7 +556,7 @@ def normalize_layout(text: str, *, flatten: bool = True, mark: bool = False) -> 
     """
     if _GROUP_MARK in text:
         mark = False  # a text that already uses the name cannot be told apart afterwards
-    return _Layout(text.replace("\r\n", "\n") if flatten else text, flatten, mark).run()
+    return _Layout(_CARRIAGE_RETURNS.sub("\n", text) if flatten else text, flatten, mark).run()
 
 
 # --- the 8.x spelling of strings ---------------------------------------------------------
