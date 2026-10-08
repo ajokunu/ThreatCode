@@ -32,6 +32,7 @@ from threatcode.formatters.diagram_labels import (
     hop_enablers,
     humanize_tokens,
     node_labels,
+    shorten_address,
     shorten_middle,
 )
 from threatcode.formatters.diagram_routing import (
@@ -298,7 +299,7 @@ FONT_FAMILY = 'Inter, system-ui, "Segoe UI", Helvetica, Arial, sans-serif'
 _AVG_CHAR_WIDTH_EM = 0.6
 _COLUMN_GAP_PX = 8
 # Where a token with no space may be broken: after these characters
-_BREAK_PRIORITY = (".", "/", "-_[]:,;")
+_BREAK_PRIORITY = (".:", "/", "-_[]:,;")
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -361,6 +362,15 @@ def _wrap(text: str, width_px: float, font_size: float, max_lines: int) -> list[
             last = last[: limit - 3]
         lines[-1] = last.rstrip() + "..."
     return lines
+
+
+def _wrap_keep_end(text: str, width_px: float, font_size: float, max_lines: int) -> list[str]:
+    """Like ``_wrap``, but a text too long for ``max_lines`` is cut in the middle.
+
+    An address or a path says which resource it is at its end, so the end is what has to stay.
+    """
+    room = _chars_per_line(width_px, font_size) * max_lines - max_lines
+    return _wrap(shorten_address(text, max(room, 8)), width_px, font_size, max_lines)
 
 
 def _line_h(font_size: float) -> int:
@@ -1312,7 +1322,7 @@ class DiagramRenderer:
             techniques = list(dict.fromkeys(t for member in entry for t in member.mitre_techniques))
             cells = [
                 [max(threat_severity(member) for member in entry).value.upper()],
-                _wrap(first.resource_address, col_res_w, 9, TABLE_MAX_CELL_LINES),
+                _wrap_keep_end(first.resource_address, col_res_w, 9, TABLE_MAX_CELL_LINES),
                 _wrap(humanize_tokens(title), col_threat_w, 9, TABLE_MAX_CELL_LINES),
                 _wrap(
                     first_sentence(humanize_tokens(first.description)),
@@ -1324,7 +1334,7 @@ class DiagramRenderer:
                     self._format_mitre_techniques(techniques), col_attack_w, 8, TABLE_MAX_CELL_LINES
                 ),
                 _wrap(stride, col_stride_w, 9, 2),
-                _wrap(self._location_text(first), col_location_w, 9, 2),
+                _wrap_keep_end(self._location_text(first), col_location_w, 9, 2),
                 [first.source.value],
             ]
             fonts = [9, 9, 9, 8, 8, 9, 9, 9]

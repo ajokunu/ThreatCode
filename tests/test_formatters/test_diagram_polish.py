@@ -412,17 +412,13 @@ class TestPathOverlay:
             assert rect.get("stroke") == SEVERITY_COLORS["critical"]
             assert re.fullmatch(r"P\d", "".join(badge.find(f"{NS}text").itertext()))  # type: ignore[union-attr]
 
-    def test_severity_badges_stay_round_and_path_badges_never_share_a_class(self) -> None:
-        root = root_of(render(*self._with_threats()))
-        assert groups(root, "node")
-        for g in groups(root, "node"):
-            assert all(c.get("r") == "7" for c in g.findall(f"{NS}circle"))
-
-    def _with_threats(
-        self,
-    ) -> tuple[list[InfraNode], list[InfraEdge], list[Threat], list[AttackPath]]:
+    def test_a_severity_badge_stays_round_next_to_the_square_path_badges(self) -> None:
         nodes, edges, path = _chain()
-        return nodes, edges, [threat_on("aws_lb.front")], [path]
+        root = root_of(render(nodes, edges, [threat_on("aws_lb.front")], [path]))
+        (front,) = [g for g in groups(root, "node") if g.get("data-id") == "aws_lb.front"]
+        (badge,) = front.findall(f"{NS}circle")
+        assert badge.get("r") == "7"
+        assert groups(root, "attack-path-marker")
 
     def test_badges_stay_off_nodes_zone_borders_and_each_other(self) -> None:
         root = root_of(self.svg())
@@ -783,11 +779,16 @@ class TestAttackPathStrips:
         return render(nodes, [], threats, [path])
 
     def test_the_rationale_is_written_in_full_over_a_few_lines(self) -> None:
-        texts = _strip_texts(self.svg())
-        joined = " ".join(texts)
-        assert self.RATIONALE.split(" (critical)")[0] in joined
-        spans = [t for t in groups(root_of(self.svg()), "attack-path")[0].iter(f"{NS}tspan")]
-        assert 2 <= len(spans) <= 3 or "..." not in joined
+        group = groups(root_of(self.svg()), "attack-path")[0]
+        (block,) = [
+            t
+            for t in group.iter(f"{NS}text")
+            if "".join(t.itertext()).startswith("The internet reaches")
+        ]
+        lines = ["".join(span.itertext()) for span in block.iter(f"{NS}tspan")]
+        assert len(lines) == 2
+        assert " ".join(lines) == self.RATIONALE
+        assert not any(line.endswith("...") for line in lines)
 
     def test_a_very_long_rationale_ends_in_an_ellipsis_on_the_last_line_only(self) -> None:
         svg = self.svg(rationale="word " * 400)
@@ -882,17 +883,20 @@ class TestAttackPathStrips:
         second_top = min(float(r.get("y", 0)) for r in second.iter(f"{NS}rect"))
         assert second_top > max(text_bottoms)
 
-    def test_nothing_in_a_strip_runs_off_the_canvas(self) -> None:
-        root = root_of(self.svg())
+    @pytest.mark.parametrize("name", EXAMPLES)
+    def test_nothing_in_a_strip_runs_off_the_canvas(self, name: str) -> None:
+        root = root_of(example_svg(name))
         width = float(root.get("viewBox", "").split()[2])
         for text in groups(root, "attack-path")[0].iter(f"{NS}text"):
             size = float(text.get("font-size", "9"))
-            half = max(len(line) for line in "".join(text.itertext()).split("\n")) * size * 0.5 / 2
+            spans = ["".join(s.itertext()) for s in text.iter(f"{NS}tspan")]
+            lines = spans or ["".join(text.itertext())]
+            reach = max(len(line) for line in lines) * size * 0.55
             x = float(text.get("x", 0))
             if text.get("text-anchor") == "middle":
-                assert x - half >= 0 and x + half <= width
+                assert x - reach / 2 >= 0 and x + reach / 2 <= width, lines
             else:
-                assert x >= 0
+                assert x >= 0 and x + reach <= width, lines
 
     @pytest.mark.parametrize("name", EXAMPLES)
     def test_no_strip_text_of_an_example_is_cut_mid_word(self, name: str) -> None:
