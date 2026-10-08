@@ -77,7 +77,7 @@ CHANGELOG = REPO / "CHANGELOG.md"
 SHELL_LANGS = {"bash", "sh", "shell", "console", "zsh"}
 COMMAND_LANGS = SHELL_LANGS | {"yaml", "yml"}
 NEEDS_BASH = pytest.mark.skipif(
-    sys.platform == "win32", reason="runnable shell blocks need bash and symlinks"
+    sys.platform == "win32", reason="runnable blocks run in a scratch directory of symlinks"
 )
 
 # ---------------------------------------------------------------------------------------
@@ -607,6 +607,7 @@ class TestRunnableBlocks:
         problems = run_ci_script(block, tmp_path)
         assert not problems, "\n".join(problems)
 
+    @NEEDS_BASH
     @pytest.mark.parametrize("block", UPLOADS, ids=_id)
     @pytest.mark.parametrize("annotations", [0, 3, 100, 101, 250])
     def test_the_bitbucket_helper_puts_the_report_and_posts_batches_of_at_most_100(
@@ -1139,15 +1140,18 @@ class TestTheHarnessCanFail:
         assert run_runnable(_block(scan, "bash", exit="1"), tmp_path / "a") == []
         assert run_runnable(_block(scan, "bash", exit="0"), tmp_path / "b")
 
+    @NEEDS_BASH
     def test_a_python_block_that_raises_fails(self, tmp_path: Path) -> None:
         broken = _block("import threatcode\nassert threatcode.no_such_name\n", "python")
         problems = run_runnable(broken, tmp_path)
         assert problems and "exited 1" in problems[0]
 
+    @NEEDS_BASH
     def test_a_python_block_that_runs_passes(self, tmp_path: Path) -> None:
         ok = _block("import threatcode\nassert threatcode.__version__\n", "python")
         assert run_runnable(ok, tmp_path) == []
 
+    @NEEDS_BASH
     def test_the_old_register_parser_signature_fails(self, tmp_path: Path) -> None:
         """The example this harness was written for: arguments in the wrong order."""
         broken = _block(
