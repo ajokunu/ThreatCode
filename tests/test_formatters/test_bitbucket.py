@@ -26,7 +26,7 @@ def make_threat(index: int = 1, severity: Severity = Severity.HIGH, **fields: An
         description=fields.pop("description", "Description"),
         stride_category="tampering",
         severity=severity,
-        source=ThreatSource.RULE,
+        source=fields.pop("source", ThreatSource.RULE),
         resource_type="aws_s3_bucket",
         resource_address=fields.pop("address", f"aws_s3_bucket.test{index}"),
         location_file=fields.pop("file", "infra/main.tf"),
@@ -234,10 +234,40 @@ class TestCapAndBatches:
         assert len(annotation["details"]) <= DETAILS_LIMIT == 2000
         assert len(annotation["external_id"]) <= 64
 
-    def test_details_include_the_mitigation_and_are_one_line(self) -> None:
+    def test_details_are_the_instance_and_the_mitigation_on_one_line(self) -> None:
         report = ThreatReport()
         report.add(make_threat(1, description="Bad.\n\nReally.", mitigation="Fix\nit."))
-        assert parse(report)["annotations"][0]["details"] == "Bad. Really. Mitigation: Fix it."
+        details = parse(report)["annotations"][0]["details"]
+        assert details == "Resource: aws_s3_bucket.test1. Mitigation: Fix it."
+
+    def test_a_rules_generic_description_is_not_repeated_on_every_annotation(self) -> None:
+        report = ThreatReport()
+        report.add(make_threat(1, description="The generic explanation. " * 40))
+        assert "generic explanation" not in parse(report)["annotations"][0]["details"]
+
+    def test_the_reason_for_the_severity_is_in_the_details(self) -> None:
+        report = ThreatReport()
+        report.add(make_threat(1, severity_reason="raised one level: reachable from the internet"))
+        details = parse(report)["annotations"][0]["details"]
+        assert "Severity: raised one level: reachable from the internet." in details
+
+    def test_a_crossing_adds_the_first_sentence_of_what_it_is(self) -> None:
+        report = ThreatReport()
+        threat = make_threat(
+            1,
+            description="Traffic from a to b over tcp/80 crosses a boundary. More text.",
+            source=ThreatSource.BOUNDARY,
+        )
+        report.add(threat)
+        details = parse(report)["annotations"][0]["details"]
+        assert "Traffic from a to b over tcp/80 crosses a boundary." in details
+        assert "More text" not in details
+
+    def test_the_mitigation_is_cut_to_a_short_length(self) -> None:
+        report = ThreatReport()
+        report.add(make_threat(1, mitigation="Do this. " * 200))
+        details = parse(report)["annotations"][0]["details"]
+        assert len(details) < 400
 
     def test_severities_map_to_bitbucket_values(self) -> None:
         report = ThreatReport()
@@ -288,3 +318,60 @@ class TestAttackPathAnnotations:
         report.attack_paths.append(path("abc123", Severity.CRITICAL))
         ids = [a["external_id"] for a in parse(report)["annotations"]]
         assert ids == ["path-abc123", "t1"]
+
+
+class TestResultFollowsTheGate:
+    """``report.result`` and the exit code of ``threatcode scan`` say the same thing."""
+
+    def result(self, report: ThreatReport, fail_on: str | None) -> str:
+        return parse(report, fail_on=fail_on)["report"]["result"]  # type: ignore[no-any-return]
+
+    def test_fail_on_none_never_fails(self) -> None:
+        critical = _make_report(Severity.CRITICAL)
+        critical.attack_paths.append(path("p1", Severity.CRITICAL))
+        assert self.result(critical, "none") == "PASSED"
+
+    def test_a_stricter_gate_fails_on_a_medium_finding(self) -> None:
+        medium = _make_report(Severity.MEDIUM)
+        assert self.result(medium, "medium") == "FAILED"
+        assert self.result(medium, "high") == "PASSED"
+
+    def test_a_looser_gate_passes_a_high_finding(self) -> None:
+        assert self.result(_make_report(Severity.HIGH), "critical") == "PASSED"
+        assert self.result(_make_report(Severity.CRITICAL), "critical") == "FAILED"
+
+    def test_no_gate_is_the_default_one_high(self) -> None:
+        assert self.result(_make_report(Severity.HIGH), None) == "FAILED"
+        assert self.result(_make_report(Severity.MEDIUM), None) == "PASSED"
+
+    def test_the_gate_reads_the_effective_severity(self) -> None:
+        report = _make_report(Severity.LOW)
+        report.threats[0].effective_severity = Severity.CRITICAL
+        assert self.result(report, "critical") == "FAILED"
+
+    def test_an_attack_path_at_the_gate_fails(self) -> None:
+        report = ThreatReport()
+        report.attack_paths.append(path("p1", Severity.MEDIUM))
+        assert self.result(report, "medium") == "FAILED"
+        assert self.result(report, "high") == "PASSED"
+
+    def test_an_llm_finding_never_fails_the_report(self) -> None:
+        report = ThreatReport()
+        report.add(make_threat(1, Severity.CRITICAL, source=ThreatSource.LLM))
+        assert self.result(report, "low") == "PASSED"
+
+    def test_an_unknown_gate_falls_back_to_the_default(self) -> None:
+        assert self.result(_make_report(Severity.HIGH), "bogus") == "FAILED"
+
+    def test_it_reaches_the_report_from_render_options(self) -> None:
+        from tests.helpers.scan import scan_files
+        from tests.test_formatters.test_sarif import FIXTURES
+        from threatcode.formatters import RenderOptions, render
+        from threatcode.models.analysis import AnalysisResult
+
+        scan = scan_files([FIXTURES / "terraform" / "simple_s3.plan.json"])
+        analysis = AnalysisResult(graph=scan.graph, report=scan.report)
+        failed = json.loads(render("bitbucket", analysis))["report"]["result"]
+        passed = json.loads(render("bitbucket", analysis, RenderOptions(fail_on="none")))
+        assert failed == "FAILED"
+        assert passed["report"]["result"] == "PASSED"
