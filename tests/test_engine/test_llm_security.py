@@ -273,6 +273,55 @@ class TestDryRunSecurity:
             assert secret_prompt not in record.message
 
 
+@pytest.fixture(scope="module")
+def webapp_dry_run_payload(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The exact request ``scan examples/aws-webapp --dry-run`` writes, as text."""
+    from tests.helpers.cli import REPO_ROOT, run_cli
+
+    target = tmp_path_factory.mktemp("dry") / "payload.json"
+    run = run_cli(
+        [
+            "scan",
+            str(REPO_ROOT / "examples" / "aws-webapp"),
+            "--dry-run",
+            "--dry-run-output",
+            str(target),
+            "-f",
+            "json",
+            "--fail-on",
+            "none",
+        ]
+    )
+    assert run.exit_code == 0, run.stderr[-400:]
+    return target.read_text(encoding="utf-8")
+
+
+class TestDryRunPayloadOfARealPlan:
+    """FR-10: the dry-run payload of examples/aws-webapp carried an account id and a region."""
+
+    def test_no_twelve_digit_account_id_survives(self, webapp_dry_run_payload: str) -> None:
+        assert re.findall(r"(?<!\d)\d{12}(?!\d)", webapp_dry_run_payload) == []
+        assert "111122223333" not in webapp_dry_run_payload
+
+    def test_no_region_or_arn_text_survives(self, webapp_dry_run_payload: str) -> None:
+        assert "us-east-1" not in webapp_dry_run_payload
+        assert "arn:aws" not in webapp_dry_run_payload
+        assert "secretsmanager:us" not in webapp_dry_run_payload
+
+    def test_both_policy_statements_carry_a_whole_arn_placeholder(
+        self, webapp_dry_run_payload: str
+    ) -> None:
+        body = json.loads(webapp_dry_run_payload)["messages"][0]["content"]
+        resources = re.findall(r'"resources":\["([^"]*)"\]', body)
+        assert len(resources) == 2, resources
+        assert all(re.fullmatch(r"REDACTED_aws_arn_\d+", item) for item in resources), resources
+        assert resources[0] != resources[1]
+
+    def test_the_analysis_facts_still_reach_the_model(self, webapp_dry_run_payload: str) -> None:
+        assert "aws_db_instance" in webapp_dry_run_payload
+        assert "SG_WEB_PORT_OPEN_TO_WORLD" in webapp_dry_run_payload
+
+
 class TestMaxTokensValidation:
     def test_max_tokens_clamped_high(self) -> None:
         """LLM10-04: max_tokens > 8192 is clamped."""

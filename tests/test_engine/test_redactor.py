@@ -199,6 +199,44 @@ class TestValueDetectors:
         assert "role/admin" not in result["note"]
 
     @pytest.mark.parametrize(
+        "arn",
+        [
+            "arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-a1B2c3",
+            "arn:aws:ssm:eu-west-2:111122223333:parameter/app/db_password",
+            "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab",
+            "arn:aws-us-gov:iam::111122223333:role/secret-reader",
+            "arn:aws:s3:::acme-orders-customer-data/*",
+        ],
+    )
+    def test_an_arn_goes_whole_even_when_a_secret_rule_matches_its_resource_part(
+        self, arn: str
+    ) -> None:
+        # The secret rules match the resource part of a Secrets Manager or SSM ARN; the ARN used
+        # to be skipped because a placeholder was already inside it, which left the account id
+        # and the region in the payload
+        redactor = Redactor()
+        result = redactor.redact({"resources": [arn], "note": f"allowed on {arn} only"})
+        text = json.dumps(result)
+        assert "111122223333" not in text
+        assert not re.search(r"\b(?:us|eu)-[a-z]+-\d\b", text)
+        assert "secretsmanager" not in text
+        assert re.fullmatch(r"REDACTED_aws_arn_\d+", result["resources"][0])
+        assert redactor.unredact_string(result["resources"][0]) == arn
+
+    def test_the_same_arn_gets_the_same_placeholder_wherever_it_appears(self) -> None:
+        arn = "arn:aws:secretsmanager:us-east-1:111122223333:secret:orders/db-a1B2c3"
+        result = Redactor().redact({"a": arn, "b": [f"x {arn} y"]})
+        assert result["b"][0] == f"x {result['a']} y"
+
+    def test_a_secret_shape_outside_an_arn_is_still_redacted(self) -> None:
+        text = json.dumps(
+            Redactor().redact({"note": "key AKIAIOSFODNN7EXAMPLE on arn:aws:s3:::bucket"})
+        )
+        assert "AKIAIOSFODNN7EXAMPLE" not in text
+        assert "REDACTED_secret_" in text
+        assert "REDACTED_aws_arn_" in text
+
+    @pytest.mark.parametrize(
         "text",
         [
             'account_id: "123456789012"',
