@@ -17,6 +17,7 @@ from click.testing import CliRunner, Result
 
 from threatcode import __version__
 from threatcode.cli import cli
+from threatcode.engine.rules.loader import load_builtin_rules
 from threatcode.exceptions import LLMError
 from threatcode.formatters import format_names
 
@@ -88,6 +89,44 @@ def bucket(name: str) -> str:
 def exposed(name: str) -> str:
     """A function URL with no authentication: the one high finding a gate test can rely on."""
     return EXPOSED.format(name=name)
+
+
+class TestFindingProvenance:
+    """A finding says how sure its rule is and what has to change, as the rule declares it."""
+
+    CONFIDENCE = {"definitive": 1.0, "heuristic": 0.7, "absence": 0.5}
+
+    def test_a_rule_finding_carries_the_confidence_and_root_cause_of_its_rule(self) -> None:
+        rules = {rule.id: rule for rule in load_builtin_rules()}
+        data = report_of(invoke("scan", INSECURE_PLAN, "--no-timestamp"))
+        findings = [t for t in data["threats"] if t["source"] == "rule"]
+        assert findings
+        for finding in findings:
+            rule = rules[finding["rule_id"]]
+            assert finding["confidence"] == self.CONFIDENCE[rule.confidence], rule.id
+            assert finding.get("root_cause", "") == rule.root_cause, rule.id
+        # Not vacuous: the fixture trips rules of all three kinds and some that name a cause
+        assert {f["confidence"] for f in findings} == {1.0, 0.7, 0.5}
+        assert any(f.get("root_cause") for f in findings)
+
+    def test_absence_findings_are_the_least_certain_and_never_critical(self) -> None:
+        data = report_of(invoke("scan", INSECURE_PLAN))
+        rules = {rule.id: rule for rule in load_builtin_rules()}
+        absent = [
+            t
+            for t in data["threats"]
+            if rules.get(t["rule_id"], None) and rules[t["rule_id"]].confidence == "absence"
+        ]
+        assert absent
+        assert all(t["confidence"] == 0.5 for t in absent)
+        assert all(t["severity"] in ("medium", "low", "info") for t in absent)
+
+    def test_sarif_precision_follows_the_confidence(self) -> None:
+        sarif = json.loads(invoke("scan", INSECURE_PLAN, "-f", "sarif").stdout)
+        precisions = {
+            rule["properties"]["precision"] for rule in sarif["runs"][0]["tool"]["driver"]["rules"]
+        }
+        assert precisions == {"high", "medium", "low"}
 
 
 class TestScanFormats:

@@ -221,6 +221,12 @@ def _index_rules(
     return exact, globs
 
 
+# How sure a finding is, by how its rule established the condition: the configuration proves it
+# (definitive), the rule infers it from names or partial data (heuristic), or it fires because
+# something is missing (absence)
+RULE_CONFIDENCE: dict[str, float] = {"definitive": 1.0, "heuristic": 0.7, "absence": 0.5}
+
+
 def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
     threat_id = hash_id(f"{rule.id}_{node.id}")
     mitre = rule.metadata.get("mitre", {})
@@ -239,6 +245,8 @@ def _rule_to_threat(rule: Rule, node: InfraNode) -> Threat:
         resource_address=node.id,
         mitigation=rule.mitigation,
         rule_id=rule.id,
+        confidence=RULE_CONFIDENCE[rule.confidence],
+        root_cause=rule.root_cause,
         # Copied so mutating one threat's metadata never reaches the rule or
         # the other threats the same rule produced.
         metadata=copy.deepcopy(rule.metadata),
