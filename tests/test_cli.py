@@ -33,6 +33,10 @@ SIMPLE_TF = FIXTURES_DIR / "terraform" / "simple_exposed.tf"
 SIMPLE_PLAN = FIXTURES_DIR / "terraform" / "simple_s3.plan.json"
 INSECURE_PLAN = FIXTURES_DIR / "terraform" / "multi_service_insecure.plan.json"
 WEBAPP_EXAMPLE = REPO_ROOT / "examples" / "aws-webapp"
+HYBRID_TF = FIXTURES_DIR / "realistic" / "05_hybrid_vpn_datacenter.tf"
+SECRETS_TREE = FIXTURES_DIR / "secrets" / "iac"
+GITLEAKS_SARIF = FIXTURES_DIR / "ingest" / "sarif-gitleaks.json"
+CHECKOV_SARIF = FIXTURES_DIR / "ingest" / "sarif-checkov.json"
 BUCKET = 'resource "aws_s3_bucket" "{name}" {{\n  bucket = "{name}"\n}}\n'
 EXPOSED = (
     'resource "aws_lambda_function_url" "{name}" {{\n'
@@ -795,6 +799,103 @@ class TestAttackPathsHonorSuppressionsAndBaselines:
         result = invoke("scan", plan, "--fail-on", "none")
         assert len(self.path_ids(result)) == 3
         assert "ffffffffffff matched no finding or attack path" in result.stderr
+
+
+def sarif_with_results(source: Path, uri: str, lines: list[int], target: Path) -> Path:
+    """A copy of a SARIF fixture whose first result is repeated at ``lines`` of file ``uri``."""
+    document = json.loads(source.read_text(encoding="utf-8"))
+    run = document["runs"][0]
+    first = run["results"][0]
+    results = []
+    for line in lines:
+        result = json.loads(json.dumps(first))
+        physical = result["locations"][0]["physicalLocation"]
+        physical["artifactLocation"]["uri"] = uri
+        physical["region"] = {"startLine": line, "endLine": line}
+        results.append(result)
+    run["results"] = results
+    target.write_text(json.dumps(document), encoding="utf-8")
+    return target
+
+
+class TestIngestedFindingsAreReconciledWithNativeOnes:
+    """A scanner finding at the file and line of ThreatCode's own finding is reported once."""
+
+    @staticmethod
+    def scan(tree: Path, sarif: Path) -> dict[str, Any]:
+        result = invoke("scan", tree, "--ingest", sarif, "--fail-on", "none")
+        assert result.exit_code == 0, result.stderr
+        return report_of(result)
+
+    def test_a_scanner_secret_on_the_line_of_a_native_secret_is_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        sarif = sarif_with_results(
+            GITLEAKS_SARIF, "terraform/main.tf", [7, 2], tmp_path / "g.sarif"
+        )
+        data = self.scan(SECRETS_TREE, sarif)
+        scanner = [t for t in data["threats"] if t["source"] == "scanner"]
+        assert [t["location_start_line"] for t in scanner] == [2]
+        (native,) = [
+            t
+            for t in data["threats"]
+            if t["source"] == "secret"
+            and (t["location_file"], t["location_start_line"]) == ("terraform/main.tf", 7)
+        ]
+        assert native["metadata"]["corroborated_by"] == ["gitleaks"]
+
+    def test_the_kept_scanner_finding_is_not_marked_as_corroborating_anything(
+        self, tmp_path: Path
+    ) -> None:
+        sarif = sarif_with_results(GITLEAKS_SARIF, "terraform/main.tf", [2], tmp_path / "g.sarif")
+        data = self.scan(SECRETS_TREE, sarif)
+        assert len([t for t in data["threats"] if t["source"] == "scanner"]) == 1
+        assert not any(
+            "corroborated_by" in t["metadata"] for t in data["threats"] if t["source"] == "secret"
+        )
+
+    def test_the_source_counts_the_duplicate_it_lost(self, tmp_path: Path) -> None:
+        sarif = sarif_with_results(
+            GITLEAKS_SARIF, "terraform/main.tf", [7, 2], tmp_path / "g.sarif"
+        )
+        (source,) = self.scan(SECRETS_TREE, sarif)["ingest"]
+        assert (source["findings"], source["attached"], source["duplicates"]) == (2, 2, 1)
+
+    def test_a_scanner_finding_in_another_file_is_never_a_duplicate(self, tmp_path: Path) -> None:
+        sarif = sarif_with_results(GITLEAKS_SARIF, "terraform/other.tf", [7], tmp_path / "g.sarif")
+        data = self.scan(SECRETS_TREE, sarif)
+        assert len([t for t in data["threats"] if t["source"] == "scanner"]) == 1
+        (source,) = data["ingest"]
+        assert source["duplicates"] == 0
+
+    def test_the_report_without_the_overlap_equals_the_report_without_the_ingest(
+        self, tmp_path: Path
+    ) -> None:
+        sarif = sarif_with_results(GITLEAKS_SARIF, "terraform/main.tf", [7], tmp_path / "g.sarif")
+        with_ingest = self.scan(SECRETS_TREE, sarif)
+        plain = report_of(invoke("scan", SECRETS_TREE, "--fail-on", "none"))
+        natives = [t for t in with_ingest["threats"] if t["source"] != "scanner"]
+        assert [t["id"] for t in natives] == [t["id"] for t in plain["threats"]]
+        assert with_ingest["total_threats"] == plain["total_threats"]
+
+    def test_a_dropped_duplicate_leaves_no_dangling_reference_on_an_attack_path(
+        self, tmp_path: Path
+    ) -> None:
+        tree = tmp_path / "hybrid"
+        tree.mkdir()
+        shutil.copy(HYBRID_TF, tree / "main.tf")
+        lines = (tree / "main.tf").read_text(encoding="utf-8").splitlines()
+        start = 1 + lines.index('resource "aws_s3_bucket" "vpn_logs" {')
+        sarif = sarif_with_results(CHECKOV_SARIF, "main.tf", [start], tmp_path / "c.sarif")
+        data = self.scan(tree, sarif)
+        assert not any(t["source"] == "scanner" for t in data["threats"])
+        assert data["attack_paths"]
+        known = {t["id"] for t in data["threats"]}
+        enablers = [i for p in data["attack_paths"] for h in p["hops"] for i in h["enabled_by"]]
+        assert enablers
+        assert set(enablers) <= known
+        (source,) = data["ingest"]
+        assert source["duplicates"] == 1
 
 
 class TestLlmIsOptIn:
