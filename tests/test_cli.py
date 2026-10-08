@@ -105,7 +105,7 @@ class TestScanFormats:
             ("markdown", "ThreatCode Threat Model Report"),
             ("sarif", '"version": "2.1.0"'),
             ("bitbucket", '"report"'),
-            ("matrix", '"techniques"'),
+            ("navigator", '"techniques"'),
             ("diagram", "<svg"),
             ("text", "ThreatCode scan of simple_s3.plan.json"),
         ],
@@ -114,6 +114,14 @@ class TestScanFormats:
         result = invoke("scan", SIMPLE_PLAN, "-f", fmt)
         assert result.exit_code == 1, result.stderr
         assert needle in result.stdout
+
+    def test_the_matrix_alias_still_renders_the_navigator_layer(self) -> None:
+        """``matrix`` is the old name of ``navigator``; it keeps working and says nothing new."""
+        old = invoke("scan", SIMPLE_PLAN, "-f", "matrix", "--no-timestamp")
+        new = invoke("scan", SIMPLE_PLAN, "-f", "navigator", "--no-timestamp")
+        assert old.exit_code == 1
+        assert new.exit_code == 1
+        assert old.stdout == new.stdout
 
     def test_the_format_choices_come_from_the_registry(self) -> None:
         scan_command = cli.commands["scan"]
@@ -151,9 +159,14 @@ class TestExitCodeMatrix:
         assert invoke("scan", secure, "--fail-on", "high").exit_code == 0
         assert invoke("scan", secure, "--fail-on", "medium").exit_code == 1
 
-    def test_a_clean_input_exits_zero(self) -> None:
-        result = invoke("scan", FIXTURES_DIR / "docker" / "secure.Dockerfile")
+    def test_findings_below_the_gate_exit_zero(self) -> None:
+        """The hardened Dockerfile has a low finding; the default gate is high."""
+        result = invoke("scan", FIXTURES_DIR / "docker" / "secure.Dockerfile", "-f", "json")
         assert result.exit_code == 0
+        summary = report_of(result)["summary"]
+        assert summary
+        assert set(summary) <= {"medium", "low", "info"}
+        assert "found 1 finding" in result.stderr
 
     def test_a_parse_failure_exits_two_and_names_the_file(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", BAD_TF)
@@ -279,7 +292,10 @@ class TestStrictAndGaps:
         assert "--strict: coverage gaps make this scan fail" in result.stderr
 
     def test_strict_without_gaps_changes_nothing(self) -> None:
-        assert invoke("scan", SIMPLE_TF, "--strict", "--fail-on", "none").exit_code == 0
+        result = invoke("scan", SIMPLE_TF, "--strict", "--fail-on", "none", "-f", "json")
+        assert result.exit_code == 0
+        assert "Coverage gaps" not in result.stderr
+        assert report_of(result)["threats"]
 
     def test_errors_survive_quiet(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", BAD_TF)
@@ -749,7 +765,7 @@ class TestScanLLMConfig:
                         "description": "Returned by the fake local model server.",
                         "stride_category": "elevation_of_privilege",
                         "severity": "high",
-                        "resource_address": "Deployment/insecure-app",
+                        "resource_address": "kubernetes_deployment.default.insecure-app",
                     }
                 ]
             }
@@ -758,11 +774,20 @@ class TestScanLLMConfig:
             tmp_path,
             f"llm:\n  provider: ollama\n  base_url: {fake_llm_server.base_url}\n"
             "  model: llama3.2\n  allow_local_network: true\n",
+            "-f",
+            "json",
         )
         assert result.exit_code == 1  # the insecure fixture has rule findings
         assert len(fake_llm_server.requests) == 1
         assert fake_llm_server.requests[0]["body"]["model"] == "llama3.2"
-        assert "Local model marker threat" in result.stdout
+        report = report_of(result)
+        advisory = [t for t in report["threats"] if t["source"] == "llm"]
+        assert [(t["title"], t["resource_address"]) for t in advisory] == [
+            ("Local model marker threat", "kubernetes_deployment.default.insecure-app")
+        ]
+        # The reply was attributed to a node, not parked in the unattributed list
+        assert report["llm"]["unattributed_count"] == 0
+        assert report["llm"]["status"] == "ran"
         assert "LLM analysis failed" not in result.stderr
         assert "sending a redacted graph to ollama/llama3.2" in result.stderr
 
@@ -877,6 +902,7 @@ class TestDiffCommand:
         base, _ = self._reports(tmp_path, [], [])
         result = invoke("diff", base, tmp_path)
         assert result.exit_code == 2
+        assert "is a directory" in result.stderr
 
     def test_fail_on_new_gates_on_added_and_worsened_threats(self, tmp_path: Path) -> None:
         base, cur = self._reports(
@@ -893,7 +919,11 @@ class TestDiffCommand:
 
     def test_resolved_threats_never_fail_the_gate(self, tmp_path: Path) -> None:
         base, cur = self._reports(tmp_path, [self.threat("old", "critical")], [])
-        assert invoke("diff", base, cur, "--fail-on-new", "info").exit_code == 0
+        result = invoke("diff", base, cur, "--fail-on-new", "info", "-f", "json")
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)
+        assert [t["id"] for t in data["removed"]] == ["old"]
+        assert data["added"] == []
 
     def test_a_real_scan_report_diffs_clean_against_itself(self, tmp_path: Path) -> None:
         out = tmp_path / "scan.json"
@@ -1074,7 +1104,7 @@ class TestDeterminism:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("SOURCE_DATE_EPOCH", "1700000000")
-        for fmt in ("markdown", "text", "sarif", "bitbucket", "matrix", "diagram"):
+        for fmt in ("markdown", "text", "sarif", "bitbucket", "navigator", "diagram"):
             assert (
                 invoke("scan", INSECURE_PLAN, "-f", fmt).stdout
                 == invoke("scan", INSECURE_PLAN, "-f", fmt).stdout
