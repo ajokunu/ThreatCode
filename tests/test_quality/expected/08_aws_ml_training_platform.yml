@@ -5,7 +5,7 @@ must_find:
     rule_ids: [IAM_WILDCARD_ACTION]
     kind: wildcard_iam
     why: 'TODO "Scope down to least privilege" (MLPLAT-2847): Sid FullAccessForTraining allows Action "*"'
-  - resource: aws_s3_bucket_acl.notebook_outputs
+  - resource: aws_s3_bucket.notebook_outputs
     rule_ids: [S3_PUBLIC_ACCESS]
     kind: public_access
     why: 'acl is "public-read"; "researchers need quick access"'

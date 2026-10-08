@@ -5,6 +5,9 @@ must_find:
     rule_ids: [AKS_NO_RBAC]
     kind: rbac_disabled
     why: '# RBAC is not enabled - flagged in last security review (TODO: PLAT-901 enable Azure AD RBAC)'
+    known_miss: >-
+      The cluster never sets role_based_access_control_enabled, whose azurerm default is true,
+      and no rule covers a missing Azure AD integration block, so nothing honest can be reported.
   - resource: azurerm_container_registry.platform
     kind: registry_admin_enabled
     why: 'admin_enabled = true  # Should be false, using managed identity instead'

@@ -12,7 +12,7 @@ must_find:
     rule_ids: [IAM_WILDCARD_ACTION]
     kind: wildcard_iam
     why: 'description "needs access to everything"; TODO scope down (GAME-3998): Action "*" on "*"'
-  - resource: aws_s3_bucket_acl.game_assets
+  - resource: aws_s3_bucket.game_assets
     rule_ids: [S3_PUBLIC_ACCESS]
     kind: public_access
     why: 'acl is "public-read" on the game assets bucket'
@@ -24,9 +24,6 @@ must_not_find:
   - resource: aws_sqs_queue.matchmaking_queue
     rule_ids: [SQS_NO_ENCRYPTION]
     why: 'sqs_managed_sse_enabled is true'
-  - resource: aws_s3_bucket.replay_storage
-    rule_ids: [S3_NO_ENCRYPTION]
-    why: 'the companion aws_s3_bucket_server_side_encryption_configuration enables AES256'
   - resource: aws_s3_bucket_server_side_encryption_configuration.replay_storage
     rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
     why: 'the encryption companion is the encryption'

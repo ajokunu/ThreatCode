@@ -4,6 +4,10 @@ ThreatCode uses declarative YAML rules to detect security issues.
 Rules are evaluated against every node in the infrastructure graph using a safe condition evaluator, and no `eval()` is ever used.
 A rule file is checked completely when it is loaded, so a typo is a loud error that names the file, the rule and the key path instead of a rule that quietly never fires.
 
+The 256<!-- count:rules --> built-in rules are listed in the [rule catalog](rules.md).
+Your own rules go in a file you pass with `--rules`, next to them.
+Every example on this page that is a complete rule file is loaded by the test suite, so it works as written.
+
 ---
 
 ## Rule File Structure
@@ -19,12 +23,12 @@ rules:
     resource_type: aws_s3_bucket
     condition:
       # ... condition structure (see below) ...
+    confidence: definitive
     mitigation: >
       Specific remediation steps.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
 # Optional: IDs of rules that used to live in this file and were removed
 deprecated_ids: [OLD_RULE_ID]
@@ -51,8 +55,8 @@ deprecated_ids: [OLD_RULE_ID]
 | `mitigation` | string | Specific remediation steps |
 | `confidence` | string | How the condition was established: `definitive` (the configuration proves it, the default), `heuristic` (inferred from names or partial data) or `absence` (it fires because something is missing) |
 | `root_cause` | string | What actually has to change when several findings share one underlying cause |
-| `metadata.mitre.techniques` | list[string] | MITRE ATT&CK technique IDs, e.g. `["T1530"]` or `["T1078.004"]` |
-| `metadata.mitre.tactics` | list[string] | MITRE ATT&CK tactic IDs, e.g. `["TA0009"]` |
+| `metadata.mitre.techniques` | list[string] | MITRE ATT&CK technique IDs, e.g. `["T1530"]` or `["T1078.004"]`. Leave it out when no adversary technique honestly applies. |
+| `metadata.mitre.tactics` | list[string] | Optional. The tactics are derived from the techniques, so write them only to override the derivation. Built-in rules never do. |
 
 Loaded rules are immutable.
 `rule.metadata` and `rule.condition` are read-only containers, so copy them with `copy.deepcopy()` before changing them.
@@ -69,6 +73,27 @@ Loaded rules are immutable.
 | `information_disclosure` | Confidentiality | Publicly accessible RDS instance |
 | `denial_of_service` | Availability | Lambda without dead letter queue |
 | `elevation_of_privilege` | Authorization | Wildcard IAM actions |
+
+---
+
+## Confidence and severity
+
+Every built-in rule declares how it knows, and its severity respects that.
+
+| Confidence | Meaning | Severity cap |
+|------------|---------|--------------|
+| `definitive` | The configuration proves the condition. | none; `critical` is reserved for definitive, direct exposure of data or control: a public data store, an admin wildcard, a world-open trust policy |
+| `heuristic` | Inferred from names, a default or partial data. | `high` |
+| `absence` | It fires because something is missing. | `medium` |
+
+A test keeps the built-in rules inside those caps.
+Use the same convention for your own rules: a rule that says "no flow logs" is an absence rule at low or medium, and a rule that fires on a literal `0.0.0.0/0` to port 22 is definitive.
+
+Rules that share one fix declare the same `root_cause`, and the Markdown and text reports show them as one entry with a line each.
+
+A rule sets the base severity.
+The engine may add an effective severity with a reason when context changes it, for example one level up for a weakness on a resource the internet reaches.
+Your rule does not need to know about that.
 
 ---
 
@@ -418,43 +443,50 @@ A condition nested deeper than 10 levels, a malformed condition or an unknown op
 
 ## Complete Example Rules
 
-### S3 public access
+Each block below is a complete rule file.
+The ids start with `EXAMPLE_` because a custom id that equals a built-in id is a load error (`Duplicate rule ID`).
+Use your own prefix, see [Rule ID conventions](#rule-id-conventions).
+
+### Public bucket ACL
+
+<!-- rules-file -->
 
 ```yaml
 rules:
-  - id: S3_PUBLIC_ACCESS
-    title: S3 bucket allows public access
+  - id: EXAMPLE_S3_PUBLIC_ACL
+    title: S3 bucket ACL allows public access
     description: >
-      The S3 bucket ACL or policy allows public read or write access.
-      Exposed data can be accessed without authentication.
+      The bucket ACL grants read or write access to everyone.
+      Exposed data can be read without authentication.
     stride_category: information_disclosure
     severity: critical
-    resource_types: [aws_s3_bucket, aws_s3_bucket_acl]
+    confidence: definitive
+    resource_type: aws_s3_bucket
     condition:
-      any_of:
-        - acl:
-            matches_any: ["public-read", "public-read-write", "authenticated-read"]
-        - policy:
-            contains: '"Effect":"Allow","Principal":"*"'
+      acl:
+        matches_any: ["public-read", "public-read-write", "authenticated-read"]
     mitigation: >
-      Set ACL to 'private' and use aws_s3_bucket_public_access_block
+      Set the ACL to private and use aws_s3_bucket_public_access_block
       to enforce public access restrictions at the bucket level.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 ```
 
-### RDS encryption
+### Database without encryption
+
+<!-- rules-file -->
 
 ```yaml
-  - id: RDS_NO_ENCRYPTION
+rules:
+  - id: EXAMPLE_RDS_UNENCRYPTED
     title: RDS instance without encryption at rest
     description: >
       The RDS database instance does not have storage encryption enabled.
       Unencrypted data is at risk if storage media is compromised.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
     resource_type: aws_db_instance
     condition:
       any_of:
@@ -468,12 +500,14 @@ rules:
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 ```
 
 ### Security group open to the world on an admin port
 
+<!-- rules-file -->
+
 ```yaml
+rules:
   - id: MYORG_SG_ADMIN_OPEN
     title: Security group exposes an admin port to the internet
     description: >
@@ -483,7 +517,7 @@ rules:
     confidence: definitive
     resource_type: aws_security_group
     condition:
-      ingress:
+      derived.ingress:
         any_item:
           cidr_blocks:
             is_world_cidr: true
@@ -492,14 +526,18 @@ rules:
       Restrict the source to a bastion or VPN range.
     metadata:
       mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+        techniques: ["T1133"]
 ```
+
+`derived.ingress` is a fact the engine computes, see [Facts the engine computes](#facts-the-engine-computes).
 
 ### Kubernetes privileged container
 
+<!-- rules-file -->
+
 ```yaml
-  - id: K8S_PRIVILEGED_CONTAINER
+rules:
+  - id: EXAMPLE_K8S_PRIVILEGED
     title: Kubernetes container running in privileged mode
     description: >
       A container is running with full root capabilities, bypassing all
@@ -507,6 +545,7 @@ rules:
       escape to the host node.
     stride_category: elevation_of_privilege
     severity: critical
+    confidence: definitive
     resource_type: "@kubernetes_pod_workloads"
     condition:
       privileged:
@@ -518,8 +557,163 @@ rules:
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 ```
+
+---
+
+## Built-in rules as shipped
+
+The built-in rules are written exactly like yours.
+Three of them, copied from the rule files by the documentation generator, so they are the real thing:
+
+<!-- gen:shown-rules -->
+### `S3_PUBLIC_ACCESS`
+
+From `builtin/aws/s3.yml`:
+
+```yaml
+  - id: S3_PUBLIC_ACCESS
+    title: S3 bucket allows public access
+    description: >
+      The bucket is readable or writable by anyone.
+      Either its ACL is public-read, public-read-write or authenticated-read (any AWS account
+      holder) and the public access block does not ignore public ACLs, or a bucket policy
+      allows every principal with no condition that limits the caller (aws:PrincipalOrgID,
+      aws:SourceVpce, aws:SourceVpc, aws:SourceArn, aws:SourceAccount or aws:PrincipalArn)
+      and the public access block does not stop public policies.
+      Public buckets are how most cloud data breaches start.
+    stride_category: information_disclosure
+    severity: critical
+    confidence: definitive
+    root_cause: s3-public-access
+    resource_type: aws_s3_bucket
+    condition:
+      any_of:
+        - all_of:
+            - derived.acl:
+                matches_any: ["public-read", "public-read-write", "authenticated-read"]
+            - derived.public_access_block.block_public_acls:
+                not_equals: true
+            - derived.public_access_block.ignore_public_acls:
+                not_equals: true
+        - all_of:
+            - derived.allows_any_principal:
+                equals: true
+            - derived.public_access_block.block_public_policy:
+                not_equals: true
+            - derived.public_access_block.restrict_public_buckets:
+                not_equals: true
+    mitigation: >
+      Set the ACL to private, remove statements that name every principal from the bucket
+      policy or narrow them with aws:PrincipalOrgID, aws:SourceVpce or aws:SourceArn, and turn on
+      all four settings of aws_s3_bucket_public_access_block.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+```
+
+### `RDS_NO_ENCRYPTION`
+
+From `builtin/aws/rds.yml`:
+
+```yaml
+  - id: RDS_NO_ENCRYPTION
+    title: RDS database without encryption at rest
+    description: >
+      The database instance or Aurora cluster does not have storage encryption enabled.
+      Its storage, snapshots and automated backups are unencrypted, so anyone who obtains a
+      snapshot or the underlying volume can read the data.
+      Encryption can only be chosen when the database is created.
+      A database restored from a snapshot or created as a replica inherits the source's setting
+      and is not reported, and neither is an instance that belongs to a cluster, which inherits
+      the cluster's, or a serverless Aurora cluster, which is always encrypted.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: rds-storage-unencrypted
+    resource_types: [aws_db_instance, aws_rds_cluster]
+    condition:
+      all_of:
+        - any_of:
+            - storage_encrypted:
+                equals: false
+            - storage_encrypted:
+                not_exists: true
+        - snapshot_identifier:
+            not_exists: true
+        - replicate_source_db:
+            not_exists: true
+        - replication_source_identifier:
+            not_exists: true
+        - db_cluster_identifier:
+            not_exists: true
+        - engine_mode:
+            not_equals: serverless
+    mitigation: >
+      Set storage_encrypted to true, with a customer-managed kms_key_id where key control matters.
+      To encrypt an existing database, copy a snapshot with encryption and restore from it.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+```
+
+### `K8S_PRIVILEGED_CONTAINER`
+
+From `builtin/kubernetes/workloads.yml`:
+
+```yaml
+  - id: K8S_PRIVILEGED_CONTAINER
+    title: Container running in privileged mode
+    description: >
+      A container is configured with privileged: true, giving it full access to the host.
+      This effectively disables all container isolation.
+      The container_findings property of the workload names the containers.
+    stride_category: elevation_of_privilege
+    severity: critical
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
+    condition:
+      privileged:
+        equals: true
+    mitigation: >
+      Remove privileged: true from the container securityContext.
+      Use specific capabilities instead.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+```
+<!-- /gen:shown-rules -->
+
+Note `confidence` and `root_cause`, a technique and no tactic, and conditions that read `derived.*` facts.
+A built-in id cannot be reused, so to start from one, copy it and give it your own prefix.
+
+---
+
+## Facts the engine computes
+
+Some questions cannot be asked of one attribute.
+Whether a bucket is versioned depends on `aws_s3_bucket_versioning`, a different resource.
+Whether a security group is open depends on inline `ingress` blocks, `aws_security_group_rule` and `aws_vpc_security_group_ingress_rule` taken together.
+After the graph is built, an enrichment pass folds companion resources into their parent and writes the answers under `derived.*`, where a rule reads them like any other property.
+
+- `derived.ingress` and `derived.egress` hold the rules of a security group in one canonical shape, whatever resources declared them.
+- `derived.versioning_enabled`, `derived.logging_enabled`, `derived.sse_algorithm` and `derived.public_access_block` hold the effective settings of a bucket.
+- `derived.has_flow_log` says whether a flow log targets a VPC, and `derived.has_diagnostic_settings` whether a diagnostic setting targets an Azure resource.
+- `derived.policy_statements`, `derived.assume_role_statements` and `derived.inline_policy_statements` hold parsed policy statements (effect, actions, resources, principals, condition keys) for IAM, KMS, S3, SQS and SNS.
+- `derived.role_attached_policy_arns` and `derived.role_policy_statements` hold what the role of a Lambda function, instance or task allows.
+
+A companion whose parent cannot be resolved (a variable, a value known only after apply, an ambiguous name) makes the same facts `Unknown` on every candidate parent, so a rule never reports "unconfigured" for something it could not see.
+The namespace is reserved: an input that carries its own `derived` attribute has it replaced.
+Each enrichment module documents the keys it writes in its docstring (`src/threatcode/ir/enrichment/`).
+
+Kubernetes workloads carry one property shape whatever the kind, so a rule written once applies to every pod-bearing kind.
+`privileged`, `host_network`, `host_pid` and `host_ipc` are workload-wide flags, and `container_findings` maps a property to the containers that make it unsafe (`{"privileged": ["log-shipper"]}`).
+`seccomp_profile_type`, `has_seccomp_profile`, `has_cpu_limit`, `has_memory_limit` and `has_ephemeral_storage_limit` give the effective settings (a container value wins over the pod value), `effective_automount_sa_token` settles token mounting across the pod and its ServiceAccount, and `ingress_policy_covered` and `egress_policy_covered` say whether a NetworkPolicy of the same scan input selects the workload.
+Roles carry `has_wildcard_api_groups`, `has_escalation_verbs`, `has_secrets_read` and `has_pod_exec`, bindings carry `binds_unauthenticated_group` and `binds_authenticated_group`, and an Ingress carries `has_tls`.
+
+Provider defaults work the other way round.
+A Terraform file or CloudFormation template leaves out values that a plan prints, so a module may declare `DEFAULTS` that fill an absent attribute in place, for HCL and CloudFormation input only, never for a plan or a design.
+The filled paths are listed in `derived.defaults_applied`.
 
 ---
 
@@ -569,27 +763,53 @@ Listing an ID that is still defined in the same file is a load error.
 
 ## Loading Custom Rules
 
-```bash
-# Load additional rule files via CLI
-threatcode scan tfplan.json --rules my_rules.yml --rules compliance.yml
+Pass a rule file with `--rules`, as many times as you like:
 
-# Via config file
+<!-- runnable -->
+
+```bash
+cat > my_rules.yml <<'EOF'
+rules:
+  - id: EXAMPLE_INSTANCE_WITHOUT_OWNER_TAG
+    title: Instance without an owner tag
+    description: Every instance needs an owner tag so incidents have somebody to call.
+    stride_category: repudiation
+    severity: low
+    confidence: absence
+    resource_type: aws_instance
+    condition:
+      tags.owner:
+        not_exists: true
+    mitigation: Add an owner tag.
+EOF
+threatcode scan examples/aws-webapp --rules my_rules.yml -f json -o report.json --fail-on none
+grep -q EXAMPLE_INSTANCE_WITHOUT_OWNER_TAG report.json
 ```
 
+A custom rule file decides what is reported, so it comes only from you:
+
+- `--rules FILE` on the command line, repeatable.
+- `extra_rule_paths` in a config file that you name with `--config`.
+  An auto-discovered `.threatcode.yml` cannot load rules, because it belongs to the repository being scanned.
+- `extra_rule_paths=[...]` in the Python API.
+
 ```yaml
-# .threatcode.yml
+# rules.yml, used with: threatcode scan infra/ --config rules.yml
 extra_rule_paths:
   - rules/my_org_rules.yml
   - rules/compliance.yml
 ```
 
+Relative paths in `extra_rule_paths` resolve against the directory of the config file.
+
 ```python
-# Via Python API
 from threatcode import scan
+
 report = scan("tfplan.json", extra_rule_paths=["my_rules.yml"])
 ```
 
 Rules loaded from a custom file get the source group `custom__<file stem>`.
+A finding from one of your rules is a normal finding: it can be suppressed, baselined, gated on and exported like any other.
 
 ---
 

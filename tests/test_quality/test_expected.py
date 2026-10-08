@@ -1,9 +1,9 @@
 """Run the planted-issue benchmark on the realistic fixtures and report recall and violations.
 
-This test asserts that the harness runs and that the expectation files are sound. It does not
-set a recall target: the numbers it prints are the measurement, and ratchets are recorded in
-``expected/ratchet.yml`` by the package that owns the release gates. When that file exists, this
-test enforces it.
+This test asserts that the harness runs, that the expectation files are sound and that the build
+has not fallen below the numbers recorded in ``expected/ratchet.yml``. The ratchet holds the
+measured result of the build: raise it when a change finds more, never lower it to let a change
+pass. ``docs/benchmark.md`` publishes the same numbers (``scripts/gen_docs_counts.py``).
 
 Run ``pytest tests/test_quality -s`` to see the report. ``THREATCODE_QUALITY_SUMMARY=<path>``
 writes it as a Markdown table, for a CI step summary.
@@ -23,6 +23,8 @@ from tests.test_quality.harness import (
     REPORT_KEY,
     Expected,
     FixtureResult,
+    MustFind,
+    MustNotFind,
     check_ratchet,
     load_all_expected,
     load_ratchet,
@@ -34,9 +36,15 @@ from tests.test_quality.harness import (
     scan_fixture,
     totals,
 )
+from threatcode.engine.rules.loader import load_builtin_rules
+from threatcode.engine.secrets.builtin import get_builtin_rules as get_secret_rules
 
 EXPECTED = load_all_expected()
 FIXTURES = sorted(p.name for p in REALISTIC_DIR.iterdir() if p.is_file())
+
+
+def _entries(expected: Expected) -> list[MustFind | MustNotFind]:
+    return [*expected.must_find, *expected.must_not_find]
 
 
 def _results() -> list[FixtureResult]:
@@ -61,7 +69,7 @@ class TestExpectationFiles:
 
     def test_every_entry_quotes_the_comment_or_attribute_that_plants_it(self) -> None:
         for expected in EXPECTED:
-            for entry in (*expected.must_find, *expected.must_not_find):
+            for entry in _entries(expected):
                 assert len(entry.why.split()) >= 3, f"{expected.fixture} {entry.resource}"
 
     @pytest.mark.parametrize("expected", EXPECTED, ids=lambda e: e.fixture)
@@ -108,11 +116,22 @@ class TestBenchmarkRuns:
         if path:
             Path(path).write_text(summary, encoding="utf-8")
 
-    def test_the_ratchet_holds_when_one_is_recorded(self) -> None:
+    def test_the_ratchet_is_recorded_and_holds(self) -> None:
         ratchet = load_ratchet()
-        if ratchet is None:
-            pytest.skip("no expected/ratchet.yml yet; the release-gate package records it")
+        assert ratchet is not None, "expected/ratchet.yml records the measured baseline"
         assert check_ratchet(totals(_results()), ratchet) == []
+
+    def test_the_ratchet_is_not_looser_than_the_measurement_by_more_than_rounding(self) -> None:
+        """A ratchet far below the measurement lets recall fall without the build noticing."""
+        ratchet = load_ratchet()
+        assert ratchet is not None
+        total = totals(_results())
+        assert total.recall - ratchet.min_recall < 0.001, (
+            f"measured recall {total.recall:.4f} is above the ratchet {ratchet.min_recall:.4f}: "
+            "raise min_recall in expected/ratchet.yml"
+        )
+        assert ratchet.max_violations == total.violations
+        assert ratchet.max_companion_duplicates == total.companion_duplicates
 
     def test_scoring_is_deterministic(self) -> None:
         first = render_text(_results())
@@ -136,3 +155,58 @@ class TestFindingIntegrity:
             if (dups := companion_duplicates(scan_fixture(fixture)))
         }
         assert not offenders, offenders
+
+
+class TestEveryMissIsExplained:
+    """A planted issue the product does not find is either a regression or a known limit."""
+
+    def test_no_planted_issue_is_missed_without_an_explanation(self) -> None:
+        unexplained = {
+            r.fixture: [e.resource for e in r.unexplained_misses]
+            for r in _results()
+            if r.unexplained_misses
+        }
+        assert not unexplained, (
+            f"planted issues the scan no longer finds: {unexplained}. Fix the regression, or add "
+            "known_miss: <reason> to the entry if the product cannot honestly find it"
+        )
+
+    def test_no_known_miss_is_found_after_all(self) -> None:
+        stale = {
+            r.fixture: [e.resource for e in r.stale_known_misses]
+            for r in _results()
+            if r.stale_known_misses
+        }
+        assert not stale, f"found now, remove known_miss from: {stale}"
+
+    def test_the_known_misses_stay_few(self) -> None:
+        """The reasons are listed in docs/benchmark.md; a long list would be a hiding place."""
+        known = sum(len([e for e in r.missed if e.known_miss]) for r in _results())
+        assert known <= 3
+
+
+class TestExpectationsNameCurrentRules:
+    def test_every_rule_id_is_a_builtin_rule_or_a_secret_detector(self) -> None:
+        known = {r.id for r in load_builtin_rules()} | {r.id for r in get_secret_rules()}
+        stale = {
+            f"{e.fixture} {entry.resource}": [i for i in entry.rule_ids if i not in known]
+            for e in EXPECTED
+            for entry in _entries(e)
+            if any(i not in known for i in entry.rule_ids)
+        }
+        assert not stale, f"expectations naming a removed or misspelled rule: {stale}"
+
+
+class TestFindingsSitOnTheirRulesTypes:
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_no_finding_sits_on_a_resource_type_its_rule_does_not_declare(
+        self, fixture: str
+    ) -> None:
+        """Rules match their type exactly; a finding elsewhere is a sibling-type duplicate."""
+        rules = {r.id: r for r in load_builtin_rules()}
+        wrong = [
+            f"{t.rule_id} on {t.resource_address} ({t.resource_type})"
+            for t in scan_fixture(fixture).threats
+            if t.rule_id in rules and not rules[t.rule_id].matches_type(t.resource_type)
+        ]
+        assert not wrong, f"{fixture}: {wrong}"

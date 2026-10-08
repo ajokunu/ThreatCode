@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -53,7 +54,9 @@ def synthetic(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def score(synthetic: Path, doc: dict, dropped: frozenset[str] = frozenset()) -> FixtureResult:
+def score(
+    synthetic: Path, doc: dict[str, Any], dropped: frozenset[str] = frozenset()
+) -> FixtureResult:
     expected = parse_expected({"fixture": "main.tf", **doc}, "synthetic")
     return run_fixture(expected, scan_fixture("main.tf", synthetic), dropped)
 
@@ -270,7 +273,7 @@ class TestMalformedExpectations:
         ],
     )
     def test_invalid_documents_are_rejected_with_the_location(
-        self, doc: dict, message: str
+        self, doc: dict[str, Any], message: str
     ) -> None:
         with pytest.raises(ExpectationError, match=message):
             parse_expected({"fixture": "f", **doc}, "synthetic.yml")
@@ -316,3 +319,68 @@ class TestCompanionDuplicates:
         self, synthetic: Path
     ) -> None:
         assert companion_duplicates(scan_fixture("main.tf", synthetic)) == []
+
+
+class TestKnownMisses:
+    """A miss the product cannot fix is explained in the data, and the explanation is policed."""
+
+    PUBLIC = {
+        "resource": "aws_s3_bucket.public_assets",
+        "rule_ids": ["S3_PUBLIC_ACCESS"],
+        "why": "acl is public-read",
+    }
+    ABSENT = {
+        "resource": "aws_s3_bucket.private_data",
+        "rule_ids": ["S3_PUBLIC_ACCESS"],
+        "why": "this bucket is private so the rule cannot hit",
+    }
+
+    def test_an_explained_miss_still_counts_against_the_recall(self, synthetic: Path) -> None:
+        explained = {**self.ABSENT, "known_miss": "the bucket is private, so nothing is exposed"}
+        result = score(synthetic, {"must_find": [self.PUBLIC, explained]})
+        assert result.recall == 0.5
+        assert result.unexplained_misses == []
+        assert [e.resource for e in result.missed] == ["aws_s3_bucket.private_data"]
+
+    def test_a_miss_without_a_reason_is_unexplained(self, synthetic: Path) -> None:
+        result = score(synthetic, {"must_find": [self.PUBLIC, self.ABSENT]})
+        assert [e.resource for e in result.unexplained_misses] == ["aws_s3_bucket.private_data"]
+
+    def test_a_known_miss_that_is_found_is_stale(self, synthetic: Path) -> None:
+        stale = {**self.PUBLIC, "known_miss": "the rule used to miss public ACLs on buckets"}
+        result = score(synthetic, {"must_find": [stale]})
+        assert [e.resource for e in result.stale_known_misses] == ["aws_s3_bucket.public_assets"]
+
+    def test_the_reason_must_be_a_sentence(self) -> None:
+        doc = {"must_find": [{**self.PUBLIC, "known_miss": "later"}]}
+        with pytest.raises(ExpectationError, match="known_miss must be a sentence"):
+            parse_expected({"fixture": "main.tf", **doc}, "synthetic.yml")
+
+
+class TestScanningGoesThroughThePipeline:
+    def test_a_secret_finding_counts_like_any_other_finding(self, tmp_path: Path) -> None:
+        (tmp_path / "main.tf").write_text(
+            'resource "aws_db_instance" "orders" {\n'
+            '  engine   = "postgres"\n'
+            '  password = "Tr0ub4dor&3-live-Secret"\n'
+            "}\n",
+            encoding="utf-8",
+        )
+        result = score(
+            tmp_path,
+            {
+                "must_find": [
+                    {
+                        "resource": "aws_db_instance.orders",
+                        "kind": "hardcoded_secret",
+                        "why": "password is a literal in the file",
+                    }
+                ]
+            },
+        )
+        assert result.recall == 1.0
+
+    def test_a_fixture_the_scan_cannot_read_fails_instead_of_scoring(self, tmp_path: Path) -> None:
+        (tmp_path / "broken.tf").write_text('resource "aws_s3_bucket" {\n', encoding="utf-8")
+        with pytest.raises(ExpectationError, match="could not analyse"):
+            scan_fixture("broken.tf", tmp_path)
