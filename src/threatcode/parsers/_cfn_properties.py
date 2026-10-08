@@ -1541,6 +1541,10 @@ SPECS: dict[str, Spec] = {
         blocks=("VisibilityConfig",),
         custom={"DefaultAction": _waf_default_action},
     ),
+    "AWS::WAFv2::RuleGroup": _spec(
+        rename={"Rules": "rule", "VisibilityConfig": "visibility_config"},
+        blocks=("VisibilityConfig",),
+    ),
     "AWS::GuardDuty::Detector": _spec(
         rename={"DataSources": "datasources"},
         blocks=(

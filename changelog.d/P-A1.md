@@ -36,3 +36,8 @@
   A dependency that is vendored (a directory or a packed `.tgz`) or switched off by its `condition` is not reported.
 - **Unresolved Helm names are words.**
   `kubernetes_service.placeholder-templates-svc-yaml-0-2.placeholder-templates-svc-yaml-0-1` is now `kubernetes_service.unresolved-namespace.unresolved-svc`, and a second unresolved document of the same template is `unresolved-svc-1`, so a boundary finding or an attack path through such a service can be read.
+- **A Kubernetes grant limited to named objects is not a grant over all of them.**
+  `has_secrets_read` and `has_pod_exec` ignored `resourceNames`, so a Role that reads only the Secret `tls-cert`, or execs only into the pod `debug-0`, was reported like one that covers every Secret or pod.
+  A rule that names its objects no longer sets either fact; a broad rule next to it still does.
+  The wording of `K8S_RBAC_SECRETS_READ`, which says it cannot tell, is in a rule file this change does not own.
+- A CloudFormation `AWS::WAFv2::RuleGroup` now reads like the web ACL: its `Rules` is the Terraform `rule` and its `VisibilityConfig` is the `visibility_config` block.

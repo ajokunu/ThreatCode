@@ -690,9 +690,21 @@ def _role_properties(doc: Mapping[str, Any], spec: Mapping[str, Any]) -> dict[st
         escalation = escalation or bool(verbs & _ESCALATION_VERBS)
         # Secrets and pods/exec live in the core group, which is "" (or no group at all)
         core = not groups or "" in groups or _WILDCARD in groups
-        if core and bool({"secrets", _WILDCARD} & resources) and bool(verbs & _READ_VERBS):
+        # A grant limited to named objects is not a grant over every Secret or every pod
+        named = bool(as_str_list(rule.get("resourceNames")))
+        if (
+            core
+            and not named
+            and bool({"secrets", _WILDCARD} & resources)
+            and bool(verbs & _READ_VERBS)
+        ):
             secrets_read = True
-        if core and bool(resources & _EXEC_RESOURCES) and bool({"create", _WILDCARD} & verbs):
+        if (
+            core
+            and not named
+            and bool(resources & _EXEC_RESOURCES)
+            and bool({"create", _WILDCARD} & verbs)
+        ):
             pod_exec = True
     return {
         "rbac_rules": raw,
