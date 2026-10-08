@@ -32,8 +32,10 @@ import ipaddress
 import json
 import posixpath
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final
 from urllib.parse import urlsplit
 
@@ -387,6 +389,77 @@ def _url_parts(url: str) -> tuple[str, str]:
         return parts.scheme.lower(), (parts.hostname or "").lower()
     except ValueError:
         return "", ""
+
+
+# Every property an MCP resource can carry, by resource type.
+# A rule may read a property of an ``mcp_*`` resource only if it is listed here: the provenance
+# gate (tests/test_engine/test_rule_property_provenance.py) fails a rule that reads anything
+# else, because such a rule can never fire, and it fails when the parser emits a property this
+# table does not list or this table lists one the parser never emits.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "mcp_server": frozenset(
+            {
+                "args",
+                "bridge",
+                "bridge_allow_http",
+                "broad_filesystem_access",
+                "broad_filesystem_paths",
+                "capability_known",
+                "capability_tags",
+                "client_format",
+                "command",
+                "container_flags",
+                "container_lacks_no_new_privileges",
+                "container_privileged",
+                "disabled",
+                "env_keys",
+                "exposes_sensitive_paths",
+                "exposes_shell_exec",
+                "has_configured_auth",
+                "has_high_confidence_secret",
+                "has_literal_secret",
+                "has_possible_secret",
+                "header_keys",
+                "is_loopback",
+                "is_remote",
+                "launch_wrappers",
+                "literal_secret_arg_indexes",
+                "literal_secret_keys",
+                "package_name",
+                "package_unpinned",
+                "project_hash",
+                "remote_without_configured_auth",
+                "runner",
+                "sandbox_enabled",
+                "scope",
+                "secret_confidence",
+                "sensitive_filesystem_paths",
+                "server_name",
+                "transport",
+                "unpinned_packages",
+                "unpinned_reasons",
+                "url_host",
+                "url_scheme",
+                "uses_plaintext_transport",
+            }
+        ),
+        "mcp_agent": frozenset(
+            {
+                CAN_EXFILTRATE_OR_ACT,
+                INGESTS_UNTRUSTED_CONTENT,
+                READS_PRIVATE_DATA,
+                "capabilities",
+                "client_format",
+                "enabled_server_count",
+                "project_hash",
+                "scope",
+                "server_count",
+                "unknown_capability_servers",
+            }
+        ),
+    }
+)
 
 
 def _server_properties(

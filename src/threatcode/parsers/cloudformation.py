@@ -23,12 +23,18 @@ from bisect import bisect_right
 from collections.abc import Callable, Mapping
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic
 from threatcode.exceptions import ParseError
 from threatcode.parsers import _sam
-from threatcode.parsers._cfn_properties import TemplateContext, evaluate_condition, translate
+from threatcode.parsers._cfn_properties import (
+    RAW_KEY,
+    TemplateContext,
+    evaluate_condition,
+    translate,
+)
 from threatcode.parsers._cfn_refs import WorkBudget, scan_refs
 from threatcode.parsers._cfn_types import resolve_type
 from threatcode.parsers._json_lines import json_line_index
@@ -167,6 +173,13 @@ class LineIndex:
                     return bisect_right(self._offsets, i)
             i += 1
         return start
+
+
+# Every property the parser synthesizes, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py).
+# The properties of a resource are the template's, renamed to the Terraform attribute names the
+# rules use (see _cfn_properties); the one property of its own is the raw Properties mapping.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({"*": frozenset({RAW_KEY})})
 
 
 class CloudFormationParser(BaseParser):

@@ -55,7 +55,7 @@ from typing import TYPE_CHECKING, Any
 
 from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.ir.edges import EdgeType
-from threatcode.ir.enrich import EnrichContext
+from threatcode.ir.enrich import EnrichContext, Produced, produced
 from threatcode.ir.nodes import InfraNode
 from threatcode.ir.references import ArnParts, ReferenceIndex, parse_arn, type_is
 from threatcode.values import is_unknown
@@ -67,6 +67,10 @@ register_code(
     "graph.iam_fanout_capped",
     "A wildcard IAM permission matches more nodes than the per-role limit, so only some are linked",
 )
+
+# The one derived fact this module writes, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py)
+PRODUCED: Produced = produced(("aws_iam_role",), "assume_role_trust")
 
 # How many nodes a role's wildcard permissions are linked to, in total, before the rest are skipped
 MAX_WILDCARD_TARGETS = 25

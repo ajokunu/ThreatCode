@@ -34,11 +34,15 @@ value of a key that looks like a secret is masked in ``arguments``.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic, Level, register_code
 from threatcode.parsers._dockerfile_lexer import (
+    HEREDOC_INSTRUCTIONS,
+    KEYWORDS,
     Instruction,
     command_name,
     has_variable,
@@ -59,6 +63,119 @@ register_code("dockerfile.skipped_line", "A Dockerfile line is not an instructio
 register_code(
     "dockerfile.unresolved_variable",
     "A Dockerfile value uses a variable with no known default, so it is not judged",
+)
+
+# ---------------------------------------------------------------------------
+# What the parser produces
+# ---------------------------------------------------------------------------
+
+# Every property a Dockerfile resource can carry, by resource type.
+# A rule may read a property of a ``dockerfile_*`` resource only if it is listed here: the
+# provenance gate (tests/test_engine/test_rule_property_provenance.py) fails a rule that reads
+# anything else, because such a rule can never fire, and it fails when the parser emits a
+# property this table does not list or this table lists one the parser never emits.
+_INSTRUCTION_PROPERTIES = frozenset(
+    {"arguments", "instruction", "line_number", "onbuild", "stage", "stage_index"}
+)
+_INSTRUCTION_EXTRAS: dict[str, frozenset[str]] = {
+    "ADD": frozenset(
+        {
+            "destination",
+            "has_checksum",
+            "has_chown",
+            "has_sensitive_file",
+            "is_local_add",
+            "is_url_add",
+            "sources",
+        }
+    ),
+    "ARG": frozenset(
+        {"has_secret_pattern", "key", "keys", "pairs", "secret_keys", "secret_keys_without_default"}
+    ),
+    "COPY": frozenset(
+        {
+            "chown_missing",
+            "destination",
+            "from_stage",
+            "has_chown",
+            "has_sensitive_file",
+            "sources",
+        }
+    ),
+    "ENV": frozenset({"has_secret_pattern", "key", "keys", "pairs", "secret_keys"}),
+    "EXPOSE": frozenset({"port_ranges", "ports", "unknown_ports"}),
+    "FROM": frozenset(
+        {
+            "digest",
+            "digest_pinned",
+            "image",
+            "kind",
+            "parent_stage",
+            "platform",
+            "stage_name",
+            "tag",
+            "uses_latest_tag",
+        }
+    ),
+    "HEALTHCHECK": frozenset({"disabled"}),
+    "RUN": frozenset({"has_apt_no_clean", "has_apt_no_recommends", "has_curl_pipe", "has_sudo"}),
+    "USER": frozenset({"is_root", "user"}),
+}
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        **{
+            f"dockerfile_{name.lower()}": _INSTRUCTION_PROPERTIES
+            | _INSTRUCTION_EXTRAS.get(name, frozenset())
+            | (frozenset({"heredoc_body"}) if name in HEREDOC_INSTRUCTIONS else frozenset())
+            for name in sorted(KEYWORDS)
+        },
+        # The summary of the final stage: what runs is the last stage
+        "dockerfile_image": frozenset(
+            {
+                "add_count",
+                "base_image",
+                "base_kind",
+                "copy_without_chown",
+                "entrypoint_count",
+                "exposed_port_ranges",
+                "exposed_ports",
+                "final_stage_uses_latest_tag",
+                "has_digest_pin",
+                "has_healthcheck",
+                "has_privileged_port",
+                "has_ssh_exposed",
+                "has_user",
+                "has_workdir",
+                "is_non_minimal",
+                "is_root_user",
+                "stage_count",
+                "unknown_exposed_ports",
+                "user_value",
+                "uses_latest_tag",
+            }
+        ),
+        # One synthetic resource per FROM
+        "dockerfile_stage": frozenset(
+            {
+                "base_image",
+                "base_ref",
+                "digest_pinned",
+                "exposed_port_ranges",
+                "exposed_ports",
+                "has_healthcheck",
+                "has_user",
+                "has_workdir",
+                "instruction_count",
+                "is_final",
+                "kind",
+                "parent_stage",
+                "stage_index",
+                "stage_name",
+                "tag",
+                "user_value",
+            }
+        ),
+    }
 )
 
 # ---------------------------------------------------------------------------

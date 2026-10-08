@@ -18,6 +18,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic, register_code
@@ -133,6 +134,105 @@ _READ_VERBS = frozenset({"get", "list", "watch", _WILDCARD})
 _EXEC_RESOURCES = frozenset({"pods/exec", "pods/*", "*/exec", "*/*", _WILDCARD})
 _ANONYMOUS_SUBJECTS = frozenset({"system:anonymous", "system:unauthenticated"})
 _AUTHENTICATED_SUBJECT = "system:authenticated"
+
+
+# Every property a Kubernetes resource can carry, by resource type.
+# A rule may read a property of a ``kubernetes_*`` resource only if it is listed here: the
+# provenance gate (tests/test_engine/test_rule_property_provenance.py) fails a rule that reads
+# anything else, because such a rule can never fire, and it fails when the parser emits a
+# property this table does not list or this table lists one the parser never emits.
+_METADATA_PROPERTIES = frozenset(
+    {"annotations", "apiVersion", "kind", "labels", "name", "namespace"}
+)
+# The shared shape of every kind that carries a pod template, see _k8s_security and _k8s_links
+_WORKLOAD_PROPERTIES = frozenset(
+    {
+        "allow_privilege_escalation",
+        "automount_sa_token",
+        "capabilities_dropped",
+        "config_map_refs",
+        "container_findings",
+        "dangerous_capabilities",
+        "effective_automount_sa_token",
+        "egress_policy_covered",
+        "has_cpu_limit",
+        "has_ephemeral_storage_limit",
+        "has_host_path_volume",
+        "has_host_port",
+        "has_liveness_probe",
+        "has_memory_limit",
+        "has_readiness_probe",
+        "has_resource_limits",
+        "has_seccomp_profile",
+        "has_security_context",
+        "host_ipc",
+        "host_network",
+        "host_pid",
+        "images",
+        "ingress_policy_covered",
+        "pod_automount_sa_token",
+        "pod_labels",
+        "pod_run_as_non_root",
+        "pod_run_as_user",
+        "policy_scope",
+        "privileged",
+        "pvc_refs",
+        "replicas",
+        "run_as_root",
+        "sa_resolved",
+        "seccomp_profile_type",
+        "secret_env_vars",
+        "secret_refs",
+        "service_account_name",
+        "uses_latest_tag",
+        "writable_root_fs",
+    }
+)
+_ROLE_PROPERTIES = frozenset(
+    {
+        "has_escalation_verbs",
+        "has_pod_exec",
+        "has_secrets_read",
+        "has_wildcard_api_groups",
+        "has_wildcard_resources",
+        "has_wildcard_verbs",
+        "rbac_rules",
+    }
+)
+_BINDING_PROPERTIES = frozenset(
+    {
+        "binds_authenticated_group",
+        "binds_unauthenticated_group",
+        "role_ref_kind",
+        "role_ref_name",
+        "subject_kinds",
+        "subjects",
+    }
+)
+
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        **dict.fromkeys(WORKLOAD_KINDS.values(), _METADATA_PROPERTIES | _WORKLOAD_PROPERTIES),
+        "kubernetes_cluster_role": _METADATA_PROPERTIES | _ROLE_PROPERTIES,
+        "kubernetes_role": _METADATA_PROPERTIES | _ROLE_PROPERTIES,
+        "kubernetes_cluster_role_binding": _METADATA_PROPERTIES | _BINDING_PROPERTIES,
+        "kubernetes_role_binding": _METADATA_PROPERTIES | _BINDING_PROPERTIES,
+        "kubernetes_ingress": _METADATA_PROPERTIES | {"has_rules", "has_tls", "ingress_backends"},
+        "kubernetes_network_policy": _METADATA_PROPERTIES
+        | {
+            "effective_policy_types",
+            "has_egress_rules",
+            "has_ingress_rules",
+            "pod_selector",
+            "policy_types",
+        },
+        "kubernetes_service": _METADATA_PROPERTIES | {"ports", "selector", "service_type"},
+        "kubernetes_service_account": _METADATA_PROPERTIES | {"automount_sa_token"},
+        "kubernetes_config_map": _METADATA_PROPERTIES,
+        "kubernetes_namespace": _METADATA_PROPERTIES,
+        "kubernetes_secret": _METADATA_PROPERTIES,
+    }
+)
 
 
 def resource_type_for(kind: str) -> str:

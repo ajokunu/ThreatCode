@@ -25,7 +25,9 @@ import signal
 import subprocess
 import tempfile
 import threading
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic, register_code
@@ -57,6 +59,13 @@ MAX_HELM_OUTPUT_BYTES = 20 * 1024 * 1024
 _STDERR_TAIL_BYTES = 500
 _SOURCE_COMMENT = re.compile(r"#\s*Source:\s*(\S.*?)\s*\Z")
 _SEPARATOR = re.compile(r"---[ \t]*\Z")
+
+
+# Every property the parser synthesizes, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py).
+# None: a chart is rendered to manifests and the Kubernetes parser reads them, so the properties
+# are the ones listed in ``threatcode.parsers.kubernetes.PRODUCED``.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({})
 
 
 class HelmParser(BaseParser):

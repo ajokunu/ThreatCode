@@ -32,9 +32,14 @@ from threatcode.ir.enrich import (
     CompanionSpec,
     Deriver,
     EnrichContext,
+    Produced,
     RelationSpec,
     blocks,
+    merge_produced,
     merge_value,
+    produced,
+    produced_by_companions,
+    produced_by_relations,
     text,
     type_matcher,
 )
@@ -151,4 +156,13 @@ RELATIONS: tuple[RelationSpec, ...] = (
         derive=_has_public_ip,
         absent={"has_public_ip": False},
     ),
+)
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = merge_produced(
+    produced_by_companions(COMPANIONS),
+    produced_by_relations(RELATIONS),
+    produced(("azurerm_storage_account",), "network_default_deny"),
 )

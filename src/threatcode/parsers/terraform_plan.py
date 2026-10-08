@@ -36,9 +36,10 @@ once per module instance, so a plan cannot make resolution exponential.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic, register_code
@@ -569,6 +570,12 @@ def _apply_config_unknown(current: Any, expression: Any, counter: _Counter, dept
 # ---------------------------------------------------------------------------------------
 # The parser
 # ---------------------------------------------------------------------------------------
+
+
+# Every property the parser synthesizes, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py).
+# None: each property of a resource is an attribute of the plan under the provider's own name.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({})
 
 
 class TerraformPlanParser(BaseParser):

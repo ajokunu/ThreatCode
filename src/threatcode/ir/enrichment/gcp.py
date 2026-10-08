@@ -39,7 +39,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from threatcode.ir.enrich import Deriver, EnrichContext, as_list, tri_bool
+from threatcode.ir.enrich import Deriver, EnrichContext, Produced, as_list, produced, tri_bool
 from threatcode.ir.nodes import InfraNode
 from threatcode.values import Unknown, is_unknown
 from threatcode.vocab import is_world_source
@@ -172,3 +172,8 @@ def _firewall_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
 
 
 DERIVERS: tuple[Deriver, ...] = (Deriver((_FIREWALL,), _firewall_facts),)
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = produced((_FIREWALL,), "ingress_allow", "world_source")
