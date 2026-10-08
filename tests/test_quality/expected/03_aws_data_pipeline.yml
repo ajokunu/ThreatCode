@@ -10,6 +10,7 @@ must_find:
     kind: public_access
     why: 'Publicly readable for dashboarding tool integration: AccessControl PublicRead'
   - resource: RedshiftCluster
+    rule_ids: [SECRET_GENERIC_PASSWORD]
     kind: hardcoded_secret
     why: 'MasterUserPassword is the literal "WarehouseP@ss2026"'
   - resource: LambdaProcessorRole

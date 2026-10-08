@@ -10,11 +10,11 @@ must_find:
     why: 'enable_https_traffic_only = false for the legacy payroll batch job (MHRT-2200)'
 must_not_find:
   - resource: azurerm_key_vault_access_policy.app_service
-    rule_ids: [KEYVAULT_NO_DIAGNOSTICS, KEYVAULT_NO_NETWORK_ACLS, KEYVAULT_NO_SOFT_DELETE]
+    rule_ids: [KEYVAULT_NO_DIAGNOSTICS, KEYVAULT_NO_NETWORK_ACLS, KEYVAULT_SHORT_SOFT_DELETE_RETENTION]
     why: 'an access policy companion is not a key vault'
   - resource: azurerm_key_vault_access_policy.dba_team
-    rule_ids: [KEYVAULT_NO_DIAGNOSTICS, KEYVAULT_NO_NETWORK_ACLS, KEYVAULT_NO_SOFT_DELETE]
+    rule_ids: [KEYVAULT_NO_DIAGNOSTICS, KEYVAULT_NO_NETWORK_ACLS, KEYVAULT_SHORT_SOFT_DELETE_RETENTION]
     why: 'an access policy companion is not a key vault'
   - resource: azurerm_key_vault_access_policy.terraform
-    rule_ids: [KEYVAULT_NO_DIAGNOSTICS, KEYVAULT_NO_NETWORK_ACLS, KEYVAULT_NO_SOFT_DELETE]
+    rule_ids: [KEYVAULT_NO_DIAGNOSTICS, KEYVAULT_NO_NETWORK_ACLS, KEYVAULT_SHORT_SOFT_DELETE_RETENTION]
     why: 'an access policy companion is not a key vault'

@@ -22,9 +22,20 @@ An expectation entry looks like this::
 findable when a rule is renamed or replaced. A kind is a regular expression applied to a
 finding's rule id, title and description (see ``KIND_PATTERNS``).
 
+A ``must_find`` entry the product does not find, and that no rule can honestly find on that
+fixture, carries ``known_miss: <reason>``. It still counts as a miss in the recall, so the number
+stays honest, but the harness tells an explained miss from an unexplained one and fails when a
+``known_miss`` entry is found after all (the strict-xfail behavior: remove the key then).
+
+The scan goes through ``run_scan``, the pipeline behind ``threatcode scan``, so the findings
+are exactly the ones a user sees, secrets and attack-path context included. Suppression files are
+off, because the benchmark measures the scanner and not a project's accepted risks.
+
 The same file format is meant to be reused by the design-input extraction eval (#12).
-Ratchets are optional: ``expected/ratchet.yml`` with ``min_recall``, ``max_violations`` and
-``max_companion_duplicates`` makes ``check_ratchet`` fail below the recorded baseline.
+Ratchets: ``expected/ratchet.yml`` with ``min_recall``, ``max_violations`` and
+``max_companion_duplicates`` makes ``check_ratchet`` fail below the recorded baseline. The numbers
+in it are the measured result of the build, raised when a package improves it and never lowered
+to make a change pass.
 """
 
 from __future__ import annotations
@@ -40,7 +51,10 @@ import pytest
 import yaml
 
 from tests.helpers.kinds import KIND_PATTERNS
-from tests.helpers.scan import ScanResult, scan_files
+from threatcode.ir.graph import InfraGraph
+from threatcode.models.report import ThreatReport
+from threatcode.models.threat import Threat
+from threatcode.pipeline import prepare_request, run_scan
 
 HERE = Path(__file__).parent
 EXPECTED_DIR = HERE / "expected"
@@ -50,7 +64,7 @@ REALISTIC_DIR = HERE.parent / "fixtures" / "realistic"
 # (table, detail). The detail lists every missed issue and violation and prints only with -v.
 REPORT_KEY: pytest.StashKey[tuple[str, str]] = pytest.StashKey()
 
-_MUST_FIND_KEYS = {"resource", "rule_ids", "kind", "why"}
+_MUST_FIND_KEYS = {"resource", "rule_ids", "kind", "why", "known_miss"}
 _MUST_NOT_FIND_KEYS = {"resource", "rule_ids", "why"}
 
 
@@ -64,6 +78,8 @@ class MustFind:
     why: str
     rule_ids: tuple[str, ...] = ()
     kind: str | None = None
+    # Why the product cannot find this planted issue today; empty means it is expected to.
+    known_miss: str = ""
 
 
 @dataclass(frozen=True)
@@ -96,6 +112,16 @@ class FixtureResult:
     @property
     def recall(self) -> float:
         return len(self.found) / self.total if self.total else 1.0
+
+    @property
+    def unexplained_misses(self) -> list[MustFind]:
+        """Misses that carry no ``known_miss`` reason: a regression until someone explains it."""
+        return [e for e in self.missed if not e.known_miss]
+
+    @property
+    def stale_known_misses(self) -> list[MustFind]:
+        """Entries marked ``known_miss`` that the scan finds now; the mark must be removed."""
+        return [e for e in self.found if e.known_miss]
 
     def summary(self) -> str:
         return (
@@ -169,7 +195,10 @@ def parse_expected(data: Any, source: str) -> Expected:
             )
         if not rule_ids and kind is None:
             raise ExpectationError(f"{where}: needs rule_ids or a kind to decide what counts")
-        must_find.append(MustFind(entry["resource"], entry["why"], rule_ids, kind))
+        known_miss = entry.get("known_miss", "")
+        if not isinstance(known_miss, str) or (known_miss and len(known_miss.split()) < 4):
+            raise ExpectationError(f"{where}: known_miss must be a sentence that says why")
+        must_find.append(MustFind(entry["resource"], entry["why"], rule_ids, kind, known_miss))
     must_not_find: list[MustNotFind] = []
     for index, raw in enumerate(data.get("must_not_find") or []):
         where = f"{source} must_not_find[{index}]"
@@ -215,10 +244,37 @@ def load_ratchet(expected_dir: Path = EXPECTED_DIR) -> Ratchet | None:
 # ---------------------------------------------------------------------------------------
 
 
+@dataclass
+class FixtureScan:
+    """One fixture scanned through the pipeline: its graph and the report ``scan`` prints."""
+
+    graph: InfraGraph
+    report: ThreatReport
+    exit_code: int
+
+    @property
+    def threats(self) -> list[Threat]:
+        return list(self.report.threats)
+
+
 @cache
-def scan_fixture(fixture: str, directory: Path = REALISTIC_DIR) -> ScanResult:
-    """Scan one fixture through the library path; cached because every test reads the result."""
-    return scan_files([directory / fixture])
+def scan_fixture(fixture: str, directory: Path = REALISTIC_DIR) -> FixtureScan:
+    """Scan one fixture through ``run_scan``; cached because every test reads the result.
+
+    Nothing about the machine leaks in: the environment is empty, the display filter is off and
+    suppression files are ignored. A fixture the scan cannot analyse fails here, loudly, because
+    a benchmark over an input that did not parse would score every planted issue as missed (or
+    every hardened resource as clean) for the wrong reason.
+    """
+    prepared = prepare_request(
+        [directory / fixture], min_severity="info", no_ignore=True, no_timestamp=True, env={}
+    )
+    result = run_scan(prepared.request)
+    if result.coverage.errors:
+        raise ExpectationError(
+            f"{fixture}: the scan could not analyse it: {result.coverage.errors}"
+        )
+    return FixtureScan(graph=result.graph, report=result.report, exit_code=result.exit_code)
 
 
 def _finding_text(threat: Any) -> str:
@@ -250,7 +306,7 @@ def require_resources(expected: Expected, node_ids: set[str]) -> None:
             )
 
 
-def companion_duplicates(result: ScanResult, dropped: frozenset[str] = frozenset()) -> list[str]:
+def companion_duplicates(result: FixtureScan, dropped: frozenset[str] = frozenset()) -> list[str]:
     """Findings that repeat a rule on a companion resource of the resource it already hit.
 
     ``aws_s3_bucket_versioning.logs`` is a companion of ``aws_s3_bucket.logs``: its type extends the
@@ -280,7 +336,7 @@ def companion_duplicates(result: ScanResult, dropped: frozenset[str] = frozenset
 
 def run_fixture(
     expected: Expected,
-    result: ScanResult | None = None,
+    result: FixtureScan | None = None,
     dropped_rules: frozenset[str] = frozenset(),
 ) -> FixtureResult:
     """Score one fixture. ``dropped_rules`` simulates deleting rules, for the self-tests."""
@@ -363,7 +419,9 @@ def missed_report(results: list[FixtureResult]) -> str:
     lines: list[str] = []
     for r in results:
         for entry in r.missed:
-            lines.append(f"MISSED {r.fixture} {entry.resource}: {entry.why}")
+            label = "KNOWN MISS" if entry.known_miss else "MISSED"
+            reason = f" ({entry.known_miss})" if entry.known_miss else ""
+            lines.append(f"{label} {r.fixture} {entry.resource}: {entry.why}{reason}")
         for entry, offenders in r.violations:
             lines.append(f"VIOLATION {r.fixture} {entry.resource} {offenders}: {entry.why}")
     return "\n".join(lines)
