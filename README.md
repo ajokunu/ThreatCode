@@ -19,7 +19,7 @@ The repository ships a demo stack in [`examples/aws-webapp`](https://github.com/
 threatcode scan examples/aws-webapp --ingest examples/aws-webapp/scanner/trivy-app-image.json
 ```
 
-On a terminal that prints the text report below, cut to the verdict and the attack paths.
+On a terminal that prints the text report below, at 100 columns.
 Pipe it, or pass `-f json`, and you get the full JSON report instead.
 
 <!-- gen:example-report -->

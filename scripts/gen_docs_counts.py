@@ -38,7 +38,7 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -261,7 +261,7 @@ def cell(text: object) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def table(header: list[str], rows: list[list[object]]) -> str:
+def table(header: list[str], rows: Sequence[Sequence[object]]) -> str:
     lines = ["| " + " | ".join(header) + " |", "| " + " | ".join("---" for _ in header) + " |"]
     lines += ["| " + " | ".join(cell(c) for c in row) + " |" for row in rows]
     return "\n".join(lines)
@@ -1085,6 +1085,39 @@ def render_limits(facts: Facts) -> str:
 
 
 # ---------------------------------------------------------------------------------------
+# Built-in rules as shipped (docs/writing-rules.md)
+# ---------------------------------------------------------------------------------------
+
+SHOWN_RULES = ("S3_PUBLIC_ACCESS", "RDS_NO_ENCRYPTION", "K8S_PRIVILEGED_CONTAINER")
+
+
+def _rule_source(rule: Rule) -> str:
+    """The text of one rule in its YAML file, from its ``- id:`` line to the next rule."""
+    provider, name = rule.source_group.split("__", 1)
+    text = (_BUILTIN_DIR / provider / f"{name}.yml").read_text(encoding="utf-8")
+    start = text.index(f"  - id: {rule.id}\n")
+    ends = [
+        i
+        for i in (text.find("\n  - id: ", start + 1), text.find("\ndeprecated_ids:", start))
+        if i >= 0
+    ]
+    end = min(ends) if ends else len(text)
+    return text[start:end].rstrip("\n")
+
+
+def render_shown_rules(facts: Facts) -> str:
+    by_id = {r.id: r for r in facts.rules}
+    parts = []
+    for rule_id in SHOWN_RULES:
+        rule = by_id[rule_id]
+        parts.append(
+            f"### `{rule_id}`\n\nFrom `builtin/{rule.source_group.replace('__', '/')}.yml`:\n\n"
+            f"```yaml\n{_rule_source(rule)}\n```"
+        )
+    return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------------------
 # The GitHub Action
 # ---------------------------------------------------------------------------------------
 
@@ -1220,6 +1253,7 @@ REGIONS: tuple[tuple[str, str, Renderer], ...] = (
     ("docs/mitre-attack.md", "techniques", render_techniques),
     ("docs/mitre-attack.md", "navigator-colors", render_navigator_colors),
     ("docs/mitre-attack.md", "navigator-sample", render_navigator_sample),
+    ("docs/writing-rules.md", "shown-rules", render_shown_rules),
     ("docs/security-model.md", "limits", render_limits),
     ("docs/cicd.md", "action-inputs", render_action_inputs),
     ("docs/cicd.md", "action-outputs", render_action_outputs),

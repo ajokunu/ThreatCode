@@ -508,7 +508,7 @@ rules:
 
 ```yaml
 rules:
-  - id: EXAMPLE_SG_ADMIN_OPEN
+  - id: MYORG_SG_ADMIN_OPEN
     title: Security group exposes an admin port to the internet
     description: >
       An ingress rule allows SSH or RDP from anywhere.
@@ -558,6 +558,134 @@ rules:
       mitre:
         techniques: ["T1611"]
 ```
+
+---
+
+## Built-in rules as shipped
+
+The built-in rules are written exactly like yours.
+Three of them, copied from the rule files by the documentation generator, so they are the real thing:
+
+<!-- gen:shown-rules -->
+### `S3_PUBLIC_ACCESS`
+
+From `builtin/aws/s3.yml`:
+
+```yaml
+  - id: S3_PUBLIC_ACCESS
+    title: S3 bucket allows public access
+    description: >
+      The bucket is readable or writable by anyone.
+      Either its ACL is public-read, public-read-write or authenticated-read (any AWS account
+      holder) and the public access block does not ignore public ACLs, or a bucket policy
+      allows every principal with no condition that limits the caller (aws:PrincipalOrgID,
+      aws:SourceVpce, aws:SourceVpc, aws:SourceArn, aws:SourceAccount or aws:PrincipalArn)
+      and the public access block does not stop public policies.
+      Public buckets are how most cloud data breaches start.
+    stride_category: information_disclosure
+    severity: critical
+    confidence: definitive
+    root_cause: s3-public-access
+    resource_type: aws_s3_bucket
+    condition:
+      any_of:
+        - all_of:
+            - derived.acl:
+                matches_any: ["public-read", "public-read-write", "authenticated-read"]
+            - derived.public_access_block.block_public_acls:
+                not_equals: true
+            - derived.public_access_block.ignore_public_acls:
+                not_equals: true
+        - all_of:
+            - derived.allows_any_principal:
+                equals: true
+            - derived.public_access_block.block_public_policy:
+                not_equals: true
+            - derived.public_access_block.restrict_public_buckets:
+                not_equals: true
+    mitigation: >
+      Set the ACL to private, remove statements that name every principal from the bucket
+      policy or narrow them with aws:PrincipalOrgID, aws:SourceVpce or aws:SourceArn, and turn on
+      all four settings of aws_s3_bucket_public_access_block.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+```
+
+### `RDS_NO_ENCRYPTION`
+
+From `builtin/aws/rds.yml`:
+
+```yaml
+  - id: RDS_NO_ENCRYPTION
+    title: RDS database without encryption at rest
+    description: >
+      The database instance or Aurora cluster does not have storage encryption enabled.
+      Its storage, snapshots and automated backups are unencrypted, so anyone who obtains a
+      snapshot or the underlying volume can read the data.
+      Encryption can only be chosen when the database is created.
+      A database restored from a snapshot or created as a replica inherits the source's setting
+      and is not reported, and neither is an instance that belongs to a cluster, which inherits
+      the cluster's, or a serverless Aurora cluster, which is always encrypted.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: rds-storage-unencrypted
+    resource_types: [aws_db_instance, aws_rds_cluster]
+    condition:
+      all_of:
+        - any_of:
+            - storage_encrypted:
+                equals: false
+            - storage_encrypted:
+                not_exists: true
+        - snapshot_identifier:
+            not_exists: true
+        - replicate_source_db:
+            not_exists: true
+        - replication_source_identifier:
+            not_exists: true
+        - db_cluster_identifier:
+            not_exists: true
+        - engine_mode:
+            not_equals: serverless
+    mitigation: >
+      Set storage_encrypted to true, with a customer-managed kms_key_id where key control matters.
+      To encrypt an existing database, copy a snapshot with encryption and restore from it.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+```
+
+### `K8S_PRIVILEGED_CONTAINER`
+
+From `builtin/kubernetes/workloads.yml`:
+
+```yaml
+  - id: K8S_PRIVILEGED_CONTAINER
+    title: Container running in privileged mode
+    description: >
+      A container is configured with privileged: true, giving it full access to the host.
+      This effectively disables all container isolation.
+      The container_findings property of the workload names the containers.
+    stride_category: elevation_of_privilege
+    severity: critical
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
+    condition:
+      privileged:
+        equals: true
+    mitigation: >
+      Remove privileged: true from the container securityContext.
+      Use specific capabilities instead.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+```
+<!-- /gen:shown-rules -->
+
+Note `confidence` and `root_cause`, a technique and no tactic, and conditions that read `derived.*` facts.
+A built-in id cannot be reused, so to start from one, copy it and give it your own prefix.
 
 ---
 

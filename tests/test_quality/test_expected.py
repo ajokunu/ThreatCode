@@ -23,6 +23,8 @@ from tests.test_quality.harness import (
     REPORT_KEY,
     Expected,
     FixtureResult,
+    MustFind,
+    MustNotFind,
     check_ratchet,
     load_all_expected,
     load_ratchet,
@@ -39,6 +41,10 @@ from threatcode.engine.secrets.builtin import get_builtin_rules as get_secret_ru
 
 EXPECTED = load_all_expected()
 FIXTURES = sorted(p.name for p in REALISTIC_DIR.iterdir() if p.is_file())
+
+
+def _entries(expected: Expected) -> list[MustFind | MustNotFind]:
+    return [*expected.must_find, *expected.must_not_find]
 
 
 def _results() -> list[FixtureResult]:
@@ -63,7 +69,7 @@ class TestExpectationFiles:
 
     def test_every_entry_quotes_the_comment_or_attribute_that_plants_it(self) -> None:
         for expected in EXPECTED:
-            for entry in (*expected.must_find, *expected.must_not_find):
+            for entry in _entries(expected):
                 assert len(entry.why.split()) >= 3, f"{expected.fixture} {entry.resource}"
 
     @pytest.mark.parametrize("expected", EXPECTED, ids=lambda e: e.fixture)
@@ -185,7 +191,7 @@ class TestExpectationsNameCurrentRules:
         stale = {
             f"{e.fixture} {entry.resource}": [i for i in entry.rule_ids if i not in known]
             for e in EXPECTED
-            for entry in (*e.must_find, *e.must_not_find)
+            for entry in _entries(e)
             if any(i not in known for i in entry.rule_ids)
         }
         assert not stale, f"expectations naming a removed or misspelled rule: {stale}"

@@ -141,7 +141,7 @@ from threatcode.pipeline import prepare_request
 prepared = prepare_request(["examples/aws-webapp"], no_timestamp=True)
 result = run_scan(prepared.request)
 
-print("exit code", result.exit_code)      # 0, 1 or 2, as the command line would exit
+print("exit code", result.exit_code)  # 0, 1 or 2, as the command line would exit
 print(result.coverage.errors, result.coverage.gaps)
 assert result.exit_code == 1
 ```

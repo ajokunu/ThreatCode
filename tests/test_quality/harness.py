@@ -296,7 +296,8 @@ def require_resources(expected: Expected, node_ids: set[str]) -> None:
     A renamed or removed resource would otherwise turn a must_find into a silent miss and a
     must_not_find into a silent pass, and the file would rot without anyone noticing.
     """
-    for entry in (*expected.must_find, *expected.must_not_find):
+    named: list[MustFind | MustNotFind] = [*expected.must_find, *expected.must_not_find]
+    for entry in named:
         if entry.resource not in node_ids:
             near = difflib.get_close_matches(entry.resource, sorted(node_ids), n=3, cutoff=0.5)
             hint = f" Did you mean: {', '.join(near)}?" if near else ""
@@ -344,19 +345,19 @@ def run_fixture(
     require_resources(expected, set(result.graph.nodes))
     threats = [t for t in result.threats if t.rule_id not in dropped_rules]
     scored = FixtureResult(expected.fixture, finding_count=len(threats))
-    for entry in expected.must_find:
-        hit = any(matches(t, entry.resource, entry.rule_ids, entry.kind) for t in threats)
-        (scored.found if hit else scored.missed).append(entry)
-    for entry in expected.must_not_find:
+    for planted in expected.must_find:
+        hit = any(matches(t, planted.resource, planted.rule_ids, planted.kind) for t in threats)
+        (scored.found if hit else scored.missed).append(planted)
+    for hardened in expected.must_not_find:
         offenders = [
             t.rule_id or t.title
             for t in threats
-            if t.resource_address == entry.resource
+            if t.resource_address == hardened.resource
             and t.rule_id
-            and (not entry.rule_ids or t.rule_id in entry.rule_ids)
+            and (not hardened.rule_ids or t.rule_id in hardened.rule_ids)
         ]
         if offenders:
-            scored.violations.append((entry, sorted(offenders)))
+            scored.violations.append((hardened, sorted(offenders)))
     scored.companion_duplicates = companion_duplicates(result, dropped_rules)
     return scored
 
@@ -418,10 +419,10 @@ def missed_report(results: list[FixtureResult]) -> str:
     """Every missed planted issue with the comment that plants it, for the printed report."""
     lines: list[str] = []
     for r in results:
-        for entry in r.missed:
-            label = "KNOWN MISS" if entry.known_miss else "MISSED"
-            reason = f" ({entry.known_miss})" if entry.known_miss else ""
-            lines.append(f"{label} {r.fixture} {entry.resource}: {entry.why}{reason}")
-        for entry, offenders in r.violations:
-            lines.append(f"VIOLATION {r.fixture} {entry.resource} {offenders}: {entry.why}")
+        for missed in r.missed:
+            label = "KNOWN MISS" if missed.known_miss else "MISSED"
+            reason = f" ({missed.known_miss})" if missed.known_miss else ""
+            lines.append(f"{label} {r.fixture} {missed.resource}: {missed.why}{reason}")
+        for hardened, offenders in r.violations:
+            lines.append(f"VIOLATION {r.fixture} {hardened.resource} {offenders}: {hardened.why}")
     return "\n".join(lines)

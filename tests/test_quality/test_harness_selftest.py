@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -53,7 +54,9 @@ def synthetic(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def score(synthetic: Path, doc: dict, dropped: frozenset[str] = frozenset()) -> FixtureResult:
+def score(
+    synthetic: Path, doc: dict[str, Any], dropped: frozenset[str] = frozenset()
+) -> FixtureResult:
     expected = parse_expected({"fixture": "main.tf", **doc}, "synthetic")
     return run_fixture(expected, scan_fixture("main.tf", synthetic), dropped)
 
@@ -270,7 +273,7 @@ class TestMalformedExpectations:
         ],
     )
     def test_invalid_documents_are_rejected_with_the_location(
-        self, doc: dict, message: str
+        self, doc: dict[str, Any], message: str
     ) -> None:
         with pytest.raises(ExpectationError, match=message):
             parse_expected({"fixture": "f", **doc}, "synthetic.yml")

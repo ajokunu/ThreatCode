@@ -95,7 +95,9 @@ for hop in path["hops"]:
     print("  ", hop["node_id"], hop["zone"], hop["techniques"])
 
 finding = next(t for t in report["threats"] if t["rule_id"] == "EC2_IMDSV1")
-print(finding["severity"], "->", finding["effective_severity"], "because", finding["severity_reason"])
+print(
+    finding["severity"], "->", finding["effective_severity"], "because", finding["severity_reason"]
+)
 assert report["coverage"]["errors"] == []
 ```
 
