@@ -10,12 +10,12 @@ This page states who and what the tool trusts, which limits keep a hostile file 
 |-------|----------|-----------------|
 | The files being scanned: Terraform, templates, manifests, charts, Dockerfiles, MCP configs, plans | **No** | Parsed by ThreatCode's own readers, never executed. Size, depth and work are bounded. |
 | Scanner results given to `--ingest` | **No** | Read as data, size capped, secrets in them never copied. |
-| A `.threatcode.yml` found in the scanned tree or the home directory | **No** | Only `min_severity` and `output_format` are read. |
+| A `.threatcode.yml` found in the scanned tree or the home directory | **No** | Only `min_severity` and `format` are read. |
 | A `.threatcodeignore` and a baseline file inside the scanned tree | **No** | Honored, with a CI notice that a pull request can edit them. Keep them outside the tree and name them with `--ignore-file` and `--baseline`. |
 | Container images and registries | Not read | ThreatCode does not pull images. It reads Trivy, Grype and OSV-Scanner JSON about them. |
 | The command-line flags | Yes | They come from whoever runs the tool. |
 | A file named with `--config` | Yes | Every key is honored: the gate, rule files, the model endpoint and redaction. |
-| Extra rule files from `--rules` or `extra_rule_paths` | Yes | They are data, not code, and are validated and size limited, but they decide what is reported. Review them like code. |
+| Extra rule files from `--rules` or the `rules` config key | Yes | They are data, not code, and are validated and size limited, but they decide what is reported. Review them like code. |
 | The model's reply | **No** | Parsed as JSON, validated per item, never executed, advisory only. |
 
 A scanned repository can therefore influence the report it gets, and nothing else.
@@ -131,4 +131,5 @@ Names, accounts, addresses, tags, file names and line numbers do not leave the m
 - A custom rule file is trusted code in the sense that it decides what is reported.
   A hostile rule file cannot run anything, but it can hide a finding.
 - The ignore file and the baseline are accepted by design in the repository; the mitigation is where you keep them.
-- Attack paths cannot yet be suppressed or baselined from the command line, so a path keeps gating until it is fixed.
+- An attack path can be suppressed by id in an ignore file and is recorded by `--write-baseline`, so a pull request that edits either file can hide a path as well as a finding.
+  The mitigation is the same: keep both files outside the tree the pull request controls.

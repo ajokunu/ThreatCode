@@ -5,21 +5,20 @@ Every command on it runs against the demo stacks in `examples/`, and the test su
 
 ## Install
 
-```bash
-pip install "git+https://github.com/ajokunu/ThreatCode.git"
-```
-
-Python 3.10 or newer is required.
-The core install has no model client; add it with `pip install "threatcode[llm] @ git+https://github.com/ajokunu/ThreatCode.git"` only if you want the optional LLM review.
-The package is not on PyPI yet, so do not run `pip install threatcode`: that name belongs to a different project.
-
-To work from a clone:
+The demo stacks are in the repository, not in the pip package, so clone it, install from the clone and stay in its top directory for the rest of this page:
 
 ```bash
 git clone https://github.com/ajokunu/ThreatCode.git
 cd ThreatCode
-pip install -e ".[dev]"
+pip install .
 ```
+
+Python 3.10 or newer is required.
+The core install has no model client; add it with `pip install ".[llm]"` only if you want the optional LLM review.
+To work on ThreatCode itself, install the development tools with `pip install -e ".[dev]"` instead.
+
+To scan your own code, you do not need the clone: `pip install "git+https://github.com/ajokunu/ThreatCode.git"` puts the `threatcode` command on your path from anywhere, and `pip install "threatcode[llm] @ git+https://github.com/ajokunu/ThreatCode.git"` adds the model client.
+The package is not on PyPI yet, so do not run `pip install threatcode`: that name belongs to a different project.
 
 ## Your first scan
 
@@ -183,7 +182,7 @@ threatcode scan examples/k8s-platform --write-baseline baseline.json
 threatcode scan examples/k8s-platform --baseline baseline.json --fail-on critical
 ```
 
-The first command exits 0 whatever it finds, and the second hides every finding that is in the baseline.
+The first command exits 0 whatever it finds, and the second hides every finding and attack path that is in the baseline, so it exits 0 as well.
 Commit `baseline.json` so a pull request fails only on what it adds.
 
 To accept one finding for a reason, with an end date, write a `.threatcodeignore` file in the scan root, or name one with `--ignore-file`:
@@ -196,8 +195,10 @@ threatcode scan examples/aws-webapp --ignore-file ignore.txt --fail-on none -f j
 python -c "import json; print(json.load(open('report.json'))['coverage']['suppressed'], 'findings suppressed')"
 ```
 
-Two limits are worth knowing now.
-A baseline and an ignore file suppress findings, and an attack path still gates until you fix a hop on it.
+The baseline holds the fingerprint of every finding and the id of every attack path, so a path that was already there stops gating and a new path fails the build.
+An ignore entry can name an attack path id too, and `resource=` narrows it to a path that crosses a matching resource.
+A baseline written before attack paths were recorded lists no path and hides none, so write it again once.
+
 In CI, a pull request can edit the ignore file, so a notice recommends keeping it outside the tree the pull request controls and naming it with `--ignore-file`.
 
 ## Join the scanners you already run

@@ -478,6 +478,8 @@ def render_parsers(facts: Facts) -> str:
 
 
 def render_config_keys(facts: Facts) -> str:
+    from pydantic import AliasChoices
+
     from threatcode.config import _SAFE_AUTO_FIELDS, LLMConfig, RedactionConfig, ThreatCodeConfig
 
     def annotation(model: Any, name: str) -> str:
@@ -501,16 +503,26 @@ def render_config_keys(facts: Facts) -> str:
             return str(value).lower()
         return f"{value}" if value != "" else "empty"
 
+    def spellings(name: str) -> tuple[str, list[str]]:
+        """The config key of a field, and the older spellings that still load."""
+        alias = ThreatCodeConfig.model_fields[name].validation_alias
+        if isinstance(alias, AliasChoices):
+            names = [str(choice) for choice in alias.choices]
+            return names[0], names[1:]
+        return name, []
+
     rows: list[list[object]] = []
     for name in ThreatCodeConfig.model_fields:
         if name in ("llm", "redaction"):
             continue
+        key, older = spellings(name)
+        cell = code(key) + "".join(f" (was {code(o)})" for o in older)
         rows.append(
             [
-                code(name),
+                cell,
                 annotation(ThreatCodeConfig, name),
                 default(ThreatCodeConfig, name),
-                "yes" if name in _SAFE_AUTO_FIELDS else "no",
+                "yes" if key in _SAFE_AUTO_FIELDS else "no",
             ]
         )
     for prefix, model in (("llm", LLMConfig), ("redaction", RedactionConfig)):

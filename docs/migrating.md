@@ -45,10 +45,12 @@ The default model is `claude-sonnet-5-5`.
 
 - `no_llm` and `dry_run` are no longer config keys.
   The error message says what replaces them.
-- An auto-discovered `.threatcode.yml` can set only `min_severity` and `output_format`.
-  `fail_on`, `extra_rule_paths`, `llm`, `redaction` and the graph limits need `--config`.
+- An auto-discovered `.threatcode.yml` can set only `min_severity` and `format`.
+  `fail_on`, `rules`, `llm`, `redaction` and the graph limits need `--config`.
+- The config keys `output_format` and `extra_rule_paths` are now `format` and `rules`, the names of the flags.
+  The old spellings still load and print a notice that names the new one.
 - A flag wins over an environment variable, which wins over the config file, which wins over the default.
-  A config's `min_severity` and `output_format` now actually take effect when the flag is absent.
+  A config's `min_severity` and `format` now actually take effect when the flag is absent.
 
 ## Reports and integrations
 

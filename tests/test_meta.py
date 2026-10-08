@@ -11,6 +11,9 @@ example, so a gate that quietly stopped looking is itself a failure.
 * No test function is assertion-free unless it is on the reviewed does-not-raise list.
 * No test accepts a range of exit codes (``exit_code in (0, 1)``).
 * ``pyproject.toml`` keeps the widened ruff selection for ``src``.
+* The version in ``threatcode.__version__`` is not one that ``CHANGELOG.md`` already released.
+* No test opens a fixture through a path that depends on the working directory.
+* No function, method or class in ``src`` is unreferenced, except the reviewed list.
 """
 
 from __future__ import annotations
@@ -567,3 +570,221 @@ def test_ruff_exempts_only_tests_and_scripts_from_the_widened_rules() -> None:
             "(the dispatch tables), anything else needs a noqa with a reason on the line"
         )
         assert not set(codes) & (widened - {"ARG"}), pattern
+
+
+# ---------------------------------------------------------------------------------------
+# The version names this release
+# ---------------------------------------------------------------------------------------
+
+
+def released_versions(changelog: str) -> list[str]:
+    """The versions ``changelog`` has a dated section for, newest first."""
+    return re.findall(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.MULTILINE)
+
+
+def test_the_version_is_not_one_that_was_already_released() -> None:
+    """Code with an [Unreleased] section must not call itself by a released number.
+
+    Otherwise ``threatcode --version`` and the ``version`` field of a report cannot tell this
+    line from the release that is on PyPI.
+    """
+    from threatcode import __version__
+
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## [Unreleased]" in changelog
+    assert __version__ not in released_versions(changelog), (
+        f"__version__ {__version__} is already released; set the version of the line that "
+        "the Unreleased section becomes"
+    )
+
+
+def test_the_released_versions_are_read_from_the_dated_headings_only() -> None:
+    text = "## [Unreleased]\n\n## [1.2.3] - 2026-01-02\n\n## [1.2.2] - 2025-12-31\n"
+    assert released_versions(text) == ["1.2.3", "1.2.2"]
+
+
+# ---------------------------------------------------------------------------------------
+# Fixture paths do not depend on the working directory
+# ---------------------------------------------------------------------------------------
+
+# Test files that still open a fixture as Path("tests/..."), which only works when pytest runs
+# from the repository root. Each entry is a bug to fix; the list only shrinks.
+CWD_RELATIVE_ALLOWED: dict[str, str] = {
+    "tests/test_engine/test_docker_rules.py": "globs Path('tests/fixtures/docker')",
+    "tests/test_parsers/test_dockerfile.py": "reads Path('tests/fixtures/docker/...')",
+    "tests/test_parsers/test_kubernetes.py": "reads Path('tests/fixtures/kubernetes/...')",
+}
+
+_FILE_OPENERS = {"Path", "PurePath", "open", "PosixPath"}
+
+
+def cwd_relative_fixture_paths(source: str) -> list[int]:
+    """Line numbers where a file opener is given a literal path that starts at ``tests``."""
+    lines: list[int] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        first = node.args[0]
+        if (
+            name in _FILE_OPENERS
+            and isinstance(first, ast.Constant)
+            and isinstance(first.value, str)
+            and (first.value == "tests" or first.value.startswith("tests/"))
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+def test_no_test_opens_a_fixture_relative_to_the_working_directory() -> None:
+    offenders: dict[str, list[int]] = {}
+    for path in sorted(TESTS_DIR.rglob("*.py")):
+        if path == Path(__file__).resolve():
+            continue
+        lines = cwd_relative_fixture_paths(path.read_text(encoding="utf-8"))
+        if lines:
+            offenders[path.relative_to(REPO_ROOT).as_posix()] = lines
+    new = {f: lines for f, lines in offenders.items() if f not in CWD_RELATIVE_ALLOWED}
+    assert not new, (
+        "these tests open Path('tests/...'), which fails when pytest runs from another directory. "
+        "Build the path from Path(__file__).parent or tests/conftest.py instead:\n  "
+        + "\n  ".join(f"{f}: lines {lines}" for f, lines in sorted(new.items()))
+    )
+    fixed = sorted(set(CWD_RELATIVE_ALLOWED) - set(offenders))
+    assert not fixed, f"fixed, so delete them from CWD_RELATIVE_ALLOWED: {fixed}"
+
+
+def test_the_working_directory_gate_flags_a_relative_fixture_and_not_an_anchored_one() -> None:
+    bad = 'from pathlib import Path\nx = Path("tests/fixtures/a.tf").read_text()\n'
+    glob = 'import pathlib\nfiles = pathlib.Path("tests/fixtures").glob("*.tf")\n'
+    opened = 'with open("tests/fixtures/a.tf") as f:\n    f.read()\n'
+    good = (
+        "from pathlib import Path\n"
+        'x = (Path(__file__).parent / "tests/fixtures/a.tf").read_text()\n'
+        'name = "tests/fixtures/a.tf"\n'
+        'expected = {"input": "tests/fixtures/a.tf"}\n'
+    )
+    assert cwd_relative_fixture_paths(bad) == [2]
+    assert cwd_relative_fixture_paths(glob) == [2]
+    assert cwd_relative_fixture_paths(opened) == [1]
+    assert cwd_relative_fixture_paths(good) == []
+
+
+# ---------------------------------------------------------------------------------------
+# Unreferenced code in src
+# ---------------------------------------------------------------------------------------
+
+SRC_DIR = REPO_ROOT / "src" / "threatcode"
+
+# Definitions that nothing in src refers to. The first group has callers only in tests, so each
+# is either dead code or a test helper that belongs under tests/; the second group is a name that
+# is only reached by getattr. The list only shrinks: deleting a definition or giving it a caller
+# means deleting its entry here.
+UNREFERENCED_ALLOWED: dict[str, str] = {
+    "Redactor.redact_text": "dead: no caller anywhere",
+    "Redactor.mapping_size": "test only",
+    "clear_builtin_cache": "test only",
+    "evaluate_rule": "test only",
+    "ports_overlap": "test only",
+    "module_of": "test only",
+    "principal_is_wildcard": "test only",
+    "InfraGraph.duplicate_of": "test only",
+    "InfraGraph.get_neighbors": "test only",
+    "InfraGraph.get_edges_for_node": "test only",
+    "InfraGraph.nodes_by_zone": "test only",
+    "InfraGraph.reachability_subgraph": "test only",
+    "AgentCapabilities.lethal_trifecta": "test only",
+    "terraform_types": "test only",
+    "cfn_types_for": "test only",
+    "uses_sam": "test only",
+    "extract_refs": "test only",
+    "evaluate_expression": "test only",
+    "load_config": "public helper kept for callers that want the model without the resolver",
+}
+
+# Families that are looked up by name at run time (``getattr(self, "_do_" + name)``).
+_DISPATCHED_PREFIXES = ("f_", "_do_")
+# Methods a library calls on a subclass of its class: yaml.Dumper.ignore_aliases.
+_LIBRARY_HOOKS = frozenset({"ignore_aliases"})
+
+
+def unreferenced_definitions(sources: dict[str, str], other_text: str = "") -> list[str]:
+    """Functions, methods and classes whose name occurs once in ``sources``: at its definition.
+
+    A name counts as referenced when it appears anywhere else in any file, including a string
+    (``__all__``, a dispatch table, a registry), or in ``other_text`` (the rule files).
+    Dunder methods, decorated functions (validators, registered hooks, class methods; a plain
+    property is still checked) and the
+    dispatched families above are skipped, because something other than a call site reaches them.
+    """
+    words: dict[str, int] = {}
+    for text in [*sources.values(), other_text]:
+        for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text):
+            words[word] = words.get(word, 0) + 1
+    found: list[str] = []
+    for text in sources.values():
+        tree = ast.parse(text)
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                members: list[tuple[str, ast.AST]] = [(node.name, node)]
+                members += [
+                    (f"{node.name}.{m.name}", m)
+                    for m in node.body
+                    if isinstance(m, ast.FunctionDef | ast.AsyncFunctionDef)
+                ]
+            elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                members = [(node.name, node)]
+            else:
+                continue
+            for qualified, member in members:
+                name = qualified.rsplit(".", 1)[-1]
+                decorators = getattr(member, "decorator_list", [])
+                decorated = any(
+                    not (isinstance(d, ast.Name) and d.id in {"property", "cached_property"})
+                    for d in decorators
+                )
+                if (
+                    (name.startswith("__") and name.endswith("__"))
+                    or decorated
+                    or name.startswith(_DISPATCHED_PREFIXES)
+                    or name in _LIBRARY_HOOKS
+                ):
+                    continue
+                if words.get(name, 0) <= 1:
+                    found.append(qualified)
+    return sorted(found)
+
+
+def test_no_definition_in_src_is_unreferenced() -> None:
+    sources = {
+        p.relative_to(REPO_ROOT).as_posix(): p.read_text(encoding="utf-8")
+        for p in sorted(SRC_DIR.rglob("*.py"))
+    }
+    rule_files = "\n".join(p.read_text(encoding="utf-8") for p in sorted(SRC_DIR.rglob("*.yml")))
+    found = unreferenced_definitions(sources, rule_files)
+    new = [f for f in found if f not in UNREFERENCED_ALLOWED]
+    assert not new, (
+        "defined in src and never referenced there (delete it, or move a test-only helper under "
+        "tests/):\n  " + "\n  ".join(new)
+    )
+    fixed = sorted(set(UNREFERENCED_ALLOWED) - set(found))
+    assert not fixed, (
+        f"referenced or deleted now, so remove them from UNREFERENCED_ALLOWED: {fixed}"
+    )
+
+
+def test_the_unreferenced_gate_finds_a_definition_nothing_calls() -> None:
+    sources = {
+        "a.py": (
+            "def used():\n    return 1\n\n"
+            "def lonely():\n    return 2\n\n"
+            "class Box:\n    def open(self):\n        return used()\n\n"
+            "    def never(self):\n        return 0\n\n"
+            "    @register\n    def decorated(self):\n        return 0\n\n"
+            "    @property\n    def unread(self):\n        return 0\n\n"
+            "    def __repr__(self):\n        return 'Box'\n"
+        ),
+        "b.py": "from a import Box\nBox().open()\n",
+    }
+    assert unreferenced_definitions(sources) == ["Box.never", "Box.unread", "lonely"]

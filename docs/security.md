@@ -169,8 +169,8 @@ An Anthropic or OpenAI-compatible `base_url`, and the `ANTHROPIC_BASE_URL` varia
 
 ## Configuration
 
-A config file found inside the scanned repository is untrusted, and only `min_severity` and `output_format` are read from it.
-`fail_on`, `extra_rule_paths`, the whole `llm` section, `redaction` and the graph limits come only from a file named with `--config`.
+A config file found inside the scanned repository is untrusted, and only `min_severity` and `format` are read from it.
+`fail_on`, `rules`, the whole `llm` section, `redaction` and the graph limits come only from a file named with `--config`.
 A note on stderr names every auto-discovered file and the keys used.
 The details are in [configuration](configuration.md).
 

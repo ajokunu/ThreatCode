@@ -901,6 +901,77 @@ class TestClaimsStayTrue:
         assert not missing_nodes, f"no fixture parses these kinds: {missing_nodes}"
         assert not missing_findings, f"no fixture gets a finding on: {missing_findings}"
 
+    def test_no_page_says_attack_paths_cannot_be_suppressed_or_baselined(self) -> None:
+        """Attack paths are recorded by --write-baseline and named in an ignore file."""
+        stale = re.compile(
+            r"cannot (?:yet )?be (?:suppressed|named|baselined)|"
+            r"(?:hides|hide|suppress\w*) findings,? not attack paths|"
+            r"attack paths (?:are|is) not (?:suppressed|baselined)",
+            re.IGNORECASE,
+        )
+        offenders = [
+            f"{path.relative_to(REPO)}:{number}: {line.strip()[:90]}"
+            for path in [*DOC_FILES, CHANGELOG]
+            for number, line in enumerate(_text(path).splitlines(), start=1)
+            if "attack path" in line.lower() and stale.search(line)
+        ]
+        assert not offenders, "\n".join(offenders)
+
+    def test_the_wording_guard_catches_the_old_claim(self) -> None:
+        stale = re.compile(r"cannot (?:yet )?be (?:suppressed|named|baselined)", re.IGNORECASE)
+        assert stale.search("Attack paths cannot be suppressed or baselined yet")
+        assert not stale.search("An attack path can be suppressed by id")
+
+    def test_the_documented_baseline_behavior_is_the_shipped_behavior(self, tmp_path: Path) -> None:
+        """A baseline hides the paths it recorded, and a path it did not record still gates."""
+        from threatcode.pipeline import prepare_request, run_scan
+
+        def scan(*paths: Path, **settings: Any) -> Any:
+            prepared = prepare_request(
+                list(paths), no_ignore=True, no_timestamp=True, env={}, **settings
+            )
+            return run_scan(prepared.request)
+
+        stack = REPO / "examples" / "aws-webapp"
+        baseline = tmp_path / "baseline.json"
+        scan(stack, write_baseline=baseline)
+        recorded = json.loads(baseline.read_text(encoding="utf-8"))
+        assert recorded["attack_paths"], "the demo stack has attack paths to record"
+        again = scan(stack, baseline=baseline)
+        assert again.exit_code == 0
+        assert again.report.attack_paths == [] and again.baselined_paths > 0
+        recorded["attack_paths"] = recorded["attack_paths"][1:]
+        baseline.write_text(json.dumps(recorded), encoding="utf-8")
+        assert scan(stack, baseline=baseline).exit_code == 1
+
+    def test_the_first_demo_command_comes_after_the_clone_it_needs(self) -> None:
+        """`examples/` is not in the wheel: a reader must clone before the first demo scan."""
+        for relative in ("README.md", "docs/getting-started.md"):
+            text = _text(REPO / relative)
+            clone = text.find("git clone https://github.com/ajokunu/ThreatCode.git")
+            demo = text.find("threatcode scan examples/")
+            assert 0 <= clone < demo, f"{relative}: the first demo scan comes before the clone"
+
+    def test_pre_commit_and_the_ci_page_pin_the_same_rev(self) -> None:
+        hooks = _text(REPO / ".pre-commit-hooks.yaml")
+        in_hooks = re.findall(r"^#\s+rev:\s*(\S+)", hooks, re.MULTILINE)
+        in_docs = re.findall(r"^\s+rev:\s*(\S+)", _text(REPO / "docs" / "cicd.md"), re.MULTILINE)
+        assert in_hooks and in_docs
+        assert set(in_hooks) == set(in_docs), (in_hooks, in_docs)
+
+    def test_no_generated_option_table_lists_an_option_twice(self) -> None:
+        facts = load_generator().collect()
+        generator = load_generator()
+        for render in (
+            generator.render_cli_group,
+            generator.render_cli_scan,
+            generator.render_cli_diff,
+        ):
+            names = re.findall(r"^\| (`[^|]+?`(?:, `[^|]+?`)*) \|", render(facts), re.MULTILINE)
+            flat = [flag for cell in names for flag in re.findall(r"`(-[^`]+)`", cell)]
+            assert flat, render.__name__
+            assert len(flat) == len(set(flat)), (render.__name__, flat)
+
 
 def _scan_dir(path: Path) -> Any:
     from threatcode.pipeline import prepare_request, run_scan
@@ -1166,8 +1237,13 @@ class TestChangelog:
             assert phrase in text, phrase
 
     def test_the_fragments_of_the_earlier_packages_are_assembled_and_gone(self) -> None:
-        left = sorted(p.name for p in (REPO / "changelog.d").glob("WP-[1-4]-*.md"))
+        left = sorted(p.name for p in (REPO / "changelog.d").glob("WP-*.md"))
         assert not left, f"assembled into CHANGELOG.md, delete them: {left}"
+
+    def test_no_changelog_text_names_a_work_package_or_a_fragment_file(self) -> None:
+        """Work-package ids are planning vocabulary: a reader of the changelog never sees them."""
+        found = re.findall(r"\bWP-\d-\d+\b|changelog\.d/", self.unreleased())
+        assert not found, found
 
 
 # ---------------------------------------------------------------------------------------

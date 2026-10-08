@@ -114,7 +114,8 @@ threatcode scan infra/ --write-baseline .threatcode-baseline.json
             gitleaks.sarif
 ```
 
-A baseline hides findings, not attack paths: a path at or above `fail-on` still fails the job until a hop on it is fixed.
+The baseline records every attack path as well as every finding, so a path that was already there stops failing the job and a new path, or a known path that gained or lost a hop, fails it.
+A baseline written by an older version lists no path and hides none, so write it again once.
 
 ### Without the action
 
@@ -237,7 +238,7 @@ repos:
 The hook runs `threatcode scan . --fail-on high --format text` over the whole repository, because an attack path can cross files and the list of changed files would hide half of it.
 It runs when a commit touches a file type that can hold infrastructure code.
 Add `args: ["--fail-on", "critical"]` to change the gate.
-Replace `main` with a release tag once you have chosen one.
+Replace `main` with a release tag once you have chosen one; the header of `.pre-commit-hooks.yaml` says the same.
 
 ## Any other CI system
 
