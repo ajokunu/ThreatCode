@@ -38,7 +38,7 @@
     {
       "severity": "high",
       "source": "mcp_server.inventory",
-      "stride": "spoofing",
+      "stride": "information_disclosure",
       "target": "mcp_agent.config"
     }
   ]

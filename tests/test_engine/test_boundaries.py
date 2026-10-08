@@ -616,15 +616,20 @@ class TestKubernetesAndMcpFlowsRemain:
         assert threat.target_address == "kubernetes_service.shop.web"
         assert threat.metadata["flow"]["relations"] == ["backend"]
 
-    def test_a_remote_mcp_server_that_is_neither_encrypted_nor_authenticated(self) -> None:
+    def test_a_remote_mcp_server_over_plain_http_is_an_unencrypted_flow(self) -> None:
         (threat,) = self._threats("tests/fixtures/mcp/vulnerable/.mcp.json")
         assert (threat.resource_address, threat.target_address) == (
             "mcp_server.inventory",
             "mcp_agent.config",
         )
-        assert threat.stride_category == "spoofing"
+        # The scheme is evidence; whether the server asks for a sign-in is not
+        assert threat.stride_category == "information_disclosure"
+        assert threat.metadata["boundary_rule"] == "BOUNDARY_UNENCRYPTED_FLOW"
+        assert threat.metadata["flow"]["encrypted"] is False
+        assert threat.metadata["flow"]["authenticated"] is None
         assert threat.severity == Severity.HIGH
         assert "over http" in threat.description
+        assert "is not authenticated" not in threat.description
 
     def test_a_pinned_authenticated_https_server_is_one_level_lower(self) -> None:
         (threat,) = self._threats("tests/fixtures/mcp/fixed/.mcp.json")
@@ -769,3 +774,77 @@ class TestBoundaryRules:
                         for technique in threat.mitre_techniques:
                             assert technique in TECHNIQUE_DB, (source, target, technique)
                         assert threat.mitre_tactics
+
+
+class TestAMissingMcpCredentialIsNotEvidence:
+    """RW-06: a stock remote server config said "not authenticated" and failed CI."""
+
+    STOCK = (
+        '{"mcpServers": {"docs": {"type": "http", "url": "https://modelcontextprotocol.io/mcp"}}}'
+    )
+    WITH_HEADER = (
+        '{"mcpServers": {"docs": {"type": "http", "url": "https://docs.example.org/mcp",'
+        ' "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"}}}}'
+    )
+
+    def _threats(self, tmp_path: Path, text: str) -> list[Threat]:
+        path = tmp_path / ".mcp.json"
+        path.write_text(text, encoding="utf-8")
+        return boundaries.analyze(InfraGraph.from_parsed(detect_and_parse(path)))
+
+    def test_the_flow_is_not_called_unauthenticated(self, tmp_path: Path) -> None:
+        (threat,) = self._threats(tmp_path, self.STOCK)
+        assert threat.metadata["flow"]["authenticated"] is None
+        assert threat.metadata["flow"]["encrypted"] is True
+        assert threat.stride_category == "tampering"
+        assert threat.metadata["boundary_rule"] == "BOUNDARY_GENERIC_FLOW"
+        assert "is not authenticated" not in threat.description
+        assert "nothing says whether it is authenticated" in threat.description
+
+    def test_the_severity_and_confidence_are_those_of_the_credential_rule(
+        self, tmp_path: Path
+    ) -> None:
+        (threat,) = self._threats(tmp_path, self.STOCK)
+        assert threat.severity == Severity.LOW
+        assert threat.confidence == 0.5
+
+    def test_a_lone_remote_server_config_does_not_fail_the_default_gate(
+        self, tmp_path: Path
+    ) -> None:
+        from tests.helpers.cli import run_cli
+
+        path = tmp_path / ".mcp.json"
+        path.write_text(self.STOCK, encoding="utf-8")
+        run = run_cli(["scan", str(path), "-f", "json"])
+        assert run.exit_code == 0, run.stderr[-400:]
+        ids = {(t["source"], t["severity"]) for t in run.json()["threats"]}
+        assert ids == {("boundary", "low"), ("rule", "low")}
+
+    def test_the_mitigation_does_not_ask_the_agent_to_be_authenticated(
+        self, tmp_path: Path
+    ) -> None:
+        (threat,) = self._threats(tmp_path, self.STOCK)
+        assert "Authenticate the caller" not in threat.mitigation
+        assert "untrusted input to the agent" in threat.mitigation
+
+    def test_a_plaintext_server_gets_the_transport_advice(self, tmp_path: Path) -> None:
+        text = self.STOCK.replace("https://modelcontextprotocol.io", "http://mcp.example.org")
+        (threat,) = self._threats(tmp_path, text)
+        assert "https or wss" in threat.mitigation
+
+    def test_a_configured_credential_is_still_read_as_authenticated(self, tmp_path: Path) -> None:
+        (threat,) = self._threats(tmp_path, self.WITH_HEADER)
+        assert threat.metadata["flow"]["authenticated"] is True
+        assert threat.severity == Severity.MEDIUM
+        assert threat.confidence == 1.0
+
+    def test_a_declared_unauthenticated_flow_of_another_kind_is_unchanged(self) -> None:
+        graph = _graph(
+            [_res("aws_lb", "front", "internet"), _res("aws_instance", "app", "private")],
+            [_edge("aws_lb.front", "aws_instance.app", "network_flow", authenticated=False)],
+        )
+        (threat,) = boundaries.analyze(graph)
+        assert threat.metadata["flow"]["authenticated"] is False
+        assert threat.stride_category == "spoofing"
+        assert threat.severity == Severity.HIGH
+        assert "Authenticate the caller" in threat.mitigation
