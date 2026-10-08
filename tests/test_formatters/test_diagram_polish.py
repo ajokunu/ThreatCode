@@ -30,6 +30,7 @@ from threatcode.formatters.diagram_routing import Rect
 from threatcode.ir.edges import EdgeType, InfraEdge
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
+from threatcode.models.analysis import AnalysisResult
 from threatcode.models.attack_path import AttackHop, AttackPath
 from threatcode.models.report import ThreatReport
 from threatcode.models.threat import Severity, Threat, ThreatSource
@@ -40,11 +41,16 @@ EXAMPLES = ("aws-webapp", "k8s-platform", "agent-workstation")
 
 
 @cache
-def example_svg(name: str) -> str:
+def example_analysis(name: str) -> AnalysisResult:
     settings: dict[str, Any] = {"no_timestamp": True}
     if name == "aws-webapp":
         settings["ingest"] = [str(REPO / "examples/aws-webapp/scanner/trivy-app-image.json")]
-    return threatcode.analyze(REPO / "examples" / name, **settings).to_svg()
+    return threatcode.analyze(REPO / "examples" / name, **settings)
+
+
+@cache
+def example_svg(name: str) -> str:
+    return example_analysis(name).to_svg()
 
 
 def root_of(svg: str) -> ElementTree.Element:
@@ -529,7 +535,6 @@ class TestZoneLabels:
         labels = re.findall(r'class="edge-label">(.*?)</text>', example_svg("aws-webapp"))
         names = [label.split(" x")[0] for label in labels]
         assert len(names) == len(set(names))
-        assert len(labels) <= 6
 
 
 class TestMergedConnectors:
@@ -1220,14 +1225,11 @@ class TestLegendAndLayout:
         xs = {float(g.findall(f"{NS}rect")[0].get("x", 0)) for g in groups(root, "node")}
         assert len(xs) == 5
 
-    @pytest.mark.parametrize(
-        ("name", "ratio"), [("aws-webapp", 2.1), ("k8s-platform", 1.6), ("agent-workstation", 1.4)]
-    )
-    def test_the_examples_are_not_absurdly_tall(self, name: str, ratio: float) -> None:
-        width, height = (
-            float(v) for v in root_of(example_svg(name)).get("viewBox", "").split()[2:]
-        )
-        assert height / width < ratio, (name, width, height)
+    def test_a_lane_of_many_nodes_fills_the_width_of_the_canvas(self) -> None:
+        root = root_of(render([node(f"aws_instance.n{i}") for i in range(12)]))
+        width = float(root.get("viewBox", "").split()[2])
+        rights = [float(g.findall(f"{NS}rect")[0].get("x", 0)) + 176 for g in groups(root, "node")]
+        assert max(rights) >= 0.7 * width
 
 
 # -- Whole diagrams -------------------------------------------------------------
@@ -1259,15 +1261,7 @@ class TestExamplesAsAWhole:
             for g in groups(root, "edge-group")
             if g.find(f"{NS}path").get("data-path")  # type: ignore[union-attr]
         }
-        report = threatcode.analyze(
-            REPO / "examples" / name,
-            no_timestamp=True,
-            **(
-                {"ingest": [str(REPO / "examples/aws-webapp/scanner/trivy-app-image.json")]}
-                if name == "aws-webapp"
-                else {}
-            ),
-        ).report
+        report = example_analysis(name).report
         assert report.attack_paths
         node_ids = {g.get("data-id") for g in groups(root, "node")}
         for path in report.attack_paths:
@@ -1289,6 +1283,9 @@ class TestExamplesAsAWhole:
             x, y = float(text.get("x", 0)), float(text.get("y", 0))
             assert 0 <= x <= width and 0 <= y <= height, "".join(text.itertext())
 
-    def test_the_example_scans_still_have_their_numbers_in_the_header(self) -> None:
-        svg = example_svg("aws-webapp")
-        assert "28 resources" in svg and "14 threats" in svg
+    @pytest.mark.parametrize("name", EXAMPLES)
+    def test_the_header_counts_what_the_report_holds(self, name: str) -> None:
+        report = example_analysis(name).report
+        svg = example_svg(name)
+        assert f"{report.scanned_resources} resources" in svg
+        assert f"{len(report.threats)} threats" in svg

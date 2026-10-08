@@ -302,13 +302,6 @@ _COLUMN_GAP_PX = 8
 _BREAK_PRIORITY = (".:", "/", "-_[]:,;")
 
 
-def _truncate(text: str, max_len: int) -> str:
-    """Truncate text with ellipsis if it exceeds max_len."""
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 3] + "..."
-
-
 def _chars_per_line(width_px: float, font_size: float) -> int:
     return max(int((width_px - _COLUMN_GAP_PX) / (font_size * _AVG_CHAR_WIDTH_EM)), 4)
 
