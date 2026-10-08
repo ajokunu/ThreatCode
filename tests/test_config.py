@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import pytest
@@ -285,11 +286,21 @@ class TestLlmConfigValidation:
     def test_allow_local_network_rejected_for_hosted_openai(self, tmp_path: Path) -> None:
         path = write_config(tmp_path, "llm:\n  provider: openai\n  allow_local_network: true\n")
         expected = (
-            "llm: allow_local_network requires provider 'anthropic', 'local' or 'ollama', "
-            "not 'openai'"
+            "llm: allow_local_network requires provider 'ollama' or 'local' "
+            "(or 'anthropic' behind a gateway), not 'openai'"
         )
-        with pytest.raises(ConfigError, match=expected):
+        with pytest.raises(ConfigError, match=re.escape(expected)):
             load_config(path)
+
+    def test_the_error_names_every_provider_the_option_allows(self, tmp_path: Path) -> None:
+        from threatcode.config import _LOCAL_NETWORK_PROVIDERS
+
+        path = write_config(tmp_path, "llm:\n  provider: openai\n  allow_local_network: true\n")
+        with pytest.raises(ConfigError) as caught:
+            load_config(path)
+        for provider in _LOCAL_NETWORK_PROVIDERS:
+            assert f"'{provider}'" in str(caught.value)
+        assert _LOCAL_NETWORK_PROVIDERS == {"ollama", "local", "anthropic"}
 
     def test_allow_local_network_is_accepted_for_anthropic_behind_a_gateway(
         self, tmp_path: Path

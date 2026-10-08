@@ -21,7 +21,7 @@
 - **The generated options table listed `--version` twice,** once from the command group and once from a hand-written row.
   A test fails when any generated option table repeats an option.
 - **The `allow_local_network` error named two providers where three are allowed.**
-  It is built from the allowed set now: `requires provider 'anthropic', 'local' or 'ollama'`.
+  It is built from the allowed set now: `requires provider 'ollama' or 'local' (or 'anthropic' behind a gateway)`.
 - **The pre-commit example pinned `v0.9.1`, a release that predates the hook,** while the CI page pinned `main`.
   Both say `main` until the first release of this line is tagged, and a test fails when they differ.
 - **The changelog fragment left behind by the quality-gates package is folded into `CHANGELOG.md`** and deleted, and a test fails when a work-package id or a fragment path appears in the changelog.

@@ -82,6 +82,8 @@ _LOCAL_PROVIDERS = frozenset({"ollama", "local"})
 # The Anthropic provider may opt in too, for a gateway or proxy on a private network that fronts
 # the API (set with base_url or ANTHROPIC_BASE_URL).
 _LOCAL_NETWORK_PROVIDERS = _LOCAL_PROVIDERS | {"anthropic"}
+# The order the self-hosted providers are named in: the one most people run first.
+_SELF_HOSTED_ORDER = ("ollama", "local")
 
 # The model a fresh config uses. The installed anthropic SDK lists it among its known model ids.
 DEFAULT_LLM_MODEL = "claude-sonnet-5-5"
@@ -105,6 +107,21 @@ def _or_list(names: Sequence[str]) -> str:
     if len(quoted) <= 1:
         return "".join(quoted)
     return f"{', '.join(quoted[:-1])} or {quoted[-1]}"
+
+
+def _allowed_local_providers() -> str:
+    """The providers that may set ``allow_local_network``, worded for the error message.
+
+    The self-hosted ones come first, then the ones that need a gateway; both lists come from the
+    sets above, so a provider added there is named here.
+    """
+    self_hosted = [p for p in _SELF_HOSTED_ORDER if p in _LOCAL_PROVIDERS]
+    self_hosted += sorted(_LOCAL_PROVIDERS - set(self_hosted))
+    gateway = sorted(_LOCAL_NETWORK_PROVIDERS - _LOCAL_PROVIDERS)
+    text = _or_list(self_hosted)
+    if gateway:
+        text += f" (or {_or_list(gateway)} behind a gateway)"
+    return text
 
 
 class LLMConfig(BaseModel):
@@ -145,9 +162,9 @@ class LLMConfig(BaseModel):
     @model_validator(mode="after")
     def _check_allow_local_network(self) -> LLMConfig:
         if self.allow_local_network and self.provider not in _LOCAL_NETWORK_PROVIDERS:
-            allowed = sorted(_LOCAL_NETWORK_PROVIDERS)
             raise ValueError(
-                f"allow_local_network requires provider {_or_list(allowed)}, not '{self.provider}'"
+                f"allow_local_network requires provider {_allowed_local_providers()}, "
+                f"not '{self.provider}'"
             )
         return self
 
