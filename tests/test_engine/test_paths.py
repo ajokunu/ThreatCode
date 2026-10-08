@@ -871,14 +871,14 @@ class TestWholeInputs:
         }
         assert all(p.entry == INTERNET_ID for p in found)
 
-    def test_a_cdn_in_front_of_a_public_bucket_is_a_path_of_its_own(self) -> None:
+    def test_a_public_bucket_behind_an_origin_identity_is_reached_directly_not_by_the_cdn(
+        self,
+    ) -> None:
+        # The bucket is open to everyone, so the internet reaches it itself; the distribution reads
+        # it through an origin access identity, which is not another way in (RW-07)
         found = {tuple(node_ids(p)) for p in paths_of("realistic/10_aws_gaming_backend.json")}
-        assert (
-            INTERNET_ID,
-            "aws_cloudfront_distribution.game_cdn",
-            "aws_s3_bucket.game_assets",
-        ) in found
         assert (INTERNET_ID, "aws_s3_bucket.game_assets") in found
+        assert not [path for path in found if "aws_cloudfront_distribution.game_cdn" in path]
 
     @pytest.mark.parametrize(
         "relative",

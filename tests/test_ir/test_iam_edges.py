@@ -872,3 +872,95 @@ class TestSeveralInputs:
             ("b::aws_lambda_function.fn", "b::aws_iam_role.app"),
         }
         assert ("a::aws_lambda_function.fn", "b::aws_iam_role.app") not in _edges(graph, "assumes")
+
+
+class TestAWildcardReachesTheNodesOfItsOwnInput:
+    """RW-07: the administrator role of one template is not the administrator of every other."""
+
+    def _unit(self, label: str, bucket: str, resource: str) -> ParsedOutput:
+        return ParsedOutput(
+            resources=[
+                *_role_with(_statement("s3:*", resource)),
+                _bucket("data", bucket),
+            ],
+            source_path=label,
+            format_type="terraform_plan",
+        )
+
+    def _grants(self, graph: InfraGraph) -> set[tuple[str, str]]:
+        return {
+            (e.source, e.target)
+            for e in graph.edges
+            if e.edge_type is EdgeType.IAM_BINDING and e.relation == "permission"
+        }
+
+    def test_a_star_resource_stops_at_the_input_of_the_role(self) -> None:
+        graph = InfraGraph.from_units(
+            [self._unit("a", "bucket-a", "*"), self._unit("b", "bucket-b", "*")]
+        )
+        assert self._grants(graph) == {
+            ("a::aws_iam_role.app", "a::aws_s3_bucket.data"),
+            ("b::aws_iam_role.app", "b::aws_s3_bucket.data"),
+        }
+
+    def test_a_star_resource_still_reaches_every_bucket_of_its_own_input(self) -> None:
+        unit = ParsedOutput(
+            resources=[
+                *_role_with(_statement("s3:*", "*")),
+                _bucket("one"),
+                _bucket("two"),
+            ],
+            source_path="a",
+            format_type="terraform_plan",
+        )
+        other = ParsedOutput(
+            resources=[_bucket("elsewhere")], source_path="b", format_type="terraform_plan"
+        )
+        graph = InfraGraph.from_units([unit, other])
+        assert self._grants(graph) == {
+            ("aws_iam_role.app", "aws_s3_bucket.one"),
+            ("aws_iam_role.app", "aws_s3_bucket.two"),
+        }
+
+    def test_an_arn_that_matches_any_name_is_scoped_like_a_star(self) -> None:
+        graph = InfraGraph.from_units(
+            [
+                self._unit("a", "bucket-a", "arn:aws:s3:::*"),
+                self._unit("b", "bucket-b", "arn:aws:s3:::*"),
+            ]
+        )
+        assert self._grants(graph) == {
+            ("a::aws_iam_role.app", "a::aws_s3_bucket.data"),
+            ("b::aws_iam_role.app", "b::aws_s3_bucket.data"),
+        }
+
+    def test_a_pattern_with_a_literal_prefix_names_its_targets_in_any_input(self) -> None:
+        graph = InfraGraph.from_units(
+            [
+                self._unit("a", "acme-logs-a", "arn:aws:s3:::acme-logs-*"),
+                ParsedOutput(
+                    resources=[_bucket("logs", "acme-logs-b")],
+                    source_path="b",
+                    format_type="terraform_plan",
+                ),
+            ]
+        )
+        assert self._grants(graph) == {
+            ("aws_iam_role.app", "aws_s3_bucket.data"),
+            ("aws_iam_role.app", "aws_s3_bucket.logs"),
+        }
+
+    def test_an_exact_arn_names_its_target_in_any_input(self) -> None:
+        graph = InfraGraph.from_units(
+            [
+                ParsedOutput(
+                    resources=[*_role_with(_statement("s3:GetObject", "arn:aws:s3:::shared/*"))],
+                    source_path="a",
+                    format_type="terraform_plan",
+                ),
+                ParsedOutput(
+                    resources=[_bucket("shared")], source_path="b", format_type="terraform_plan"
+                ),
+            ]
+        )
+        assert self._grants(graph) == {("aws_iam_role.app", "aws_s3_bucket.shared")}

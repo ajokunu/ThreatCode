@@ -43,6 +43,14 @@ A wildcard resource (`*`, or an ARN pattern such as `arn:aws:s3:::logs-*`) fans 
 the services the statement's actions name, in id order, capped at `MAX_WILDCARD_TARGETS` per role.
 The edges of a capped fan-out carry `wildcard`, and the build reports one
 `graph.iam_fanout_capped` diagnostic for the role.
+
+A resource of `*` (or a pattern that matches any name) reaches the nodes of the role's own input
+only.
+In a repository of unrelated templates and modules, an administrator role of one stack is not
+the administrator of every bucket in every other stack, and joining them would put an attack path
+from the internet to each of them.
+An ARN or a pattern with a literal part (`arn:aws:s3:::acme-logs-*`) names its targets and
+reaches them in any input.
 """
 
 from __future__ import annotations
@@ -525,7 +533,7 @@ def _link_within_budget(
     # A `*` resource reaches every node of its services: the first ones, data stores first, are
     # linked, and the rest are counted without being visited, so the cost is the budget
     for resource_type in sorted(everywhere, key=lambda t: _TYPE_RANK.get(t, len(_TYPE_RANK))):
-        nodes = targets.of_type(resource_type)
+        nodes = [n for n in targets.of_type(resource_type) if targets.ctx.same_input(role, n)]
         for position, node in enumerate(nodes):
             if node.id == role.id:
                 continue
@@ -671,11 +679,22 @@ def _concrete_targets(
         arn = parse_arn(resource)
         if arn is not None:
             nodes, wildcard = targets.of_arn(arn, resource)
+            if wildcard and _matches_any_name(arn):
+                nodes = [n for n in nodes if ctx.same_input(role, n)]
             found.extend((n, wildcard) for n in nodes if _service_matches(n, services))
             continue
         for node_id in index.resolve(resource, role.module):
             found.append((_node(ctx, node_id), False))
     return found
+
+
+def _matches_any_name(arn: ArnParts) -> bool:
+    """Whether an ARN pattern has no literal part in the name: ``arn:aws:s3:::*``."""
+    service = _service_of(arn.service)
+    if service is None:
+        return False
+    name = SERVICES[service].name_of(arn)
+    return bool(name) and not name.strip("*?")
 
 
 def _node(ctx: EnrichContext, node_id: str) -> InfraNode:

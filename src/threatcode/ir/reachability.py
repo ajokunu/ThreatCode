@@ -33,6 +33,12 @@ load balancer            `lb -> target` for the targets of the target groups its
                          admits the world, or for an internet-facing one with no group at all.
 CloudFront               `internet -> distribution`, `distribution -> origin` (bucket, load
                          balancer, API).
+                         A bucket that the distribution reads through an origin access control
+                         or identity is not an origin here: only the distribution can read it,
+                         and what the distribution serves from it is the content it exists to
+                         publish, so the internet does not reach the bucket.
+                         A bucket that is also open to everyone has its own `internet -> bucket`
+                         edge.
 API Gateway              `internet -> api`, `api -> function` through its integrations and
                          Lambda permissions.
 Lambda function URL      `internet -> url` for auth NONE, `url -> function`.
@@ -199,6 +205,36 @@ def _values(properties: Any, path: str) -> list[Any]:
     for value in current:
         flat.extend(value if isinstance(value, list) else [value])
     return flat
+
+
+def _is_set(value: Any) -> bool:
+    """Whether an optional attribute is set: a non-empty text, or a value the scan cannot read."""
+    if is_unknown(value):
+        return True
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _reads_through_access_control(origin: Mapping[str, Any]) -> bool:
+    """Whether a distribution origin reads its bucket through an access control or identity.
+
+    An origin access control (``origin_access_control_id``) or the legacy origin access identity
+    (``s3_origin_config.origin_access_identity``), in the Terraform and the CloudFormation
+    spelling.
+    An unset identity is the empty string, which is what a template writes next to an access
+    control.
+    """
+    if any(
+        _is_set(origin.get(key)) for key in ("origin_access_control_id", "OriginAccessControlId")
+    ):
+        return True
+    for block in ("s3_origin_config", "S3OriginConfig"):
+        for config in _values(origin, block):
+            if isinstance(config, Mapping) and any(
+                _is_set(config.get(key))
+                for key in ("origin_access_identity", "OriginAccessIdentity")
+            ):
+                return True
+    return False
 
 
 def _first(properties: Any, *paths: str) -> Any:
@@ -706,11 +742,13 @@ class _Reach:
                 if not isinstance(entry, Mapping):
                     continue
                 domain = entry.get("domain_name", entry.get("DomainName"))
+                guarded = _reads_through_access_control(entry)
                 for origin in self.resolve(dist, domain, ORIGIN_TYPES.__contains__):
-                    found.setdefault(origin.id, origin)
+                    if not (guarded and origin.resource_type == "aws_s3_bucket"):
+                        found.setdefault(origin.id, origin)
                 for name in _text_list(domain):
                     bucket = self._bucket_for_domain(name)
-                    if bucket is not None:
+                    if bucket is not None and not guarded:
                         found.setdefault(bucket.id, bucket)
         return [found[k] for k in sorted(found)]
 
