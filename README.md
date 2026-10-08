@@ -262,6 +262,7 @@ Every command and count in this README is executed or computed by `tests/test_do
 - [Architecture](https://github.com/ajokunu/ThreatCode/blob/main/docs/architecture.md), [rule catalog](https://github.com/ajokunu/ThreatCode/blob/main/docs/rules.md) and [writing rules](https://github.com/ajokunu/ThreatCode/blob/main/docs/writing-rules.md).
 - [MITRE ATT&CK mapping](https://github.com/ajokunu/ThreatCode/blob/main/docs/mitre-attack.md), [security](https://github.com/ajokunu/ThreatCode/blob/main/docs/security.md) and [the security model of the tool itself](https://github.com/ajokunu/ThreatCode/blob/main/docs/security-model.md).
 - [Migrating from 0.9](https://github.com/ajokunu/ThreatCode/blob/main/docs/migrating.md) lists the removed commands and what replaces them.
+- [Claims and their proof](https://github.com/ajokunu/ThreatCode/blob/main/docs/claims.md) maps every public claim about ThreatCode to a command or a test.
 - [Changelog](https://github.com/ajokunu/ThreatCode/blob/main/CHANGELOG.md).
 
 To report a vulnerability, follow [SECURITY.md](https://github.com/ajokunu/ThreatCode/blob/main/SECURITY.md).

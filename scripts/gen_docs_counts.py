@@ -345,6 +345,21 @@ def render_rules_page(facts: Facts) -> str:
                 ),
                 "",
             ]
+    out += ["## By ATT&CK technique", ""]
+    out += [
+        "Every built-in rule that claims a technique, grouped by technique.",
+        "A rule with no technique reports a missing control and claims none.",
+        "",
+    ]
+    technique_rows = [
+        [
+            f"[{tid}]({mitre.TECHNIQUE_DB[tid]['url']})",
+            mitre.TECHNIQUE_DB[tid]["name"],
+            ids(rule_ids),
+        ]
+        for tid, rule_ids in facts.rule_techniques.items()
+    ]
+    out += [table(["Technique", "Name", "Rules"], technique_rows), ""]
     out += [
         "## Removed rules",
         "",

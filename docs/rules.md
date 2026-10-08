@@ -580,6 +580,48 @@ To write your own rules, see [Writing rules](writing-rules.md).
 | `MCP_SHELL_EXEC` | high | heuristic | elevation of privilege | T1059 | `mcp_server` | MCP server gives the agent shell command execution |
 | `MCP_UNPINNED_PACKAGE` | medium | absence | tampering | T1195.002 | `mcp_server` | MCP server launched from an unpinned package or image |
 
+## By ATT&CK technique
+
+Every built-in rule that claims a technique, grouped by technique.
+A rule with no technique reports a missing control and claims none.
+
+| Technique | Name | Rules |
+| --- | --- | --- |
+| [T1005](https://attack.mitre.org/techniques/T1005/) | Data from Local System | `MCP_BROAD_FILESYSTEM`, `MCP_SENSITIVE_PATHS` |
+| [T1021](https://attack.mitre.org/techniques/T1021/) | Remote Services | `GCP_VM_SERIAL_PORT` |
+| [T1021.001](https://attack.mitre.org/techniques/T1021/001/) | Remote Services: Remote Desktop Protocol | `AZURE_NSG_RDP_OPEN` |
+| [T1021.004](https://attack.mitre.org/techniques/T1021/004/) | Remote Services: SSH | `AZURE_NSG_SSH_OPEN`, `DOCKER_EXPOSED_SSH`, `EKS_SSH_ACCESS_NODES` |
+| [T1040](https://attack.mitre.org/techniques/T1040/) | Network Sniffing | `APPSVC_FTP_ENABLED`, `ECS_HOST_NETWORKING`, `K8S_HOST_NETWORK`, `MCP_PLAINTEXT_TRANSPORT` |
+| [T1046](https://attack.mitre.org/techniques/T1046/) | Network Service Discovery | `GKE_NO_NETWORK_POLICY`, `K8S_NO_NETWORK_POLICY` |
+| [T1048](https://attack.mitre.org/techniques/T1048/) | Exfiltration Over Alternative Protocol | `K8S_DEFAULT_ALLOW_EGRESS` |
+| [T1059](https://attack.mitre.org/techniques/T1059/) | Command and Scripting Interpreter | `MCP_SHELL_EXEC` |
+| [T1078](https://attack.mitre.org/techniques/T1078/) | Valid Accounts | `AKS_NO_RBAC`, `ELASTICACHE_NO_AUTH`, `K8S_ANONYMOUS_BINDING`, `K8S_ANONYMOUS_PRIVILEGED_BINDING`, `K8S_CLUSTER_ADMIN_BINDING`, `K8S_ROLE_BINDING_ADMIN`, `K8S_ROLE_WILDCARD_API_GROUPS`, `K8S_ROLE_WILDCARD_RESOURCES`, `K8S_ROLE_WILDCARD_VERBS`, `K8S_WILDCARD_RBAC_API_GROUPS`, `K8S_WILDCARD_RBAC_RESOURCES`, `K8S_WILDCARD_RBAC_VERBS` |
+| [T1078.001](https://attack.mitre.org/techniques/T1078/001/) | Valid Accounts: Default Accounts | `K8S_DEFAULT_SERVICE_ACCOUNT` |
+| [T1078.004](https://attack.mitre.org/techniques/T1078/004/) | Valid Accounts: Cloud Accounts | `ACR_ADMIN_ENABLED`, `APPSVC_NO_AUTH`, `APPSVC_NO_MANAGED_IDENTITY`, `AZURE_VM_NO_MANAGED_IDENTITY`, `FUNC_NO_MANAGED_IDENTITY`, `GCP_IAM_ADMIN_SA`, `GCP_IAM_SA_TOKEN_CREATOR`, `GCP_VM_DEFAULT_SA`, `GKE_LEGACY_ABAC`, `GKE_NODE_DEFAULT_SA`, `IAM_ADMIN_POLICY_ATTACHED`, `IAM_OVERPERMISSIVE_ROLE`, `IAM_PASSROLE_WILDCARD`, `IAM_SERVICE_WILDCARD`, `IAM_WILDCARD_ACTION`, `LAMBDA_OVERPERMISSIVE_ROLE`, `SQS_WILDCARD_POLICY` |
+| [T1098.006](https://attack.mitre.org/techniques/T1098/006/) | Account Manipulation: Additional Container Cluster Roles | `K8S_RBAC_ESCALATION_VERBS` |
+| [T1105](https://attack.mitre.org/techniques/T1105/) | Ingress Tool Transfer | `ECS_NO_READONLY_FS`, `K8S_WRITABLE_ROOT_FS` |
+| [T1110](https://attack.mitre.org/techniques/T1110/) | Brute Force | `AZURE_VM_PASSWORD_AUTH` |
+| [T1133](https://attack.mitre.org/techniques/T1133/) | External Remote Services | `AZURE_NSG_RDP_OPEN`, `AZURE_NSG_SSH_OPEN`, `EKS_PUBLIC_ACCESS_ANY_CIDR`, `GCP_FW_RDP_OPEN`, `GCP_FW_SSH_OPEN`, `K8S_SERVICE_EXPOSES_ADMIN_PORT`, `SG_UNRESTRICTED_INGRESS` |
+| [T1190](https://attack.mitre.org/techniques/T1190/) | Exploit Public-Facing Application | `AKS_NO_PRIVATE_CLUSTER`, `APIGW_METHOD_NO_AUTH`, `APIGW_PUBLIC_POLICY`, `APIGW_ROUTE_NO_AUTH`, `AZURE_NSG_ALLOW_ALL_INBOUND`, `AZURE_NSG_DATABASE_PORT_OPEN`, `AZURE_NSG_WEB_PORT_OPEN`, `AZURE_VM_PUBLIC_IP`, `CLOUDFRONT_NO_WAF`, `CLOUDRUN_UNAUTHENTICATED`, `CLOUDSQL_PUBLIC_IP`, `EC2_PUBLIC_IP`, `EKS_OUTDATED_VERSION`, `EKS_PUBLIC_ACCESS_ANY_CIDR`, `EKS_PUBLIC_ENDPOINT`, `ES_PUBLIC_DOMAIN`, `FUNC_PUBLIC_ACCESS`, `GCFUNC_PUBLIC_INGRESS`, `GCFUNC_PUBLIC_INVOKER`, `GCP_FW_ALLOW_ALL`, `GCP_VM_PUBLIC_IP`, `GKE_MASTER_WORLD_ACCESS`, `GKE_NO_MASTER_AUTHORIZED_NETWORKS`, `GKE_NO_PRIVATE_CLUSTER`, `K8S_HOSTPORT_USED`, `LAMBDA_URL_NO_AUTH`, `MCP_REMOTE_NO_AUTH`, `MSSQL_PUBLIC_ACCESS`, `RDS_PUBLIC_ACCESS`, `REDIS_PUBLIC_NETWORK_ACCESS`, `REDSHIFT_PUBLIC_ACCESS`, `SG_UNRESTRICTED_INGRESS`, `SG_WEB_PORT_OPEN_TO_WORLD`, `WAFV2_NO_GEO_BLOCKING`, `WAFV2_NO_IP_REPUTATION`, `WAFV2_NO_SQL_INJECTION_RULE`, `WAFV2_NO_XSS_RULE`, `WAF_EMPTY_RULES`, `WAF_NO_DEFAULT_BLOCK`, `WAF_NO_MANAGED_RULES` |
+| [T1195.002](https://attack.mitre.org/techniques/T1195/002/) | Supply Chain Compromise: Compromise Software Supply Chain | `DOCKER_ADD_FROM_URL`, `DOCKER_LATEST_TAG`, `DOCKER_NO_DIGEST_PIN`, `DOCKER_RUN_CURL_PIPE`, `K8S_LATEST_TAG`, `MCP_UNPINNED_PACKAGE` |
+| [T1485](https://attack.mitre.org/techniques/T1485/) | Data Destruction | `AZURE_STORAGE_NO_SOFT_DELETE`, `CLOUDSQL_NO_BACKUP`, `DYNAMODB_NO_PITR`, `GCP_BUCKET_NO_VERSIONING`, `KEYVAULT_NO_PURGE_PROTECTION`, `KEYVAULT_SHORT_SOFT_DELETE_RETENTION`, `RDS_NO_BACKUP`, `RDS_NO_DELETION_PROTECTION`, `S3_NO_VERSIONING` |
+| [T1498](https://attack.mitre.org/techniques/T1498/) | Network Denial of Service | `AZURE_VNET_NO_DDOS` |
+| [T1499](https://attack.mitre.org/techniques/T1499/) | Endpoint Denial of Service | `DOCKER_NO_HEALTHCHECK`, `K8S_EPHEMERAL_STORAGE_UNBOUNDED`, `K8S_NO_RESOURCE_LIMITS`, `WAFV2_RATE_LIMIT_HIGH`, `WAF_NO_RATE_LIMITING` |
+| [T1525](https://attack.mitre.org/techniques/T1525/) | Implant Internal Image | `ECR_MUTABLE_TAGS` |
+| [T1528](https://attack.mitre.org/techniques/T1528/) | Steal Application Access Token | `GCP_IAM_SA_KEY`, `K8S_AUTOMOUNT_DEFAULT`, `K8S_AUTOMOUNT_SA_TOKEN` |
+| [T1530](https://attack.mitre.org/techniques/T1530/) | Data from Cloud Storage | `ACR_ANONYMOUS_PULL`, `ACR_PUBLIC_NETWORK_ACCESS`, `AZURE_STORAGE_CONTAINER_PUBLIC`, `AZURE_STORAGE_NO_NETWORK_RULES`, `AZURE_STORAGE_PUBLIC_ACCESS`, `BQ_PUBLIC_ACCESS`, `CLOUDTRAIL_NO_ENCRYPTION`, `COSMOS_NO_VNET_RULES`, `COSMOS_PUBLIC_ACCESS`, `DYNAMODB_NO_ENCRYPTION`, `EC2_UNENCRYPTED_EBS`, `ECR_PUBLIC_POLICY`, `ELASTICACHE_NO_ENCRYPTION_REST`, `ES_NO_ENCRYPTION`, `GCP_BUCKET_PUBLIC`, `KMS_KEY_EXPOSED`, `MSSQL_NO_TDE`, `RDS_NO_ENCRYPTION`, `REDSHIFT_NO_ENCRYPTION`, `S3_NO_ENCRYPTION`, `S3_PUBLIC_ACCESS`, `S3_PUBLIC_ACCESS_BLOCK_DISABLED`, `SNS_NO_ENCRYPTION`, `SNS_WORLD_SUBSCRIBABLE`, `SQS_NO_ENCRYPTION` |
+| [T1542.003](https://attack.mitre.org/techniques/T1542/003/) | Pre-OS Boot: Bootkit | `GCP_VM_NO_SHIELDED`, `GKE_NO_SHIELDED_NODES` |
+| [T1548](https://attack.mitre.org/techniques/T1548/) | Abuse Elevation Control Mechanism | `K8S_ALLOW_PRIVILEGE_ESCALATION`, `SAGEMAKER_NOTEBOOK_ROOT_ACCESS` |
+| [T1548.003](https://attack.mitre.org/techniques/T1548/003/) | Abuse Elevation Control Mechanism: Sudo and Sudo Caching | `DOCKER_RUN_SUDO` |
+| [T1552.001](https://attack.mitre.org/techniques/T1552/001/) | Unsecured Credentials: Credentials In Files | `DOCKER_ARG_SECRET`, `DOCKER_ENV_SECRET`, `DOCKER_SENSITIVE_FILE_ADD`, `DOCKER_SENSITIVE_FILE_COPY`, `K8S_SECRET_ENV_VAR`, `MCP_SECRET_IN_CONFIG`, `MCP_SECRET_LIKELY_IN_CONFIG`, `MCP_SENSITIVE_PATHS` |
+| [T1552.005](https://attack.mitre.org/techniques/T1552/005/) | Unsecured Credentials: Cloud Instance Metadata API | `EC2_IMDSV1`, `EKS_NO_IRSA`, `GKE_NO_WORKLOAD_IDENTITY` |
+| [T1552.007](https://attack.mitre.org/techniques/T1552/007/) | Unsecured Credentials: Container API | `K8S_RBAC_SECRETS_READ` |
+| [T1555.006](https://attack.mitre.org/techniques/T1555/006/) | Credentials from Password Stores: Cloud Secrets Management Stores | `KEYVAULT_NO_NETWORK_ACLS`, `KEYVAULT_PUBLIC_ACCESS`, `SM_LONG_ROTATION`, `SM_NO_KMS_KEY`, `SM_NO_ROTATION`, `SSM_UNENCRYPTED_PARAMETER` |
+| [T1557](https://attack.mitre.org/techniques/T1557/) | Adversary-in-the-Middle | `APPSVC_HTTP_ONLY`, `APPSVC_OLD_TLS`, `AZURE_STORAGE_NO_HTTPS`, `CLOUDFRONT_NO_HTTPS`, `CLOUDSQL_NO_SSL`, `ELASTICACHE_NO_ENCRYPTION_TRANSIT`, `ELB_NO_HTTPS`, `ELB_OUTDATED_TLS`, `ES_NO_NODE_TO_NODE_ENCRYPTION`, `FUNC_NO_HTTPS`, `GCFUNC_HTTP_NO_AUTH`, `K8S_INGRESS_NO_TLS`, `MCP_PLAINTEXT_TRANSPORT`, `REDIS_NON_SSL_PORT`, `REDIS_OLD_TLS`, `SNS_NO_HTTPS` |
+| [T1567](https://attack.mitre.org/techniques/T1567/) | Exfiltration Over Web Service | `MCP_LETHAL_TRIFECTA`, `SAGEMAKER_NOTEBOOK_DIRECT_INTERNET` |
+| [T1609](https://attack.mitre.org/techniques/T1609/) | Container Administration Command | `ECS_EXEC_ENABLED`, `K8S_RBAC_POD_EXEC` |
+| [T1611](https://attack.mitre.org/techniques/T1611/) | Escape to Host | `DOCKER_NO_USER`, `DOCKER_ROOT_USER`, `ECS_PRIVILEGED_CONTAINER`, `K8S_CAPABILITIES_NOT_DROPPED`, `K8S_DANGEROUS_CAPABILITIES`, `K8S_HOST_IPC`, `K8S_HOST_PATH_VOLUME`, `K8S_HOST_PID`, `K8S_NO_PSA_LABELS`, `K8S_NO_SECCOMP_PROFILE`, `K8S_NO_SECURITY_CONTEXT`, `K8S_NO_SECURITY_CONTEXT_DEFAULTS`, `K8S_PRIVILEGED_CONTAINER`, `K8S_RUN_AS_ROOT`, `MCP_CONTAINER_PRIVILEGED` |
+
 ## Removed rules
 
 These 29 rule ids existed in an earlier version and were removed, because the condition they tested did not describe an attacker's opportunity, tested an attribute that does not exist, or duplicated another rule.

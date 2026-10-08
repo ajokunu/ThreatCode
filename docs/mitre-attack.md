@@ -129,7 +129,7 @@ Counting the techniques the engine assigns to attack paths, boundary crossings a
 | [T1659](https://attack.mitre.org/techniques/T1659/) | Content Injection | TA0001, TA0011 | attack paths |
 <!-- /gen:techniques -->
 
-The rule catalog lists the techniques of every rule: [rule catalog](rules.md).
+The [rule catalog](rules.md) lists the techniques of every rule, and has a table of the rules for each technique.
 
 ## ATT&CK Navigator export
 
