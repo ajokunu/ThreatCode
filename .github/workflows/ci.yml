@@ -180,6 +180,23 @@ jobs:
           test "$REPORT" = "threatcode-results.sarif"
           test -s "$REPORT"
           python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["version"] == "2.1.0", d["version"]' "$REPORT"
+      - name: The SARIF names files from the repository root
+        env:
+          REPORT: ${{ steps.clean.outputs.report-file }}
+        run: |
+          python3 - "$REPORT" <<'PY'
+          import json
+          import sys
+
+          run = json.load(open(sys.argv[1]))["runs"][0]
+          uris = {
+              r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+              for r in run["results"]
+          }
+          assert uris, "no results"
+          bad = sorted(u for u in uris if not u.startswith("examples/aws-webapp/"))
+          assert not bad, f"not repository-relative: {bad}"
+          PY
 
       - name: The report format changes the file, never the counts
         id: markdown
