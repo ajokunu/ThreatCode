@@ -67,15 +67,9 @@ key_findings:
   - resource: "aws_instance.app[0]"
     kind: imdsv1
     why: metadata_options.http_tokens is optional, so a request forgery reaches the instance role.
-    pending:
-      package: WP-3-2
-      reason: an IMDSv1 rule reads metadata_options.http_tokens on instances
   - resource: aws_security_group.alb
     kind: open_ingress
     why: 443 open to 0.0.0.0/0 on an internet-facing load balancer; intentional, so informational.
-    pending:
-      package: WP-3-2
-      reason: security group rules read ingress as a list of mappings with world-open CIDRs
 
 # Scanner report joined to the graph when ingested (`--ingest`).
 scanner:

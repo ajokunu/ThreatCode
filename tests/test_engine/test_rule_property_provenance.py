@@ -111,7 +111,12 @@ ALLOWED: tuple[Allowed, ...] = (
     _allow(
         PROVIDER, r"aws_elasticsearch_domain", "node_to_node_encryption", "block of the resource"
     ),
-    _allow(PROVIDER, r"aws_launch_configuration", "metadata_options", "block of the resource"),
+    _allow(
+        PROVIDER,
+        r"aws_launch_(?:configuration|template)",
+        "metadata_options",
+        "block of the resource; the IMDS rule reads a missing block as optional",
+    ),
     _allow(
         PROVIDER,
         r"aws_s3_account_public_access_block",

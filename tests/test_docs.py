@@ -335,7 +335,7 @@ def run_bitbucket_upload(block: Block, tmp_path: Path, annotations: int) -> list
             timeout=60,
             check=False,
         )
-    if done.returncode != 0:
+    if done.returncode:
         return [f"{block.where}: the helper failed: {done.stderr.strip()[-400:]}"]
     problems: list[str] = []
     base = "/2.0/repositories/acme/shop/commit/abc123/reports/threatcode"

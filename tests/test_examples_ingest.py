@@ -4,9 +4,8 @@
 critical CVE in the image the app instances run. The join key is the image reference, which the
 plan carries in plaintext in each instance's user_data. Today the tests check that the report has
 the shape the ingester reads and that the join key is there to find, and that ingesting it puts the
-CVE on the workloads that run the image. Two expectations wait on other packages and are marked
-pending with the package that delivers them: the attack-path search (the CVE as an enabler of a hop)
-and the report writer (the ingested sources in the JSON report).
+CVE on the workloads that run the image, makes it an enabler of a hop of the attack path it
+belongs to, and lists the ingested source in the JSON report.
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ from tests.helpers.examples import (
     path_node_ids,
     scan_example,
 )
-from tests.helpers.pending import pending
 
 WEBAPP = EXAMPLES_DIR / "aws-webapp"
 TRIVY = WEBAPP / "scanner" / "trivy-app-image.json"
@@ -114,11 +112,6 @@ class TestIngestion:
         assert sorted(t["resource_address"] for t in hits) == sorted(scanner_entry()["attaches_to"])
         assert all(t["severity"] == "critical" for t in hits)
 
-    @pending(
-        "WP-4-1",
-        "attack paths exist and list the findings that enable each hop, so the ingested CVE "
-        "(a threat on the instance the path crosses) shows up as an enabler",
-    )
     def test_the_cve_is_an_enabler_of_the_expected_path(self) -> None:
         run = scan_json([WEBAPP], ingest=[TRIVY])
         paths = find_key(run.json(), "attack_paths") or []
@@ -130,8 +123,10 @@ class TestIngestion:
         for path in paths:
             ids = path_node_ids(path)
             if ids[-1] == wanted["target"] and is_subsequence(wanted["via"], ids):
-                enablers = json.dumps([hop.get("enabled_by") for hop in path.get("hops", [])])
-                assert "CVE-2022-37434" in enablers
+                # enabled_by carries threat ids; resolve them to the threats they name
+                by_id = {t["id"]: t for t in find_key(run.json(), "threats") or []}
+                enabler_ids = [i for hop in path.get("hops", []) for i in hop.get("enabled_by", [])]
+                assert "trivy:CVE-2022-37434" in {by_id[i]["rule_id"] for i in enabler_ids}
                 return
         pytest.fail("the expected path is not in the report")
 

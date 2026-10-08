@@ -39,13 +39,7 @@ FOCUS: dict[str, frozenset[str]] = {
 }
 
 # (configuration, format) -> (package that removes the difference, what differs today)
-EXPECTED_DIFFERENCES: dict[tuple[str, str], tuple[str, str]] = {
-    ("public_bucket", "cfn"): ("WP-2-3", "AccessControl is not translated to acl"),
-    ("public_database", "cfn"): ("WP-2-3", "PubliclyAccessible is not translated"),
-    ("open_instance", "cfn"): ("WP-2-3", "NetworkInterfaces association is not hoisted"),
-    ("wildcard_policy", "cfn"): ("WP-2-3", "ManagedPolicy documents are not a known type"),
-    ("wildcard_policy", "hcl"): ("WP-2-2", "jsonencode text is not normalized to JSON"),
-}
+EXPECTED_DIFFERENCES: dict[tuple[str, str], tuple[str, str]] = {}
 
 
 def fired(config: str, fmt: str) -> Counter[str]:

@@ -51,9 +51,6 @@ key_findings:
   - resource: kubernetes_daemon_set.platform.node-exporter
     rule_ids: [K8S_PRIVILEGED_CONTAINER]
     why: privileged true, host network, host PID and a hostPath mount of the node root.
-    pending:
-      package: WP-1-1
-      reason: workload rules apply to every pod workload kind, not only Deployment
   - resource: kubernetes_cluster_role.secret-reader
     kind: secrets_read
     why: get, list and watch on secrets in every namespace.
