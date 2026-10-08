@@ -3,7 +3,7 @@
   A `SecurityGroupIngress` with `GroupId: !Ref Param`, an `aws_security_group_rule` with `security_group_id = var.x` or an `aws_s3_bucket_server_side_encryption_configuration` with `bucket = var.x` turned the facts of every possible parent in the scan Unknown, so `SG_UNRESTRICTED_INGRESS`, `S3_NO_ENCRYPTION` and the other findings that read them disappeared from every resource, and no coverage gap said so.
   On `aws-cloudformation-templates` that removed every `SG_*` finding (717 findings and none of them a security group rule).
   It now reports 76 `SG_UNRESTRICTED_INGRESS` and 29 `SG_WEB_PORT_OPEN_TO_WORLD`.
-  Four changes make that true.
+  Several changes make that true.
   A world-open rule that the scan can read still fires next to an unresolved rule resource, because a rule resource can only add ingress.
   An unresolved companion makes facts Unknown only for the parents of its own input (the file, template or Terraform module that wrote it), because a reference never names a resource of another input.
   Every place where that is done is a new warning-level coverage gap, `enrich.unresolved_companion`, printed on stderr even with `--quiet`, listed in the report and counted by `--strict`.
