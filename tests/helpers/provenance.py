@@ -39,6 +39,7 @@ from threatcode.engine.rules.matcher import (
     parse_path,
     resource_type_matches,
 )
+from threatcode.exceptions import ThreatCodeError
 from threatcode.ir.enrich import DERIVED, enrichment_modules
 from threatcode.ir.graph import InfraGraph
 from threatcode.parsers import detect_and_parse
@@ -137,7 +138,10 @@ def _graphs() -> Iterator[InfraGraph]:
     stacks = [p for p in sorted(EXAMPLES.iterdir()) if p.is_dir()]
     stacks += [p for p in sorted((FIXTURES / "helm").iterdir()) if p.is_dir()]
     for directory in stacks:
-        result = run_scan(ScanRequest(paths=(str(directory),)))
+        try:
+            result = run_scan(ScanRequest(paths=(str(directory),)))
+        except ThreatCodeError:  # a directory that is no scan input is no evidence either
+            continue
         yield result.graph
 
 

@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -57,9 +58,8 @@ def pending_markers_in_suite() -> list[dict[str, str]]:
     A child process, because the markers must be read from a collection of every test file,
     not only from the files this session was asked to run.
     """
-    report = TESTS_DIR / ".pending-report.json"
-    report.unlink(missing_ok=True)
-    try:
+    with tempfile.TemporaryDirectory(prefix="threatcode-pending-") as directory:
+        report = Path(directory) / "pending.json"
         done = subprocess.run(
             [
                 sys.executable,
@@ -86,8 +86,6 @@ def pending_markers_in_suite() -> list[dict[str, str]]:
             )
         found: list[dict[str, str]] = json.loads(report.read_text(encoding="utf-8"))
         return found
-    finally:
-        report.unlink(missing_ok=True)
 
 
 def test_no_test_carries_a_pending_marker() -> None:
