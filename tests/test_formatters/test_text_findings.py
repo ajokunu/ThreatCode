@@ -270,7 +270,9 @@ class TestNothingIsCut:
         ]
         text = format_text(analysis_of(*threats), RenderOptions(width=width))
         assert all(len(line) <= max(width, 40) for line in text.splitlines())
-        assert ("A_RULE_ID_" + "X" * 30).count("X") == 30
+        # Wrapped, never cut: the pieces of the rule id follow each other and hold every character
+        flat = re.sub(r"\s+", "", text)
+        assert "A_RULE_ID_" + "X" * 30 in flat
         assert len(entries(text)) == 3
 
 
