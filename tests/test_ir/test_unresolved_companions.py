@@ -345,3 +345,33 @@ Resources:
         two = _derived(graph, "module.two.aws_s3_bucket.b")["policy_statements"]
         assert isinstance(one, list) and not is_unknown(one)
         assert two == []
+
+
+class TestTheGapReachesTheCommandLine:
+    """A finding the scan cannot report must be visible, and --strict must count it."""
+
+    MODULE = {
+        "a.tf": TestAnAbsenceFactStaysUnknownInsideItsInput.BUCKET,
+        "b.tf": TestAnAbsenceFactStaysUnknownInsideItsInput.UNRESOLVED_ENCRYPTION,
+    }
+
+    def _write(self, tmp_path: Path) -> Path:
+        for name, text in self.MODULE.items():
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        return tmp_path
+
+    def test_the_gap_is_in_the_report_and_on_stderr_even_with_quiet(self, tmp_path: Path) -> None:
+        from tests.helpers.cli import run_cli
+
+        run = run_cli(["-q", "scan", str(self._write(tmp_path)), "-f", "json", "--fail-on", "none"])
+        assert run.exit_code == 0
+        gaps = [g for g in run.json()["coverage"]["gaps"] if g["code"] == GAP]
+        assert len(gaps) == 1 and gaps[0]["file"] == "b.tf"
+        assert "enrich.unresolved_companion" in run.stderr
+
+    def test_strict_turns_the_gap_into_a_failure(self, tmp_path: Path) -> None:
+        from tests.helpers.cli import run_cli
+
+        path = str(self._write(tmp_path))
+        assert run_cli(["scan", path, "-f", "json", "--strict"]).exit_code == 2
+        assert run_cli(["scan", path, "-f", "json", "--fail-on", "none"]).exit_code == 0
