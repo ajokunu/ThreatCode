@@ -115,6 +115,32 @@ Text in the scanned files can try to instruct the model, through a resource name
 None of this makes a prompt injection impossible.
 It limits what one can do: ThreatCode gives the model no tools, and its output is advisory text that is validated, attributed to a known resource and kept out of the gate.
 
+## Secret previews
+
+A secret finding never contains the secret.
+Its preview is `[REDACTED <rule id> len=<n>]`, its id is derived from the rule, the root-relative file, the line and the position on the line, and its fingerprint from the rule, file, resource and attribute, never from the value.
+The finding lands on the resource that holds the secret, so it joins the graph and the attack paths.
+
+<!-- runnable -->
+
+```python
+import threatcode
+from pathlib import Path
+
+Path("main.tf").write_text(
+    'resource "aws_db_instance" "orders" {\n'
+    '  engine   = "postgres"\n'
+    '  password = "Tr0ub4dor&3-live-Secret"\n'
+    "}\n"
+)
+report = threatcode.scan("main.tf", fail_on="none")
+secrets = [t for t in report["threats"] if t["source"] == "secret"]
+assert secrets, "the literal password is a finding"
+for finding in secrets:
+    print(finding["rule_id"], finding["resource_address"], finding["metadata"]["preview"])
+    assert "Tr0ub4dor" not in str(finding)
+```
+
 ## Outbound connections and SSRF
 
 The model client is the only code that connects anywhere, so the address check applies to it.

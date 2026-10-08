@@ -83,3 +83,14 @@ Four things changed in them for this release, each because the product changed m
 
 Two planted issues are not found, and the reasons are in the result above.
 Both are cases where the fixture says more than its configuration proves, and a rule that reported them would be guessing from a name or a comment.
+
+## Changing the expectations
+
+Add a fixture to `tests/fixtures/realistic/` and a file `tests/test_quality/expected/<fixture stem>.yml` with its planted issues and hardened resources.
+Each `must_find` entry names a node of the fixture's graph (a name that is not a node fails the run with a suggestion), the rules or the class of finding (`kind`, see `tests/helpers/kinds.py`) that count, and a `why` that quotes the comment or attribute that plants the issue.
+A `must_not_find` entry without `rule_ids` forbids every rule finding on that resource.
+
+When a change finds more, raise `min_recall` in `ratchet.yml` to the new measurement.
+When a rule is renamed or removed, update the entries that name it: the run fails on a rule id that is not a current rule or secret detector.
+Regenerate this page with `python scripts/gen_docs_counts.py --write`.
+Review any change to an expectation file like a change to a test, because that is what it is.

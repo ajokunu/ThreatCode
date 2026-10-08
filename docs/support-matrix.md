@@ -299,7 +299,8 @@ OpenCode (`mcp`) and Zed (`context_servers`) use other top-level keys and are no
 The parser works out the command a client really runs before any check reads it.
 It unwraps `cmd /c`, `powershell -Command`, `bash -c`, `env`, `sudo`, `nice`, `nohup`, `exec`, `command`, `timeout` and `wsl`, resolves `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, `uvx`, `uv tool run`, `pipx run`, `docker run` and `podman run`, and treats `mcp-remote`, `supergateway` and `mcp-proxy` bridges as remote servers.
 Each config scope gets one synthetic `mcp_agent` node that holds the union of what its enabled servers can do, and the lethal trifecta rule (private data, untrusted content, a way to exfiltrate) fires on that node.
-A server that is not in the reviewed capability table adds nothing to the agent and is reported as `mcp.unknown_capability`.
+The agent's properties are `reads_private_data`, `ingests_untrusted_content` and `can_exfiltrate_or_act`, and the tags come from one reviewed table of known packages and images plus facts the entry itself proves (a shell server, a broad filesystem path, a remote server).
+A server that is not in the table adds nothing to the agent and is reported as `mcp.unknown_capability`.
 
 ## Secrets
 

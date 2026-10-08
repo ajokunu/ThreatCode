@@ -119,6 +119,61 @@ A gap is a warning that a parser or the graph recorded: an unanalysed module cal
 Gaps and errors always reach stderr, even with `-q`.
 `--strict` turns any gap into exit 2.
 
+### Suppressions
+
+`.threatcodeignore` in the scan root, or the file named by `--ignore-file`, takes one entry per line:
+
+```text
+<ID> [resource=GLOB] [file=GLOB] [exp:YYYY-MM-DD] [reason="text"]
+```
+
+`ID` is a rule id, a finding id, a fingerprint, or a CVE or GHSA alias of a scanner finding, matched without regard to case.
+`resource=` is an `fnmatch` glob over the resource address and `file=` one over the root-relative POSIX path of the file, so an entry can accept a rule for one bucket or one directory without hiding it everywhere.
+A `file=` scope never matches a finding that has no location.
+Quote a glob that contains spaces.
+Lines starting with `#` are comments.
+
+`exp:` ends the entry after that date, and a malformed date counts as already expired and is warned, so a typo never suppresses forever.
+An option given twice, a scope with no glob and an option this version does not know all skip the entry with a warning, so a line never suppresses more than it says.
+Warnings, which never change what is suppressed, cover an entry without a `reason`, a global entry without an `exp`, an entry that names a removed rule, an entry that matched nothing and an entry that expired.
+
+<!-- runnable -->
+
+```bash
+cat > ignore.txt <<'EOF'
+# the public load balancer is meant to take web traffic
+SG_WEB_PORT_OPEN_TO_WORLD resource=aws_security_group.alb reason="public load balancer" exp:2099-12-31
+S3_NO_LOGGING file="tfplan.json" exp:2099-12-31
+EOF
+threatcode scan examples/aws-webapp --ignore-file ignore.txt --fail-on none -f json -o report.json 2> notes.txt
+grep -q "suppressed 2 findings" notes.txt
+grep -q 'S3_NO_LOGGING has no reason' notes.txt
+```
+
+Suppression happens before the gate, so a scan whose every gating finding is suppressed exits 0, unless an attack path remains.
+Attack paths cannot be named in an ignore file yet.
+When the `CI` variable is set and the ignore file lives inside the scanned tree, a notice says that a pull request can edit it and recommends `--ignore-file` with a path the pull request cannot change.
+
+### Baselines
+
+`--write-baseline FILE` writes the fingerprint, rule id, resource and severity of every finding, sorted so the file diffs cleanly, under the schema name `threatcode-baseline/1`.
+`--baseline FILE` removes those findings from the gate and the listings and counts them in `coverage.baselined`.
+Commit the file, and a pull request fails only on findings it adds.
+The fingerprint leaves out property values, so editing a resource does not change which finding it is, and it includes the root-relative file, so the same address in two files is two findings.
+
+### Format details
+
+- **SARIF** results point at the file and line of the resource (`%SRCROOT%` relative, percent-encoded), carry `partialFingerprints` so editing a file does not close one alert and open another, and use stable rule ids with a `security-severity` from the effective severity.
+  A trust boundary crossing uses one rule per zone pair, a scanner finding uses `<tool>:<id>`, each attack path is one result with a code flow over its hops, and LLM results are tagged advisory.
+  `invocations[0].executionSuccessful` is false and notifications are written when an input could not be read, a rule failed or the LLM step failed.
+  Run the scan from the repository root so the locations are repository-relative.
+- **Markdown** starts with the hidden marker `<!-- threatcode-report -->`, so a CI step can find its own comment and edit it, then a verdict line, the attack paths with a Mermaid flowchart, a table of the top risks, findings in STRIDE order and a coverage section.
+  It is capped at 60000 characters, under GitHub's comment limit, and a footer says how many findings were left out.
+  Text from the scanned files is escaped so it cannot inject Markdown, mentions or links.
+- **Bitbucket** annotations point at the file and line of a resource (or the input file and line 1), are sorted most severe first, capped at 1000, and `annotation_batches` splits them in lists of at most 100 for the bulk endpoint.
+- **Mermaid** draws the resources an attacker can act through, each trust zone as a subgraph and the attack paths in thick red edges; labels are quoted and capped.
+- **Navigator** layers are described in [MITRE ATT&CK](mitre-attack.md#attck-navigator-export).
+
 ## `threatcode diff`
 
 ```text

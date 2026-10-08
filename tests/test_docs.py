@@ -790,6 +790,21 @@ class TestClaimsStayTrue:
                     f"{block.where}: {removed.search(block.text)}"
                 )
 
+    def test_no_page_claims_lockfile_support(self) -> None:
+        """There is no lockfile parser: dependencies come in through --ingest."""
+        lockfiles = re.compile(
+            r"package-lock\.json|yarn\.lock|pnpm-lock|Pipfile\.lock|composer\.lock|poetry\.lock"
+            r"|Cargo\.lock|Gemfile\.lock|go\.sum|requirements\.txt|mix\.lock|pubspec\.lock"
+        )
+        for path in DOC_FILES:
+            assert not lockfiles.search(_text(path)), f"{path} names a lockfile"
+
+    def test_gitlab_is_not_told_to_read_sarif_as_a_sast_report(self) -> None:
+        """GitLab's SAST report is another schema; SARIF stays a plain artifact."""
+        text = _text(REPO / "docs" / "cicd.md")
+        assert not re.search(r"reports:\s*\n\s*sast", text)
+        assert "gl-sast-report" not in text
+
     def test_azure_and_gcp_have_rule_findings_and_no_attack_paths(self) -> None:
         """The documented caveat: topology and attack paths are AWS, Kubernetes and MCP."""
         from tests.test_quality.harness import scan_fixture
@@ -988,6 +1003,46 @@ class TestClaimsAreProven:
         found = connection_offenders(tmp_path)
         assert any("telemetry.py imports" in f for f in found)
         assert any("run.py starts processes" in f for f in found)
+
+
+class TestChangelog:
+    """The Unreleased section records every behavior change made by the rework."""
+
+    @staticmethod
+    def unreleased() -> str:
+        text = _text(CHANGELOG)
+        start = text.index("## [Unreleased]")
+        return text[start : text.index("\n## [", start + 1)]
+
+    def test_the_sections_come_in_the_documented_order(self) -> None:
+        headings = re.findall(r"^### (.+)$", self.unreleased(), re.MULTILINE)
+        order = ["Added", "Changed", "Removed", "Fixed", "Security"]
+        assert [h for h in headings if h in order] == order
+
+    def test_every_removed_rule_id_is_recorded(self) -> None:
+        from threatcode.engine.rules.loader import deprecated_rule_ids
+
+        removed = self.unreleased().split("### Removed", 1)[1].split("### Fixed", 1)[0]
+        missing = sorted(i for i in deprecated_rule_ids() if f"`{i}`" not in removed)
+        assert not missing, f"removed rule ids missing from the changelog: {missing}"
+
+    def test_the_headline_behavior_changes_are_recorded(self) -> None:
+        text = self.unreleased()
+        for phrase in (
+            "default `--fail-on` is `high`",
+            "Errors exit 2",
+            "opt-in",
+            "threatcode[llm]",
+            "claude-sonnet-5-5",
+            "`-f matrix` is now `-f navigator`",
+            "`image`, `vuln`, `db`, `sbom`, `license`, `repo`, `fs` and `secret` commands are gone",
+            "Azure and GCP",
+        ):
+            assert phrase in text, phrase
+
+    def test_the_fragments_of_the_earlier_packages_are_assembled_and_gone(self) -> None:
+        left = sorted(p.name for p in (REPO / "changelog.d").glob("WP-[1-4]-*.md"))
+        assert not left, f"assembled into CHANGELOG.md, delete them: {left}"
 
 
 # ---------------------------------------------------------------------------------------

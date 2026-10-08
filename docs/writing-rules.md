@@ -578,6 +578,11 @@ A companion whose parent cannot be resolved (a variable, a value known only afte
 The namespace is reserved: an input that carries its own `derived` attribute has it replaced.
 Each enrichment module documents the keys it writes in its docstring (`src/threatcode/ir/enrichment/`).
 
+Kubernetes workloads carry one property shape whatever the kind, so a rule written once applies to every pod-bearing kind.
+`privileged`, `host_network`, `host_pid` and `host_ipc` are workload-wide flags, and `container_findings` maps a property to the containers that make it unsafe (`{"privileged": ["log-shipper"]}`).
+`seccomp_profile_type`, `has_seccomp_profile`, `has_cpu_limit`, `has_memory_limit` and `has_ephemeral_storage_limit` give the effective settings (a container value wins over the pod value), `effective_automount_sa_token` settles token mounting across the pod and its ServiceAccount, and `ingress_policy_covered` and `egress_policy_covered` say whether a NetworkPolicy of the same scan input selects the workload.
+Roles carry `has_wildcard_api_groups`, `has_escalation_verbs`, `has_secrets_read` and `has_pod_exec`, bindings carry `binds_unauthenticated_group` and `binds_authenticated_group`, and an Ingress carries `has_tls`.
+
 Provider defaults work the other way round.
 A Terraform file or CloudFormation template leaves out values that a plan prints, so a module may declare `DEFAULTS` that fill an absent attribute in place, for HCL and CloudFormation input only, never for a plan or a design.
 The filled paths are listed in `derived.defaults_applied`.
