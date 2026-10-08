@@ -18,8 +18,6 @@ import pytest
 from threatcode.engine import mitre
 from threatcode.engine.mitre import (
     ATTACK_VERSION,
-    BOUNDARY_TACTICS,
-    BOUNDARY_TECHNIQUES,
     REVOKED_ALIASES,
     TACTIC_DB,
     TACTIC_SHORTNAME,
@@ -333,19 +331,31 @@ class TestTacticsForTechniques:
         assert differing == set(TACTICS_CHANGED_BY_ATTACK)
 
 
-class TestBoundaryDefaults:
-    def test_boundary_values_are_unchanged_in_this_release(self) -> None:
-        assert BOUNDARY_TECHNIQUES == ["T1040", "T1557"]
-        assert BOUNDARY_TACTICS == ["TA0006", "TA0009"]
+class TestBoundaryTechniques:
+    """The techniques the boundary phase derives for every kind of crossing are current."""
 
-    def test_boundary_techniques_valid(self) -> None:
-        for tid in BOUNDARY_TECHNIQUES:
-            assert tid in TECHNIQUE_DB
-            assert not is_revoked(tid)
+    ZONES = ("internet", "dmz", "private", "data", "management")
+    STRIDES = ("spoofing", "information_disclosure", "tampering")
 
-    def test_boundary_tactics_valid(self) -> None:
-        for ta in BOUNDARY_TACTICS:
-            assert ta in TACTIC_DB
+    def test_every_technique_of_every_crossing_is_in_the_database_and_current(self) -> None:
+        from threatcode.engine.boundaries import _techniques
+
+        found = {
+            technique
+            for source in self.ZONES
+            for target in self.ZONES
+            for stride in self.STRIDES
+            for technique in _techniques(source, target, stride)
+        }
+        assert found >= {"T1190", "T1530", "T1078", "T1557", "T1040", "T1565.002"}
+        for technique in sorted(found):
+            assert technique in TECHNIQUE_DB, technique
+            assert not is_revoked(technique), technique
+            assert not is_deprecated(technique), technique
+
+    def test_the_removed_defaults_stay_removed(self) -> None:
+        assert not hasattr(mitre, "BOUNDARY_TECHNIQUES")
+        assert not hasattr(mitre, "BOUNDARY_TACTICS")
 
 
 class TestBuiltinRuleTechniques:

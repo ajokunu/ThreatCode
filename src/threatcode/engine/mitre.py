@@ -23,8 +23,6 @@ from threatcode.engine.mitre_data import (
 __all__ = [
     "ATTACK_SOURCE_URL",
     "ATTACK_VERSION",
-    "BOUNDARY_TACTICS",
-    "BOUNDARY_TECHNIQUES",
     "REVOKED_ALIASES",
     "TACTIC_DB",
     "TACTIC_SHORTNAME",
@@ -50,13 +48,6 @@ TECHNIQUE_DB: dict[str, TechniqueEntry] = TECHNIQUES
 
 # TA id -> ATT&CK Navigator tactic shortname (for example "TA0001" -> "initial-access").
 TACTIC_SHORTNAME: dict[str, str] = {ta_id: t["shortname"] for ta_id, t in TACTICS.items()}
-
-# Default MITRE techniques for trust boundary crossings.
-# Boundary threats no longer read them: `engine.boundaries` derives the techniques of a crossing
-# from its zone pair and from what the flow declares. They stay because the mitre tests pin them.
-BOUNDARY_TECHNIQUES: list[str] = ["T1040", "T1557"]
-BOUNDARY_TACTICS: list[str] = ["TA0006", "TA0009"]
-
 
 # The ATT&CK techniques the steps of an attack path use, by the kind of step.
 # Every value is validated against TECHNIQUE_DB by the tests

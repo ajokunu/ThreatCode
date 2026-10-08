@@ -12,7 +12,7 @@ from tests.test_ir.test_golden import GOLDEN_INPUTS, REPO_ROOT
 from threatcode.engine import boundaries
 from threatcode.engine.boundaries import _boundary_severity
 from threatcode.engine.hybrid import HybridEngine
-from threatcode.engine.mitre import BOUNDARY_TECHNIQUES, TECHNIQUE_DB
+from threatcode.engine.mitre import TECHNIQUE_DB
 from threatcode.ir.edges import AGENT, FLOW_EDGE_TYPES, InfraEdge
 from threatcode.ir.graph import InfraGraph
 from threatcode.models.threat import Severity, Threat, ThreatSource, hash_id
@@ -420,7 +420,6 @@ class TestMitreFollowsTheZonePair:
         threats[0].mitre_tactics.append("TA0000")
         assert "T0000" not in threats[1].mitre_techniques
         assert "TA0000" not in threats[1].mitre_tactics
-        assert "T0000" not in BOUNDARY_TECHNIQUES
 
 
 class TestSeverity:

@@ -510,6 +510,19 @@ class TestPermissions:
                 "aws_secretsmanager_secret",
                 {"name": "db-pass"},
             ),
+            # The pattern Terraform authors write for the suffix Secrets Manager adds
+            (
+                "secretsmanager:GetSecretValue",
+                "arn:aws:secretsmanager:us-east-1:1:secret:db-pass-*",
+                "aws_secretsmanager_secret",
+                {"name": "db-pass"},
+            ),
+            (
+                "secretsmanager:GetSecretValue",
+                "arn:aws:secretsmanager:us-east-1:1:secret:db-pass-??????",
+                "aws_secretsmanager_secret",
+                {"name": "db-pass"},
+            ),
             (
                 "ssm:GetParameter",
                 "arn:aws:ssm:us-east-1:1:parameter/app/db",

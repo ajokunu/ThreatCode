@@ -735,6 +735,36 @@ class TestMetadataValidation:
         assert "T9999" in messages
         assert "bogus" in messages
 
+    @pytest.mark.parametrize("cwe", ["CWE-312", 312, "312", ["CWE-312", "CWE-319"], "cwe-79"])
+    def test_cwe_ids_load(self, tmp_path: Path, cwe: Any) -> None:
+        (rule,) = _load(tmp_path, _rule(metadata={"cwe": cwe}))
+        assert rule.metadata["cwe"] == cwe
+
+    @pytest.mark.parametrize("cwe", [{"id": 312}, [["CWE-312"]], True, [None]])
+    def test_cwe_must_be_an_id_or_a_list_of_ids(self, tmp_path: Path, cwe: Any) -> None:
+        assert "metadata.cwe must be an id or a list of ids" in _error(
+            tmp_path, _rule(metadata={"cwe": cwe})
+        )
+
+    def test_a_malformed_cwe_id_only_warns(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            _load(tmp_path, _rule(metadata={"cwe": ["CWE-312", "weak-crypto"]}))
+        messages = " ".join(r.message for r in caplog.records)
+        assert "weak-crypto" in messages
+        assert "CWE-312" not in messages
+
+    def test_cis_controls_load_and_an_empty_one_is_refused(self, tmp_path: Path) -> None:
+        (rule,) = _load(tmp_path, _rule(metadata={"cis": ["CIS AWS 2.1.1", "2.1.2"]}))
+        assert list(rule.metadata["cis"]) == ["CIS AWS 2.1.1", "2.1.2"]
+        assert "metadata.cis must not hold an empty control id" in _error(
+            tmp_path, _rule(metadata={"cis": ["  "]})
+        )
+
+    def test_the_references_are_checked_without_a_mitre_block(self, tmp_path: Path) -> None:
+        assert "metadata.cwe" in _error(tmp_path, _rule(metadata={"cwe": {"x": 1}}))
+
     def test_empty_or_null_metadata_is_fine(self, tmp_path: Path) -> None:
         assert _load(tmp_path, _rule(metadata=None))[0].metadata == {}
         assert _load(tmp_path, _rule(metadata={}))[0].metadata == {}

@@ -10,6 +10,10 @@ Logical operators follow Kleene's three-valued logic, so UNKNOWN is never turned
 finding by a negation.
 A rule fires only when its condition is TRUE.
 
+The pseudo-property ``_exposure`` reads the node's exposure instead of one of its properties:
+``internet``, ``internal``, or UNKNOWN when the graph could not decide it.
+A rule can say ``_exposure: internet`` to apply to a resource the internet reaches.
+
 Security: nesting is capped at ``MAX_CONDITION_DEPTH`` and path resolution is bounded, so a
 hostile rule cannot exhaust the stack.
 Beyond the cap evaluation yields UNKNOWN, which stays UNKNOWN through ``not``.
@@ -27,7 +31,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
-from threatcode.values import is_unknown
+from threatcode.values import Unknown, is_unknown
 from threatcode.vocab import is_world_source
 
 if TYPE_CHECKING:
@@ -38,6 +42,9 @@ logger = logging.getLogger(__name__)
 # Max nesting depth for logical operators and quantifiers (all_of, any_of, none_of, not,
 # any_item, all_items, none_items); rules nested deeper are rejected at load time
 MAX_CONDITION_DEPTH = 10
+
+# The pseudo-property that reads a node's exposure
+EXPOSURE_PROPERTY = "_exposure"
 
 # Max segments in a property path; longer paths are rejected at load time
 MAX_PATH_SEGMENTS = 16
@@ -126,7 +133,11 @@ def tri_or(values: Iterable[Tri]) -> Tri:
 
 def evaluate_condition_tri(condition: Mapping[str, Any], node: InfraNode, _depth: int = 0) -> Tri:
     """Evaluate a rule condition against a node, keeping UNKNOWN apart from FALSE."""
-    scope = _Scope(node.properties, getattr(node, "evidence", "config") == "design")
+    scope = _Scope(
+        node.properties,
+        getattr(node, "evidence", "config") == "design",
+        getattr(node, "exposure", None),
+    )
     return _eval(condition, scope, _depth)
 
 
@@ -432,6 +443,8 @@ class _Scope:
 
     props: Mapping[str, Any]
     design: bool
+    # The exposure of the node (``internet``, ``internal``, ``unknown``); None for a list element
+    exposure: str | None = None
 
 
 _Handler = Callable[[Any, Resolved, _Scope, int], Tri]
@@ -473,12 +486,21 @@ def _eval_property(key: Any, check: Any, scope: _Scope, depth: int) -> Tri:
         return Tri.UNKNOWN
     if key in ELEMENT_PREDICATES:
         return _port_overlaps(check, scope)
-    resolved = resolve_path(scope.props, key)
+    resolved = _exposure_of(scope) if key == EXPOSURE_PROPERTY else resolve_path(scope.props, key)
     if isinstance(check, Mapping):
         if not check:
             return Tri.UNKNOWN
         return tri_and(_apply(op, arg, resolved, scope, depth) for op, arg in check.items())
     return _apply("equals", check, resolved, scope, depth)
+
+
+def _exposure_of(scope: _Scope) -> Resolved:
+    """The value of the ``_exposure`` pseudo-property."""
+    if scope.exposure is None:
+        return _MISSING
+    if scope.exposure == "unknown":
+        return Resolved(PathKind.UNKNOWN, Unknown())
+    return Resolved(PathKind.VALUE, scope.exposure)
 
 
 def _apply(op: Any, argument: Any, resolved: Resolved, scope: _Scope, depth: int) -> Tri:

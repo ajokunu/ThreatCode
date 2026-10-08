@@ -105,7 +105,9 @@ _READ_VERBS = (
     "simulate",
 )
 _SERVICE_PRINCIPAL = re.compile(r"^[a-z0-9.-]+\.amazonaws\.com(\.cn)?$")
-_SECRET_SUFFIX = re.compile(r"-[A-Za-z0-9]{6}$")
+# The six characters Secrets Manager appends to a name in the ARN of a secret, written out
+# (a1B2c3), as a pattern of six question marks, or as the star of arn:...:secret:name-*
+_SECRET_SUFFIX = re.compile(r"-(?:[A-Za-z0-9]{6}|\?{6}|\*)$")
 
 # Resource policy types: the attribute that names the resource and the type it must be
 _RESOURCE_POLICIES: dict[str, tuple[tuple[str, ...], str]] = {
