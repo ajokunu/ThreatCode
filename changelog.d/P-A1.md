@@ -10,3 +10,16 @@
 - **A Rain module is reported as one.**
   A CloudFormation resource whose type is `!Rain::Module <path>` was skipped with "Type must be a string, not a dict" (29 times in one scan of the AWS CloudFormation templates repository).
   It is now skipped with "Rain module not expanded (Type is !Rain::Module <path>; run rain pkg to expand it), so the resources it creates are not analysed", and the template is marked incomplete, like a nested stack.
+- **Valid Terraform that python-hcl2 rejected is read, and a Terraform module is no longer parsed once per caller.**
+  python-hcl2 4.x, the lower end of the supported range, rejected an object element whose value is an operator expression (`device_index = i == 0 ? 0 : 1` followed by another element), a conditional that breaks its line before `?` inside nested parentheses (what `terraform fmt` leaves), and a `\r\n` inside a block comment (any checkout with Windows line endings).
+  python-hcl2 8.x rejected a traversal that continues on the next line.
+  The adapter now retries a file that fails with its layout normalized (line breaks inside brackets joined, an operator value wrapped in parentheses, `\r\n` turned into `\n`), and reports the error of the original text, with its line number, when the retry fails too.
+  On a scan of cloud-foundation-fabric under python-hcl2 4.3.5 the 90 failing files (227 `parse.failed` entries, 1681 cascading `hcl.unresolved_reference` gaps) read now: 3026 resources and 29 findings became 5088 resources and 41 findings, and python-hcl2 8.x reads one more file than before.
+  A failure under 4.x now says how to upgrade python-hcl2.
+- **python-hcl2 4.x no longer changes the precedence of a grouped expression.**
+  4.x returns `a && (b || c)` as `a && b || c`, so a `count` or a condition with parentheses evaluated to something else.
+  On terraform-aws-vpc 4.x modelled 1758 resources and 8.x 1686, because `local.create_public_subnets && (!var.one_nat_gateway_per_az || ...)` lost its group.
+  Every grouping parenthesis is now carried through 4.x and put back, a function call is left alone, and 4.x and 8.x agree on the nodes, properties, findings and gaps of cloud-foundation-fabric, terraform-aws-eks, terraform-aws-vpc and terraform-aws-eks-blueprints.
+  The lower bound of the dependency is unchanged; raising it to 8.x would be simpler, and it is recorded as a request in the package report because the CI matrix and its test are not part of this change.
+- The parsed text of a Terraform file is kept for the rest of the run (8 million characters, oldest dropped first).
+  A module directory is read as a unit of its own and again by every caller, and python-hcl2 8.x parses about 2.5 times slower than 4.x, so a scan of cloud-foundation-fabric took 27 seconds and now takes 11, terraform-aws-vpc took 5.8 seconds and now takes 1.7, with the same findings.

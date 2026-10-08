@@ -20,15 +20,35 @@ The canonical shape is a list of :class:`HclBlock` with these rules.
 
 Terraform's JSON syntax (``main.tf.json``, written by CDK for Terraform) is converted to the
 same blocks.
+
+Three things keep real repositories readable and correct.
+
+- A file that python-hcl2 rejects is tried once more with its layout normalized (see
+  ``normalize_layout``).
+  python-hcl2 4.x cannot read an object element whose value is an operator expression
+  (``index = var.n == 0 ? 0 : 1`` followed by another element), a conditional that breaks its
+  line before ``?`` inside nested parentheses, or a ``\\r\\n`` inside a block comment, and 8.x
+  cannot read a traversal that continues on the next line.
+  All of these are valid HCL, and the normalized text means the same thing.
+  When the retry fails too, the error of the original text is reported, with its line numbers.
+- python-hcl2 4.x drops the parentheses of a grouped expression: ``a && (b || c)`` comes back
+  as ``a && b || c``, which changes what a ``count`` or a condition evaluates to.
+  Before a 4.x parse every grouping ``(`` is renamed ``__tcg(`` (a function call, which 4.x keeps),
+  and the marker is put back in the parsed strings.
+  A call such as ``length(x)`` is not a group and is left alone.
+- The same text is parsed once: a module directory is read as a unit of its own and again by
+  every caller, and python-hcl2 8.x parses about 2.5 times slower than 4.x, so ``_parse`` keeps
+  the parsed data of recent texts (see ``_ParseCache``).
 """
 
 from __future__ import annotations
 
 import importlib
 import re
+import threading
 from bisect import bisect_right
-from collections import defaultdict
-from collections.abc import Iterator
+from collections import OrderedDict, defaultdict
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -126,17 +146,416 @@ def describe_error(exc: Exception, name: str) -> str:
     return f"Invalid HCL in {name}: {detail}"
 
 
+def _load_data(text: str) -> dict[str, Any]:
+    return _canonical(_hcl2_loads(text), 0) if _is_modern() else _hcl2_loads(text)
+
+
+# The text the pure Python layout rewrite is run on, at most: past this it costs more than it is
+# worth, and a file this size is not hand-written Terraform
+_MAX_NORMALIZED_CHARS = 4_000_000
+# Said after a 4.x failure, because 4.x rejects some valid HCL and the line it names may be before
+# the real problem
+_UPGRADE_HINT = " (python-hcl2 4.x cannot read some valid HCL: pip install -U 'python-hcl2>=8')"
+# The marker that keeps a grouping parenthesis through python-hcl2 4.x
+_GROUP_MARK = "__tcg"
+
+
+def _layouts() -> list[tuple[bool, bool] | None]:
+    """The ``(flatten, mark)`` layouts to try in order, ``None`` being the text as written.
+
+    4.x gets its groups marked on the first try, because it reads everything else the same, then
+    the full rewrite, then the text as written (which reads, but loses the parentheses).
+    8.x reads the text as written, then with the line breaks inside brackets joined.
+    """
+    if _is_modern():
+        return [None, (True, False)]
+    return [(False, True), (True, True), None]
+
+
 def _parse(text: str, name: str) -> dict[str, Any]:
     try:
         _hcl2()
     except ImportError as exc:
         raise ParseError("python-hcl2 required: pip install python-hcl2") from exc
-    try:
-        return _canonical(_hcl2_loads(text), 0) if _is_modern() else _hcl2_loads(text)
-    except RecursionError as exc:
-        raise ParseError(_too_deep(name)) from exc
-    except Exception as exc:
-        raise ParseError(describe_error(exc, name)) from exc
+    key = (text, _hcl2_loads)
+    cached = _PARSE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    data = _read_layouts(text, name)
+    _PARSE_CACHE.put(key, data, len(text))
+    return data
+
+
+def _read_layouts(text: str, name: str) -> dict[str, Any]:
+    """Parse ``text``, trying each layout until one reads; the error is the text's own."""
+    original: Exception = ValueError("unreadable")
+    tried = {text}
+    for layout in _layouts():
+        candidate = text
+        if layout is not None:
+            if len(text) > _MAX_NORMALIZED_CHARS:
+                continue
+            try:
+                rewritten = normalize_layout(text, flatten=layout[0], mark=layout[1])
+            except Exception:  # noqa: BLE001 - the rewrite is a convenience, never a new failure
+                rewritten = None
+            if rewritten is None or rewritten in tried:
+                continue
+            tried.add(rewritten)
+            candidate = rewritten
+        try:
+            data = _load_data(candidate)
+        except RecursionError as exc:
+            raise ParseError(_too_deep(name)) from exc
+        except Exception as exc:  # noqa: BLE001 - python-hcl2 raises its own error types
+            if layout is None:
+                original = exc
+            continue
+        return _restore_groups(data, 0) if layout is not None and layout[1] else data
+    message = describe_error(original, name)
+    if not _is_modern():
+        message += _UPGRADE_HINT
+    raise ParseError(message) from original
+
+
+def _restore_groups(value: Any, depth: int) -> Any:
+    """Put the grouping parentheses back where ``_GROUP_MARK`` carried them through 4.x."""
+    if depth > _MAX_NESTING:
+        raise RecursionError("HCL value nested too deeply")
+    if isinstance(value, str):
+        return value.replace(f"{_GROUP_MARK}(", "(") if _GROUP_MARK in value else value
+    if isinstance(value, dict):
+        return {
+            _restore_groups(k, depth + 1): _restore_groups(v, depth + 1) for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_restore_groups(v, depth + 1) for v in value]
+    return value
+
+
+# --- a bounded cache of parsed texts ---------------------------------------------------------
+
+
+class _ParseCache:
+    """The parsed data of recently seen texts, bounded by the characters of text it holds.
+
+    The data is shared between callers and nothing may change it: ``load`` and
+    ``load_attributes`` copy it into new containers (``_strip_meta``), and the strings, numbers
+    and booleans inside are immutable.
+    The key holds the python-hcl2 entry point too, so replacing it (a test, a different major)
+    never serves data parsed by another one.
+    """
+
+    def __init__(self, max_chars: int) -> None:
+        self._max_chars = max_chars
+        self._entries: OrderedDict[
+            tuple[str, Callable[[str], dict[str, Any]]], tuple[dict[str, Any], int]
+        ]
+        self._entries = OrderedDict()
+        self._chars = 0
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple[str, Callable[[str], dict[str, Any]]]) -> dict[str, Any] | None:
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return None
+            self._entries.move_to_end(key)
+            return entry[0]
+
+    def put(
+        self, key: tuple[str, Callable[[str], dict[str, Any]]], data: dict[str, Any], size: int
+    ) -> None:
+        if size > self._max_chars:
+            return
+        with self._lock:
+            if key in self._entries:
+                return
+            self._entries[key] = (data, size)
+            self._chars += size
+            while self._chars > self._max_chars:
+                _, (_, evicted) = self._entries.popitem(last=False)
+                self._chars -= evicted
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+            self._chars = 0
+
+
+# Eight million characters of source: enough for a large repository's modules to stay parsed
+# for the length of one scan, small enough that the data (a few times the size of the text) is
+# never a memory concern
+_PARSE_CACHE = _ParseCache(8_000_000)
+
+
+# --- layout normalization: the retry for grammar gaps ---------------------------------------
+
+_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
+_TWO_CHAR_OPERATORS = frozenset({"==", "!=", "<=", ">=", "&&", "||", "=>", "::"})
+_COMPARISONS = frozenset({"==", "!=", "<=", ">=", "&&", "||", "<", ">"})
+# `-` and `*` also mean a negative number and a splat, so they only count after an operand
+_ARITHMETIC = frozenset({"+", "-", "*", "/", "%"})
+# Words that end an expression's value position the way an operator does (``for x in {a = 1}``)
+_KEYWORDS = frozenset({"in", "if", "else", "for"})
+_MAX_FRAMES = 200
+# The frames in which a line break is whitespace; in a block or an object it ends an element
+_FLAT_KINDS = frozenset({"paren", "bracket", "for_object"})
+
+# What the previous significant token was: it decides whether `{` opens a block or an object and
+# whether `-` is a subtraction
+_VALUE, _OPERATOR, _START = "value", "operator", "start"
+
+
+@dataclass
+class _Frame:
+    """One open ``{``, ``(`` or ``[`` and, for an object, the element being read."""
+
+    kind: str  # "block", "object", "for_object", "paren" or "bracket"
+    expect_key: bool = True
+    value_start: int = -1
+    value_end: int = -1
+    has_operator: bool = False
+    has_heredoc: bool = False
+
+
+class _Layout:
+    """One pass over the text that collects the edits ``normalize_layout`` applies."""
+
+    def __init__(self, text: str, flatten: bool, mark: bool) -> None:
+        self.text = text
+        self.flatten = flatten
+        self.mark = mark
+        self.edits: list[tuple[int, int, str]] = []
+        self.stack: list[_Frame] = [_Frame("block")]
+        self.previous = _START
+        # True when the previous token was a name: a `(` right after it is a call, not a group
+        self.after_name = False
+        self.keep_newline = False
+
+    # -- bookkeeping ---------------------------------------------------------------------
+
+    @property
+    def top(self) -> _Frame:
+        return self.stack[-1]
+
+    def token(self, start: int, end: int, category: str) -> None:
+        """Record a significant token: what follows it and where an object value starts and ends."""
+        self.previous = category
+        self.after_name = False
+        frame = self.top
+        if frame.kind == "object" and not frame.expect_key:
+            if frame.value_start < 0:
+                frame.value_start = start
+            frame.value_end = end
+
+    def finish_element(self, frame: _Frame) -> None:
+        """End the object element in progress, wrapping an operator expression in parentheses."""
+        if (
+            self.flatten
+            and frame.kind == "object"
+            and not frame.expect_key
+            and frame.has_operator
+            and not frame.has_heredoc
+            and frame.value_start >= 0
+        ):
+            self.edits.append((frame.value_start, frame.value_start, "("))
+            self.edits.append((frame.value_end, frame.value_end, ")"))
+        frame.expect_key = True
+        frame.value_start = frame.value_end = -1
+        frame.has_operator = frame.has_heredoc = False
+
+    def operator(self, symbol: str) -> None:
+        frame = self.top
+        if frame.kind != "object" or frame.expect_key:
+            return
+        if (
+            symbol == "?"
+            or symbol in _COMPARISONS
+            or (symbol in _ARITHMETIC and self.previous == _VALUE)
+        ):
+            frame.has_operator = True
+
+    # -- the walk ------------------------------------------------------------------------
+
+    def run(self) -> str | None:
+        text, n, i = self.text, len(self.text), 0
+        while i < n:
+            ch = text[i]
+            if ch in " \t":
+                i += 1
+            elif ch in "\r\n":
+                self.newline(i)
+                i += 1
+            elif ch == "#" or text.startswith("//", i):
+                end = text.find("\n", i)
+                end = n if end == -1 else end
+                self.blank(i, end)
+                i = end
+            elif text.startswith("/*", i):
+                end = text.find("*/", i + 2)
+                end = n if end == -1 else end + 2
+                self.blank(i, end)
+                i = end
+            elif ch == '"':
+                end = _skip_quoted(text, i)
+                self.token(i, end, _VALUE)
+                i = end
+            elif text.startswith("<<", i) and (header := _HEREDOC_HEADER.match(text, i)):
+                end = _skip_heredoc(text, header.end(), header.group(2))
+                self.token(i, end, _VALUE)
+                self.top.has_heredoc = True
+                self.keep_newline = True
+                i = end
+            else:
+                i = self.punctuation_or_word(i)
+                if i < 0 or len(self.stack) > _MAX_FRAMES:
+                    return None
+        if len(self.stack) != 1:
+            return None
+        return self.apply()
+
+    def newline(self, at: int) -> None:
+        frame = self.top
+        if frame.kind in _FLAT_KINDS:
+            if self.keep_newline:
+                self.keep_newline = False
+            elif self.flatten:
+                self.edits.append((at, at + 1, " "))
+        elif frame.kind == "object":
+            self.finish_element(frame)
+            self.keep_newline = False
+        else:
+            self.keep_newline = False
+
+    def blank(self, start: int, end: int) -> None:
+        """A comment inside parentheses or brackets goes, so the line breaks beside it can."""
+        if self.flatten and self.top.kind in _FLAT_KINDS and end > start:
+            self.edits.append((start, end, " " * (end - start)))
+
+    def punctuation_or_word(self, i: int) -> int:
+        """Handle the token at ``i``; the index after it, or -1 when the brackets do not match."""
+        text = self.text
+        ch = text[i]
+        pair = text[i : i + 2]
+        if ch == "{":
+            self.open_brace(i)
+            return i + 1
+        if ch == "(":
+            self.open_paren(i)
+            return i + 1
+        if ch == "[":
+            self.token(i, i + 1, _OPERATOR)
+            self.stack.append(_Frame("bracket"))
+            self.previous = _OPERATOR
+            return i + 1
+        if ch in "})]":
+            return self.close(i)
+        if pair in _TWO_CHAR_OPERATORS:
+            self.operator(pair)
+            self.token(i, i + 2, _OPERATOR)
+            return i + 2
+        if ch in "=:":
+            frame = self.top
+            if frame.kind == "object" and frame.expect_key:
+                frame.expect_key = False
+            self.previous = _OPERATOR
+            self.after_name = False
+            return i + 1
+        if ch == ",":
+            self.finish_element(self.top)
+            self.previous = _OPERATOR
+            self.after_name = False
+            return i + 1
+        word = _WORD.match(text, i)
+        if word is not None:
+            is_keyword = word.group(0) in _KEYWORDS
+            self.token(i, word.end(), _OPERATOR if is_keyword else _VALUE)
+            self.after_name = not is_keyword
+            return word.end()
+        number = _NUMBER.match(text, i)
+        if number is not None:
+            self.token(i, number.end(), _VALUE)
+            return number.end()
+        if ch == ".":
+            # a traversal: `a.b`, `a.*.b`; what follows is a name, not an operand
+            self.token(i, i + 1, _OPERATOR)
+            return i + 1
+        # `?` `<` `>` `+` `-` `*` `/` `%` `!` `&` `|` and anything else a single character long
+        self.operator(ch)
+        self.token(i, i + 1, _OPERATOR)
+        return i + 1
+
+    def open_paren(self, at: int) -> None:
+        """`(` after a name is a call; anywhere else it groups, and 4.x loses a group."""
+        grouping = not self.after_name
+        key = self.top.kind == "object" and self.top.expect_key
+        if self.mark and grouping and not key:
+            # the space keeps `if(` and `in(` from running into the name
+            self.edits.append((at, at + 1, f" {_GROUP_MARK}("))
+        self.token(at, at + 1, _OPERATOR)
+        self.stack.append(_Frame("paren"))
+        self.previous = _OPERATOR
+
+    def open_brace(self, at: int) -> None:
+        """`{` after a name or a quoted label opens a block; anywhere else it opens an object."""
+        if self.top.kind == "block" and self.previous == _VALUE:
+            kind = "block"
+        else:
+            following = _skip_trivia(self.text, at + 1)
+            word = _WORD.match(self.text, following)
+            kind = "for_object" if word is not None and word.group(0) == "for" else "object"
+        self.token(at, at + 1, _OPERATOR)
+        self.stack.append(_Frame(kind))
+        self.previous = _START
+
+    def close(self, at: int) -> int:
+        frame = self.top
+        wanted = {"}": ("block", "object", "for_object"), ")": ("paren",), "]": ("bracket",)}
+        if len(self.stack) == 1 or frame.kind not in wanted[self.text[at]]:
+            return -1
+        self.finish_element(frame)
+        self.stack.pop()
+        self.token(at, at + 1, _VALUE)
+        return at + 1
+
+    def apply(self) -> str:
+        pieces: list[str] = []
+        position = 0
+        for start, end, replacement in sorted(self.edits, key=lambda edit: (edit[0], edit[1])):
+            pieces.append(self.text[position:start])
+            pieces.append(replacement)
+            position = end
+        pieces.append(self.text[position:])
+        return "".join(pieces)
+
+
+def normalize_layout(text: str, *, flatten: bool = True, mark: bool = False) -> str | None:
+    """The same HCL written another way, for what python-hcl2 cannot read or keep.
+
+    ``flatten`` makes the layout rewrites, none of which changes what the text means.
+
+    - Inside parentheses, brackets and the braces of a ``for`` expression a line break is
+      whitespace in HCL, so it becomes a space (a comment there is dropped first, or it would
+      swallow the next line), which turns a conditional or a traversal that wraps over several
+      lines into one line.
+      A line break inside an object constructor, or after a heredoc, stays: it separates elements.
+    - The value of an object element that is an operator expression
+      (``index = var.n == 0 ? 0 : 1``) is wrapped in parentheses, which python-hcl2 4.x needs
+      when another element follows.
+    - ``\\r\\n`` becomes ``\\n`` (the number of lines does not change), because python-hcl2 4.x
+      cannot read a ``\\r\\n`` inside a block comment and a checkout with ``core.autocrlf``
+      makes every file of a repository so.
+
+    ``mark`` renames every grouping ``(`` to ``__tcg(`` (see the module docstring).
+
+    Strings (with their interpolations), comments and heredocs are never looked into.
+    Returns None when the brackets do not match, so there is nothing safe to rewrite.
+    """
+    if _GROUP_MARK in text:
+        mark = False  # a text that already uses the name cannot be told apart afterwards
+    return _Layout(text.replace("\r\n", "\n") if flatten else text, flatten, mark).run()
 
 
 # --- the 8.x spelling of strings ---------------------------------------------------------

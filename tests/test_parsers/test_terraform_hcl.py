@@ -1595,42 +1595,28 @@ class TestJsonSyntaxModules:
 
 
 REAL_MODULES = HCL_FIXTURES / "real_modules"
-FAIL_ON_4X = {"eks_node_groups.tf", "eks_managed_node_group.tf", "lambda_deploy.tf"}
 
 
 class TestRealModules:
-    """Files from terraform-aws-modules, copied unchanged (see the README next to them)."""
+    """Files from terraform-aws-modules, copied unchanged (see the README next to them).
 
-    @pytest.mark.skipif(not MODERN, reason="python-hcl2 4.x cannot parse every real module")
+    All of them parse under both python-hcl2 majors: 4.x rejects three of them as written
+    (an object element with an operator expression, a conditional that breaks its line before
+    ``?``), and the adapter reads them after normalizing the layout.
+    """
+
     @pytest.mark.parametrize("name", sorted(p.name for p in REAL_MODULES.glob("*.tf")))
-    def test_every_file_parses_under_8x(self, name: str) -> None:
+    def test_every_file_parses(self, name: str) -> None:
         result = TerraformHCLParser().parse_file(REAL_MODULES / name)
         assert result.resources, name
         assert all(r.start_line and r.end_line for r in result.resources)
         assert not [d for d in result.diagnostics if d.level == "error"]
 
-    @pytest.mark.skipif(MODERN, reason="only python-hcl2 4.x rejects these files")
-    @pytest.mark.parametrize("name", sorted(FAIL_ON_4X))
-    def test_the_known_hard_files_are_a_parse_error_naming_the_file_under_4x(
-        self, name: str
-    ) -> None:
-        with pytest.raises(ParseError, match=name):
-            TerraformHCLParser().parse_file(REAL_MODULES / name)
-
-    @pytest.mark.skipif(MODERN, reason="the easy files are checked under both in the 8.x test")
-    @pytest.mark.parametrize(
-        "name", sorted(p.name for p in REAL_MODULES.glob("*.tf") if p.name not in FAIL_ON_4X)
-    )
-    def test_the_other_files_parse_under_4x(self, name: str) -> None:
-        assert TerraformHCLParser().parse_file(REAL_MODULES / name).resources
-
-    @pytest.mark.skipif(not MODERN, reason="needs a file python-hcl2 4.x cannot parse")
-    def test_the_real_modules_directory_is_one_module_under_8x(self) -> None:
+    def test_the_real_modules_directory_is_one_module(self) -> None:
         result = parse_dir(REAL_MODULES)
         assert not codes(result, "parse.failed")
         assert {"eks_node_groups.tf", "lambda_deploy.tf"} <= set(result.metadata["files"])
 
-    @pytest.mark.skipif(not MODERN, reason="python-hcl2 4.x cannot parse every real module")
     def test_the_lambda_policies_resolve_through_the_module(self) -> None:
         result = TerraformHCLParser().parse_file(REAL_MODULES / "lambda_iam.tf")
         policies = [r for r in result.resources if r.resource_type == "aws_iam_policy"]
@@ -1640,12 +1626,63 @@ class TestRealModules:
                 policy.address
             )
 
-    @pytest.mark.skipif(not MODERN, reason="python-hcl2 4.x cannot parse every real module")
     def test_real_modules_produce_no_python_literals(self) -> None:
         for path in sorted(REAL_MODULES.glob("*.tf")):
             for resource in TerraformHCLParser().parse_file(path).resources:
                 dumped = json.dumps(resource.properties, default=str)
                 assert "True" not in dumped and "None" not in dumped, (path.name, resource.address)
+
+
+LAYOUTS = (
+    Path(__file__).parent.parent / "fixtures" / "real_shapes" / "terraform" / "hcl" / "layouts"
+)
+
+
+class TestLayoutsRealRepositoriesUse:
+    """Valid HCL that one python-hcl2 major or the other rejects as written.
+
+    The fixtures are shaped like terraform-aws-eks, cloud-foundation-fabric and
+    terraform-aws-vpc.
+    Each one has to read and evaluate to the same values under 4.x and 8.x.
+    """
+
+    def test_an_object_element_with_an_operator_expression_reads(self) -> None:
+        result = TerraformHCLParser().parse_file(LAYOUTS / "object_conditionals.tf")
+        group = by_address(result)["aws_security_group.open"]
+        assert group.properties["name"] == "x"
+        assert group.properties["description"] == "app-x"
+        assert not [d for d in result.diagnostics if d.level in ("warning", "error")]
+
+    def test_the_other_elements_of_the_object_are_not_lost(self) -> None:
+        result = TerraformHCLParser().parse_file(LAYOUTS / "object_conditionals.tf")
+        open_group = by_address(result)["aws_security_group.open"]
+        ingress = open_group.properties["ingress"]
+        assert ingress[0]["cidr_blocks"] == ["0.0.0.0/0"]
+        assert ingress[0]["from_port"] == 22
+
+    def test_a_conditional_that_wraps_over_lines_reads_and_evaluates(self) -> None:
+        result = TerraformHCLParser().parse_file(LAYOUTS / "wrapped_conditionals.tf")
+        bucket = by_address(result)["aws_s3_bucket.wrapped"]
+        assert bucket.properties["bucket"] == "wrapped-on"
+        assert not [d for d in result.diagnostics if d.level in ("warning", "error")]
+
+    def test_a_directory_of_both_is_one_module_without_a_parse_failure(self) -> None:
+        result = parse_dir(LAYOUTS)
+        assert not codes(result, "parse.failed")
+        assert set(by_address(result)) == {"aws_security_group.open", "aws_s3_bucket.wrapped"}
+
+    def test_a_file_that_is_not_valid_hcl_is_still_an_error_with_its_own_line(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "broken.tf"
+        path.write_text(
+            'resource "aws_s3_bucket" "b" {\n'
+            '  bucket = (\n    var.a\n    ? "x"\n    : "y"\n'
+            "  tags = {\n    a = 1 +\n}\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ParseError, match=r"broken\.tf"):
+            TerraformHCLParser().parse_file(path)
 
 
 # --- limits: a hostile file must stay cheap to read ----------------------------------------
