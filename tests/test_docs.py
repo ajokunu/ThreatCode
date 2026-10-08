@@ -179,9 +179,12 @@ def scratch(tmp_path: Path) -> tuple[Path, dict[str, str]]:
         (work / name).symlink_to(REPO / name, target_is_directory=True)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True)
-    shim = bin_dir / "threatcode"
-    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m threatcode "$@"\n', encoding="utf-8")
-    shim.chmod(0o755)
+    # The blocks say `threatcode` and `python`, as a reader types them; both must be the
+    # interpreter running these tests, whether or not its virtual environment is on PATH.
+    for name, tail in (("threatcode", "-m threatcode "), ("python", ""), ("python3", "")):
+        shim = bin_dir / name
+        shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" {tail}"$@"\n', encoding="utf-8")
+        shim.chmod(0o755)
     home = tmp_path / "home"
     home.mkdir(parents=True)
     env = {
@@ -1247,6 +1250,20 @@ class TestTheHarnessCanFail:
         broken = _block("threatcode scan examples/no-such-directory\n", "bash")
         problems = run_runnable(broken, tmp_path)
         assert problems and "exited 2" in problems[0]
+
+    @NEEDS_BASH
+    @pytest.mark.parametrize("name", ["python", "python3"])
+    def test_a_bare_python_in_a_block_is_the_interpreter_running_the_tests(
+        self, name: str, tmp_path: Path
+    ) -> None:
+        # A reader types `python`; the test must not depend on a virtual environment being on
+        # PATH, or on which interpreter the machine puts there
+        _work, env = scratch(tmp_path / "shims")
+        shim_dir = Path(env["PATH"].split(os.pathsep)[0])
+        assert os.access(shim_dir / name, os.X_OK), f"the scratch PATH has no {name} of its own"
+        check = "import sys; sys.exit(0 if sys.prefix == sys.argv[1] else 1)"
+        script = f"{name} -c '{check}' {sys.prefix}\n"
+        assert run_runnable(_block(script, "bash"), tmp_path) == []
 
     @NEEDS_BASH
     def test_the_annotated_status_is_what_passes(self, tmp_path: Path) -> None:
