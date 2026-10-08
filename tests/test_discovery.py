@@ -15,6 +15,7 @@ from threatcode.discovery import (
     ScanUnit,
     classify_name,
     discover,
+    is_plan_name,
     scan_root,
 )
 from threatcode.exceptions import UsageError
@@ -122,7 +123,15 @@ class TestClassification:
             ("Chart.yaml", True, True),
             (".mcp.json", True, True),
             ("claude_desktop_config.json", True, True),
-            ("plan.json", True, False),
+            ("plan.json", True, True),
+            ("tfplan.json", True, True),
+            ("prod.tfplan.json", True, True),
+            ("plan-prod.json", True, True),
+            ("Plan.JSON", True, True),
+            ("planning.json", True, False),
+            ("plant.json", True, False),
+            ("explain.json", True, False),
+            ("package.json", True, False),
             ("deploy.yml", True, False),
             ("README.md", False, False),
             ("chart.yaml", True, False),
@@ -130,6 +139,46 @@ class TestClassification:
     )
     def test_classify_name(self, name: str, candidate: bool, by_name: bool) -> None:
         assert classify_name(name) == (candidate, by_name)
+
+
+class TestPlanNames:
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "plan.json",
+            "tfplan.json",
+            "a.tfplan.json",
+            "plan-prod.json",
+            "plan_2.json",
+            "x_plan.json",
+        ],
+    )
+    def test_the_usual_plan_names_are_recognised(self, name: str) -> None:
+        assert is_plan_name(name)
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "plan.yaml",
+            "plan",
+            "planning.json",
+            "plant.json",
+            "explain.json",
+            "plan.json.bak",
+            "tf.json",
+        ],
+    )
+    def test_other_names_are_not(self, name: str) -> None:
+        assert not is_plan_name(name)
+
+    def test_a_plan_over_the_size_cap_stays_a_unit_so_the_failure_is_loud(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "plan.json", "x" * 200)
+        found = discover([str(tmp_path)], max_file_bytes=100)
+        assert relpaths(found) == ["plan.json"]
+        assert found.units[0].by_name
+        assert found.oversized == []
 
 
 class TestPruning:

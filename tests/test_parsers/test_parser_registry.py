@@ -22,6 +22,7 @@ from threatcode.parsers import (
     ParseFileParser,
     ParserPriority,
     detect_and_parse,
+    looks_like_infrastructure,
     register_parser,
 )
 from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
@@ -846,3 +847,77 @@ class TestCaseInsensitiveSuffixes:
         text = (SHAPES / "cdk.tf.json").read_text(encoding="utf-8")
         path = _write(tmp_path, "CDK.TF.JSON", text)
         assert len(detect_and_parse(path).resources) == 2
+
+
+class TestLooksLikeInfrastructure:
+    """The start of an unparseable file says whether it was meant to be infrastructure (TUX-04)."""
+
+    PLAN_HEAD = '{"format_version": "1.2", "terraform_version": "1.9.0", "planned_values": {"root'
+    CFN_JSON_HEAD = '{"AWSTemplateFormatVersion": "2010-09-09", "Resources": {"B": {"Type": "AW'
+    CFN_NO_VERSION_JSON = '{"Resources": {"B": {"Type": "AWS::S3::Bucket", "Properties": {'
+    K8S_JSON_HEAD = '{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"na'
+
+    @pytest.mark.parametrize(
+        ("name", "text"),
+        [
+            ("plan.json", PLAN_HEAD),
+            ("show.json", PLAN_HEAD),
+            ("t.json", CFN_JSON_HEAD),
+            ("t.json", CFN_NO_VERSION_JSON),
+            ("d.json", K8S_JSON_HEAD),
+            ("t.yaml", "AWSTemplateFormatVersion: '2010-09-09'\nResources:\n  B: [\n"),
+            ("t.yaml", "Description: x\nResources:\n  B:\n    Type: AWS::S3::Bucket\n    x: [\n"),
+            ("t.yml", "---\napiVersion: v1\nkind: Pod\nmetadata:\n  name: [\n"),
+            ("t.template", "\ufeffAWSTemplateFormatVersion: x\nbad: [\n"),
+        ],
+    )
+    def test_a_prefix_that_reads_like_infrastructure_is_claimed(
+        self, tmp_path: Path, name: str, text: str
+    ) -> None:
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        assert looks_like_infrastructure(path)
+
+    @pytest.mark.parametrize(
+        ("name", "text"),
+        [
+            ("tsconfig.json", '{"compilerOptions": {"target": "es5"}'),
+            ("package.json", '{"name": "x", "version": "1.0.0", "scripts": {'),
+            ("plan.json", '{"tier": "pro", "seats": 5'),
+            ("ci.yml", "stages: [build\n"),
+            ("x.json", '{"format_version": "1"'),
+            ("x.json", '{"apiVersion": "v1"'),
+            ("x.yaml", "apiVersion: v1\nname: not a manifest\n"),
+            ("x.yaml", "kind: Thing\n"),
+            ("x.yaml", "Resources:\n  - one\n  - two: [\n"),
+        ],
+    )
+    def test_other_files_are_not(self, tmp_path: Path, name: str, text: str) -> None:
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        assert not looks_like_infrastructure(path)
+
+    def test_a_template_for_another_tool_is_not_claimed(self, tmp_path: Path) -> None:
+        for text in (
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Values.name }}\n",
+            "apiVersion: v1\nkind: ConfigMap\n{% if x %}\ndata: {}\n{% endif %}\n",
+        ):
+            path = tmp_path / "t.yaml"
+            path.write_text(text, encoding="utf-8")
+            assert not looks_like_infrastructure(path)
+
+    def test_a_missing_or_binary_file_is_not_claimed(self, tmp_path: Path) -> None:
+        assert not looks_like_infrastructure(tmp_path / "absent.json")
+        blob = tmp_path / "blob.json"
+        blob.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01" * 100)
+        assert not looks_like_infrastructure(blob)
+
+    def test_only_the_start_of_a_huge_file_is_read_and_the_check_stays_linear(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "hostile.json"
+        path.write_text('{"Resources": ' + '"apiVersion": ' * 20000 + '"kind"', encoding="utf-8")
+        assert looks_like_infrastructure(path) is False
+        late = tmp_path / "late.yaml"
+        late.write_text("x: 1\n" * 40000 + "apiVersion: v1\nkind: Pod\n", encoding="utf-8")
+        assert not looks_like_infrastructure(late)
