@@ -137,7 +137,7 @@ class _TemplateError(Exception):
 # ---------------------------------------------------------------------------------------
 
 _SPECIAL = re.compile(r'["`}]')
-_STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')
+_STRING = re.compile(r'"[^"\\\n]*(?:\\.[^"\\\n]*)*"')
 _DEFINITION_KEYWORDS = ("if", "else", "end", "range", "with", "define", "template", "block")
 _KEYWORD = re.compile(
     r"(if|else|end|range|with|define|template|block|break|continue)(?![A-Za-z0-9_])"

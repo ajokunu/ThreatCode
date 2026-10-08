@@ -23,6 +23,7 @@ import re
 import string
 import tempfile
 import time
+import tracemalloc
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import cache
@@ -41,7 +42,7 @@ from threatcode.formatters import RenderOptions, render
 from threatcode.formatters.sarif import format_sarif
 from threatcode.ir.addressing import base_address
 from threatcode.ir.graph import InfraGraph
-from threatcode.parsers import _helm_render
+from threatcode.parsers import _dockerfile_lexer, _helm_render
 from threatcode.parsers._dockerfile_lexer import lex
 from threatcode.parsers.base import ParsedEdge, ParsedOutput, ParsedResource
 from threatcode.pipeline import ScanRequest, run_scan
@@ -294,6 +295,83 @@ class TestDockerfileHeredocs:
         with mock.patch("threatcode.parsers._dockerfile_lexer.find_heredocs", return_value=[]):
             names = [i.name for i in lex(text).instructions]
         assert names == ["FROM", "RUN", "USER", "ADD", "USER"]
+
+
+# ---------------------------------------------------------------------------------------
+# The word and string patterns
+# ---------------------------------------------------------------------------------------
+
+# The patterns as they were written before the repetitions became runs of characters: one
+# alternative per character, which is easy to read and costs about 150 bytes per character in the
+# regex engine. They are the specification; the shipped patterns have to find the same words.
+_REFERENCE_WORD = re.compile(r"""(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[^\s"'\\])+|["'\\]""", re.DOTALL)
+_REFERENCE_SHELL = re.compile(
+    r"""
+      (?P<space>[ \t]+)
+    | (?P<cont>\\\n)
+    | (?P<newline>\n)
+    | (?P<redir>&>>?)
+    | (?P<op>&&|\|\||\|&|\||;|&|\(|\))
+    | (?P<word>(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[<>]&[0-9]*-?|[^\s|&;()"'\\])+|["'\\])
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+_REFERENCE_STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')
+_shell_soup = st.text(alphabet=list(" \t\n|&;()<>\"'\\a2-1"), max_size=60)
+
+
+def _peak_megabytes(action: Any) -> float:
+    tracemalloc.start()
+    try:
+        action()
+        return tracemalloc.get_traced_memory()[1] / 1e6
+    finally:
+        tracemalloc.stop()
+
+
+class TestWordPatterns:
+    @FIXED
+    @given(_shell_soup)
+    @example("2>&1 cmd >&- 'a b' \"c d\" \\ x")
+    @example("a>b<c>>&2<<<")
+    @example('"open and never closed \\" a')
+    def test_the_shell_tokens_are_the_ones_the_per_character_pattern_finds(self, text: str) -> None:
+        ours = [(m.lastgroup, m.group()) for m in _dockerfile_lexer._SHELL_RE.finditer(text)]
+        reference = [(m.lastgroup, m.group()) for m in _REFERENCE_SHELL.finditer(text)]
+        assert ours == reference
+
+    @FIXED
+    @given(_shell_soup)
+    @example("'it'\"s\" fine\\ x")
+    def test_the_words_are_the_ones_the_per_character_pattern_finds(self, text: str) -> None:
+        assert _dockerfile_lexer.split_words_raw(text) == _REFERENCE_WORD.findall(text)
+
+    @FIXED
+    @given(st.text(alphabet=list('a"\\\n x'), max_size=40))
+    def test_the_helm_string_is_the_one_the_per_character_pattern_finds(self, text: str) -> None:
+        for start in range(len(text) + 1):
+            ours = _helm_render._STRING.match(text, start)
+            reference = _REFERENCE_STRING.match(text, start)
+            assert (ours.group() if ours else None) == (reference.group() if reference else None)
+
+    @pytest.mark.parametrize("size", [3_000_000])
+    def test_one_huge_word_does_not_cost_hundreds_of_megabytes(self, size: int) -> None:
+        word = "a" * size
+        assert _peak_megabytes(lambda: _dockerfile_lexer.split_words_raw(word)) < 100
+        assert _peak_megabytes(lambda: _dockerfile_lexer.shell_pipelines(word)) < 100
+        quoted = '"' + word + '"'
+        assert _peak_megabytes(lambda: _dockerfile_lexer.split_words_raw(quoted)) < 100
+
+    @pytest.mark.parametrize(
+        "text",
+        ['"' + "a\\b" * 200_000, "'" + "a" * 600_000, '"' + '\\"' * 300_000, "\\" * 600_000],
+    )
+    def test_a_quote_that_never_closes_is_not_catastrophic(self, text: str) -> None:
+        """An ambiguous loop would try every way to split the run; this ends at once."""
+        started = time.perf_counter()
+        _dockerfile_lexer.split_words_raw(text)
+        _dockerfile_lexer.shell_pipelines(text)
+        assert time.perf_counter() - started < 5.0
 
 
 # ---------------------------------------------------------------------------------------
