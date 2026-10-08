@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from threatcode.formatters.terminal_coverage import (
     AGGREGATE_ABOVE,
+    error_text,
     gap_lines,
     gap_summary,
     unique_gaps,
@@ -99,3 +102,25 @@ class TestGapSummary:
 
     def test_repeats_do_not_inflate_the_count(self) -> None:
         assert gap_summary([gap(), gap(), gap()]) == "1 gap (hcl.module_call_skipped x1)"
+
+
+class TestErrorText:
+    def test_a_file_and_a_message_that_does_not_name_it(self) -> None:
+        error = {"file": "bad.tf", "code": "parse.failed", "message": "unexpected token"}
+        assert error_text(error) == "bad.tf: unexpected token"
+
+    def test_a_message_that_names_the_file_is_not_prefixed_with_it_again(self) -> None:
+        error = {"file": "main.tf", "message": "Invalid HCL in main.tf, line 2, column 1"}
+        assert error_text(error) == "Invalid HCL in main.tf, line 2, column 1"
+
+    def test_a_file_in_a_directory_is_kept_when_the_message_names_only_its_base(self) -> None:
+        error = {"file": "bad/main.tf", "message": "Invalid HCL in main.tf, line 2"}
+        assert error_text(error) == "bad/main.tf: Invalid HCL in main.tf, line 2"
+
+    @pytest.mark.parametrize("file", [".", ""])
+    def test_the_scan_root_is_not_a_file_name(self, file: str) -> None:
+        assert error_text({"file": file, "message": "no supported files"}) == "no supported files"
+
+    def test_text_from_the_input_is_made_safe(self) -> None:
+        text = error_text({"file": "a\x1b[2J.tf", "message": "bad\x07"})
+        assert "\x1b" not in text and "\x07" not in text

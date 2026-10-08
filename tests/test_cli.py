@@ -228,7 +228,10 @@ class TestExitCodeMatrix:
         write(tmp_path, "main.tf", BAD_TF)
         result = invoke("scan", tmp_path)
         assert result.exit_code == 2
-        assert "Error: scan incomplete (1 input error), exiting 2: main.tf: " in result.stderr
+        assert (
+            "Error: scan incomplete (1 input error), exiting 2: Invalid HCL in main.tf"
+            in result.stderr
+        )
         assert "Traceback" not in result.output
 
     def test_a_parse_failure_still_prints_the_partial_report(self, tmp_path: Path) -> None:
@@ -1853,9 +1856,11 @@ class TestWhatGoesToStderrIsNotRepeated:
         write(tmp_path, "main.tf", BAD_TF)
         result = invoke("scan", tmp_path, "-f", "text")
         assert result.exit_code == 2
-        assert "Errors (1):" in result.stdout and "main.tf: " in result.stdout
+        assert "Errors (1):\n    Invalid HCL in main.tf, line 2" in result.stdout
         (line,) = self.lines(result.stderr)
-        assert line.startswith("Error: scan incomplete (1 input error), exiting 2: main.tf: ")
+        assert line.startswith(
+            "Error: scan incomplete (1 input error), exiting 2: Invalid HCL in main.tf, line 2"
+        )
 
     def test_several_input_errors_are_listed_and_the_last_line_still_explains_the_exit(
         self, tmp_path: Path
@@ -1871,7 +1876,7 @@ class TestWhatGoesToStderrIsNotRepeated:
     def test_an_error_is_never_attributed_to_the_dot_directory(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", BAD_TF)
         result = invoke("scan", tmp_path, "-f", "text")
-        assert "Errors (1):\n    main.tf:" in result.stdout
+        assert "Errors (1):\n    Invalid HCL in main.tf" in result.stdout
         assert "    .:" not in result.stdout and "Error: .:" not in result.stderr
 
     def test_a_failed_scan_never_prints_a_clean_verdict(self, tmp_path: Path) -> None:

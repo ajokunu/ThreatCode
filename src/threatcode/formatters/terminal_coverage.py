@@ -19,6 +19,7 @@ from threatcode.formatters._utils import terminal_safe
 
 __all__ = [
     "GapLine",
+    "error_text",
     "gap_lines",
     "gap_summary",
     "unique_gaps",
@@ -26,6 +27,19 @@ __all__ = [
 
 # A file with more than this many gaps of one code is one line with a count.
 AGGREGATE_ABOVE = 3
+
+
+def error_text(error: Mapping[str, Any]) -> str:
+    """An input error as ``file: message``, safe for a terminal.
+
+    The file is left out when it is the scan root (``.``) or when the message already names it,
+    as a parser's does (``Invalid HCL in main.tf, line 2``), so it is not said twice.
+    """
+    file = terminal_safe(str(error.get("file", "")))
+    message = terminal_safe(str(error.get("message", "")))
+    if not file or file == "." or file in message:
+        return message
+    return f"{file}: {message}"
 
 
 def _key(gap: Mapping[str, Any]) -> tuple[str, str, str, str]:

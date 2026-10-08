@@ -122,8 +122,9 @@ def flow(
     tail = sep.rstrip()
     gap_between = len(sep) - len(tail)
 
-    # (runs, spaces before it); a piece of a broken word follows its predecessor with none
-    tokens: list[tuple[list[Run], int]] = []
+    # (runs, spaces before it, style of those spaces); a piece of a broken word follows its
+    # predecessor with no space
+    tokens: list[tuple[list[Run], int, str]] = []
     for position, (text, style) in enumerate(items):
         words = text.split()
         ends_with_sep = bool(tail) and position < len(items) - 1 and not text_ends_intro(text)
@@ -137,33 +138,45 @@ def flow(
                 if last_word and piece_index == len(pieces) - 1 and ends_with_sep:
                     runs.append((tail, ""))
                 if piece_index:
-                    before = 0
+                    before, space_style = 0, style
                 elif index:
-                    before = 1
+                    # Inside a phrase the spaces take its style, so a colored phrase is one run
+                    before, space_style = 1, style
                 else:
-                    before = gap_between if position else 0
+                    before, space_style = (gap_between if position else 0), ""
                     if position and text_ends_intro(items[position - 1][0]):
                         before = 1
-                tokens.append((runs, before))
+                tokens.append((runs, before, space_style))
 
     lines: list[list[Run]] = []
     current: list[Run] = []
     used = 0
-    for runs, before in tokens:
+    for runs, before, space_style in tokens:
         size = sum(len(text) for text, _ in runs)
         gap = before if current else 0
         if current and used + gap + size > (first_room if not lines else rest_room):
             lines.append(current)
             current, used, gap = [], 0, 0
         if gap:
-            current.append((" " * gap, ""))
+            current.append((" " * gap, space_style))
         current.extend(runs)
         used += gap + size
     lines.append(current)
     return [
-        ([(first if index == 0 else lead, "")] if (first or lead) else []) + line
+        _merged(([(first if index == 0 else lead, "")] if (first or lead) else []) + line)
         for index, line in enumerate(lines)
     ]
+
+
+def _merged(line: list[Run]) -> list[Run]:
+    """``line`` with neighbouring runs of one style joined, so a colored phrase is one run."""
+    merged: list[Run] = []
+    for text, style in line:
+        if merged and merged[-1][1] == style:
+            merged[-1] = (merged[-1][0] + text, style)
+        else:
+            merged.append((text, style))
+    return merged
 
 
 def text_ends_intro(text: str) -> bool:

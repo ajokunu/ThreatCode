@@ -52,7 +52,7 @@ from threatcode.formatters._utils import (
     threat_source,
     verdict_items,
 )
-from threatcode.formatters.terminal_coverage import gap_lines, unique_gaps
+from threatcode.formatters.terminal_coverage import error_text, gap_lines, unique_gaps
 from threatcode.formatters.terminal_layout import Run, flow, hanging, wrap
 from threatcode.models.attack_path import AttackPath
 from threatcode.models.report import ThreatReport, threat_severity
@@ -234,16 +234,12 @@ def _one_path(
     severity = path.severity.value
     lead = f"P{number}".ljust(_PATH_INDENT)
     body = f"{terminal_safe(path.entry)} -> {terminal_safe(path.target)}"
-    rows = flow(
-        [(body, "")],
-        width,
-        first=lead + " " * (_SEVERITY_WIDTH + _GAP),
-        rest=" " * (_PATH_INDENT + _SEVERITY_WIDTH + _GAP),
-    )
-    rows[0][0] = (lead, "")
-    rows[0].insert(1, (severity.upper().ljust(_SEVERITY_WIDTH), severity))
-    rows[0].insert(2, (" " * _GAP, ""))
-    out = [paint.runs(row) for row in rows]
+    margin = _PATH_INDENT + _SEVERITY_WIDTH + _GAP
+    lines = [
+        "".join(text for text, _ in row) for row in flow([(body, "")], width, first=" " * margin)
+    ]
+    first = lead + paint(severity.upper().ljust(_SEVERITY_WIDTH), severity) + " " * _GAP
+    out = [first + lines[0][margin:], *lines[1:]]
 
     indent = " " * _PATH_INDENT
     out.extend(hanging(_why(path, by_id), width, first=indent))
@@ -588,7 +584,10 @@ def _detail_heads(rows: Sequence[_Row]) -> list[str]:
 
 def _table_head(rows: Sequence[_Row], layout: _Layout, width: int) -> list[str]:
     indent = " " * _INDENT
-    detail = hanging((_GAP * " ").join(_detail_heads(rows)), width, first=indent)
+    heads = [(head, "") for head in _detail_heads(rows)]
+    detail = [
+        "".join(text for text, _ in row) for row in flow(heads, width, sep="  ", first=indent)
+    ]
     first = "SEVERITY".ljust(_SEVERITY_WIDTH) + " " * _GAP + "RESOURCE"
     if layout.inline_rule:
         first = first.ljust(_INDENT + layout.resource) + " " * _GAP + "RULE"
@@ -688,10 +687,7 @@ def _coverage_lines(report: ThreatReport, width: int) -> list[str]:
     if cov.errors:
         lines.append(f"  Errors ({len(cov.errors)}):")
         for err in cov.errors[:_LISTED_LIMIT]:
-            file = terminal_safe(str(err.get("file", "")))
-            message = terminal_safe(str(err.get("message", "")))
-            text = f"{file}: {message}" if file and file != "." else message
-            lines.extend(hanging(text, width, first="    ", rest="      "))
+            lines.extend(hanging(error_text(err), width, first="    ", rest="      "))
         _more(lines, len(cov.errors), "coverage.errors")
     gaps = gap_lines(cov.gaps)
     if gaps:

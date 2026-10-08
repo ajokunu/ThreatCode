@@ -22,7 +22,12 @@ from threatcode import __version__
 from threatcode.exceptions import ThreatCodeError, UsageError
 from threatcode.formatters import RenderOptions, format_names, render, write_text_file
 from threatcode.formatters._utils import set_aside_phrase, terminal_safe
-from threatcode.formatters.terminal_coverage import gap_lines, gap_summary, unique_gaps
+from threatcode.formatters.terminal_coverage import (
+    error_text,
+    gap_lines,
+    gap_summary,
+    unique_gaps,
+)
 from threatcode.formatters.terminal_layout import hanging
 from threatcode.formatters.text import plural, terminal_width
 from threatcode.models.threat import Severity
@@ -513,23 +518,13 @@ def _announce_llm(settings: Any, state: CliState) -> None:
     state.info(f"LLM enrichment enabled: sending a redacted graph to {llm.provider}/{llm.model}")
 
 
-def _first_error(coverage: Coverage) -> str:
-    """The first input error as ``file: message`` (the message alone for the scan root)."""
-    error = coverage.errors[0]
-    where = error.get("file", "")
-    message = error.get("message", "")
-    return f"{where}: {message}" if where and where != "." else message
-
-
 def _report_input_errors(coverage: Coverage, state: CliState, *, listed_in_report: bool) -> None:
     """Every input error once, when the report does not list them; the exit-2 line comes last."""
     if listed_in_report or len(coverage.errors) < 2:
         # One error is named by the exit line; the text report lists them all itself
         return
     for error in coverage.errors[:_LISTED_LIMIT]:
-        where = error.get("file", "")
-        prefix = f"Error: {where}: " if where and where != "." else "Error: "
-        state.warn(prefix + error.get("message", ""), hang=7)
+        state.warn(f"Error: {error_text(error)}", hang=7)
     if len(coverage.errors) > _LISTED_LIMIT:
         state.warn(f"Error: ... and {len(coverage.errors) - _LISTED_LIMIT} more input errors")
 
@@ -641,7 +636,8 @@ def _report_to_stderr(
         if coverage.errors:
             problem = plural(len(coverage.errors), "input error")
             state.warn(
-                f"Error: scan incomplete ({problem}), exiting 2: {_first_error(coverage)}", hang=7
+                f"Error: scan incomplete ({problem}), exiting 2: {error_text(coverage.errors[0])}",
+                hang=7,
             )
         elif coverage.has_gaps:
             state.warn("--strict: coverage gaps make this scan fail, exiting 2")
