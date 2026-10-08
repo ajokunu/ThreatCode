@@ -30,6 +30,7 @@ The rest are actions that only the owner of the GitHub repository and the PyPI p
 
 4. Move the Unreleased section of `CHANGELOG.md` under the new version and date, and check `__version__` in `src/threatcode/__init__.py`.
    The source already says `1.0.0`, so that `threatcode --version` and the `version` field of a report tell the reworked line from 0.9 before the release exists; change it only if you release another number.
+   `tests/test_meta.py` checks the pair: while Unreleased has content the version must not be a released one, and once it is moved the version must be the new heading's number.
    The version has one source, and the wheel metadata, `threatcode.__version__` and `threatcode --version` must agree, which the smoke test checks.
 
 ## Publishing

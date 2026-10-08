@@ -11,7 +11,8 @@ example, so a gate that quietly stopped looking is itself a failure.
 * No test function is assertion-free unless it is on the reviewed does-not-raise list.
 * No test accepts a range of exit codes (``exit_code in (0, 1)``).
 * ``pyproject.toml`` keeps the widened ruff selection for ``src``.
-* The version in ``threatcode.__version__`` is not one that ``CHANGELOG.md`` already released.
+* The version in ``threatcode.__version__`` fits ``CHANGELOG.md``: not a released number while
+  Unreleased has content, the newest released number once it is cut.
 * No test opens a fixture through a path that depends on the working directory.
 * No function, method or class in ``src`` is unreferenced, except the reviewed list.
 """
@@ -582,20 +583,57 @@ def released_versions(changelog: str) -> list[str]:
     return re.findall(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.MULTILINE)
 
 
-def test_the_version_is_not_one_that_was_already_released() -> None:
-    """Code with an [Unreleased] section must not call itself by a released number.
+def unreleased_section(changelog: str) -> str:
+    """The text under ``## [Unreleased]``, up to the next version heading."""
+    start = changelog.index("## [Unreleased]") + len("## [Unreleased]")
+    end = changelog.find("\n## [", start)
+    return changelog[start : end if end >= 0 else len(changelog)]
 
-    Otherwise ``threatcode --version`` and the ``version`` field of a report cannot tell this
-    line from the release that is on PyPI.
+
+def version_problem(version: str, changelog: str) -> str:
+    """Why ``version`` does not fit ``changelog``, or the empty string when it does.
+
+    While the Unreleased section holds anything, the code is a line that is not out yet, so it must
+    not carry a number that was released.
+    When the section is empty, the release commit has moved it under a dated heading, and the
+    version must be that heading's number.
     """
+    released = released_versions(changelog)
+    pending = re.search(r"^(?:### |- )", unreleased_section(changelog), re.MULTILINE)
+    if pending:
+        if version in released:
+            return (
+                f"__version__ {version} is already released but the changelog has unreleased "
+                "changes; set the version of the line that the Unreleased section becomes"
+            )
+        return ""
+    if not released or version != released[0]:
+        return (
+            f"the Unreleased section is empty, so __version__ {version} must be the newest "
+            f"released version {released[0] if released else '(none)'}"
+        )
+    return ""
+
+
+def test_the_version_names_this_release() -> None:
+    """Otherwise ``threatcode --version`` and a report's ``version`` cannot tell this line from
+    the release that is on PyPI, or from the one that is being cut."""
     from threatcode import __version__
 
     changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "## [Unreleased]" in changelog
-    assert __version__ not in released_versions(changelog), (
-        f"__version__ {__version__} is already released; set the version of the line that "
-        "the Unreleased section becomes"
-    )
+    assert version_problem(__version__, changelog) == ""
+
+
+def test_the_version_gate_accepts_the_release_commit_and_refuses_a_stale_number() -> None:
+    pending = "# Changelog\n\n## [Unreleased]\n\n### Added\n- a thing\n\n## [0.9.1] - 2026-10-03\n"
+    assert version_problem("1.0.0", pending) == ""
+    assert "already released" in version_problem("0.9.1", pending)
+    # The release commit: the section moved under a dated heading, the version is that number.
+    cut = "# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-11-01\n\n## [0.9.1] - 2026-10-03\n"
+    assert version_problem("1.0.0", cut) == ""
+    assert "must be the newest released version 1.0.0" in version_problem("0.9.1", cut)
+    assert "must be the newest released version 1.0.0" in version_problem("1.1.0", cut)
 
 
 def test_the_released_versions_are_read_from_the_dated_headings_only() -> None:
@@ -698,7 +736,7 @@ UNREFERENCED_ALLOWED: dict[str, str] = {
     "terraform_types": "test only",
     "cfn_types_for": "test only",
     "uses_sam": "test only",
-    "extract_refs": "test only",
+    "extract_refs": "dead: no caller anywhere, in src or in tests",
     "evaluate_expression": "test only",
     "load_config": "public helper kept for callers that want the model without the resolver",
 }

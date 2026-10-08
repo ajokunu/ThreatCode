@@ -28,7 +28,6 @@
 
 ### Internal
 - `ThreatReport.duplicate_ids()` returns the ids that more than one threat carries, `threatcode.scan()` and `analyze()` log a warning when it is not empty, and a test checks that the three demo stacks report none.
-- `tests/test_meta.py` fails the build when `__version__` is a number that `CHANGELOG.md` already released, when a test opens `Path("tests/...")` relative to the working directory, and when a function, method or class in `src` is never referenced.
+- `tests/test_meta.py` fails the build when `__version__` is a number that `CHANGELOG.md` already released while it still has unreleased changes (and when it is not the newest released number once they are cut), when a test opens `Path("tests/...")` relative to the working directory, and when a function, method or class in `src` is never referenced.
   The last two keep a list of the known offenders, so a new one fails and a fixed one has to leave the list.
-- The runnable blocks of the documentation get their own `python` and `python3`, so `tests/test_docs.py` passes where only `python3` exists and without a virtual environment on `PATH`.
 - The golden recordings are unchanged.
