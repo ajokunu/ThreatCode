@@ -147,9 +147,6 @@ def _split_windows(text: str) -> list[str]:
     return [_strip_quotes(p) for p in parts]
 
 
-_SHELL_OPERATORS: Final = frozenset({"&&", "||", ";", "|", "&", "\n"})
-
-
 def _split_posix(text: str) -> list[str]:
     """Split a ``sh -c`` string and keep the last simple command.
 

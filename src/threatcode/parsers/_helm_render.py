@@ -138,7 +138,6 @@ class _TemplateError(Exception):
 
 _SPECIAL = re.compile(r'["`}]')
 _STRING = re.compile(r'"[^"\\\n]*(?:\\.[^"\\\n]*)*"')
-_DEFINITION_KEYWORDS = ("if", "else", "end", "range", "with", "define", "template", "block")
 _KEYWORD = re.compile(
     r"(if|else|end|range|with|define|template|block|break|continue)(?![A-Za-z0-9_])"
 )
@@ -374,8 +373,9 @@ class _ExpressionParser:
 
     def parse(self) -> Pipeline:
         pipeline = self.pipeline(depth=0)
-        if self.peek() is not None:
-            raise _TemplateError(f"unexpected {self.peek().text!r}")  # type: ignore[union-attr]
+        leftover = self.peek()
+        if leftover is not None:
+            raise _TemplateError(f"unexpected {leftover.text!r}")
         return pipeline
 
     def pipeline(self, depth: int) -> Pipeline:
@@ -387,7 +387,7 @@ class _ExpressionParser:
         if names is not None:
             variables, declare = names
         commands = [self.command(depth)]
-        while self.peek() is not None and self.peek().kind == "pipe":  # type: ignore[union-attr]
+        while (following := self.peek()) is not None and following.kind == "pipe":
             self.next()
             commands.append(self.command(depth))
         return Pipeline(commands, variables, declare)

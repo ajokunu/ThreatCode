@@ -197,15 +197,7 @@ STRIDE_DISPLAY: dict[str, str] = {
     "elevation_of_privilege": "Elevation of Privilege",
 }
 
-# STRIDE element -> shape mapping
-_PROCESS_CATEGORIES = {
-    NodeCategory.COMPUTE,
-    NodeCategory.SERVERLESS,
-    NodeCategory.CONTAINER,
-    NodeCategory.MONITORING,
-    NodeCategory.API,
-    NodeCategory.UNKNOWN,
-}
+# STRIDE element -> shape mapping: a data store is a cylinder, anything else a process box
 _DATA_STORE_CATEGORIES = {
     NodeCategory.STORAGE,
     NodeCategory.DATABASE,

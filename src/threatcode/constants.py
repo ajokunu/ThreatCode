@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from threatcode.models.threat import Severity
-
 VALID_STRIDE_CATEGORIES: frozenset[str] = frozenset(
     {
         "spoofing",
@@ -27,19 +22,6 @@ VALID_SEVERITIES: frozenset[str] = frozenset(
         "info",
     }
 )
-
-
-def _severity_map() -> dict[str, Severity]:
-    """Lazy-load SEVERITY_MAP to avoid circular import with models.threat."""
-    from threatcode.models.threat import Severity
-
-    return {
-        "critical": Severity.CRITICAL,
-        "high": Severity.HIGH,
-        "medium": Severity.MEDIUM,
-        "low": Severity.LOW,
-        "info": Severity.INFO,
-    }
 
 
 # File names (lower-cased) that hold a Dockerfile, and the prefixes and suffixes of the
