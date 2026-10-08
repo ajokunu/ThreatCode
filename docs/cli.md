@@ -81,6 +81,7 @@ cat examples/aws-webapp/tfplan.json | threatcode scan - --stdin-name plan.json -
 | `--dry-run-output` | PATH | Where --dry-run writes the request. Default: stdout. |
 | `--no-timestamp` |  | Leave the timestamp out of the report. SOURCE_DATE_EPOCH fixes it instead. |
 | `--stdin-name` | TEXT | File name for standard input (main.tf, Dockerfile, plan.json) so its format is found. |
+| `--include-graph` |  | Add the graph (nodes and edges, no properties) to the JSON report. |
 | `--max-nodes` | N | Graph node limit. |
 | `--max-edges` | N | Graph edge limit. |
 <!-- /gen:scan -->

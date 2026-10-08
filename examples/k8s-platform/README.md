@@ -28,43 +28,97 @@ The manifests are in separate files, and one graph covers all of them, so paths 
 ```text
 ThreatCode scan of examples/k8s-platform: 9 resources, 30 findings
 
-Verdict: 1 critical, 6 high, 13 medium, 10 low, 2 attack paths from the internet to data
+Verdict: 1 critical, 6 high, 13 medium, 10 low, 2 attack paths from the internet to secret stores,
+         worst high
 
 Attack paths (2)
-HIGH      internet -> kubernetes_secret.platform.payment-api-key  (4 hops, id 46909caa9306)
-          internet > kubernetes_ingress.platform.storefront > kubernetes_service.platform.storefront
-          > kubernetes_deployment.platform.storefront > kubernetes_secret.platform.payment-api-key
-HIGH      internet -> kubernetes_secret.platform.payment-api-key  (6 hops, id 141ad2ba8eed)
-          internet > kubernetes_ingress.platform.storefront > kubernetes_service.platform.storefront
-          > kubernetes_deployment.platform.storefront >
-          kubernetes_service_account.platform.storefront-sa > kubernetes_cluster_role.secret-reader
-          > kubernetes_secret.platform.payment-api-key
+P1  HIGH      internet -> kubernetes_secret.platform.payment-api-key
+    secret store, 4 hops, score 7.7; 7 findings enable it, the worst being HIGH
+    K8S_NO_SECCOMP_PROFILE.
+    internet > kubernetes_ingress.platform.storefront > kubernetes_service.platform.storefront
+    > kubernetes_deployment.platform.storefront > kubernetes_secret.platform.payment-api-key
+    enabled by:
+      kubernetes_deployment.platform.storefront -> kubernetes_secret.platform.payment-api-key: HIGH
+        K8S_NO_SECCOMP_PROFILE, MEDIUM K8S_AUTOMOUNT_SA_TOKEN, MEDIUM K8S_CAPABILITIES_NOT_DROPPED,
+        +4 more
+    ignore id: 46909caa9306
 
-Findings (30)
-SEVERITY  RESOURCE                 RULE                          FINDING
-CRITICAL  kubernet...ode-exporter  K8S_PRIVILEGED_CONTAINER      Container running in privileged...
-HIGH      kubernet...ecret-reader  K8S_RBAC_SECRETS_READ         Role can read Secrets
-HIGH      kubernet...ode-exporter  K8S_HOST_NETWORK              Pod uses host network namespace
-HIGH      kubernet...ode-exporter  K8S_HOST_PATH_VOLUME          hostPath volume mount detected
-HIGH      kubernet...ode-exporter  K8S_HOST_PID                  Pod uses host PID namespace
-HIGH      kubernet...m.storefront  K8S_NO_SECCOMP_PROFILE        Container without a seccomp prof...
-HIGH      kubernet...m.storefront  boundary                      Trust boundary crossing: kuberne...
-MEDIUM    kubernet...ode-exporter  K8S_ALLOW_PRIVILEGE_ESCAL...  Container allows privilege escal...
-MEDIUM    kubernet...ode-exporter  K8S_NO_RESOURCE_LIMITS        Container without CPU and memory...
-MEDIUM    kubernet...m.storefront  boundary                      Trust boundary crossing: kuberne...
-MEDIUM    kubernet...m.storefront  K8S_AUTOMOUNT_SA_TOKEN        Workload mounts a service accoun...
-MEDIUM    kubernet...m.storefront  K8S_DEFAULT_ALLOW_EGRESS      Workload not covered by an egres...
-MEDIUM    kubernet...m.storefront  K8S_NO_NETWORK_POLICY         Workload not covered by an ingre...
-MEDIUM    kubernet...m.storefront  K8S_SECRET_ENV_VAR            Secret referenced via environmen...
-MEDIUM    kubernet...m.storefront  boundary                      Trust boundary crossing: interne...
-MEDIUM    kubernet...ace.platform  K8S_NO_PSA_LABELS             Namespace without Pod Security A...
-LOW       kubernet...ode-exporter  K8S_AUTOMOUNT_SA_TOKEN        Workload mounts a service accoun...
-LOW       kubernet...ode-exporter  K8S_DEFAULT_ALLOW_EGRESS      Workload not covered by an egres...
-LOW       kubernet...ode-exporter  K8S_DEFAULT_SERVICE_ACCOUNT   Pod uses the default service acc...
-LOW       kubernet...ode-exporter  K8S_EPHEMERAL_STORAGE_UNB...  Container without ephemeral stor...
-LOW       kubernet...ode-exporter  K8S_NO_NETWORK_POLICY         Workload not covered by an ingre...
-LOW       kubernet...m.storefront  K8S_EPHEMERAL_STORAGE_UNB...  Container without ephemeral stor...
-LOW       kubernet...torefront-sa  K8S_AUTOMOUNT_DEFAULT         ServiceAccount does not disable...
+P2  HIGH      internet -> kubernetes_secret.platform.payment-api-key
+    secret store, 6 hops, score 7.3; 9 findings enable it, the worst being HIGH
+    K8S_NO_SECCOMP_PROFILE.
+    internet > kubernetes_ingress.platform.storefront > kubernetes_service.platform.storefront
+    > kubernetes_deployment.platform.storefront > kubernetes_service_account.platform.storefront-sa
+    > kubernetes_cluster_role.secret-reader > kubernetes_secret.platform.payment-api-key
+    enabled by:
+      kubernetes_deployment.platform.storefront ->
+        kubernetes_service_account.platform.storefront-sa: HIGH K8S_NO_SECCOMP_PROFILE, MEDIUM
+        K8S_AUTOMOUNT_SA_TOKEN, MEDIUM K8S_CAPABILITIES_NOT_DROPPED, +4 more
+      kubernetes_service_account.platform.storefront-sa -> kubernetes_cluster_role.secret-reader:
+        LOW K8S_AUTOMOUNT_DEFAULT
+      kubernetes_cluster_role.secret-reader -> kubernetes_secret.platform.payment-api-key: HIGH
+        K8S_RBAC_SECRETS_READ
+    ignore id: 141ad2ba8eed
+
+Findings (30, 23 rows after grouping)
+SEVERITY  RESOURCE                                           RULE                             PATHS
+          FINDING  LOCATION  ATT&CK  STRIDE
+CRITICAL  kubernetes_daemon_set.platform.node-exporter       K8S_PRIVILEGED_CONTAINER
+          Container running in privileged mode  daemonset.yaml:1  T1611  EoP
+HIGH      kubernetes_cluster_role.secret-reader              K8S_RBAC_SECRETS_READ            P2
+          Role can read Secrets  rbac.yaml:7  T1552.007  Info disclosure
+HIGH^     kubernetes_deployment.platform.storefront          K8S_NO_SECCOMP_PROFILE           P1,P2
+          Container without a seccomp profile (+2 related: container hardening)  deployment.yaml:1
+          T1611  EoP
+          also K8S_CAPABILITIES_NOT_DROPPED, K8S_NO_SECURITY_CONTEXT_DEFAULTS
+HIGH      kubernetes_daemon_set.platform.node-exporter       K8S_HOST_NETWORK
+          Pod uses host network namespace  daemonset.yaml:1  T1040  Info disclosure
+HIGH      kubernetes_daemon_set.platform.node-exporter       K8S_HOST_PATH_VOLUME
+          hostPath volume mount detected  daemonset.yaml:1  T1611  EoP
+HIGH      kubernetes_daemon_set.platform.node-exporter       K8S_HOST_PID
+          Pod uses host PID namespace  daemonset.yaml:1  T1611  EoP
+HIGH      kubernetes_ingress.platform.storefront             BOUNDARY_GENERIC_FLOW
+          Trust boundary crossing, dmz > private: to kubernetes_service.platform.storefront (tcp/80)
+          ingress.yaml:1  T1565.002  Tampering
+MEDIUM^   kubernetes_deployment.platform.storefront          K8S_AUTOMOUNT_SA_TOKEN           P1,P2
+          Workload mounts a service account token it may not need  deployment.yaml:1  T1528  EoP
+MEDIUM^   kubernetes_deployment.platform.storefront          K8S_DEFAULT_ALLOW_EGRESS         P1,P2
+          Workload not covered by an egress NetworkPolicy  deployment.yaml:1  T1048  Info disclosure
+MEDIUM^   kubernetes_deployment.platform.storefront          K8S_NO_NETWORK_POLICY            P1,P2
+          Workload not covered by an ingress NetworkPolicy  deployment.yaml:1  T1046  Info
+          disclosure
+MEDIUM^   kubernetes_deployment.platform.storefront          K8S_SECRET_ENV_VAR               P1,P2
+          Secret referenced via environment variable  deployment.yaml:1  T1552.001  Info disclosure
+MEDIUM    kubernetes_daemon_set.platform.node-exporter       K8S_ALLOW_PRIVILEGE_ESCALATION
+          Container allows privilege escalation (+5 related: container hardening)  daemonset.yaml:1
+          T1548,T1611,T1105  EoP
+          also K8S_NO_SECCOMP_PROFILE, K8S_RUN_AS_ROOT, K8S_CAPABILITIES_NOT_DROPPED,
+               K8S_NO_SECURITY_CONTEXT_DEFAULTS, K8S_WRITABLE_ROOT_FS
+MEDIUM    kubernetes_daemon_set.platform.node-exporter       K8S_NO_RESOURCE_LIMITS
+          Container without CPU and memory limits  daemonset.yaml:1  T1499  DoS
+MEDIUM    kubernetes_deployment.platform.storefront          BOUNDARY_GENERIC_FLOW
+          Trust boundary crossing, private > data: to kubernetes_secret.platform.payment-api-key
+          deployment.yaml:1  T1530,T1565.002  Tampering
+MEDIUM    kubernetes_ingress.platform.storefront             BOUNDARY_GENERIC_FLOW
+          Trust boundary crossing, internet > dmz: from the internet (https/443)  ingress.yaml:1
+          T1190,T1565.002  Tampering
+MEDIUM    kubernetes_namespace.platform                      K8S_NO_PSA_LABELS
+          Namespace without Pod Security Admission enforce label  namespace.yaml:1  T1611  EoP
+LOW       kubernetes_service_account.platform.storefront-sa  K8S_AUTOMOUNT_DEFAULT            P2
+          ServiceAccount does not disable token automounting  rbac.yaml:1  T1528  EoP
+LOW       kubernetes_daemon_set.platform.node-exporter       K8S_AUTOMOUNT_SA_TOKEN
+          Workload mounts a service account token it may not need  daemonset.yaml:1  T1528  EoP
+LOW       kubernetes_daemon_set.platform.node-exporter       K8S_DEFAULT_ALLOW_EGRESS
+          Workload not covered by an egress NetworkPolicy  daemonset.yaml:1  T1048  Info disclosure
+LOW       kubernetes_daemon_set.platform.node-exporter       K8S_DEFAULT_SERVICE_ACCOUNT
+          Pod uses the default service account  daemonset.yaml:1  T1078.001  EoP
+LOW       kubernetes_daemon_set.platform.node-exporter       K8S_EPHEMERAL_STORAGE_UNBOUNDED
+          Container without ephemeral storage limit  daemonset.yaml:1  T1499  DoS
+LOW       kubernetes_daemon_set.platform.node-exporter       K8S_NO_NETWORK_POLICY
+          Workload not covered by an ingress NetworkPolicy  daemonset.yaml:1  T1046  Info disclosure
+LOW       kubernetes_deployment.platform.storefront          K8S_EPHEMERAL_STORAGE_UNBOUNDED
+          Container without ephemeral storage limit  deployment.yaml:1  T1499  DoS
+Key: ^ severity raised from the rule's own by context; P1, P2: the attack paths above that the
+     finding enables
 
 Coverage: 8 files discovered, 7 units parsed, 1 not infrastructure
   No input errors or coverage gaps were recorded.
