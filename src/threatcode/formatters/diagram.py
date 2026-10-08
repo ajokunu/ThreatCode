@@ -21,6 +21,19 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from threatcode.engine.mitre import TECHNIQUE_DB
+from threatcode.formatters._utils import threat_source
+from threatcode.formatters.diagram_labels import (
+    GENERIC_EDGE_LABELS,
+    Enabler,
+    base_name,
+    edge_label,
+    edge_phrase,
+    first_sentence,
+    hop_enablers,
+    humanize_tokens,
+    node_labels,
+    shorten_middle,
+)
 from threatcode.formatters.diagram_routing import (
     Grid,
     GridNode,
@@ -34,9 +47,10 @@ from threatcode.formatters.diagram_routing import (
     route_edges,
     route_segments,
 )
-from threatcode.ir.edges import EdgeType
+from threatcode.ir.edges import FLOW_EDGE_TYPES, EdgeType
 from threatcode.ir.nodes import NodeCategory, TrustZone
 from threatcode.models.report import threat_severity
+from threatcode.models.threat import Severity
 
 if TYPE_CHECKING:
     from threatcode.ir.edges import InfraEdge
@@ -49,7 +63,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Layout constants
-NODE_W = 160
+NODE_W = 176
 NODE_H = 54
 NODE_GAP_X = 36
 NODE_GAP_Y = 40
@@ -58,16 +72,22 @@ LANE_PAD_Y = 40
 HEADER_H = 44
 SUMMARY_BAR_H = 32
 LEGEND_H = 140
+LEGEND_COL_W = 236
+LEGEND_MIN_W = 24 + 4 * LEGEND_COL_W
+LEGEND_ROW_H = 18
 THREAT_TABLE_ROW_H = 20
 THREAT_TABLE_HEADER_H = 28
 MIN_LANE_H = 90
 MAX_NODES_PER_ROW = 5
+MAX_COLUMNS = 8
 CANVAS_PAD = 20
 
 # Findings table: the most rows drawn (the rest become one overflow row) and the most lines
 # one cell wraps onto before its last line is cut with an ellipsis (the row tooltip has it all)
 DEFAULT_MAX_ROWS = 200
 TABLE_MAX_CELL_LINES = 3
+# The description is the first sentence of the rule's text, which is sometimes long
+TABLE_DESCRIPTION_LINES = 4
 TABLE_TEXT_TOP = 13.5
 TABLE_ROW_BOTTOM_PAD = 6.5
 
@@ -83,15 +103,20 @@ DOCKER_STAGE_TYPE = "dockerfile_stage"
 FRAME_PAD = 8
 FRAME_LABEL_H = 14
 MAX_FRAME_DEPTH = 3
+# A label's text is about this wide per character at 9px semibold, and sits in this much padding
+FRAME_LABEL_CHAR_W = 5.4
+FRAME_LABEL_PAD = 5
+# How many places along a frame's top edge a label is tried at
+FRAME_LABEL_SLOTS = 24
 FRAME_STROKES = {1: "#64748b", 2: "#94a3b8", 3: "#b6c2d2"}
 
 # Node text baselines (offsets from the node top), shared by every shape so names
 # line up across a row; clear of cylinder caps and inside the diamond outline
 NODE_TYPE_BASELINE = 21
 NODE_NAME_BASELINE = 37
-NODE_TYPE_MAX_CHARS = 22
-DIAMOND_TYPE_MAX_CHARS = 20
-NODE_NAME_MAX_CHARS = 24
+NODE_TYPE_FONT = 9
+NODE_TYPE_MAX_CHARS = 31
+NODE_NAME_MAX_CHARS = 26
 
 # Routing clearances: keep horizontal runs off node edges and threat badges
 CHANNEL_CLEAR_BELOW = 8
@@ -106,6 +131,16 @@ EDGE_LABEL_GLYPH_W = {" ": 2.6, "I": 2.6, "→": 9.0}
 EDGE_LABEL_PAD_X = 8
 EDGE_LABEL_H = 16
 OVERLAY_CLEARANCE = 5
+ARROW = "\u2192"
+CROSSING_WIDTH = "1.6"
+TRANSITION_TOOLTIP_EDGES = 10
+# Zone transition labels: amber, so they stay apart from the severity colors of attack paths
+BOUNDARY_STROKE = "#fcd34d"
+BOUNDARY_INK = "#92400e"
+# The ``P1`` badge a path number sits in
+PATH_BADGE_H = 14
+PATH_BADGE_PAD_X = 5
+PATH_BADGE_CHAR_W = 5.6
 
 ZONE_ORDER = [
     TrustZone.INTERNET,
@@ -121,6 +156,16 @@ ZONE_COLORS: dict[TrustZone, tuple[str, str]] = {
     TrustZone.PRIVATE: ("#eff6ff", "#93c5fd"),
     TrustZone.DATA: ("#f0fdf4", "#86efac"),
     TrustZone.MANAGEMENT: ("#faf5ff", "#c4b5fd"),
+}
+
+# The same hues, dark enough to read on the lane they name: the lane border colors above are
+# pastels meant for lines, and as 10px text on the lane fill they have a contrast of 1.3 to 1.7
+ZONE_TITLE_COLORS: dict[TrustZone, str] = {
+    TrustZone.INTERNET: "#b91c1c",
+    TrustZone.DMZ: "#c2410c",
+    TrustZone.PRIVATE: "#1d4ed8",
+    TrustZone.DATA: "#15803d",
+    TrustZone.MANAGEMENT: "#6d28d9",
 }
 
 ZONE_LABELS: dict[TrustZone, str] = {
@@ -148,31 +193,66 @@ EDGE_LABELS: dict[EdgeType, str] = {
     EdgeType.DATA_FLOW: "Data Flow",
 }
 
-# Short names for the edge types on an attack path, where a hop has 84 pixels to say it
-_HOP_EDGE_LABELS: dict[str, str] = {
-    "network_flow": "network",
-    "data_flow": "data",
-    "iam_binding": "iam",
-    "dependency": "depends",
-    "containment": "contains",
+# Which type of several edges between the same two nodes decides the look of the one arrow:
+# what carries traffic or data, then what grants authority, then what only references
+_EDGE_RANK: dict[EdgeType, int] = {
+    EdgeType.CONTAINMENT: 0,
+    EdgeType.DEPENDENCY: 1,
+    EdgeType.IAM_BINDING: 2,
+    EdgeType.DATA_FLOW: 3,
+    EdgeType.NETWORK_FLOW: 4,
 }
 
 SEVERITY_COLORS: dict[str, str] = {
-    "critical": "#ef4444",
+    "critical": "#dc2626",
     "high": "#f97316",
     "medium": "#eab308",
-    "low": "#3b82f6",
+    "low": "#2563eb",
     "info": "#94a3b8",
 }
+
+# Severity as text on white or a pale fill: the fills above are for dots, badges and strokes
+SEVERITY_TEXT_COLORS: dict[str, str] = {
+    "critical": "#b91c1c",
+    "high": "#c2410c",
+    "medium": "#a16207",
+    "low": "#1d4ed8",
+    "info": "#475569",
+}
+# What is written on a badge of that fill: white where it reads, else the dark ink
+BADGE_INK_LIGHT = "#ffffff"
+BADGE_INK_DARK = "#1e293b"
+SEVERITY_BADGE_INK: dict[str, str] = {
+    "critical": BADGE_INK_LIGHT,
+    "high": BADGE_INK_DARK,
+    "medium": BADGE_INK_DARK,
+    "low": BADGE_INK_LIGHT,
+    "info": BADGE_INK_DARK,
+}
+
+# Greys for text: every one is at least 4.5:1 on white and on the legend and summary fills
+INK = "#1e293b"
+INK_MUTED = "#475569"
+INK_SOFT = "#64748b"
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 
 # Attack path visualization constants
 ATTACK_PATH_SECTION_TITLE_H = 28
-ATTACK_PATH_ROW_H = 92
-ATTACK_PATH_NODE_W = 120
+ATTACK_PATH_HEADER_H = 18
+ATTACK_PATH_ROW_GAP = 14
+ATTACK_PATH_NODE_W = 132
 ATTACK_PATH_NODE_H = 28
-ATTACK_PATH_ARROW_W = 84
+ATTACK_PATH_ARROW_W = 90
+# The hops start this far from the left edge: what is written under the first one is as wide as
+# a box plus an arrow less 12 pixels, and must not run off the canvas
+ATTACK_PATH_X0 = (ATTACK_PATH_ARROW_W - 12) // 2 + 6
+# The most lines an address wraps onto inside its box, the most lines a rationale takes, the most
+# findings listed under one hop (the rest are counted) and the lines one finding wraps onto
+ATTACK_PATH_NAME_LINES = 3
+ATTACK_PATH_RATIONALE_LINES = 3
+ATTACK_PATH_MAX_ENABLERS = 3
+ATTACK_PATH_ENABLER_LINES = 3
 ATTACK_PATH_PAD = 16
 ATTACK_PATH_MAX_PATHS = 5
 ATTACK_PATH_CIRCLE_R = 9
@@ -180,7 +260,6 @@ ATTACK_PATH_NOTE_H = 36
 # Smallest font the attack path blocks use: captions and edge labels stay readable
 ATTACK_PATH_FONT = 9
 ATTACK_PATH_LINE_H = 11
-ATTACK_PATH_CAPTION_LINES = 2
 
 NO_ATTACK_PATHS_NOTE = "No attack paths found"
 NO_ATTACK_PATHS_DETAIL = (
@@ -203,7 +282,8 @@ _DATA_STORE_CATEGORIES = {
     NodeCategory.DATABASE,
     NodeCategory.SECRET,
 }
-_DATA_FLOW_CATEGORIES = {
+# Network and delivery plumbing: drawn as a dashed box, never as a flow or a store
+_NETWORK_CATEGORIES = {
     NodeCategory.NETWORK,
     NodeCategory.CDN,
     NodeCategory.DNS,
@@ -218,7 +298,7 @@ FONT_FAMILY = 'Inter, system-ui, "Segoe UI", Helvetica, Arial, sans-serif'
 _AVG_CHAR_WIDTH_EM = 0.6
 _COLUMN_GAP_PX = 8
 # Where a token with no space may be broken: after these characters
-_BREAK_AFTER = ".-_/[]:,;"
+_BREAK_PRIORITY = (".", "/", "-_[]:,;")
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -236,7 +316,13 @@ def _split_token(token: str, limit: int) -> list[str]:
     """Break a token longer than ``limit`` at a separator when one is near, else mid-word."""
     pieces: list[str] = []
     while len(token) > limit:
-        cut = max((token.rfind(ch, 0, limit) for ch in _BREAK_AFTER), default=-1) + 1
+        # An address breaks best where its type ends and its name starts, then at a path
+        # separator, then after any other separator
+        cut = 0
+        for group in _BREAK_PRIORITY:
+            cut = max((token.rfind(ch, 0, limit) for ch in group), default=-1) + 1
+            if cut >= limit // 2:
+                break
         if cut < limit // 2:
             cut = limit
         pieces.append(token[:cut])
@@ -294,12 +380,28 @@ def _text_block(x: float, y: float, lines: list[str], line_h: float, attrs: str)
 
 
 def _doc_prefix(source: str) -> str:
-    """Prefix of every id in one document: 'tc' and a hash of the input file name.
+    """Prefix of every id in one document: 'tc' and a hash of what the diagram is of.
 
     Two diagrams embedded in one HTML page would otherwise both define ``#shadow`` and ``#glow``
     and the second would silently use the first one's.
     """
     return "tc" + hashlib.sha1(source.encode(), usedforsecurity=False).hexdigest()[:8]
+
+
+def _document_key(report: ThreatReport, graph: InfraGraph) -> str:
+    """What tells one diagram from another: the input, the resources, the findings and the paths.
+
+    The input name alone is not enough, since every scan of the current directory is named ``.``
+    and two scans of one directory (a branch and its base, before and after a fix) share a name.
+    Nothing here changes between two renders of one report, the time of the scan included.
+    """
+    parts = [
+        report.input_file,
+        *sorted(graph.nodes),
+        *sorted(threat.id for threat in report.threats),
+        *sorted(path.id for path in report.attack_paths),
+    ]
+    return "\x00".join(parts)
 
 
 _ID_UNSAFE = re.compile(r"[^A-Za-z0-9_-]+")
@@ -341,18 +443,27 @@ class _DNode:
     tooltip: str = ""
     # Replaces the resource type line when set (a collapsed stage says how many instructions)
     caption: str = ""
+    # Drawn as an external entity: the internet and identities, not something that is deployed
+    entity: bool = False
 
 
 @dataclass
 class _DEdge:
-    """A connector as drawn."""
+    """A connector as drawn: every graph edge between the same two drawn nodes, as one arrow.
+
+    ``edge_type`` is the strongest of the merged edges and decides how the arrow looks.
+    ``crosses`` is true for a flow (traffic or data) between two trust zones; a reference or an
+    IAM binding that merely runs between two zones is not a crossing.
+    """
 
     source: str
     target: str
     edge_type: EdgeType
-    crosses: bool
-    label: str
-    tooltip: str
+    crosses: bool = False
+    # Source and target zone of a crossing, as the engine names them ("" when it is not one)
+    zones: tuple[str, str] = ("", "")
+    # What each merged graph edge says, one line each, for the tooltip
+    lines: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -373,11 +484,49 @@ class _Frame:
     rect: Rect
     height: int
     badge: bool
+    zone: TrustZone
+    # What the frame is called on the diagram: the container, and for a container drawn in
+    # several lanes or rows, which part this is
+    label: str = ""
+    # Where the label sits, once the routes are known
+    label_rect: Rect | None = None
+
+
+@dataclass
+class _StripHop:
+    """One hop of an attack path as the strip draws it."""
+
+    address: list[str]
+    # One wrapped block per finding that enables the hop, then the ATT&CK line
+    captions: list[list[str]]
+    tooltip: str
+
+
+@dataclass
+class _Strip:
+    """The size of one attack path strip and what is written in it."""
+
+    rationale: list[str]
+    hops: list[_StripHop]
+    box_h: float
+    caption_lines: int
+
+    @property
+    def height(self) -> float:
+        captions = 6 + self.caption_lines * ATTACK_PATH_LINE_H if self.caption_lines else 0
+        return (
+            ATTACK_PATH_HEADER_H
+            + len(self.rationale) * ATTACK_PATH_LINE_H
+            + 8
+            + self.box_h
+            + captions
+            + ATTACK_PATH_ROW_GAP
+        )
 
 
 @dataclass
 class _TableRow:
-    threat: Threat
+    threats: list[Threat]
     cells: list[list[str]]
     height: float
 
@@ -408,7 +557,7 @@ class DiagramRenderer:
         self.max_rows = max_rows
         self.expand_docker = expand_docker
         self.lod_threshold = lod_threshold
-        self._prefix = _doc_prefix(report.input_file)
+        self._prefix = _doc_prefix(_document_key(report, graph))
         self._threats_by_address: dict[str, list[Threat]] = defaultdict(list)
         self._threats_by_id: dict[str, Threat] = {}
         for threat in report.threats:
@@ -436,12 +585,17 @@ class DiagramRenderer:
         self._legend_y = 0.0
         # Attack path state -- the paths drawn, numbered from 1, and where their edges are
         self._attack_paths: list[tuple[int, AttackPath]] = []
+        self._paths_by_number: dict[int, AttackPath] = {}
         self._edge_attack_path_map: dict[tuple[str, str], list[int]] = {}
+        # Per connector: (path number, step in that path, steps in that path)
+        self._edge_steps: dict[tuple[str, str], list[tuple[int, int, int]]] = {}
         self._attack_paths_y = 0.0
         self._attack_paths_h = 0.0
+        self._strips: dict[int, _Strip] = {}
         # Findings table state
         self._table_rows: list[_TableRow] = []
         self._table_overflow = 0
+        self._table_entries_total = 0
         self._table_cols: list[float] = []
         # Routing state -- populated by _compute_routes
         self._node_cells: dict[str, tuple[int, int]] = {}  # node_id -> (col, global row)
@@ -469,12 +623,17 @@ class DiagramRenderer:
             parts.append(self._svg_zone_lane(zone, y, h))
         parts.append(self._svg_frames())
         glowing: set[tuple[str, str]] = set()
-        for edge in self._dedges:
+        # Attack path hops are drawn last, so no plain connector lies over one
+        on_path = self._edge_attack_path_map
+        ordered = sorted(self._dedges, key=lambda e: (e.source, e.target) in on_path)
+        for edge in ordered:
             svg = self._svg_edge(edge, glowing)
             if svg:
                 parts.append(svg)
         for node_id, (x, y) in self._node_positions.items():
             parts.append(self._svg_node(self._dnodes[node_id], x, y))
+        # Frame labels sit above connectors and nodes, so nothing is drawn through their text
+        parts.append(self._svg_frame_labels())
         # Labels and markers sit above nodes so no box can cover them
         parts.append(self._svg_edge_overlays())
         parts.append(self._svg_attack_paths())
@@ -490,42 +649,27 @@ class DiagramRenderer:
         nodes = self.graph.nodes
         edges = self.graph.edges
         collapsed = self._collapsed_docker_members(nodes, edges)
-        parent_of = self._containment_parents(nodes, edges, collapsed)
+        companions = self._folded_companions(nodes, edges, collapsed)
+        hidden = {**collapsed, **companions}
+        parent_of = self._containment_parents(nodes, edges, hidden)
         containers = set(parent_of.values())
-        visible = [nid for nid in nodes if nid not in collapsed]
+        visible = [nid for nid in nodes if nid not in hidden]
         framed = [nid for nid in visible if nid not in containers]
         use_lod = self.lod_threshold is not None and len(framed) > self.lod_threshold
         if use_lod:
-            self._build_summary_view(nodes, edges, collapsed, visible)
+            self._build_summary_view(nodes, edges, hidden, visible)
             return
 
         self._repr = {nid: (None if nid in containers else nid) for nid in nodes}
-        for member, stage in collapsed.items():
-            self._repr[member] = stage
+        for member, host in hidden.items():
+            self._repr[member] = host
         members_of: dict[str, list[str]] = defaultdict(list)
         for member, stage in collapsed.items():
             members_of[stage].append(member)
-        for nid in framed:
-            node = nodes[nid]
-            threats = list(self._threats_by_address.get(nid, ()))
-            caption = ""
-            tooltip_extra: list[str] = []
-            if nid in members_of:
-                folded = members_of[nid]
-                for member in folded:
-                    threats.extend(self._threats_by_address.get(member, ()))
-                caption = f"stage: {len(folded)} instructions"
-                tooltip_extra = self._collapsed_tooltip(folded)
-            self._dnodes[nid] = _DNode(
-                id=nid,
-                resource_type=node.resource_type or nid.split(".")[0],
-                name=_short_name(node),
-                category=node.category,
-                zone=node.trust_zone,
-                threats=threats,
-                tooltip=self._node_tooltip(node, threats, tooltip_extra),
-                caption=caption,
-            )
+        settings_of: dict[str, list[str]] = defaultdict(list)
+        for companion, owner in companions.items():
+            settings_of[owner].append(companion)
+        self._draw_nodes(framed, members_of, settings_of)
         for child, container in parent_of.items():
             if nodes[container].resource_type == DOCKER_STAGE_TYPE:
                 self._stage_anchor.setdefault(container, child)
@@ -551,6 +695,44 @@ class DiagramRenderer:
                 label=cid,
                 threats=threats,
                 tooltip=self._node_tooltip(node, threats, []),
+            )
+
+    def _draw_nodes(
+        self,
+        framed: list[str],
+        members_of: dict[str, list[str]],
+        settings_of: dict[str, list[str]],
+    ) -> None:
+        """One drawn node per resource that is not a frame, with what was folded into it."""
+        nodes = self.graph.nodes
+        names = node_labels(
+            [(nid, nodes[nid].resource_type) for nid in framed], limit=NODE_NAME_MAX_CHARS
+        )
+        for nid in framed:
+            node = nodes[nid]
+            threats = list(self._threats_by_address.get(nid, ()))
+            caption = ""
+            tooltip_extra: list[str] = []
+            if nid in members_of:
+                folded = members_of[nid]
+                for member in folded:
+                    threats.extend(self._threats_by_address.get(member, ()))
+                caption = f"stage: {len(folded)} instructions"
+                tooltip_extra = self._collapsed_tooltip(folded)
+            if nid in settings_of:
+                for companion in settings_of[nid]:
+                    threats.extend(self._threats_by_address.get(companion, ()))
+                tooltip_extra += self._settings_tooltip(settings_of[nid])
+            self._dnodes[nid] = _DNode(
+                id=nid,
+                resource_type=node.resource_type or nid.split(".")[0],
+                name=names[nid],
+                category=node.category,
+                zone=node.trust_zone,
+                threats=threats,
+                tooltip=self._node_tooltip(node, threats, tooltip_extra),
+                caption=caption,
+                entity=node.is_internet or node.category in _ENTITY_CATEGORIES,
             )
 
     def _collapsed_docker_members(
@@ -583,6 +765,55 @@ class DiagramRenderer:
                 for member in unique:
                     collapsed.setdefault(member, stage)
         return collapsed
+
+    def _folded_companions(
+        self,
+        nodes: dict[str, InfraNode],
+        edges: list[InfraEdge],
+        skip: dict[str, str],
+    ) -> dict[str, str]:
+        """Settings resources folded into the data store they configure: {companion: owner}.
+
+        ``aws_s3_bucket_public_access_block`` and ``aws_s3_bucket_server_side_encryption_
+        configuration`` are the bucket's settings, written as resources of their own.
+        Drawn as nodes they are more cylinders named like the bucket; folded in, the bucket's
+        badge and tooltip carry their findings.
+        A companion is a data store whose type extends the type of the data store it references.
+        """
+        found: dict[str, str] = {}
+        for edge in edges:
+            if edge.edge_type is not EdgeType.DEPENDENCY or edge.source == edge.target:
+                continue
+            companion = nodes.get(edge.source)
+            owner = nodes.get(edge.target)
+            if companion is None or owner is None or edge.source in skip:
+                continue
+            if (
+                companion.category in _DATA_STORE_CATEGORIES
+                and owner.category in _DATA_STORE_CATEGORIES
+                and companion.resource_type.startswith(owner.resource_type + "_")
+            ):
+                found.setdefault(edge.source, edge.target)
+        # A companion of a companion folds into the data store at the root
+        for companion_id in list(found):
+            seen = {companion_id}
+            root = found[companion_id]
+            while root in found and root not in seen:
+                seen.add(root)
+                root = found[root]
+            if root in seen:  # a cycle in hostile input: leave the nodes alone
+                del found[companion_id]
+            else:
+                found[companion_id] = root
+        return found
+
+    def _settings_tooltip(self, companions: list[str]) -> list[str]:
+        lines = ["", f"Settings folded into this resource ({len(companions)}):"]
+        for companion in companions:
+            lines.append(f"  {companion}")
+            for threat in self._threats_by_address.get(companion, ()):
+                lines.append(f"    {threat_severity(threat).value.upper()} - {threat.title}")
+        return lines
 
     def _containment_parents(
         self,
@@ -624,8 +855,12 @@ class DiagramRenderer:
         return lines
 
     def _build_edges(self, edges: list[InfraEdge]) -> None:
-        """Map graph edges onto the drawn nodes: no containment, no self loops from merging."""
-        index: dict[tuple[str, str, EdgeType], int] = {}
+        """Map graph edges onto the drawn nodes: no containment, no self loops from merging.
+
+        Edges between the same two drawn nodes become one arrow, whatever their types: two
+        arrows on one route are drawn on top of each other and read as one anyway.
+        """
+        index: dict[tuple[str, str], int] = {}
         for edge in edges:
             if edge.edge_type is EdgeType.CONTAINMENT:
                 continue
@@ -644,13 +879,18 @@ class DiagramRenderer:
                     continue
             if source == target and edge.source != edge.target:
                 continue
-            key = (source, target, edge.edge_type)
+            key = (source, target)
+            crossing = edge.crosses_trust_boundary and edge.edge_type in FLOW_EDGE_TYPES
+            line = self._edge_line(edge)
             if key in index:
                 existing = self._dedges[index[key]]
-                if edge.crosses_trust_boundary and not existing.crosses:
+                if _EDGE_RANK[edge.edge_type] > _EDGE_RANK[existing.edge_type]:
+                    existing.edge_type = edge.edge_type
+                if crossing and not existing.crosses:
                     existing.crosses = True
-                    existing.label = self._edge_label_text(edge)
-                    existing.tooltip = self._edge_tooltip(edge)
+                    existing.zones = _edge_zones(edge)
+                if line not in existing.lines:
+                    existing.lines.append(line)
                 continue
             index[key] = len(self._dedges)
             self._dedges.append(
@@ -658,9 +898,9 @@ class DiagramRenderer:
                     source=source,
                     target=target,
                     edge_type=edge.edge_type,
-                    crosses=edge.crosses_trust_boundary,
-                    label=self._edge_label_text(edge) if edge.crosses_trust_boundary else "",
-                    tooltip=self._edge_tooltip(edge),
+                    crosses=crossing,
+                    zones=_edge_zones(edge) if crossing else ("", ""),
+                    lines=[line],
                 )
             )
 
@@ -741,20 +981,33 @@ class DiagramRenderer:
         """Nodes of one lane with the members of each container side by side."""
         return sorted(nodes, key=lambda n: self._chain.get(n.id, ()))
 
-    def _layout_attack_paths(self) -> float:
-        """Number the report's attack paths, size their section, and return its width."""
-        # Attack paths come from the report; number them and find their edges
+    def _number_attack_paths(self) -> float:
+        """Number the report's attack paths, find their connectors, return the width they need."""
         self._attack_paths = [
             (i + 1, path) for i, path in enumerate(self.report.attack_paths[:ATTACK_PATH_MAX_PATHS])
         ]
+        self._paths_by_number = dict(self._attack_paths)
         self._build_edge_attack_path_map()
+        attack_path_w = 0.0
+        for _, path in self._attack_paths:
+            n = max(len(path.hops), 1)
+            pw = (
+                ATTACK_PATH_X0
+                + ATTACK_PATH_PAD
+                + n * ATTACK_PATH_NODE_W
+                + (n - 1) * ATTACK_PATH_ARROW_W
+            )
+            attack_path_w = max(attack_path_w, pw)
+        return attack_path_w
 
-        # Attack path section height
+    def _size_attack_paths(self) -> None:
+        """Lay out each strip at the final canvas width and total the height of the section."""
+        self._strips = {num: self._layout_strip(path) for num, path in self._attack_paths}
         attack_path_h = 0.0
         if self._attack_paths:
             attack_path_h = (
                 ATTACK_PATH_SECTION_TITLE_H
-                + len(self._attack_paths) * ATTACK_PATH_ROW_H
+                + sum(strip.height for strip in self._strips.values())
                 + ATTACK_PATH_PAD * 2
             )
             if len(self.report.attack_paths) > len(self._attack_paths):
@@ -763,13 +1016,53 @@ class DiagramRenderer:
             attack_path_h = ATTACK_PATH_SECTION_TITLE_H + ATTACK_PATH_NOTE_H + ATTACK_PATH_PAD
         self._attack_paths_h = attack_path_h
 
-        # Width the section needs
-        attack_path_w = 0.0
-        for _, path in self._attack_paths:
-            n = max(len(path.hops), 1)
-            pw = ATTACK_PATH_PAD * 2 + n * ATTACK_PATH_NODE_W + (n - 1) * ATTACK_PATH_ARROW_W
-            attack_path_w = max(attack_path_w, pw)
-        return attack_path_w
+    def _layout_strip(self, path: AttackPath) -> _Strip:
+        """Wrap everything a strip says: the rationale, each address, each hop's findings."""
+        font = ATTACK_PATH_FONT
+        rationale: list[str] = []
+        if path.rationale:
+            room = self._canvas_w - 2 * ATTACK_PATH_PAD - 8
+            rationale = _wrap(path.rationale, room, font, ATTACK_PATH_RATIONALE_LINES)
+        enablers = hop_enablers(path, self._threats_by_id)
+        hops: list[_StripHop] = []
+        caption_w = ATTACK_PATH_NODE_W + ATTACK_PATH_ARROW_W - 12
+        for hop, found in zip(path.hops, enablers, strict=True):
+            captions: list[list[str]] = []
+            for enabler in found[:ATTACK_PATH_MAX_ENABLERS]:
+                captions.append(
+                    _wrap(_enabler_text(enabler), caption_w, font, ATTACK_PATH_ENABLER_LINES)
+                )
+            if len(found) > ATTACK_PATH_MAX_ENABLERS:
+                more = len(found) - ATTACK_PATH_MAX_ENABLERS
+                captions.append([f"+{more} more finding{'s' if more > 1 else ''}"])
+            if hop.techniques:
+                captions.append(_wrap("ATT&CK " + ", ".join(hop.techniques), caption_w, font, 1))
+            hops.append(
+                _StripHop(
+                    address=_wrap(hop.node_id, ATTACK_PATH_NODE_W, font, ATTACK_PATH_NAME_LINES),
+                    captions=captions,
+                    tooltip=self._hop_tooltip(hop, found),
+                )
+            )
+        name_lines = max((len(h.address) for h in hops), default=1)
+        box_h = max(float(ATTACK_PATH_NODE_H), 10 + name_lines * ATTACK_PATH_LINE_H)
+        caption_lines = max((sum(len(c) for c in h.captions) for h in hops), default=0)
+        return _Strip(rationale, hops, box_h, caption_lines)
+
+    def _hop_tooltip(self, hop: AttackHop, found: list[Enabler]) -> str:
+        """The whole of a hop: address, zone, what it does next, every finding, the techniques."""
+        lines = [hop.node_id]
+        if hop.zone:
+            lines.append(f"Zone: {hop.zone}")
+        phrase = edge_phrase(hop.edge_type_to_next, via=hop.via)
+        if phrase:
+            lines.append(f"Then: {phrase}")
+        for enabler in found:
+            severity = enabler.severity.value.upper() + " - " if enabler.severity else ""
+            lines.append(f"Enabled by {severity}{_enabler_text(enabler)}")
+        if hop.techniques:
+            lines.append("ATT&CK: " + ", ".join(hop.techniques))
+        return "\n".join(lines)
 
     def _compute_layout(self) -> None:
         zones_map: dict[TrustZone, list[_DNode]] = defaultdict(list)
@@ -778,6 +1071,14 @@ class DiagramRenderer:
 
         max_depth = max((len(c) for c in self._chain.values()), default=0)
         self._gap_x = max(NODE_GAP_X, 2 * FRAME_PAD * max_depth + 12)
+        # The canvas is at least as wide as the legend and the longest attack path; the nodes
+        # of a lane use that width instead of leaving the right of the lane empty
+        attack_path_w = self._number_attack_paths()
+        target_w = max(LEGEND_MIN_W, attack_path_w + CANVAS_PAD * 2)
+        per_row = max(
+            MAX_NODES_PER_ROW,
+            min(int((target_w - LANE_PAD_X - self._gap_x) // (NODE_W + self._gap_x)), MAX_COLUMNS),
+        )
         notice_h = NOTICE_H if self._notice else 0
         self._notice_y = HEADER_H + SUMMARY_BAR_H + 4
         y_cursor: float = HEADER_H + SUMMARY_BAR_H + CANVAS_PAD + notice_h
@@ -796,7 +1097,7 @@ class DiagramRenderer:
             for i, dnode in enumerate(lane_nodes):
                 chain = self._chain.get(dnode.id, ())
                 top = chain[0] if chain else None
-                if i > 0 and (col >= MAX_NODES_PER_ROW or (col > 0 and top != previous_top)):
+                if i > 0 and (col >= per_row or (col > 0 and top != previous_top)):
                     row += 1
                     col = 0
                 lane_cells[dnode.id] = (col, row)
@@ -842,14 +1143,11 @@ class DiagramRenderer:
             max_lane_w = 400
 
         self._compute_frames(lane_cells)
-        attack_path_w = self._layout_attack_paths()
 
         # Ensure canvas is wide enough for legend, attack paths, and expanded table
-        min_legend_w = 900
-        self._canvas_w = max(
-            max_lane_w + CANVAS_PAD * 2, 400, min_legend_w, attack_path_w + CANVAS_PAD * 2
-        )
+        self._canvas_w = max(max_lane_w + CANVAS_PAD * 2, 400, target_w)
 
+        self._size_attack_paths()
         self._prepare_table()
         threat_table_h = 0.0
         if self.report.threats:
@@ -868,12 +1166,13 @@ class DiagramRenderer:
         self._canvas_h = y_cursor + LEGEND_H + CANVAS_PAD
 
         self._compute_routes()
+        self._place_frame_labels()
         self._place_edge_overlays()
 
     def _compute_frames(self, cells: dict[str, tuple[int, int]]) -> None:
         """Place a frame around each container's members in each lane."""
         first_drawn: set[str] = set()
-        for _, _, _, lane_nodes in self._zone_lanes:
+        for zone, _, _, lane_nodes in self._zone_lanes:
             containers: list[str] = []
             for dnode in lane_nodes:
                 for c in self._chain.get(dnode.id, ()):
@@ -900,9 +1199,29 @@ class DiagramRenderer:
                     )
                     badge = container not in first_drawn
                     first_drawn.add(container)
-                    self._frames.append(_Frame(container, rect, height, badge))
+                    self._frames.append(_Frame(container, rect, height, badge, zone))
+        self._name_frame_parts()
         # Outer frames first so inner ones draw over them
         self._frames.sort(key=lambda f: -f.height)
+
+    def _name_frame_parts(self) -> None:
+        """Label a container drawn more than once by the part of it each frame holds.
+
+        A VPC with members in three trust zones has three frames, and three frames that all say
+        ``aws_vpc.main`` read as three VPCs; they say ``aws_vpc.main (dmz)`` and so on.
+        """
+        parts: dict[str, list[_Frame]] = defaultdict(list)
+        for frame in self._frames:
+            parts[frame.container].append(frame)
+        for container, frames in parts.items():
+            if len(frames) == 1:
+                frames[0].label = container
+                continue
+            for frame in frames:
+                same_zone = [f for f in frames if f.zone is frame.zone]
+                zone = ZONE_LABELS.get(frame.zone, frame.zone.value.upper()).lower()
+                part = f", part {same_zone.index(frame) + 1}" if len(same_zone) > 1 else ""
+                frame.label = f"{container} ({zone}{part})"
 
     @staticmethod
     def _frame_segments(
@@ -928,17 +1247,44 @@ class DiagramRenderer:
 
     # -- Findings table layout ------------------------------------------------
 
+    def _table_entries(self) -> list[list[Threat]]:
+        """The findings, worst first, with findings that share a root cause on one resource as one.
+
+        The same grouping the terminal report uses: a pod without a seccomp profile, with no
+        dropped capabilities and no resource limits is one row that says it has two more related
+        findings, not three rows that read alike.
+        """
+        rank = {sev: i for i, sev in enumerate(SEVERITY_ORDER)}
+        ordered = sorted(self.report.threats, key=lambda t: rank.get(threat_severity(t).value, 99))
+        groups: dict[tuple[str, str], list[Threat]] = {}
+        entries: list[list[Threat]] = []
+        for threat in ordered:
+            if threat.root_cause:
+                key = (threat.resource_address, threat.root_cause)
+                if key in groups:
+                    groups[key].append(threat)
+                    continue
+                groups[key] = [threat]
+                entries.append(groups[key])
+            else:
+                entries.append([threat])
+        return entries
+
     def _prepare_table(self) -> None:
         """Wrap every cell of the findings table and measure its rows."""
         w = self._canvas_w
         col_sev_w = 66
-        col_stride_w = 132  # fits "Elevation of Privilege"
-        col_source_w = 50
+        col_stride_w = 124  # fits "Elevation of Privilege"
+        col_location_w = 118
+        col_source_w = 54
         # Free-text columns share what is left of the table width.
-        flexible = max(w - 40 - col_sev_w - col_stride_w - col_source_w, 320)
+        flexible = max(
+            w - 40 - col_sev_w - col_stride_w - col_location_w - col_source_w,
+            320,
+        )
         col_res_w = flexible * 0.22
-        col_threat_w = flexible * 0.26
-        col_desc_w = flexible * 0.28
+        col_threat_w = flexible * 0.25
+        col_desc_w = flexible * 0.29
         col_attack_w = flexible * 0.24
         self._table_cols = [
             col_sev_w,
@@ -947,28 +1293,51 @@ class DiagramRenderer:
             col_desc_w,
             col_attack_w,
             col_stride_w,
+            col_location_w,
             col_source_w,
         ]
-        threats = self._sorted_threats()
-        limit = len(threats) if self.max_rows is None else max(self.max_rows, 0)
-        shown = threats[:limit]
-        self._table_overflow = len(threats) - len(shown)
+        entries = self._table_entries()
+        limit = len(entries) if self.max_rows is None else max(self.max_rows, 0)
+        shown = entries[:limit]
+        self._table_overflow = sum(len(entry) for entry in entries[limit:])
+        self._table_entries_total = len(entries)
         self._table_rows = []
-        for threat in shown:
-            stride = STRIDE_DISPLAY.get(threat.stride_category, threat.stride_category)
+        for entry in shown:
+            first = entry[0]
+            stride = STRIDE_DISPLAY.get(first.stride_category, first.stride_category)
+            title = first.title
+            if len(entry) > 1 and first.root_cause:
+                cause = first.root_cause.replace("_", " ").replace("-", " ")
+                title += f" (+{len(entry) - 1} related: {cause})"
+            techniques = list(dict.fromkeys(t for member in entry for t in member.mitre_techniques))
             cells = [
-                [threat_severity(threat).value.upper()],
-                _wrap(threat.resource_address, col_res_w, 9, TABLE_MAX_CELL_LINES),
-                _wrap(threat.title, col_threat_w, 9, TABLE_MAX_CELL_LINES),
-                _wrap(threat.description.strip(), col_desc_w, 8, TABLE_MAX_CELL_LINES),
-                _wrap(self._format_mitre_techniques(threat), col_attack_w, 8, TABLE_MAX_CELL_LINES),
+                [max(threat_severity(member) for member in entry).value.upper()],
+                _wrap(first.resource_address, col_res_w, 9, TABLE_MAX_CELL_LINES),
+                _wrap(humanize_tokens(title), col_threat_w, 9, TABLE_MAX_CELL_LINES),
+                _wrap(
+                    first_sentence(humanize_tokens(first.description)),
+                    col_desc_w,
+                    8,
+                    TABLE_DESCRIPTION_LINES,
+                ),
+                _wrap(
+                    self._format_mitre_techniques(techniques), col_attack_w, 8, TABLE_MAX_CELL_LINES
+                ),
                 _wrap(stride, col_stride_w, 9, 2),
-                [threat.source.value],
+                _wrap(self._location_text(first), col_location_w, 9, 2),
+                [first.source.value],
             ]
-            fonts = [9, 9, 9, 8, 8, 9, 9]
+            fonts = [9, 9, 9, 8, 8, 9, 9, 9]
             body = max((len(c) - 1) * _line_h(f) for c, f in zip(cells, fonts, strict=True))
             height = max(float(THREAT_TABLE_ROW_H), TABLE_TEXT_TOP + body + TABLE_ROW_BOTTOM_PAD)
-            self._table_rows.append(_TableRow(threat, cells, height))
+            self._table_rows.append(_TableRow(entry, cells, height))
+
+    def _location_text(self, threat: Threat) -> str:
+        """``file:line`` of a finding, or ``-`` when nothing knows where it is."""
+        file, line, _end = threat_source(threat, self.graph)
+        if not file:
+            return "-"
+        return f"{file}:{line}" if line else file
 
     # -- Edge routing ---------------------------------------------------------
 
@@ -1033,16 +1402,26 @@ class DiagramRenderer:
             obstacles.add_rect(Rect(x, y, NODE_W, NODE_H).expand(OVERLAY_CLEARANCE))
             if self._dnodes[node_id].threats:
                 obstacles.add_rect(_badge_rect(x, y).expand(OVERLAY_CLEARANCE))
-        for zone, lane_y, _, _ in self._zone_lanes:
+        for index, (zone, lane_y, _, _) in enumerate(self._zone_lanes):
             label = ZONE_LABELS.get(zone, zone.value.upper())
             obstacles.add_rect(Rect(8, lane_y + 12, len(label) * 7.5 + 8, 18))
+            if index:
+                # A badge or label on the line between two zones reads as belonging to both
+                half = EDGE_LABEL_H / 2 + 2
+                obstacles.add_rect(Rect(0, lane_y - half, self._canvas_w, 2 * half))
         for frame in self._frames:
-            strip_w = min(frame.rect.w, len(self._frame_label(frame)) * 5.6 + 16)
-            obstacles.add_rect(Rect(frame.rect.x, frame.rect.y, strip_w, FRAME_LABEL_H + 2))
+            if frame.label_rect is not None:
+                obstacles.add_rect(frame.label_rect.expand(2))
         return obstacles
 
     def _place_edge_overlays(self) -> None:
-        """Pick collision-free spots for boundary labels and attack path markers."""
+        """Pick collision-free spots for the attack path badges and the zone labels.
+
+        A badge goes on every connector of an attack path.
+        A zone label goes on one connector per distinct transition (``DMZ -> PRIVATE``), with the
+        number of connectors that make the same crossing, so seven crossings from the DMZ into the
+        private zone are one label and not seven.
+        """
         if not self._routes:
             return
         lanes_top = self._zone_lanes[0][1]
@@ -1051,17 +1430,15 @@ class DiagramRenderer:
         bounds = Rect(4, lanes_top + 2, self._canvas_w - 8, lanes_bottom - lanes_top - 4)
         obstacles = self._overlay_obstacles()
 
-        labels: dict[tuple[str, str], tuple[str, str]] = {}
-        markers: dict[tuple[str, str], list[int]] = {}
+        transitions: dict[str, list[_DEdge]] = defaultdict(list)
         for edge in self._dedges:
-            key = (edge.source, edge.target)
-            if key not in self._routes:
-                continue
-            if edge.crosses and key not in labels and edge.label:
-                labels[key] = (edge.label, edge.tooltip)
-            path_nums = self._edge_attack_path_map.get(key)
-            if path_nums and key not in markers:
-                markers[key] = path_nums
+            if edge.crosses and (edge.source, edge.target) in self._routes:
+                text = self._zone_label_text(edge)
+                if text:
+                    transitions[text].append(edge)
+        markers: dict[tuple[str, str], list[int]] = {
+            key: nums for key, nums in self._edge_attack_path_map.items() if key in self._routes
+        }
 
         # Lane borders and every route are indexed once; a label skips its own route by tag
         avoid = SpatialIndex()
@@ -1070,38 +1447,63 @@ class DiagramRenderer:
         for key, points in self._routes.items():
             avoid.add_route(points, key)
 
-        # Longest routes first: they have the most room, short ones get what is left
-        lengths = {
-            key: -sum(math.dist(a, b) for a, b in route_segments(self._routes[key]))
-            for key in (*labels, *markers)
-        }
+        def length(key: tuple[str, str]) -> float:
+            return sum(math.dist(a, b) for a, b in route_segments(self._routes[key]))
 
-        for key in sorted(labels, key=lambda k: (lengths[k], k)):
-            text, tooltip = labels[key]
-            size = (_label_text_width(text) + EDGE_LABEL_PAD_X * 2, EDGE_LABEL_H)
-            points = self._routes[key]
-            rect = place_on_route(points, size, obstacles, bounds, avoid, skip_tag=key)
-            if rect is None:
-                # Nothing is free; fall back to the midpoint, still drawn above nodes
-                mx, my = point_at_half_length(points)
-                rect = Rect(mx - size[0] / 2, my - size[1] / 2, size[0], size[1])
-            self._edge_labels[key] = (rect, text, tooltip)
-            obstacles.add_rect(rect.expand(OVERLAY_CLEARANCE))
-
-        for key, path_nums in markers.items():
-            d = ATTACK_PATH_CIRCLE_R * 2
-            size = (len(path_nums) * (d + 2) - 2, d)
+        # Badges first, longest routes first: they have the most room, short ones get what is left
+        for key in sorted(markers, key=lambda k: (-length(k), k)):
+            nums = markers[key]
+            text = _path_badge_text(nums)
+            size = (_badge_text_width(text) + 2 * PATH_BADGE_PAD_X, PATH_BADGE_H)
             rect = place_on_route(self._routes[key], size, obstacles, bounds, avoid, skip_tag=key)
             if rect is None:
                 mx, my = point_at_half_length(self._routes[key])
                 rect = Rect(mx - size[0] / 2, my - size[1] / 2, size[0], size[1])
-            self._edge_markers[key] = (rect, path_nums)
+            self._edge_markers[key] = (rect, nums)
             obstacles.add_rect(rect.expand(OVERLAY_CLEARANCE))
 
-    def _sorted_threats(self) -> list[Threat]:
-        """Return all threats sorted by severity (critical first)."""
-        rank = {s: i for i, s in enumerate(SEVERITY_ORDER)}
-        return sorted(self.report.threats, key=lambda t: rank.get(threat_severity(t).value, 99))
+        for text in sorted(transitions):
+            edges = transitions[text]
+            keys = sorted(
+                {(e.source, e.target) for e in edges},
+                key=lambda k: (k not in markers, -length(k), k),
+            )
+            shown = text if len(keys) == 1 else f"{text} x{len(keys)}"
+            size = (_label_text_width(shown) + EDGE_LABEL_PAD_X * 2, EDGE_LABEL_H)
+            placed: tuple[tuple[str, str], Rect] | None = None
+            for key in keys:
+                rect = place_on_route(
+                    self._routes[key], size, obstacles, bounds, avoid, skip_tag=key
+                )
+                if rect is not None:
+                    placed = (key, rect)
+                    break
+            if placed is None:
+                # Nothing is free; fall back to the midpoint, still drawn above nodes
+                mx, my = point_at_half_length(self._routes[keys[0]])
+                placed = (keys[0], Rect(mx - size[0] / 2, my - size[1] / 2, size[0], size[1]))
+            key, rect = placed
+            self._edge_labels[key] = (rect, shown, self._transition_tooltip(text, keys))
+            obstacles.add_rect(rect.expand(OVERLAY_CLEARANCE))
+
+    @staticmethod
+    def _zone_label_text(edge: _DEdge) -> str:
+        """``DMZ -> PRIVATE`` for a crossing, ``""`` when the engine named no zones."""
+        src, tgt = edge.zones
+        return f"{src.upper()} {ARROW} {tgt.upper()}" if src and tgt else ""
+
+    def _transition_tooltip(self, text: str, keys: list[tuple[str, str]]) -> str:
+        count = len(keys)
+        lines = [
+            f"Trust boundary crossing: {text.lower()}",
+            f"{count} connection{'s' if count != 1 else ''} cross{'es' if count == 1 else ''} "
+            "this boundary. Data should be encrypted, authenticated, and validated.",
+        ]
+        for source, target in keys[:TRANSITION_TOOLTIP_EDGES]:
+            lines.append(f"  {source} {ARROW} {target}")
+        if count > TRANSITION_TOOLTIP_EDGES:
+            lines.append(f"  ... and {count - TRANSITION_TOOLTIP_EDGES} more")
+        return "\n".join(lines)
 
     # -- Attack paths ---------------------------------------------------------
 
@@ -1110,24 +1512,61 @@ class DiagramRenderer:
 
         A hop leads from one node to the next, so only the connector that points the same way is
         marked: a path never lights up an edge that runs the other direction.
+        A hop the graph has no connector for (between two nodes the view drew) gets its own, so
+        every hop of a path is on the diagram.
         """
         self._edge_attack_path_map = {}
+        self._edge_steps = {}
+        drawn = {(e.source, e.target) for e in self._dedges}
         for path_num, path in self._attack_paths:
-            for here, there in zip(path.hops, path.hops[1:], strict=False):
+            total = len(path.hops) - 1
+            hops = zip(path.hops, path.hops[1:], strict=False)
+            for step, (here, there) in enumerate(hops, start=1):
                 a = self._repr.get(here.node_id)
                 b = self._repr.get(there.node_id)
-                if a is None or b is None or a == b:
+                if (
+                    a is None
+                    or b is None
+                    or a == b
+                    or a not in self._dnodes
+                    or b not in self._dnodes
+                ):
                     continue
+                if (a, b) not in drawn:
+                    drawn.add((a, b))
+                    self._dedges.append(_DEdge(a, b, _hop_edge_type(here)))
+                self._say_what_a_hop_does(a, b, here)
                 nums = self._edge_attack_path_map.setdefault((a, b), [])
                 if path_num not in nums:
                     nums.append(path_num)
+                self._edge_steps.setdefault((a, b), []).append((path_num, step, total))
 
-    def _format_mitre_techniques(self, threat: Threat) -> str:
+    def _say_what_a_hop_does(self, source: str, target: str, hop: AttackHop) -> None:
+        """Put the hop's own words (``Network Flow: tcp/8080``) on its connector's tooltip.
+
+        The hop knows the ports and the relation of the step; a graph edge that only says its
+        type (``Network Flow: traffic``) gives way to it.
+        """
+        edge = next(e for e in self._dedges if (e.source, e.target) == (source, target))
+        line = _hop_line(hop)
+        kind = line.split(":")[0]
+        edge.lines = [
+            existing
+            for existing in edge.lines
+            if not (
+                existing.startswith(f"{kind}: ")
+                and existing.split(": ", 1)[1] in GENERIC_EDGE_LABELS
+            )
+        ]
+        if line not in edge.lines:
+            edge.lines.append(line)
+
+    def _format_mitre_techniques(self, technique_ids: list[str]) -> str:
         """Format MITRE ATT&CK technique IDs with names."""
-        if not threat.mitre_techniques:
+        if not technique_ids:
             return "-"
         parts: list[str] = []
-        for tid in threat.mitre_techniques:
+        for tid in technique_ids:
             tech = TECHNIQUE_DB.get(tid)
             if tech:
                 parts.append(f"{tid}: {tech['name']}")
@@ -1223,7 +1662,6 @@ class DiagramRenderer:
             if etype is EdgeType.CONTAINMENT:
                 continue  # containment is a frame, never an arrow
             markers.append(self._marker(f"arrow-{etype.value}", color))
-        markers.append(self._marker("arrow-boundary", "#ef4444"))
         for sev in SEVERITY_ORDER:
             markers.append(self._marker(f"arrow-path-{sev}", SEVERITY_COLORS[sev]))
         return "".join(markers)
@@ -1283,6 +1721,7 @@ class DiagramRenderer:
             if count == 0:
                 continue
             color = SEVERITY_COLORS.get(sev, "#94a3b8")
+            ink = INK  # the dot carries the color; on a tinted pill colored text is under 4.5:1
             label = f"{count} {sev.capitalize()}"
             pill_w = len(label) * 6.5 + 16
             # Pill background
@@ -1294,7 +1733,7 @@ class DiagramRenderer:
             parts.append(f'<circle cx="{cx + 10:.0f}" cy="{cy - 1:.0f}" r="3" fill="{color}"/>')
             # Pill text
             parts.append(
-                f'<text x="{cx + 17:.0f}" y="{cy + 3:.0f}" fill="{color}" '
+                f'<text x="{cx + 17:.0f}" y="{cy + 3:.0f}" fill="{ink}" '
                 f'font-size="10" font-weight="600">{_esc(label)}</text>'
             )
             cx += pill_w + 8
@@ -1305,7 +1744,7 @@ class DiagramRenderer:
         if total > 0:
             summary = f"Total: {total} threats across {n_stride} STRIDE categories"
             parts.append(
-                f'<text x="{w - 16:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+                f'<text x="{w - 16:.0f}" y="{cy + 3:.0f}" fill="{INK_MUTED}" '
                 f'font-size="9" text-anchor="end">{_esc(summary)}</text>'
             )
 
@@ -1320,18 +1759,58 @@ class DiagramRenderer:
             f'<g class="zone-{zone.value}">'
             f'<rect x="0" y="{y:.0f}" width="{w:.0f}" height="{h:.0f}" '
             f'fill="{fill}" stroke="{border}" stroke-width="1"/>'
-            f'<text x="12" y="{y + 24:.0f}" fill="{border}" '
+            f'<text x="12" y="{y + 24:.0f}" fill="{ZONE_TITLE_COLORS.get(zone, INK_MUTED)}" '
             f'font-size="10" font-weight="600" letter-spacing="0.5">{_esc(label)}</text>'
             f"</g>"
         )
 
     # -- Frames ---------------------------------------------------------------
 
-    def _frame_label(self, frame: _Frame) -> str:
-        return self._frame_info[frame.container].label
+    def _shown_frame_label(self, frame: _Frame) -> str:
+        """The label of a frame as drawn: cut in the middle when the frame is too narrow."""
+        room = frame.rect.w - 2 * FRAME_LABEL_PAD - (22 if frame.badge else 6)
+        max_chars = max(int(room / FRAME_LABEL_CHAR_W), 6)
+        return shorten_middle(frame.label or frame.container, max_chars)
+
+    def _place_frame_labels(self) -> None:
+        """Put each frame's label where no connector runs through it.
+
+        A label starts at the top left of its frame, and slides right along the frame's top
+        edge to the first spot clear of every route and of the other labels.
+        When the whole edge is crossed it stays at the left, on an opaque background.
+        """
+        index = SpatialIndex()
+        for key, points in self._routes.items():
+            index.add_route(points, key)
+        placed = SpatialIndex()
+        for frame in self._frames:
+            width = len(self._shown_frame_label(frame)) * FRAME_LABEL_CHAR_W + 2 * FRAME_LABEL_PAD
+            top = frame.rect.y + 1
+            lo = frame.rect.x + 6
+            # Keep clear of the badge at the right end of a frame that carries one
+            hi = frame.rect.right - width - (22 if frame.badge else 6)
+            positions = [lo]
+            if hi > lo:
+                step = max((hi - lo) / FRAME_LABEL_SLOTS, 4.0)
+                positions += [lo + step * i for i in range(1, int((hi - lo) / step) + 1)]
+            chosen = Rect(lo, top, width, FRAME_LABEL_H - 1)
+            for x in positions:
+                rect = Rect(x, top, width, FRAME_LABEL_H - 1)
+                if self._label_is_clear(rect, index, placed):
+                    chosen = rect
+                    break
+            frame.label_rect = chosen
+            placed.add_rect(chosen)
+
+    @staticmethod
+    def _label_is_clear(rect: Rect, routes: SpatialIndex, placed: SpatialIndex) -> bool:
+        if any(rect.intersects(other) for other in placed.rects_near(rect)):
+            return False
+        padded = rect.expand(1)
+        return not any(padded.intersects_segment(a, b) for a, b, _ in routes.segments_near(padded))
 
     def _svg_frames(self) -> str:
-        """Containers as labelled rounded frames around their members."""
+        """Containers as rounded frames around their members (the labels are drawn later)."""
         if not self._frames:
             return ""
         parts: list[str] = ['<g class="frames">']
@@ -1339,8 +1818,6 @@ class DiagramRenderer:
             info = self._frame_info[frame.container]
             rect = frame.rect
             stroke = FRAME_STROKES.get(frame.height, "#94a3b8")
-            max_chars = max(int((rect.w - 36) / 5.6), 6)
-            label = _truncate(info.label, max_chars)
             parts.append(
                 f'<g class="frame" '
                 f'id="{_element_id(self._prefix, "frame", f"{number}:{info.container}")}" '
@@ -1349,8 +1826,6 @@ class DiagramRenderer:
                 f'<rect x="{rect.x:.1f}" y="{rect.y:.1f}" width="{rect.w:.1f}" '
                 f'height="{rect.h:.1f}" rx="10" ry="10" fill="#ffffff" fill-opacity="0.55" '
                 f'stroke="{stroke}" stroke-width="1.2"/>'
-                f'<text x="{rect.x + 8:.1f}" y="{rect.y + FRAME_LABEL_H - 3:.1f}" '
-                f'fill="#475569" font-size="9" font-weight="600">{_esc(label)}</text>'
             )
             worst = _worst(info.threats)
             if frame.badge and worst is not None:
@@ -1366,34 +1841,54 @@ class DiagramRenderer:
         parts.append("</g>")
         return "\n".join(parts)
 
+    def _svg_frame_labels(self) -> str:
+        """Frame labels above the connectors, each on a backing that hides a line under it."""
+        if not self._frames:
+            return ""
+        parts: list[str] = ['<g class="frame-labels">']
+        for frame in self._frames:
+            rect = frame.label_rect
+            if rect is None:
+                continue
+            label = self._shown_frame_label(frame)
+            parts.append(
+                f'<g class="frame-label" data-id="{_esc(frame.container)}">'
+                f'<rect x="{rect.x:.1f}" y="{rect.y:.1f}" width="{rect.w:.1f}" '
+                f'height="{rect.h:.1f}" rx="3" fill="#ffffff" fill-opacity="0.85"/>'
+                f'<text x="{rect.x + FRAME_LABEL_PAD:.1f}" y="{rect.y + FRAME_LABEL_H - 4:.1f}" '
+                f'fill="{INK_MUTED}" font-size="9" font-weight="600">{_esc(label)}</text>'
+                f"</g>"
+            )
+        parts.append("</g>")
+        return "\n".join(parts)
+
     # -- Nodes ----------------------------------------------------------------
 
     def _svg_node(self, node: _DNode, x: float, y: float) -> str:
         threats = node.threats
         cat = node.category
-        if cat in _DATA_STORE_CATEGORIES:
-            shape = self._svg_node_datastore(x, y, NODE_W, NODE_H)
-        elif cat in _DATA_FLOW_CATEGORIES:
-            shape = self._svg_node_dataflow(x, y, NODE_W, NODE_H)
-        elif cat in _ENTITY_CATEGORIES:
+        if node.entity:
             shape = self._svg_node_entity(x, y, NODE_W, NODE_H)
+        elif cat in _DATA_STORE_CATEGORIES:
+            shape = self._svg_node_datastore(x, y, NODE_W, NODE_H)
+        elif cat in _NETWORK_CATEGORIES:
+            shape = self._svg_node_network(x, y, NODE_W, NODE_H)
         else:
             shape = self._svg_node_process(x, y, NODE_W, NODE_H)
 
-        max_chars = DIAMOND_TYPE_MAX_CHARS if cat in _DATA_FLOW_CATEGORIES else NODE_TYPE_MAX_CHARS
-        res_type_display = _truncate(node.caption or node.resource_type, max_chars)
+        res_type_display = shorten_middle(node.caption or node.resource_type, NODE_TYPE_MAX_CHARS)
 
         parts = [
             f'<g class="node" id="{_element_id(self._prefix, "node", node.id)}" '
             f'data-id="{_esc(node.id)}" filter="{self._url("shadow")}">',
             shape,
-            # Resource type label (top, 8px gray)
-            f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_TYPE_BASELINE:.0f}" fill="#94a3b8" '
-            f'font-size="8" text-anchor="middle">{_esc(res_type_display)}</text>',
+            # Resource type label (top, 9px grey)
+            f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_TYPE_BASELINE:.0f}" fill="{INK_SOFT}" '
+            f'font-size="{NODE_TYPE_FONT}" text-anchor="middle">{_esc(res_type_display)}</text>',
             # Resource short name (center, 11px bold)
             f'<text x="{x + NODE_W / 2:.0f}" y="{y + NODE_NAME_BASELINE:.0f}" '
-            f'fill="#1e293b" font-size="11" font-weight="600" text-anchor="middle">'
-            f"{_esc(_truncate(node.name, NODE_NAME_MAX_CHARS))}</text>",
+            f'fill="{INK}" font-size="11" font-weight="600" text-anchor="middle">'
+            f"{_esc(shorten_middle(node.name, NODE_NAME_MAX_CHARS))}</text>",
             # Tooltip via <title>
             f"<title>{_esc(node.tooltip)}</title>",
         ]
@@ -1450,13 +1945,12 @@ class DiagramRenderer:
             f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>'
         )
 
-    def _svg_node_dataflow(self, x: float, y: float, w: float, h: float) -> str:
-        cx = x + w / 2
-        cy = y + h / 2
-        hw = w / 2
-        hh = h / 2
-        points = f"{cx},{cy - hh} {cx + hw},{cy} {cx},{cy + hh} {cx - hw},{cy}"
-        return f'<polygon points="{points}" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>'
+    def _svg_node_network(self, x: float, y: float, w: float, h: float) -> str:
+        """A network or delivery component: a box with a dashed outline, so it reads as plumbing."""
+        return (
+            f'<rect x="{x:.0f}" y="{y:.0f}" width="{w}" height="{h}" rx="6" ry="6" '
+            f'fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,3"/>'
+        )
 
     def _svg_node_entity(self, x: float, y: float, w: float, h: float) -> str:
         return (
@@ -1468,101 +1962,139 @@ class DiagramRenderer:
 
     def _svg_threat_badge(self, x: float, y: float, count: int, severity: str) -> str:
         color = SEVERITY_COLORS.get(severity, "#94a3b8")
+        ink = SEVERITY_BADGE_INK.get(severity, BADGE_INK_DARK)
         return (
             f'<circle cx="{x:.0f}" cy="{y:.0f}" r="7" fill="{color}"/>'
-            f'<text x="{x:.0f}" y="{y + 3.5:.0f}" fill="#ffffff" '
+            f'<text x="{x:.0f}" y="{y + 3.5:.0f}" fill="{ink}" '
             f'font-size="9" font-weight="600" text-anchor="middle">{count}</text>'
         )
 
     # -- Edges ----------------------------------------------------------------
 
     def _svg_edge(self, edge: _DEdge, glowing: set[tuple[str, str]]) -> str:
+        """One connector.
+
+        An attack path hop is drawn thick in the severity color of the worst path over it and
+        glows.
+        Everything else keeps the look of its type, so a crossing flow differs from a plain one
+        only by its zone label, and a reference that happens to span two zones is not a crossing.
+        """
         key = (edge.source, edge.target)
         points = self._routes.get(key)
         if not points:
             return ""
 
         path_d = polyline_to_path(points)
-
-        if edge.crosses:
-            color = "#ef4444"
-            width = "2"
+        path_nums = self._edge_attack_path_map.get(key)
+        classes = "edge"
+        extra = ""
+        if path_nums:
+            severity = self._worst_path_severity(path_nums)
+            color = SEVERITY_COLORS[severity]
+            width = "2.6"
             dash = ""
-            marker = self._url("arrow-boundary")
-            # Parallel edges share a route; glow once so stacked glows do not darken
+            marker = self._url(f"arrow-path-{severity}")
+            # Paths that share a hop draw it once, so glows do not stack and darken
             filt = "" if key in glowing else f' filter="{self._url("glow")}"'
             glowing.add(key)
+            classes = "edge attack-path-edge"
+            extra = f' data-path="{" ".join(str(n) for n in path_nums)}"'
         else:
             color, width, dash = EDGE_STYLES.get(edge.edge_type, ("#94a3b8", "1", ""))
+            if edge.crosses:
+                width = CROSSING_WIDTH
             marker = self._url(f"arrow-{edge.edge_type.value}")
             filt = ""
 
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-
         parts: list[str] = [
             '<g class="edge-group">',
             f'<path d="{path_d}" fill="none" stroke="{color}" '
             f'stroke-width="{width}"{dash_attr} stroke-linejoin="round" '
             f'marker-end="{marker}"{filt} '
-            f'class="edge" data-type="{edge.edge_type.value}" '
-            f'data-boundary="{str(edge.crosses).lower()}"/>',
-            f"<title>{_esc(edge.tooltip)}</title>",
+            f'class="{classes}" data-type="{edge.edge_type.value}" '
+            f'data-boundary="{str(edge.crosses).lower()}"{extra}/>',
+            f"<title>{_esc(self._edge_tooltip(edge))}</title>",
             "</g>",
         ]
         return "\n".join(parts)
 
-    def _edge_tooltip(self, edge: InfraEdge) -> str:
-        """Build tooltip text for an edge."""
-        if edge.crosses_trust_boundary:
-            src_zone, tgt_zone = _edge_zones(edge)
-            return (
-                f"Trust boundary crossing: {src_zone} → {tgt_zone}\n"
-                f"Data should be encrypted, authenticated, and validated"
-            )
-        label = EDGE_LABELS.get(edge.edge_type, edge.edge_type.value)
-        relation = f" ({edge.relation})" if edge.relation else ""
-        return f"{label}{relation}: {edge.source} → {edge.target}"
+    def _worst_path_severity(self, path_nums: list[int]) -> str:
+        by_number = self._paths_by_number
+        return max(
+            (by_number[n].severity for n in path_nums if n in by_number),
+            key=lambda sev: sev.rank,
+            default=Severity.MEDIUM,
+        ).value
 
-    def _edge_label_text(self, edge: InfraEdge) -> str:
-        """Return zone transition label for boundary-crossing edges."""
-        src_zone, tgt_zone = _edge_zones(edge)
-        if src_zone and tgt_zone:
-            return f"{src_zone.upper()} → {tgt_zone.upper()}"
-        return ""
+    def _edge_line(self, edge: InfraEdge) -> str:
+        """What one graph edge says, in words: ``Network flow: tcp/8080``."""
+        kind = EDGE_LABELS.get(edge.edge_type, edge.edge_type.value)
+        label = edge_label(edge.edge_type.value, edge.relation, edge.attributes)
+        return f"{kind}: {label}" if label else kind
+
+    def _edge_tooltip(self, edge: _DEdge) -> str:
+        """Both ends, what connects them, the crossing and the attack paths over it."""
+        key = (edge.source, edge.target)
+        lines = [f"{edge.source} {ARROW} {edge.target}", *edge.lines]
+        if edge.crosses:
+            src, tgt = edge.zones
+            lines.append(
+                f"Crosses a trust boundary: {src} {ARROW} {tgt}. "
+                "Data should be encrypted, authenticated, and validated."
+            )
+        by_number = self._paths_by_number
+        for path_num, step, total in self._edge_steps.get(key, ()):
+            path = by_number.get(path_num)
+            severity = f" ({path.severity.value})" if path else ""
+            lines.append(f"Attack path {path_num}{severity}, step {step} of {total}")
+        return "\n".join(lines)
 
     def _svg_edge_overlays(self) -> str:
-        """Render boundary labels and attack path markers in a layer above the nodes."""
+        """Render zone labels and attack path badges in a layer above the nodes."""
         if not self._edge_labels and not self._edge_markers:
             return ""
         parts: list[str] = ['<g class="edge-overlays">']
         for rect, text, tooltip in self._edge_labels.values():
             parts.append(self._svg_edge_label(rect, text, tooltip))
-        colors = {num: _path_color(path) for num, path in self._attack_paths}
-        for rect, path_nums in self._edge_markers.values():
-            cy = rect.cy
-            for j, pnum in enumerate(path_nums):
-                cx = rect.x + ATTACK_PATH_CIRCLE_R + j * (ATTACK_PATH_CIRCLE_R * 2 + 2)
-                parts.append(
-                    f'<g class="attack-path-marker">'
-                    f'<circle cx="{cx:.1f}" cy="{cy:.1f}" '
-                    f'r="{ATTACK_PATH_CIRCLE_R}" fill="{colors.get(pnum, "#dc2626")}" '
-                    f'stroke="#ffffff" stroke-width="1.5"/>'
-                    f'<text x="{cx:.1f}" y="{cy + 3.2:.1f}" fill="#ffffff" '
-                    f'font-size="9" font-weight="700" text-anchor="middle">{pnum}</text>'
-                    f"</g>"
-                )
+        for key, (rect, path_nums) in self._edge_markers.items():
+            parts.append(self._svg_path_badge(rect, path_nums, key))
         parts.append("</g>")
         return "\n".join(parts)
 
+    def _svg_path_badge(
+        self,
+        rect: Rect,
+        path_nums: list[int],
+        key: tuple[str, str],
+    ) -> str:
+        """An outlined square badge ``P1``: a path number, unlike the round severity badges."""
+        worst = self._worst_path_severity(path_nums)
+        stroke = SEVERITY_COLORS[worst]
+        ink = SEVERITY_TEXT_COLORS[worst]
+        text = _path_badge_text(path_nums)
+        numbers = ", ".join(str(n) for n in path_nums)
+        steps = self._edge_steps.get(key, [])
+        detail = "; ".join(f"path {n}, step {k} of {t}" for n, k, t in steps)
+        return (
+            f'<g class="attack-path-marker">'
+            f"<title>Attack path {numbers} ({detail})</title>"
+            f'<rect x="{rect.x:.1f}" y="{rect.y:.1f}" width="{rect.w:.1f}" height="{rect.h:.1f}" '
+            f'rx="3" fill="#ffffff" stroke="{stroke}" stroke-width="1.5"/>'
+            f'<text x="{rect.cx:.1f}" y="{rect.cy + 3.2:.1f}" fill="{ink}" '
+            f'font-size="9" font-weight="700" text-anchor="middle">{text}</text>'
+            f"</g>"
+        )
+
     def _svg_edge_label(self, rect: Rect, text: str, tooltip: str) -> str:
-        """Render a boundary-crossing label on an opaque pill so it reads over edges."""
+        """Render a zone transition label on an opaque pill so it reads over edges."""
         return (
             f'<g class="edge-label-group">'
             f"<title>{_esc(tooltip)}</title>"
             f'<rect class="edge-label-bg" x="{rect.x:.1f}" y="{rect.y:.1f}" '
             f'width="{rect.w:.1f}" height="{rect.h:.1f}" rx="3" fill="#ffffff" '
-            f'stroke="#fca5a5" stroke-width="1"/>'
-            f'<text x="{rect.cx:.1f}" y="{rect.cy + 3.2:.1f}" fill="#dc2626" '
+            f'stroke="{BOUNDARY_STROKE}" stroke-width="1"/>'
+            f'<text x="{rect.cx:.1f}" y="{rect.cy + 3.2:.1f}" fill="{BOUNDARY_INK}" '
             f'font-size="{EDGE_LABEL_FONT}" font-weight="600" text-anchor="middle" '
             f'class="edge-label">{_esc(text)}</text>'
             f"</g>"
@@ -1601,12 +2133,12 @@ class DiagramRenderer:
 
         for path_num, path in self._attack_paths:
             parts.append(self._svg_attack_path(path_num, path, y))
-            y += ATTACK_PATH_ROW_H
+            y += self._strips[path_num].height
 
         if total > len(self._attack_paths):
             more = total - len(self._attack_paths)
             parts.append(
-                f'<text x="{ATTACK_PATH_PAD + 4:.0f}" y="{y + 10:.0f}" fill="#64748b" '
+                f'<text x="{ATTACK_PATH_PAD + 4:.0f}" y="{y + 10:.0f}" fill="{INK_SOFT}" '
                 f'font-size="10">{more} more attack paths not shown; '
                 f"see the JSON or SARIF report</text>"
             )
@@ -1614,6 +2146,8 @@ class DiagramRenderer:
         return "\n".join(parts)
 
     def _svg_attack_path(self, path_num: int, path: AttackPath, top: float) -> str:
+        """One strip: the header, the rationale in full, the hops and what enables each."""
+        strip = self._strips[path_num]
         sev_color = _path_color(path)
         sev = path.severity.value
         node_w = ATTACK_PATH_NODE_W
@@ -1624,57 +2158,62 @@ class DiagramRenderer:
         header = f"Attack Path {path_num} ({sev.capitalize()})"
         if path.score:
             header += f" - score {path.score:g}"
+        if path.target_kind:
+            header += f" - target: {path.target_kind}"
         parts.append(
-            f'<text x="{ATTACK_PATH_PAD + 4:.0f}" y="{top + 14:.0f}" fill="{sev_color}" '
+            f'<text x="{ATTACK_PATH_PAD + 4:.0f}" y="{top + 12:.0f}" '
+            f'fill="{SEVERITY_TEXT_COLORS.get(sev, INK_MUTED)}" '
             f'font-size="10" font-weight="600">{_esc(header)}</text>'
         )
-        if path.rationale:
-            header_w = len(header) * 10 * 0.6 + 20
-            room = max(self._canvas_w - ATTACK_PATH_PAD - header_w - 24, 80)
-            rationale = _wrap(path.rationale, room, 9, 1)[0]
+        y = top + ATTACK_PATH_HEADER_H
+        if strip.rationale:
             parts.append(
-                f'<text x="{ATTACK_PATH_PAD + 4 + header_w:.0f}" y="{top + 14:.0f}" '
-                f'fill="#64748b" font-size="9">{_esc(rationale)}</text>'
+                _text_block(
+                    ATTACK_PATH_PAD + 4,
+                    y + 8,
+                    strip.rationale,
+                    ATTACK_PATH_LINE_H,
+                    f'fill="{INK_SOFT}" font-size="{font}" text-anchor="start"',
+                )
             )
-
-        box_y = top + 22
-        node_cy = box_y + ATTACK_PATH_NODE_H / 2
-        cx = float(ATTACK_PATH_PAD)
-        for i, hop in enumerate(path.hops):
-            short_name = hop.node_id.rsplit(".", 1)[-1] if "." in hop.node_id else hop.node_id
-            name_lines = _wrap(short_name, node_w, font, 2)
+            y += len(strip.rationale) * ATTACK_PATH_LINE_H
+        box_y = y + 8
+        node_cy = box_y + strip.box_h / 2
+        cx = float(ATTACK_PATH_X0)
+        for i, (hop, drawn) in enumerate(zip(path.hops, strip.hops, strict=True)):
             parts.append(
+                f'<g class="attack-path-hop"><title>{_esc(drawn.tooltip)}</title>'
                 f'<rect x="{cx:.0f}" y="{box_y:.0f}" '
-                f'width="{node_w}" height="{ATTACK_PATH_NODE_H}" '
+                f'width="{node_w}" height="{strip.box_h:g}" '
                 f'rx="4" fill="#ffffff" stroke="{sev_color}" stroke-width="1.5"/>'
             )
-            name_y = node_cy + 3 - (len(name_lines) - 1) * ATTACK_PATH_LINE_H / 2
+            name_y = node_cy + 3 - (len(drawn.address) - 1) * ATTACK_PATH_LINE_H / 2
             parts.append(
                 _text_block(
                     cx + node_w / 2,
                     name_y,
-                    name_lines,
+                    drawn.address,
                     ATTACK_PATH_LINE_H,
-                    f'fill="#1e293b" font-size="{font}" font-weight="600" text-anchor="middle"',
+                    f'fill="{INK}" font-size="{font}" font-weight="600" text-anchor="middle"',
                 )
             )
-
-            caption = self._hop_caption(hop)
-            if caption:
-                lines = _wrap(caption, node_w + 24, font, ATTACK_PATH_CAPTION_LINES)
+            line_y = box_y + strip.box_h + 13
+            for block in drawn.captions:
                 parts.append(
                     _text_block(
                         cx + node_w / 2,
-                        box_y + ATTACK_PATH_NODE_H + 13,
-                        lines,
+                        line_y,
+                        block,
                         ATTACK_PATH_LINE_H,
-                        f'fill="#475569" font-size="{font}" text-anchor="middle"',
+                        f'fill="{INK_MUTED}" font-size="{font}" text-anchor="middle"',
                     )
                 )
+                line_y += len(block) * ATTACK_PATH_LINE_H
+            parts.append("</g>")
 
             cx += node_w
             if i < len(path.hops) - 1:
-                label = _hop_edge_label(hop)
+                label = edge_label(hop.edge_type_to_next, via=hop.via)
                 parts.append(
                     f'<line x1="{cx:.0f}" y1="{node_cy:.0f}" '
                     f'x2="{cx + ATTACK_PATH_ARROW_W:.0f}" y2="{node_cy:.0f}" '
@@ -1682,22 +2221,16 @@ class DiagramRenderer:
                     f'marker-end="{self._url(f"arrow-path-{sev}")}"/>'
                 )
                 if label:
-                    shown = _truncate(label, _chars_per_line(ATTACK_PATH_ARROW_W + 8, font))
+                    shown = shorten_middle(label, _chars_per_line(ATTACK_PATH_ARROW_W + 6, font))
                     parts.append(
                         f'<text x="{cx + ATTACK_PATH_ARROW_W / 2:.0f}" '
-                        f'y="{node_cy - 5:.0f}" fill="#64748b" '
+                        f'y="{node_cy - 5:.0f}" fill="{INK_SOFT}" '
                         f'font-size="{font}" text-anchor="middle">{_esc(shown)}</text>'
                     )
                 cx += ATTACK_PATH_ARROW_W
 
         parts.append("</g>")
         return "\n".join(parts)
-
-    def _hop_caption(self, hop: AttackHop) -> str:
-        """The title of the worst finding that enables this hop, else the worst on the node."""
-        enabling = [self._threats_by_id[t] for t in hop.enabled_by if t in self._threats_by_id]
-        worst = _worst(enabling) or _worst(self._threats_by_address.get(hop.node_id, []))
-        return worst.title if worst is not None else ""
 
     # -- Findings table -------------------------------------------------------
 
@@ -1711,9 +2244,13 @@ class DiagramRenderer:
         parts: list[str] = ['<g class="threat-table">']
 
         # Section title
+        total = len(self.report.threats)
+        title = f"Threat Findings ({total})"
+        if self._table_entries_total < total:
+            title += f", {self._table_entries_total} rows after grouping by root cause"
         parts.append(
-            f'<text x="16" y="{y + 18:.0f}" fill="#1e293b" '
-            f'font-size="12" font-weight="600">Threat Findings</text>'
+            f'<text x="16" y="{y + 18:.0f}" fill="{INK}" '
+            f'font-size="12" font-weight="600">{_esc(title)}</text>'
         )
         y += 28
 
@@ -1733,6 +2270,7 @@ class DiagramRenderer:
             "Description",
             "ATT&amp;CK Technique",
             "STRIDE Category",
+            "Location",
             "Source",
         ]
         for label, col_w in zip(headers, cols, strict=True):
@@ -1746,18 +2284,18 @@ class DiagramRenderer:
 
         styles = [
             ("", 9),
-            ("#475569", 9),
-            ("#1e293b", 9),
-            ("#64748b", 8),
-            ("#7c3aed", 8),
-            ("#64748b", 9),
-            ("#94a3b8", 9),
+            (INK_MUTED, 9),
+            (INK, 9),
+            (INK_SOFT, 8),
+            ("#6d28d9", 8),
+            (INK_SOFT, 9),
+            (INK_SOFT, 9),
+            (INK_SOFT, 9),
         ]
-        classes = ["", "", "", ' class="threat-desc"', ' class="threat-mitre"', "", ""]
+        classes = ["", "", "", ' class="threat-desc"', ' class="threat-mitre"', "", "", ""]
 
         # Data rows
         for i, row in enumerate(self._table_rows):
-            threat = row.threat
             row_fill = "#ffffff" if i % 2 == 0 else "#f8fafc"
             parts.append(
                 f'<g class="threat-row">'
@@ -1770,13 +2308,14 @@ class DiagramRenderer:
             for c, (cell, (color, font)) in enumerate(zip(row.cells, styles, strict=True)):
                 if c == 0:
                     # Severity dot + label
-                    sev = threat_severity(threat).value
+                    sev = cell[0].lower()
                     sev_color = SEVERITY_COLORS.get(sev, "#94a3b8")
+                    sev_ink = SEVERITY_TEXT_COLORS.get(sev, INK_MUTED)
                     parts.append(
                         f'<circle cx="{rx + 4:.0f}" cy="{ry - 2:.0f}" r="3" fill="{sev_color}"/>'
                     )
                     parts.append(
-                        f'<text x="{rx + 12:.0f}" y="{ry:.0f}" fill="{sev_color}" '
+                        f'<text x="{rx + 12:.0f}" y="{ry:.0f}" fill="{sev_ink}" '
                         f'font-size="9" font-weight="600">{_esc(cell[0])}</text>'
                     )
                 else:
@@ -1785,9 +2324,11 @@ class DiagramRenderer:
                 rx += cols[c]
 
             # Row tooltip: the full text of the cells, plus the mitigation
-            tooltip_lines = [f"{threat.title}: {threat.description}"]
-            if threat.mitigation:
-                tooltip_lines.append(f"Mitigation: {threat.mitigation}")
+            tooltip_lines: list[str] = []
+            for threat in row.threats:
+                tooltip_lines.append(f"{threat.title}: {humanize_tokens(threat.description)}")
+                if threat.mitigation:
+                    tooltip_lines.append(f"Mitigation: {threat.mitigation}")
             parts.append(f"<title>{_esc(chr(10).join(tooltip_lines))}</title>")
             parts.append("</g>")
             y += row.height
@@ -1809,7 +2350,11 @@ class DiagramRenderer:
     # -- Legend ---------------------------------------------------------------
 
     def _svg_legend(self) -> str:
-        """Render a 3-column legend with mini SVG shapes, line samples, and severity badges."""
+        """Render a four column legend: node shapes, edge types, attack paths and badges.
+
+        Every sample is drawn the way the diagram draws it, so the legend can be read against
+        the picture.
+        """
         y = self._legend_y
         w = self._canvas_w
         parts: list[str] = [
@@ -1818,186 +2363,150 @@ class DiagramRenderer:
             f'<line x1="0" y1="{y:.0f}" x2="{w:.0f}" y2="{y:.0f}" '
             f'stroke="#e2e8f0" stroke-width="1"/>',
         ]
+        columns = [24.0 + i * LEGEND_COL_W for i in range(4)]
 
-        col1_x = 24.0
-        col2_x = col1_x + 220
-        col3_x = col2_x + 220
+        def title(x: float, text: str) -> None:
+            parts.append(
+                f'<text x="{x:.0f}" y="{y + 20:.0f}" fill="{INK}" '
+                f'font-size="10" font-weight="600">{_esc(text)}</text>'
+            )
 
-        # -- Column 1: Node Shapes --
-        cy = y + 20
-        parts.append(
-            f'<text x="{col1_x:.0f}" y="{cy:.0f}" fill="#1e293b" '
-            f'font-size="10" font-weight="600">Node Shapes</text>'
-        )
-        cy += 18
+        def label(x: float, row: int, text: str, ink: str = INK_SOFT, weight: str = "") -> None:
+            parts.append(
+                f'<text x="{x + 42:.0f}" y="{y + 41 + row * LEGEND_ROW_H:.0f}" fill="{ink}" '
+                f'font-size="9"{weight}>{_esc(text)}</text>'
+            )
 
-        # Process (rounded rect)
-        parts.append(
-            f'<rect x="{col1_x:.0f}" y="{cy - 7:.0f}" width="18" height="12" '
-            f'rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
-        )
-        parts.append(
-            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
-            f'font-size="9">Process (compute, serverless, container)</text>'
-        )
-        cy += 20
+        def row_y(row: int) -> float:
+            return y + 38 + row * LEGEND_ROW_H
 
-        # Data Store (cylinder)
-        cx_cyl = col1_x + 9
+        # -- Node shapes --
+        x = columns[0]
+        title(x, "Node Shapes")
+        cy = row_y(0)
         parts.append(
-            f'<rect x="{col1_x:.0f}" y="{cy - 4:.0f}" width="18" height="8" '
+            f'<rect x="{x:.0f}" y="{cy - 1:.0f}" width="30" height="12" rx="3" '
             f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
         )
+        label(x, 0, "Process (compute, serverless, container)")
+        cy = row_y(1)
         parts.append(
-            f'<ellipse cx="{cx_cyl:.0f}" cy="{cy - 4:.0f}" rx="9" ry="3" '
+            f'<rect x="{x:.0f}" y="{cy + 2:.0f}" width="30" height="8" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+            f'<ellipse cx="{x + 15:.0f}" cy="{cy + 2:.0f}" rx="15" ry="3" '
+            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
+            f'<ellipse cx="{x + 15:.0f}" cy="{cy + 10:.0f}" rx="15" ry="3" '
             f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
         )
+        label(x, 1, "Data store (storage, database, secret)")
+        cy = row_y(2)
         parts.append(
-            f'<ellipse cx="{cx_cyl:.0f}" cy="{cy + 4:.0f}" rx="9" ry="3" '
+            f'<rect x="{x:.0f}" y="{cy - 1:.0f}" width="30" height="12" rx="3" '
+            f'fill="#ffffff" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,2"/>'
+        )
+        label(x, 2, "Network (network, cdn, dns, messaging)")
+        cy = row_y(3)
+        parts.append(
+            f'<rect x="{x:.0f}" y="{cy - 1:.0f}" width="30" height="12" '
             f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
-        )
-        parts.append(
-            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
-            f'font-size="9">Data Store (storage, database, secret)</text>'
-        )
-        cy += 20
-
-        # Data Flow (diamond)
-        dx = col1_x + 9
-        dy = cy
-        parts.append(
-            f'<polygon points="{dx},{dy - 6} {dx + 9},{dy} {dx},{dy + 6} {dx - 9},{dy}" '
-            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
-        )
-        parts.append(
-            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
-            f'font-size="9">Data Flow (network, cdn, messaging)</text>'
-        )
-        cy += 20
-
-        # External Entity (double rect)
-        parts.append(
-            f'<rect x="{col1_x:.0f}" y="{cy - 7:.0f}" width="18" height="12" '
-            f'fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>'
-        )
-        parts.append(
-            f'<rect x="{col1_x + 2:.0f}" y="{cy - 5:.0f}" width="14" height="8" '
+            f'<rect x="{x + 2:.0f}" y="{cy + 1:.0f}" width="26" height="8" '
             f'fill="none" stroke="#cbd5e1" stroke-width="0.8"/>'
         )
+        label(x, 3, "External entity (internet, identity)")
+        cy = row_y(4)
         parts.append(
-            f'<text x="{col1_x + 24:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
-            f'font-size="9">External Entity (IAM)</text>'
-        )
-
-        # -- Column 2: Edge Types --
-        cy = y + 20
-        parts.append(
-            f'<text x="{col2_x:.0f}" y="{cy:.0f}" fill="#1e293b" '
-            f'font-size="10" font-weight="600">Edge Types</text>'
-        )
-        cy += 18
-
-        edge_legend = [
-            (EdgeType.DEPENDENCY, "Dependency"),
-            (EdgeType.NETWORK_FLOW, "Network Flow"),
-            (EdgeType.IAM_BINDING, "IAM Binding"),
-            (EdgeType.DATA_FLOW, "Data Flow"),
-        ]
-        for etype, label in edge_legend:
-            color, width, dash = EDGE_STYLES[etype]
-            dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-            parts.append(
-                f'<line x1="{col2_x:.0f}" y1="{cy:.0f}" '
-                f'x2="{col2_x + 30:.0f}" y2="{cy:.0f}" '
-                f'stroke="{color}" stroke-width="{width}"{dash_attr}/>'
-            )
-            # Arrow head
-            parts.append(
-                f'<polygon points="{col2_x + 30:.0f},{cy - 3} '
-                f'{col2_x + 36:.0f},{cy} {col2_x + 30:.0f},{cy + 3}" fill="{color}"/>'
-            )
-            parts.append(
-                f'<text x="{col2_x + 42:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
-                f'font-size="9">{_esc(label)}</text>'
-            )
-            cy += 16
-
-        # Boundary crossing (red glow)
-        parts.append(
-            f'<line x1="{col2_x:.0f}" y1="{cy:.0f}" '
-            f'x2="{col2_x + 30:.0f}" y2="{cy:.0f}" '
-            f'stroke="#ef4444" stroke-width="2" filter="{self._url("glow")}"/>'
-        )
-        parts.append(
-            f'<polygon points="{col2_x + 30:.0f},{cy - 3} '
-            f'{col2_x + 36:.0f},{cy} {col2_x + 30:.0f},{cy + 3}" fill="#ef4444"/>'
-        )
-        parts.append(
-            f'<text x="{col2_x + 42:.0f}" y="{cy + 3:.0f}" fill="#ef4444" '
-            f'font-size="9" font-weight="600">Trust Boundary Crossing</text>'
-        )
-        cy += 18
-
-        # Containment is a nested frame, not an arrow
-        parts.append(
-            f'<rect x="{col2_x:.0f}" y="{cy - 6:.0f}" width="30" height="12" rx="3" '
+            f'<rect x="{x:.0f}" y="{cy - 1:.0f}" width="30" height="12" rx="3" '
             f'fill="#ffffff" fill-opacity="0.55" stroke="{FRAME_STROKES[1]}" stroke-width="1.2"/>'
         )
-        parts.append(
-            f'<text x="{col2_x + 42:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
-            f'font-size="9">Containment (nested frame)</text>'
-        )
+        label(x, 4, "Container (nested frame)")
 
-        # -- Column 3: Severity Badges --
-        cy = y + 20
-        parts.append(
-            f'<text x="{col3_x:.0f}" y="{cy:.0f}" fill="#1e293b" '
-            f'font-size="10" font-weight="600">Severity Badges</text>'
-        )
-        cy += 18
-
-        for sev in ["critical", "high", "medium", "low"]:
-            color = SEVERITY_COLORS[sev]
-            parts.append(f'<circle cx="{col3_x + 6:.0f}" cy="{cy:.0f}" r="5" fill="{color}"/>')
+        # -- Edge types --
+        x = columns[1]
+        title(x, "Edge Types")
+        edge_legend = [
+            (EdgeType.DEPENDENCY, "Dependency (references)"),
+            (EdgeType.NETWORK_FLOW, "Network flow"),
+            (EdgeType.IAM_BINDING, "IAM binding"),
+            (EdgeType.DATA_FLOW, "Data flow"),
+        ]
+        for row, (etype, text) in enumerate(edge_legend):
+            color, width, dash = EDGE_STYLES[etype]
+            dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+            cy = row_y(row) + 5
             parts.append(
-                f'<text x="{col3_x + 16:.0f}" y="{cy + 3:.0f}" fill="#64748b" '
+                f'<line x1="{x:.0f}" y1="{cy:.0f}" x2="{x + 30:.0f}" y2="{cy:.0f}" '
+                f'stroke="{color}" stroke-width="{width}"{dash_attr}/>'
+                f'<polygon points="{x + 30:.0f},{cy - 3:.0f} {x + 36:.0f},{cy:.0f} '
+                f'{x + 30:.0f},{cy + 3:.0f}" fill="{color}"/>'
+            )
+            label(x, row, text)
+
+        # -- Attack paths --
+        x = columns[2]
+        title(x, "Attack Paths")
+        cy = row_y(0) + 5
+        red = SEVERITY_COLORS["critical"]
+        parts.append(
+            f'<line x1="{x:.0f}" y1="{cy:.0f}" x2="{x + 30:.0f}" y2="{cy:.0f}" '
+            f'stroke="{red}" stroke-width="2.6" filter="{self._url("glow")}"/>'
+            f'<polygon points="{x + 30:.0f},{cy - 3.5:.0f} {x + 37:.0f},{cy:.0f} '
+            f'{x + 30:.0f},{cy + 3.5:.0f}" fill="{red}"/>'
+        )
+        label(x, 0, "Attack path hop (color = severity)")
+        cy = row_y(1)
+        parts.append(
+            f'<rect x="{x + 6:.0f}" y="{cy - 1:.0f}" width="22" height="{PATH_BADGE_H}" rx="3" '
+            f'fill="#ffffff" stroke="{red}" stroke-width="1.5"/>'
+            f'<text x="{x + 17:.0f}" y="{cy + 9.2:.0f}" fill="{SEVERITY_TEXT_COLORS["critical"]}" '
+            f'font-size="9" font-weight="700" text-anchor="middle">P1</text>'
+        )
+        label(x, 1, "Attack path number (listed below)")
+        cy = row_y(2)
+        parts.append(
+            f'<rect x="{x + 1:.0f}" y="{cy - 1:.0f}" width="32" height="{EDGE_LABEL_H - 2}" rx="3" '
+            f'fill="#ffffff" stroke="{BOUNDARY_STROKE}" stroke-width="1"/>'
+            f'<text x="{x + 17:.0f}" y="{cy + 9.4:.0f}" fill="{BOUNDARY_INK}" '
+            f'font-size="8" font-weight="600" text-anchor="middle">A {ARROW} B</text>'
+        )
+        label(x, 2, "Trust boundary crossing (flow)")
+
+        # -- Severity badges --
+        x = columns[3]
+        title(x, "Severity Badges")
+        for row, sev in enumerate(["critical", "high", "medium", "low"]):
+            cy = row_y(row) + 5
+            parts.append(
+                f'<circle cx="{x + 8:.0f}" cy="{cy:.0f}" r="6" fill="{SEVERITY_COLORS[sev]}"/>'
+            )
+            parts.append(
+                f'<text x="{x + 24:.0f}" y="{cy + 3:.0f}" fill="{INK_SOFT}" '
                 f'font-size="9">{sev.capitalize()}</text>'
             )
-            cy += 16
-
-        # Explanation
         parts.append(
-            f'<text x="{col3_x:.0f}" y="{cy + 6:.0f}" fill="#94a3b8" '
-            f'font-size="8">Badge number = threat count on resource</text>'
+            f'<text x="{x:.0f}" y="{row_y(4) + 8:.0f}" fill="{INK_SOFT}" '
+            f'font-size="9">Badge number = threat count</text>'
         )
 
         # Footer
         parts.append(
-            f'<text x="{w - 16:.0f}" y="{y + LEGEND_H - 8:.0f}" fill="#cbd5e1" '
+            f'<text x="{w - 16:.0f}" y="{y + LEGEND_H - 8:.0f}" fill="{INK_SOFT}" '
             f'font-size="9" text-anchor="end">Generated by ThreatCode</text>'
         )
-
         parts.append("</g>")
         return "\n".join(parts)
 
 
 def _short_name(node: InfraNode) -> str:
     """Name shown in a node: the last segment of its address, or the node name."""
-    if "." not in node.id:
+    if "." not in node.id and "::" not in node.id:
         return node.name
-    short = node.id.rsplit(".", 1)[-1]
-    # A Dockerfile instruction is dockerfile.run.3: "run.3" says more than "3"
-    if node.resource_type.startswith("dockerfile_") and short.isdigit():
-        return ".".join(node.id.rsplit(".", 2)[-2:])
-    return short
+    return base_name(node.id, node.resource_type)
 
 
 def _shape_for(category: NodeCategory) -> Shape:
     """Outline used for a node category, for edge port placement."""
     if category in _DATA_STORE_CATEGORIES:
         return "cylinder"
-    if category in _DATA_FLOW_CATEGORIES:
-        return "diamond"
     return "rect"
 
 
@@ -2012,16 +2521,55 @@ def _path_color(path: AttackPath) -> str:
     return SEVERITY_COLORS.get(path.severity.value, "#94a3b8")
 
 
-def _hop_edge_label(hop: AttackHop) -> str:
-    """What an arrow between two hops says: the edge type, then the ports it carries."""
-    if not hop.edge_type_to_next:
-        return ""
-    label = _HOP_EDGE_LABELS.get(hop.edge_type_to_next, hop.edge_type_to_next)
-    ports = hop.via.get("ports") or hop.via.get("port")
-    if ports:
-        shown = ",".join(str(p) for p in ports) if isinstance(ports, list | tuple) else str(ports)
-        label += f" :{shown}"
-    return label
+def _enabler_text(enabler: Enabler) -> str:
+    """A finding in a strip: its rule id and its title, without saying the id twice.
+
+    A scanner finding's title already starts with its id (``CVE-2022-37434: zlib: ...``).
+    """
+    if not enabler.known or not enabler.title:
+        return enabler.label
+    bare = enabler.label.rsplit(":", 1)[-1]
+    if enabler.title.startswith(bare):
+        return enabler.title
+    return f"{enabler.label}: {enabler.title}"
+
+
+def _path_badge_text(path_nums: list[int]) -> str:
+    """``P1``, ``P1 P3`` or ``P1-P4``: consecutive path numbers are written as a range."""
+    nums = sorted(path_nums)
+    runs: list[list[int]] = []
+    for num in nums:
+        if runs and num == runs[-1][-1] + 1:
+            runs[-1].append(num)
+        else:
+            runs.append([num])
+    return " ".join(
+        f"P{run[0]}"
+        if len(run) == 1
+        else f"P{run[0]}-P{run[-1]}"
+        if len(run) > 2
+        else f"P{run[0]} P{run[1]}"
+        for run in runs
+    )
+
+
+def _badge_text_width(text: str) -> float:
+    return len(text) * PATH_BADGE_CHAR_W
+
+
+def _hop_edge_type(hop: AttackHop) -> EdgeType:
+    """The edge type a hop names; a hop without a known one is drawn as a reference."""
+    try:
+        return EdgeType(hop.edge_type_to_next or "")
+    except ValueError:
+        return EdgeType.DEPENDENCY
+
+
+def _hop_line(here: AttackHop) -> str:
+    """What the path says about the step out of ``here``."""
+    kind = EDGE_LABELS.get(_hop_edge_type(here), "Dependency")
+    label = edge_label(here.edge_type_to_next, via=here.via)
+    return f"{kind}: {label}" if label else kind
 
 
 def _label_text_width(text: str) -> float:

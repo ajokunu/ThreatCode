@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from threatcode.models.threat import Severity, Threat
 
 __all__ = [
+    "GENERIC_EDGE_LABELS",
     "Enabler",
     "edge_label",
     "edge_phrase",
@@ -75,7 +76,7 @@ _RELATIONS: dict[str, tuple[str, str]] = {
     "reads_secret": ("reads", "reads the {noun}"),
     "invokes": ("invokes", "invokes the {noun}"),
     "returns_content": ("returns content", "returns content to the {noun}"),
-    "untrusted_content": ("untrusted content", "feeds untrusted content to the {noun}"),
+    "untrusted_content": ("untrusted data", "feeds untrusted content to the {noun}"),
     "remote_server": ("remote server", "reaches the {noun}"),
     "security_group": ("security group", "is guarded by the {noun}"),
     "selects": ("selects", "selects the {noun}"),
@@ -89,6 +90,8 @@ _EDGE_TYPES: dict[str, tuple[str, str]] = {
     "dependency": ("depends on", "references the {noun}"),
     "containment": ("inside", "is placed in the {noun}"),
 }
+# What an arrow says when the edge names nothing more than its type
+GENERIC_EDGE_LABELS: frozenset[str] = frozenset(short for short, _ in _EDGE_TYPES.values())
 _ACCESS_WORDS = {"read": "can read", "write": "can write", "admin": "has full access to"}
 _ACCESS_SHORT = {"read": "can read", "write": "can write", "admin": "full access"}
 
@@ -221,6 +224,7 @@ _SHORT_TYPES: dict[str, str] = {
     "aws_lb": "lb",
     "aws_lb_listener": "listener",
     "aws_lb_target_group": "target_group",
+    "aws_lb_target_group_attachment": "tg_attachment",
     "aws_route_table": "route_table",
     "aws_s3_bucket": "bucket",
     "aws_secretsmanager_secret": "secret",
