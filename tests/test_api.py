@@ -310,3 +310,52 @@ class TestParityWithTheCli:
         )
         for threat in threatcode.scan(SIMPLE_TF)["threats"]:
             assert threat["rule_id"] in text
+
+
+class TestThreatIdsAreUnique:
+    """An id names one finding in a diff, in ``enabled_by`` and in an ignore entry."""
+
+    @pytest.mark.parametrize("name", ["agent-workstation", "aws-webapp", "k8s-platform"])
+    def test_no_demo_stack_reports_an_id_twice(self, name: str) -> None:
+        result = threatcode.analyze(REPO_ROOT / "examples" / name, fail_on="none")
+        assert result.report.threats, "a stack with no finding would prove nothing"
+        assert result.report.duplicate_ids() == []
+
+    def test_duplicate_ids_names_each_repeated_id_once(self) -> None:
+        from threatcode.models.report import ThreatReport
+        from threatcode.models.threat import Severity, Threat, ThreatSource
+
+        def make(threat_id: str) -> Threat:
+            return Threat(
+                id=threat_id,
+                title="t",
+                description="d",
+                stride_category="tampering",
+                severity=Severity.HIGH,
+                source=ThreatSource.RULE,
+                resource_type="aws_s3_bucket",
+                resource_address="aws_s3_bucket.a",
+                mitigation="m",
+            )
+
+        report = ThreatReport(threats=[make("b"), make("a"), make("b"), make("b"), make("c")])
+        assert report.duplicate_ids() == ["b"]
+        assert ThreatReport(threats=[make("a"), make("c")]).duplicate_ids() == []
+        assert ThreatReport().duplicate_ids() == []
+
+    def test_the_api_warns_when_an_id_repeats_and_stays_quiet_otherwise(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from threatcode.models.report import ThreatReport
+
+        with caplog.at_level(logging.WARNING, logger="threatcode"):
+            threatcode.scan(SIMPLE_TF, fail_on="none")
+        assert not [r for r in caplog.records if "more than once" in r.getMessage()]
+
+        monkeypatch.setattr(ThreatReport, "duplicate_ids", lambda self: ["abc123", "def456"])
+        with caplog.at_level(logging.WARNING, logger="threatcode"):
+            threatcode.scan(SIMPLE_TF, fail_on="none")
+        (record,) = [r for r in caplog.records if "more than once" in r.getMessage()]
+        assert "abc123, def456" in record.getMessage()

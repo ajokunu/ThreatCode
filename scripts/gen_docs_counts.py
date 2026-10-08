@@ -442,7 +442,6 @@ def _cli() -> click.Group:
 def render_cli_group(facts: Facts) -> str:
     group = _cli()
     rows = [r for p in group.params if (r := _option_row(p)) is not None]
-    rows.insert(0, ["`--version`", "", "Print the version and exit."])
     rows.append(["`-h`, `--help`", "", "Show help and exit. Every command has it too."])
     return table(["Option", "Values", "What it does"], rows)
 

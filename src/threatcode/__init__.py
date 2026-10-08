@@ -10,6 +10,7 @@ Names are loaded on first use, which keeps ``import threatcode`` and the CLI sta
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     from threatcode.pipeline import ScanResult as ScanResult
     from threatcode.pipeline import run_scan as run_scan
 
-__version__ = "0.9.1"
+__version__ = "1.0.0"
 
 __all__ = [
     "AnalysisResult",
@@ -84,8 +85,6 @@ def _run(
     paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
     options: dict[str, Any],
 ) -> ScanResult:
-    import logging
-
     from threatcode.pipeline import prepare_request, run_scan
 
     if "output_format" in options:
@@ -98,6 +97,15 @@ def _run(
     for notice in prepared.config.notices:
         logging.getLogger("threatcode").warning("%s", notice)
     result = run_scan(prepared.request)
+    repeated = result.report.duplicate_ids()
+    if repeated:
+        # An id names one finding in a diff and in an ignore entry; a repeat would merge two.
+        logging.getLogger("threatcode").warning(
+            "the report holds %d threat id(s) more than once, so a diff or an ignore entry "
+            "cannot tell the threats apart: %s",
+            len(repeated),
+            ", ".join(repeated[:5]),
+        )
     coverage = result.coverage
     if coverage.errors:
         shown = "; ".join(

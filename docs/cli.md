@@ -13,7 +13,6 @@ These belong to the group and go before the command name: `threatcode -q scan in
 <!-- gen:group -->
 | Option | Values | What it does |
 | --- | --- | --- |
-| `--version` |  | Print the version and exit. |
 | `--version` |  | Show the version and exit. |
 | `-v`, `--verbose` |  | More log detail on stderr (-vv for debug). |
 | `-q`, `--quiet` |  | Hide progress and notices; errors stay. |

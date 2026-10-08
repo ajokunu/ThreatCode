@@ -284,7 +284,10 @@ class TestLlmConfigValidation:
 
     def test_allow_local_network_rejected_for_hosted_openai(self, tmp_path: Path) -> None:
         path = write_config(tmp_path, "llm:\n  provider: openai\n  allow_local_network: true\n")
-        expected = "llm: allow_local_network requires provider 'ollama' or 'local', not 'openai'"
+        expected = (
+            "llm: allow_local_network requires provider 'anthropic', 'local' or 'ollama', "
+            "not 'openai'"
+        )
         with pytest.raises(ConfigError, match=expected):
             load_config(path)
 
@@ -541,3 +544,65 @@ class TestLlmSection:
         from threatcode.engine.llm.client import DEPRECATED_MODELS
 
         assert DEFAULT_LLM_MODEL not in DEPRECATED_MODELS
+
+
+class TestOneNamePerSetting:
+    """The config key is the flag's name: ``format`` and ``rules``, not ``output_format`` and
+    ``extra_rule_paths``, which still load and say that they were renamed."""
+
+    def test_format_and_rules_load_without_a_notice(self, tmp_path: Path) -> None:
+        path = write_config(tmp_path, "format: sarif\nrules:\n  - rules/custom.yml\n", "c.yml")
+        loaded = discover_config(path, [tmp_path])
+        assert loaded.config.output_format == "sarif"
+        assert loaded.config.extra_rule_paths == ["rules/custom.yml"]
+        assert loaded.notices == ()
+
+    def test_the_old_spellings_still_load_and_name_the_new_ones(self, tmp_path: Path) -> None:
+        path = write_config(tmp_path, "output_format: sarif\nextra_rule_paths: [a.yml]\n", "c.yml")
+        loaded = discover_config(path, [tmp_path])
+        assert loaded.config.output_format == "sarif"
+        assert loaded.config.extra_rule_paths == ["a.yml"]
+        assert any("output_format" in n and "now called format" in n for n in loaded.notices)
+        assert any("extra_rule_paths" in n and "now called rules" in n for n in loaded.notices)
+
+    def test_both_spellings_of_one_setting_are_an_error(self, tmp_path: Path) -> None:
+        path = write_config(tmp_path, "format: sarif\noutput_format: json\n", "c.yml")
+        with pytest.raises(ConfigError, match="output_format and format are the same setting"):
+            discover_config(path, [tmp_path])
+
+    def test_a_bad_value_names_the_key_as_written(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigError, match="format: 'nope' is not an output format"):
+            load_config(write_config(tmp_path, "format: nope\n", "c.yml"))
+
+    def test_the_resolver_reads_format_and_rules_from_a_named_file(self, tmp_path: Path) -> None:
+        path = write_config(tmp_path, "format: markdown\nrules: [mine.yml]\n", "c.yml")
+        settings = resolve_settings({}, discover_config(path, [tmp_path]), {})
+        assert settings.output_format == "markdown"
+        assert settings.extra_rule_paths == (tmp_path / "mine.yml",)
+
+    def test_an_auto_discovered_file_may_set_format_but_never_rules(self, tmp_path: Path) -> None:
+        write_config(tmp_path, "format: markdown\nrules: [evil.yml]\n")
+        loaded = discover_config(None, [tmp_path])
+        assert loaded.config.output_format == "markdown"
+        assert loaded.config.extra_rule_paths == []
+        assert loaded.ignored == ("rules",)
+        assert loaded.used == ("format",)
+        (notice,) = loaded.notices
+        assert "restricted fields ['rules']" in notice
+
+    def test_an_auto_discovered_file_cannot_smuggle_rules_under_the_old_name(
+        self, tmp_path: Path
+    ) -> None:
+        write_config(tmp_path, "extra_rule_paths: [evil.yml]\n")
+        loaded = discover_config(None, [tmp_path])
+        assert loaded.config.extra_rule_paths == []
+        assert loaded.ignored == ("extra_rule_paths",)
+        # A key that was dropped needs no advice about how to spell it.
+        (notice,) = loaded.notices
+        assert "now called" not in notice
+
+    def test_a_typo_is_pointed_at_the_new_spelling(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigError, match=r"unknown key \(did you mean 'format'\?\)"):
+            load_config(write_config(tmp_path, "formatt: sarif\n", "c.yml"))
+        with pytest.raises(ConfigError, match=r"unknown key \(did you mean 'rules'\?\)"):
+            load_config(write_config(tmp_path, "rulez: [a.yml]\n", "c.yml"))

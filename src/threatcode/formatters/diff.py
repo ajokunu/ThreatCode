@@ -36,8 +36,19 @@ def _severity(threat: dict[str, Any]) -> str:
     return str(threat.get("effective_severity") or threat.get("severity"))
 
 
-def _sort_key(threat: dict[str, Any]) -> tuple[int, str, str]:
-    return (-_RANK.get(_severity(threat), 0), str(threat.get("title", "")), str(threat["id"]))
+def _sort_key(threat: dict[str, Any]) -> tuple[int, str, str, str]:
+    """The order a scan report lists findings in: severity, resource address, rule id, id.
+
+    Using the report's own key keeps a diff readable beside the report it was made from: the
+    instances of one resource come in address order (``app[0]`` before ``app[1]``), whatever
+    their titles say.
+    """
+    return (
+        -_RANK.get(_severity(threat), 0),
+        str(threat.get("resource_address", "")),
+        str(threat.get("rule_id", "")),
+        str(threat["id"]),
+    )
 
 
 def _plural(count: int, noun: str) -> str:
@@ -163,7 +174,7 @@ def compute_diff(baseline_path: str, current_path: str) -> dict[str, Any]:
         removed.extend(before[paired:])
 
     changed.sort(
-        key=lambda c: (-_RANK[c["severity_after"]], str(c["title"]), str(c["id"])),
+        key=lambda c: (-_RANK[c["severity_after"]], str(c["resource_address"]), str(c["id"])),
     )
     base_paths = {str(p["id"]): p for p in baseline.get("attack_paths", [])}
     cur_paths = {str(p["id"]): p for p in current.get("attack_paths", [])}
@@ -292,6 +303,12 @@ def _format_diff_markdown(diff: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Column widths of the text diff: a resource address is never cut, but one very long address must
+# not push every title off the screen, so the column stops growing here.
+_MIN_SEVERITY_WIDTH = 8
+_MAX_RESOURCE_WIDTH = 60
+
+
 def _format_diff_text(diff: dict[str, Any]) -> str:
     added, removed, changed = diff["added"], diff["removed"], diff["changed"]
 
@@ -299,35 +316,37 @@ def _format_diff_text(diff: dict[str, Any]) -> str:
         """Report text is untrusted: it may carry a control sequence meant for the terminal."""
         return terminal_safe(str(value))
 
+    # Every row shares the severity and resource columns, so the titles start in one place.
+    changes = [f"{safe(c['severity_before'])} -> {safe(c['severity_after'])}" for c in changed]
+    sev_width = max([_MIN_SEVERITY_WIDTH, *(len(c) for c in changes)])
+    resources = [safe(t.get("resource_address", "")) for t in (*added, *removed)]
+    resources += [safe(c["resource_address"]) for c in changed]
+    res_width = min(max([len(r) for r in resources], default=0), _MAX_RESOURCE_WIDTH)
+
     lines = [
         f"Baseline {_plural(diff['baseline_total'], 'threat')}, "
         f"current {_plural(diff['current_total'], 'threat')}, "
         f"{diff['unchanged_count']} unchanged"
     ]
-    for p in diff.get("attack_paths_added", []):
+    for sign, paths in (
+        ("+", diff.get("attack_paths_added", [])),
+        ("-", diff.get("attack_paths_removed", [])),
+    ):
+        for p in paths:
+            lines.append(
+                f"{sign} {safe(p['severity']):<{sev_width}} attack path "
+                f"{safe(p['entry'])} -> {safe(p['target'])} ({_plural(int(p['hops']), 'hop')})"
+            )
+    for sign, threats in (("+", added), ("-", removed)):
+        for t in threats:
+            lines.append(
+                f"{sign} {safe(_severity(t)):<{sev_width}}  "
+                f"{safe(t.get('resource_address', '')):<{res_width}}  {safe(t.get('title', ''))}"
+            )
+    for c, change in zip(changed, changes, strict=True):
         lines.append(
-            f"+ {safe(p['severity']):<8} attack path {safe(p['entry'])} -> {safe(p['target'])} "
-            f"({_plural(int(p['hops']), 'hop')})"
-        )
-    for p in diff.get("attack_paths_removed", []):
-        lines.append(
-            f"- {safe(p['severity']):<8} attack path {safe(p['entry'])} -> {safe(p['target'])} "
-            f"({_plural(int(p['hops']), 'hop')})"
-        )
-    for t in added:
-        lines.append(
-            f"+ {safe(_severity(t)):<8} {safe(t.get('resource_address', ''))}  "
-            f"{safe(t.get('title', ''))}"
-        )
-    for t in removed:
-        lines.append(
-            f"- {safe(_severity(t)):<8} {safe(t.get('resource_address', ''))}  "
-            f"{safe(t.get('title', ''))}"
-        )
-    for c in changed:
-        lines.append(
-            f"~ {safe(c['severity_before'])} -> {safe(c['severity_after'])}  "
-            f"{safe(c['resource_address'])}  {safe(c['title_after'])}"
+            f"~ {change:<{sev_width}}  "
+            f"{safe(c['resource_address']):<{res_width}}  {safe(c['title_after'])}"
         )
     if not _any_change(diff):
         lines.append("No changes detected.")
