@@ -710,6 +710,13 @@ class TestCountedResources:
         )
         assert path.to_dict()["alternatives"] == 2
 
+    def test_a_path_says_what_makes_its_target_worth_reaching(self) -> None:
+        (path,) = paths.find(web_stack(), [finding(DB, Severity.HIGH)])
+        assert path.target_kind == "data store"
+        assert path.to_dict()["target_kind"] == "data store"
+        assert "ends at aws_db_instance.db (data store)" in path.rationale
+        assert "target_kind" not in AttackPath(id="p", entry="a", target="b").to_dict()
+
     def test_a_path_with_no_equivalent_route_says_nothing_about_alternatives(self) -> None:
         (path,) = paths.find(web_stack(), [finding(DB, Severity.HIGH)])
         assert path.alternatives == 0

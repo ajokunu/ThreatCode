@@ -72,6 +72,14 @@ class Coverage:
     suppressed: int = 0
     # Findings and attack paths removed because the baseline already contains them.
     baselined: int = 0
+    # How many of ``suppressed`` and ``baselined`` are attack paths; the rest are findings.
+    suppressed_paths: int = 0
+    baselined_paths: int = 0
+    # What ``--min-severity`` left out of ``threats`` and ``attack_paths``, and the severity it cut
+    # at. The gate saw all of it, so a report that hides findings has to say so.
+    hidden_findings: int = 0
+    hidden_paths: int = 0
+    min_severity: str = ""
 
     @property
     def has_gaps(self) -> bool:
@@ -84,6 +92,22 @@ class Coverage:
             self.not_iac_paths.append(relpath)
 
     def to_dict(self) -> dict[str, Any]:
+        data = self._base_dict()
+        # Emitted only when they differ from their defaults, so a report that sets nothing aside
+        # and hides nothing is byte-identical to one from before these fields existed
+        if self.suppressed_paths:
+            data["suppressed_paths"] = self.suppressed_paths
+        if self.baselined_paths:
+            data["baselined_paths"] = self.baselined_paths
+        if self.hidden_findings or self.hidden_paths:
+            data["hidden"] = {
+                "min_severity": self.min_severity,
+                "findings": self.hidden_findings,
+                "attack_paths": self.hidden_paths,
+            }
+        return data
+
+    def _base_dict(self) -> dict[str, Any]:
         return {
             "files_discovered": self.files_discovered,
             "units_parsed": self.units_parsed,

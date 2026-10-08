@@ -457,6 +457,7 @@ class _Finder:
             score=_score(severity, route.edges, target, targets[target.id]),
             techniques=techniques,
             tactics=tactics_for_techniques(techniques),
+            target_kind=targets[target.id],
         )
         path.rationale = _rationale(path, targets[target.id], list(used.values()))
         return path

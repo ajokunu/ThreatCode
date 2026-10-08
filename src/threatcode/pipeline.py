@@ -91,6 +91,7 @@ __all__ = [
     "ScanRequest",
     "ScanResult",
     "compute_exit_code",
+    "gating",
     "prepare_request",
     "run_scan",
 ]
@@ -144,6 +145,10 @@ class ScanResult:
     # Attack paths set aside; ``coverage.suppressed`` and ``coverage.baselined`` already count them.
     suppressed_paths: int = 0
     baselined_paths: int = 0
+    # What --fail-on counted, before --min-severity hid anything: the findings and attack paths at
+    # or above the threshold. Exit code 1 means at least one of them is not zero.
+    gate_findings: int = 0
+    gate_paths: int = 0
     # One mapping per ingested file, for the report.
     ingest_sources: list[dict[str, Any]] = field(default_factory=list)
 
@@ -285,16 +290,28 @@ def compute_exit_code(
         return EXIT_USAGE
     if strict and coverage.has_gaps:
         return EXIT_USAGE
-    if write_baseline or fail_on == "none":
+    if write_baseline:
         return EXIT_OK
+    findings, paths = gating(threats, attack_paths, fail_on)
+    return EXIT_FINDINGS if findings or paths else EXIT_OK
+
+
+def gating(
+    threats: Iterable[Threat], attack_paths: Iterable[AttackPath], fail_on: str
+) -> tuple[int, int]:
+    """How many findings and attack paths are at or above ``fail_on``: what the gate counts.
+
+    LLM findings are advisory and never count; ``none`` counts nothing.
+    """
+    if fail_on == "none":
+        return 0, 0
     threshold = Severity(fail_on)
-    for threat in threats:
-        if threat.source is not ThreatSource.LLM and threat_severity(threat) >= threshold:
-            return EXIT_FINDINGS
-    for path in attack_paths:
-        if path.severity >= threshold:
-            return EXIT_FINDINGS
-    return EXIT_OK
+    findings = sum(
+        1
+        for threat in threats
+        if threat.source is not ThreatSource.LLM and threat_severity(threat) >= threshold
+    )
+    return findings, sum(1 for path in attack_paths if path.severity >= threshold)
 
 
 # ── The pipeline ──────────────────────────────────────────────────────
@@ -677,6 +694,7 @@ def _finish(
     notices.extend(outcome.notices)
     suppressed_paths = len(outcome.suppressed_paths)
     coverage.suppressed = len(outcome.suppressed) + suppressed_paths
+    coverage.suppressed_paths = suppressed_paths
 
     # The baseline records what is left after suppressions, findings and attack paths alike.
     snapshot = list(report.threats)
@@ -691,6 +709,7 @@ def _finish(
             report.attack_paths, baseline_fingerprints
         )
     coverage.baselined = len(baselined) + len(baselined_paths)
+    coverage.baselined_paths = len(baselined_paths)
 
     coverage.errors = [dict(e) for e in errors]
     coverage.gaps = [d.to_dict() for d in graph.diagnostics if d.level in ("warning", "error")]
@@ -718,7 +737,8 @@ def _finish(
                 request.write_baseline, snapshot, snapshot_paths
             )
 
-    _apply_display_filter(report, settings.min_severity)
+    gate_findings, gate_paths = gating(report.threats, report.attack_paths, settings.fail_on)
+    _apply_display_filter(report, settings.min_severity, coverage)
     report.coverage = coverage
     analysis = AnalysisResult(graph=graph, report=report, root=root, ingest_sources=sources)
     return ScanResult(
@@ -732,6 +752,8 @@ def _finish(
         baseline_written=baseline_written,
         suppressed_paths=suppressed_paths,
         baselined_paths=len(baselined_paths),
+        gate_findings=gate_findings,
+        gate_paths=gate_paths,
         ingest_sources=sources,
     )
 
@@ -817,10 +839,18 @@ def _relative_to_root(value: str, root: Path, stdin_dir: Path | None, stdin_name
     return value
 
 
-def _apply_display_filter(report: ThreatReport, min_severity: str) -> None:
-    """Hide findings and paths below ``min_severity``; the gate already ran on the full set."""
+def _apply_display_filter(report: ThreatReport, min_severity: str, coverage: Coverage) -> None:
+    """Hide findings and paths below ``min_severity``; the gate already ran on the full set.
+
+    What was hidden is counted in ``coverage``, so a report that shows 5 of 12 findings says so.
+    """
     if min_severity == "info":
         return
     threshold = Severity(min_severity)
-    report.threats = report.filter_by_severity(threshold)
-    report.attack_paths = [p for p in report.attack_paths if p.severity >= threshold]
+    shown = report.filter_by_severity(threshold)
+    shown_paths = [p for p in report.attack_paths if p.severity >= threshold]
+    coverage.hidden_findings = len(report.threats) - len(shown)
+    coverage.hidden_paths = len(report.attack_paths) - len(shown_paths)
+    coverage.min_severity = min_severity
+    report.threats = shown
+    report.attack_paths = shown_paths

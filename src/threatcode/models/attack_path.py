@@ -71,6 +71,9 @@ class AttackPath:
     # next to `app[0]`) this path stands for; they are not listed, because they differ only by
     # the instance number
     alternatives: int = 0
+    # What makes the target worth reaching: "data store", "secret store", "administrator
+    # identity", "cluster-admin grant" or "private data". Empty for a path built by hand.
+    target_kind: str = ""
 
     @property
     def node_ids(self) -> list[str]:
@@ -92,4 +95,6 @@ class AttackPath:
         # route renders as it always did
         if self.alternatives:
             data["alternatives"] = self.alternatives
+        if self.target_kind:
+            data["target_kind"] = self.target_kind
         return data

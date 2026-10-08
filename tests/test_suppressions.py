@@ -208,6 +208,24 @@ class TestApply:
         assert result.suppressed == []
         assert result.notices == []
 
+    def test_a_trust_boundary_finding_is_suppressed_by_the_kind_of_crossing_it_prints(self) -> None:
+        # The text report prints this id in its RULE column, so it must be one the file accepts
+        def boundary(address: str, kind: str) -> Threat:
+            threat = make_threat("", threat_id=address, address=address, fingerprint="")
+            threat.source = ThreatSource.BOUNDARY
+            threat.metadata["boundary_rule"] = kind
+            return threat
+
+        threats = [
+            boundary("aws_lb.front", "BOUNDARY_GENERIC_FLOW"),
+            boundary("aws_lb.other", "BOUNDARY_GENERIC_FLOW"),
+            boundary("aws_lb.front2", "BOUNDARY_UNENCRYPTED_FLOW"),
+        ]
+        scoped = suppressions.apply(threats, parse("BOUNDARY_GENERIC_FLOW resource=aws_lb.front\n"))
+        assert [t.resource_address for t in scoped.suppressed] == ["aws_lb.front"]
+        wide = suppressions.apply(threats, parse("boundary_unencrypted_flow\n"))
+        assert [t.resource_address for t in wide.suppressed] == ["aws_lb.front2"]
+
     def test_a_threat_without_aliases_or_fingerprint_does_not_match_an_empty_key(self) -> None:
         result = suppressions.apply([make_threat("R", fingerprint="")], parse("R2\n"))
         assert len(result.kept) == 1

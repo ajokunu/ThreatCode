@@ -7,7 +7,11 @@ suppression per line::
 
     <ID> [resource=GLOB] [file=GLOB] [exp:YYYY-MM-DD] [reason="text"]
 
-``ID`` is a rule id, a threat id, a fingerprint, a CVE or GHSA alias, or an attack path id::
+``ID`` is a rule id, a threat id, a fingerprint, a CVE or GHSA alias, the kind of a trust boundary
+crossing, or an attack path id.
+The kind of a crossing is ``BOUNDARY_GENERIC_FLOW``, ``BOUNDARY_UNENCRYPTED_FLOW``,
+``BOUNDARY_UNAUTHENTICATED_FLOW`` or ``BOUNDARY_UNVALIDATED_FLOW``, which is what the RULE column of
+the text report prints for one::
 
     # an accepted CVE, with the reason and a date to look at it again
     CVE-2023-12345 exp:2027-03-31 reason="no network path to the parser"
@@ -424,6 +428,11 @@ def _glob_matches(glob: str, value: str) -> bool:
 
 def _keys(threat: Threat) -> set[str]:
     values = [threat.rule_id, threat.id, threat.fingerprint, *threat.aliases]
+    # A trust boundary finding has no rule id of its own; the kind of crossing it reports
+    # (BOUNDARY_GENERIC_FLOW) is the key the text report prints in its RULE column
+    boundary_rule = threat.metadata.get("boundary_rule")
+    if isinstance(boundary_rule, str):
+        values.append(boundary_rule)
     return {v.casefold() for v in values if v}
 
 

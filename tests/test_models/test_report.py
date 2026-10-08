@@ -192,6 +192,23 @@ class TestCoverage:
             "baselined": 0,
         }
 
+    def test_what_was_hidden_and_how_much_of_the_set_aside_were_paths_is_emitted_when_nonzero(
+        self,
+    ) -> None:
+        shown = Coverage(
+            suppressed=3,
+            suppressed_paths=1,
+            baselined=8,
+            baselined_paths=2,
+            hidden_findings=7,
+            hidden_paths=2,
+            min_severity="high",
+        ).to_dict()
+        assert shown["suppressed_paths"] == 1 and shown["baselined_paths"] == 2
+        assert shown["hidden"] == {"min_severity": "high", "findings": 7, "attack_paths": 2}
+        plain = Coverage(min_severity="high").to_dict()
+        assert not {"suppressed_paths", "baselined_paths", "hidden"} & set(plain)
+
     def test_not_iac_keeps_the_full_count_but_only_the_first_twenty_paths(self) -> None:
         c = Coverage()
         for index in range(NOT_IAC_PATH_LIMIT + 5):

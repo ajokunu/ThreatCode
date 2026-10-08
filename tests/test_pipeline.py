@@ -24,6 +24,7 @@ from threatcode.pipeline import (
     EXIT_USAGE,
     ScanResult,
     compute_exit_code,
+    gating,
     prepare_request,
     run_scan,
 )
@@ -445,6 +446,23 @@ class TestExitContract:
             scan(FIXTURES / "terraform/simple_exposed.tf", ingest=[junk])
 
 
+class TestGating:
+    def test_it_counts_findings_and_paths_at_or_above_the_threshold(self) -> None:
+        path = AttackPath(id="p", entry="internet", target="db", severity=Severity.HIGH)
+        threats = [
+            make_threat(Severity.CRITICAL),
+            make_threat(Severity.HIGH),
+            make_threat(Severity.LOW),
+        ]
+        assert gating(threats, [path], "high") == (2, 1)
+        assert gating(threats, [path], "critical") == (1, 0)
+        assert gating(threats, [path], "none") == (0, 0)
+
+    def test_advisory_llm_findings_never_count(self) -> None:
+        llm = make_threat(Severity.CRITICAL, ThreatSource.LLM)
+        assert gating([llm], [], "low") == (0, 0)
+
+
 class TestComputeExitCode:
     def call(self, **overrides: Any) -> int:
         args: dict[str, Any] = {
@@ -773,6 +791,36 @@ class TestSuppressionsAndBaseline:
         assert filtered.report.threats == []
         assert filtered.exit_code == full.exit_code == EXIT_FINDINGS
         assert filtered.report.to_dict()["total_threats"] == 0
+
+    def test_min_severity_counts_what_it_hid_and_the_gate_counts_what_failed(self) -> None:
+        full = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="high")
+        filtered = scan(
+            FIXTURES / "terraform/simple_exposed.tf", fail_on="high", min_severity="critical"
+        )
+        coverage = filtered.coverage
+        assert coverage.hidden_findings == len(full.report.threats)
+        assert coverage.hidden_paths == len(full.report.attack_paths)
+        assert coverage.min_severity == "critical"
+        assert coverage.to_dict()["hidden"]["findings"] == coverage.hidden_findings
+        # The gate saw what the listing hides: this is why the scan exits 1 with 0 findings shown
+        assert filtered.gate_findings == full.gate_findings > 0
+        assert filtered.gate_paths == full.gate_paths
+        assert (
+            filtered.gate_findings or filtered.gate_paths
+        ) and filtered.exit_code == EXIT_FINDINGS
+
+    def test_nothing_hidden_is_nothing_said(self) -> None:
+        coverage = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="none").coverage
+        assert (coverage.hidden_findings, coverage.hidden_paths, coverage.min_severity) == (
+            0,
+            0,
+            "",
+        )
+        assert "hidden" not in coverage.to_dict()
+
+    def test_the_gate_counts_nothing_when_it_is_off(self) -> None:
+        result = scan(FIXTURES / "terraform/simple_exposed.tf", fail_on="none")
+        assert (result.gate_findings, result.gate_paths) == (0, 0)
 
     def test_min_severity_keeps_what_is_at_or_above_it(self) -> None:
         result = scan(
