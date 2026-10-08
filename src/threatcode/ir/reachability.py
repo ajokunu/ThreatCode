@@ -55,6 +55,13 @@ These edges are derived from the properties the parser leaves on the nodes, so t
 manifests that live in different files (the parser links a single input only).
 An edge that the parser already added merges with the one found here.
 
+Two files that define the same kind, namespace and name are alternates of each other: the Helm
+chart, the Kustomize base, the rendered release and the raw manifests of one application all
+define its Deployments, and a repository holds them side by side to be applied one at a time.
+Nothing links across alternates, so a Service reaches the workloads of its own file and of the
+files that are not its alternates, never the same-named workload of another variant.
+A scan of four variants then has four ``frontend-external -> frontend`` edges and not sixteen.
+
 - `internet -> Service` for a `LoadBalancer` or `NodePort` Service, `internet -> Ingress` for an
   Ingress with rules.
 - `Ingress -> Service` for each backend, `Service -> workload` for the workloads of the same
@@ -882,6 +889,10 @@ def _elb_listeners(lb: InfraNode) -> list[tuple[str, list[str]]]:
 # ---------------------------------------------------------------------------
 
 
+# Kinds that only scope other objects: two files that both open a namespace are not alternates
+_SCOPING_KINDS = frozenset({"kubernetes_namespace"})
+
+
 def _namespace(node: InfraNode) -> str | None:
     value = node.properties.get("namespace")
     return value if isinstance(value, str) and value else None
@@ -898,19 +909,58 @@ class _Kubernetes:
     def __init__(self, reach: _Reach) -> None:
         self.reach = reach
         self.graph = reach.graph
-        self.index: dict[tuple[str, str | None, str], InfraNode] = {}
+        self.index: dict[tuple[str, str | None, str], list[InfraNode]] = {}
         for node in reach.nodes:
             if node.resource_type.startswith("kubernetes_"):
-                self.index[(node.resource_type, _namespace(node), _name(node))] = node
+                self.index.setdefault(
+                    (node.resource_type, _namespace(node), _name(node)), []
+                ).append(node)
         self.workloads = [
             node
             for node in reach.nodes
             if node.resource_type.startswith("kubernetes_")
             and isinstance(node.properties.get("pod_labels"), Mapping)
         ]
+        # The objects each input defines, to tell which inputs are alternates of each other
+        self._defined: dict[str | None, set[tuple[str, str | None, str]]] = {}
+        for key, nodes in self.index.items():
+            if key[0] in _SCOPING_KINDS:
+                continue
+            for node in nodes:
+                self._defined.setdefault(reach.ctx.unit_of(node), set()).add(key)
+        self._alternates: dict[tuple[str | None, str | None], bool] = {}
 
-    def lookup(self, resource_type: str, namespace: str | None, name: str) -> InfraNode | None:
-        return self.index.get((resource_type, namespace, name))
+    def _together(self, first: InfraNode, second: InfraNode) -> bool:
+        """Whether two nodes can be deployed together: one input, or inputs that are not alternates.
+
+        A graph that does not record the input of a node cannot tell, and links as it always did.
+        """
+        a, b = self.reach.ctx.unit_of(first), self.reach.ctx.unit_of(second)
+        if a is None or b is None or a == b:
+            return True
+        pair = (a, b) if a <= b else (b, a)
+        if pair not in self._alternates:
+            self._alternates[pair] = bool(self._defined.get(a, set()) & self._defined.get(b, set()))
+        return not self._alternates[pair]
+
+    def lookup(
+        self, source: InfraNode, resource_type: str, namespace: str | None, name: str
+    ) -> InfraNode | None:
+        """The object a reference by name from `source` means, when the scan can tell.
+
+        The copy in the source's own input wins.
+        Otherwise the copies in inputs that are not alternates of the source's are candidates,
+        and only a single one is a match: several copies of one object that the source does not
+        share an input with leave the reference open.
+        """
+        copies = [
+            node
+            for node in self.index.get((resource_type, namespace, name), ())
+            if self._together(source, node)
+        ]
+        own = [n for n in copies if self.reach.ctx.unit_of(n) == self.reach.ctx.unit_of(source)]
+        found = own or copies
+        return found[0] if len(found) == 1 or own else None
 
     def run(self) -> None:
         if not self.index:
@@ -955,7 +1005,7 @@ class _Kubernetes:
                     continue
                 name = backend.get("service_name")
                 service = (
-                    self.lookup("kubernetes_service", _namespace(ingress), name)
+                    self.lookup(ingress, "kubernetes_service", _namespace(ingress), name)
                     if isinstance(name, str)
                     else None
                 )
@@ -981,27 +1031,57 @@ class _Kubernetes:
                 continue
             ports = _service_ports(service, "targetPort") or _service_ports(service, "port")
             for workload in self.workloads:
-                labels = workload.properties.get("pod_labels")
-                if _namespace(workload) != _namespace(service) or not isinstance(labels, Mapping):
+                if not self._selects(service, workload) or not self._together(service, workload):
                     continue
-                if all(labels.get(k) == v for k, v in selector.items()):
-                    self.reach.add(
-                        budget,
-                        service.id,
-                        workload.id,
-                        EdgeType.NETWORK_FLOW,
-                        kind=K8S_SERVICE,
-                        relation="selects",
-                        protocol="tcp",
-                        ports=ports,
-                    )
+                if self._claimed_by_a_twin(service, workload):
+                    continue
+                self.reach.add(
+                    budget,
+                    service.id,
+                    workload.id,
+                    EdgeType.NETWORK_FLOW,
+                    kind=K8S_SERVICE,
+                    relation="selects",
+                    protocol="tcp",
+                    ports=ports,
+                )
+
+    @staticmethod
+    def _selects(service: InfraNode, workload: InfraNode) -> bool:
+        """Whether the Service's selector matches the workload's pod labels (same namespace)."""
+        selector = service.properties.get("selector")
+        labels = workload.properties.get("pod_labels")
+        if not isinstance(selector, Mapping) or not selector or not isinstance(labels, Mapping):
+            return False
+        if _namespace(workload) != _namespace(service):
+            return False
+        return all(labels.get(k) == v for k, v in selector.items())
+
+    def _claimed_by_a_twin(self, service: InfraNode, workload: InfraNode) -> bool:
+        """Whether a copy of the Service in another input selects this workload of a third one.
+
+        Two Services of one name are variants (a standalone and a distributed install of the same
+        application).
+        When both select a workload that neither shares an input with, nothing says which variant
+        it belongs to, so it is joined to neither.
+        """
+        unit = self.reach.ctx.unit_of(service)
+        if unit == self.reach.ctx.unit_of(workload):
+            return False
+        key = (service.resource_type, _namespace(service), _name(service))
+        return any(
+            twin is not service
+            and self.reach.ctx.unit_of(twin) != unit
+            and self._selects(twin, workload)
+            for twin in self.index.get(key, ())
+        )
 
     def _workload_links(self) -> None:
         budget = self.reach.budget("Kubernetes workloads")
         for workload in self.workloads:
             namespace = _namespace(workload)
             for name in _text_list(workload.properties.get("secret_refs")):
-                secret = self.lookup("kubernetes_secret", namespace, name)
+                secret = self.lookup(workload, "kubernetes_secret", namespace, name)
                 if secret is not None:
                     self.reach.add(
                         budget,
@@ -1013,7 +1093,7 @@ class _Kubernetes:
                     )
             account = workload.properties.get("service_account_name") or "default"
             service_account = (
-                self.lookup("kubernetes_service_account", namespace, account)
+                self.lookup(workload, "kubernetes_service_account", namespace, account)
                 if isinstance(account, str)
                 else None
             )
@@ -1040,9 +1120,11 @@ class _Kubernetes:
                 role: InfraNode | None = None
                 if isinstance(ref_name, str):
                     if ref_kind == "ClusterRole":
-                        role = self.lookup("kubernetes_cluster_role", None, ref_name)
+                        role = self.lookup(binding, "kubernetes_cluster_role", None, ref_name)
                     elif ref_kind == "Role":
-                        role = self.lookup("kubernetes_role", _namespace(binding), ref_name)
+                        role = self.lookup(
+                            binding, "kubernetes_role", _namespace(binding), ref_name
+                        )
                 accounts: list[InfraNode] = []
                 for subject in _list(props.get("subjects")):
                     if not isinstance(subject, Mapping) or subject.get("kind") != "ServiceAccount":
@@ -1050,7 +1132,7 @@ class _Kubernetes:
                     name = subject.get("name")
                     namespace = subject.get("namespace") or _namespace(binding)
                     account = (
-                        self.lookup("kubernetes_service_account", namespace, name)
+                        self.lookup(binding, "kubernetes_service_account", namespace, name)
                         if isinstance(name, str)
                         else None
                     )
@@ -1099,6 +1181,8 @@ class _Kubernetes:
                 "conditional": False,
             }
             for secret in secrets:
+                if not self._together(role, secret):
+                    continue
                 if "*" in scope or _namespace(secret) in scope:
                     self.reach.add(
                         budget,
