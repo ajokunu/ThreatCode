@@ -346,6 +346,7 @@ class EnrichContext:
         self._literal_cache: dict[
             tuple[str, tuple[str, ...], tuple[str, ...]], dict[str, list[InfraNode]]
         ] = {}
+        self._supplied: dict[str, set[str]] = {}
         self._expression_cache: dict[
             tuple[str, tuple[str, ...], tuple[str, ...]], dict[tuple[str, str], list[InfraNode]]
         ] = {}
@@ -522,6 +523,13 @@ class EnrichContext:
                 self._expression_cache[cache_key] = index
             hits.extend(index.get((node.module, reference), ()))
         return hits
+
+    def supplied(self, node: InfraNode) -> set[str]:
+        """The derived keys a companion that resolved to `node` has given it so far."""
+        return self._supplied.get(node.id, set())
+
+    def note_supplied(self, node: InfraNode, values: Mapping[str, Any]) -> None:
+        self._supplied.setdefault(node.id, set()).update(values)
 
     def contribute(self, node: InfraNode, values: Mapping[str, Any]) -> None:
         derived = node.properties.get(DERIVED)
@@ -805,7 +813,9 @@ def _run_companions(ctx: EnrichContext, modules: Sequence[ModuleType]) -> None:
                 continue
             link = ctx.resolve_link(companion, spec.link_attrs, parent_only)
             for parent in link.resolved:
-                ctx.contribute(parent, spec.derive(companion, parent, ctx))
+                values = spec.derive(companion, parent, ctx)
+                ctx.contribute(parent, values)
+                ctx.note_supplied(parent, values)
             if link.unresolved:
                 _mark_unresolved(ctx, spec, companion, link)
 

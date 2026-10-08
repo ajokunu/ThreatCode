@@ -1795,3 +1795,194 @@ class TestLiteralLinkScaling:
         assert is_unknown(_derived(graph, "aws_s3_bucket.b7")["versioning_enabled"])
         assert is_unknown(_derived(graph, "aws_s3_bucket.twin")["versioning_enabled"])
         assert is_unknown(_derived(graph, "aws_s3_bucket.b8")["versioning_enabled"])
+
+
+COMPUTED_BUCKET = {
+    "bucket": "shop-data",
+    # What a real plan prints for the deprecated inline settings of a bucket nobody set inline
+    "acl": Unknown(),
+    "logging": Unknown(),
+    "versioning": Unknown(),
+    "server_side_encryption_configuration": Unknown(),
+    "policy": Unknown(),
+}
+
+
+def _plan_bucket(*companions: ParsedResource, **inline: Any) -> dict[str, Any]:
+    properties = {**COMPUTED_BUCKET, **inline}
+    return _derived(
+        _graph(_resource("aws_s3_bucket", "data", **properties), *companions),
+        "aws_s3_bucket.data",
+    )
+
+
+class TestAComputedMarkerDoesNotEraseTheCompanion:
+    """A plan prints the inline settings of a bucket unknown; a companion that sets one wins."""
+
+    def test_an_encryption_companion_is_read_through_the_marker(self) -> None:
+        derived = _plan_bucket(
+            _resource(
+                "aws_s3_bucket_server_side_encryption_configuration",
+                "data",
+                bucket="aws_s3_bucket.data",
+                rule=[{"apply_server_side_encryption_by_default": [{"sse_algorithm": "AES256"}]}],
+            )
+        )
+        assert derived["sse_algorithm"] == "AES256"
+
+    def test_a_suspended_versioning_companion_is_read_through_the_marker(self) -> None:
+        derived = _plan_bucket(
+            _resource(
+                "aws_s3_bucket_versioning",
+                "data",
+                bucket="aws_s3_bucket.data",
+                versioning_configuration=[{"status": "Suspended"}],
+            )
+        )
+        assert derived["versioning_enabled"] is False
+
+    def test_a_public_acl_companion_is_read_through_the_marker(self) -> None:
+        derived = _plan_bucket(
+            _resource("aws_s3_bucket_acl", "data", bucket="aws_s3_bucket.data", acl="public-read")
+        )
+        assert derived["acl"] == "public-read"
+
+    def test_a_logging_companion_is_read_through_the_marker(self) -> None:
+        derived = _plan_bucket(
+            _resource(
+                "aws_s3_bucket_logging", "data", bucket="aws_s3_bucket.data", target_bucket="logs"
+            )
+        )
+        assert derived["logging_enabled"] is True
+
+    def test_a_bucket_policy_companion_is_read_through_the_marker(self) -> None:
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": "arn:aws:s3:::shop-data/*",
+                    }
+                ],
+            }
+        )
+        derived = _plan_bucket(
+            _resource("aws_s3_bucket_policy", "data", bucket="aws_s3_bucket.data", policy=policy)
+        )
+        assert [s["principals"] for s in derived["policy_statements"]] == [["*"]]
+        assert derived["allows_any_principal"] is True
+
+    def test_the_marker_still_keeps_a_fact_unknown_when_no_companion_gave_it(self) -> None:
+        derived = _plan_bucket()
+        for key in ("sse_algorithm", "versioning_enabled", "logging_enabled", "acl"):
+            assert is_unknown(derived[key]), key
+        assert is_unknown(derived["policy_statements"])
+
+    def test_a_companion_for_one_setting_does_not_settle_another(self) -> None:
+        derived = _plan_bucket(
+            _resource(
+                "aws_s3_bucket_server_side_encryption_configuration",
+                "data",
+                bucket="aws_s3_bucket.data",
+                rule=[{"apply_server_side_encryption_by_default": [{"sse_algorithm": "AES256"}]}],
+            )
+        )
+        assert derived["sse_algorithm"] == "AES256"
+        assert is_unknown(derived["logging_enabled"])
+        assert is_unknown(derived["versioning_enabled"])
+
+    def test_an_unknown_that_carries_a_reference_is_a_value_somebody_wrote(self) -> None:
+        derived = _plan_bucket(
+            _resource(
+                "aws_s3_bucket_server_side_encryption_configuration",
+                "data",
+                bucket="aws_s3_bucket.data",
+                rule=[{"apply_server_side_encryption_by_default": [{"sse_algorithm": "AES256"}]}],
+            ),
+            server_side_encryption_configuration=Unknown("var.encryption"),
+        )
+        assert is_unknown(derived["sse_algorithm"])
+
+    def test_the_finding_a_marker_used_to_hide_is_reported(self, tmp_path: Any) -> None:
+        plan = {
+            "format_version": "1.2",
+            "terraform_version": "1.9.0",
+            "planned_values": {
+                "root_module": {
+                    "resources": [
+                        {
+                            "address": "aws_s3_bucket.data",
+                            "mode": "managed",
+                            "type": "aws_s3_bucket",
+                            "name": "data",
+                            "provider_name": "registry.terraform.io/hashicorp/aws",
+                            "values": {"bucket": "shop-data"},
+                        },
+                        {
+                            "address": "aws_s3_bucket_server_side_encryption_configuration.data",
+                            "mode": "managed",
+                            "type": "aws_s3_bucket_server_side_encryption_configuration",
+                            "name": "data",
+                            "provider_name": "registry.terraform.io/hashicorp/aws",
+                            "values": {
+                                "bucket": "shop-data",
+                                "rule": [
+                                    {
+                                        "apply_server_side_encryption_by_default": [
+                                            {"sse_algorithm": "AES256"}
+                                        ]
+                                    }
+                                ],
+                            },
+                        },
+                    ]
+                }
+            },
+            "resource_changes": [
+                {
+                    "address": "aws_s3_bucket.data",
+                    "mode": "managed",
+                    "type": "aws_s3_bucket",
+                    "name": "data",
+                    "provider_name": "registry.terraform.io/hashicorp/aws",
+                    "change": {
+                        "actions": ["create"],
+                        "before": None,
+                        "after": {"bucket": "shop-data"},
+                        "after_unknown": {
+                            "server_side_encryption_configuration": True,
+                            "versioning": True,
+                            "logging": True,
+                            "acl": True,
+                        },
+                    },
+                }
+            ],
+        }
+        path = tmp_path / "plan.json"
+        path.write_text(json.dumps(plan), encoding="utf-8")
+        from tests.helpers.scan import scan_files
+
+        result = scan_files([path])
+        assert result.fired("S3_NO_ENCRYPTION", "aws_s3_bucket.data")
+
+
+class TestAnUnsetLoggingBlock:
+    def test_the_empty_list_a_plan_prints_for_no_block_is_not_logging(self) -> None:
+        derived = _derived(
+            _graph(_resource("aws_s3_bucket", "data", bucket="b", logging=[])),
+            "aws_s3_bucket.data",
+        )
+        assert derived["logging_enabled"] is False
+
+    def test_a_block_with_a_target_is_logging(self) -> None:
+        derived = _derived(
+            _graph(
+                _resource("aws_s3_bucket", "data", bucket="b", logging=[{"target_bucket": "logs"}])
+            ),
+            "aws_s3_bucket.data",
+        )
+        assert derived["logging_enabled"] is True

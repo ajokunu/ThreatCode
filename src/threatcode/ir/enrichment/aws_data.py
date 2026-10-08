@@ -443,7 +443,7 @@ def _bucket_policies_by_edge(
 
 
 def _resource_policy_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
-    documents: list[Statements | Unknown | None] = [own_policy_statements(node)]
+    documents: list[Statements | Unknown | None] = [own_policy_statements(node, ctx)]
     if node.resource_type == "aws_s3_bucket":
         # Bucket policy resources are folded in by the companion phase, which has already run
         companion = ctx.derived(node).get("policy_statements")

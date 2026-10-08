@@ -149,15 +149,58 @@ def statements_of(value: Any) -> list[dict[str, Any]] | Unknown:
     return statements_to_dicts(parsed)
 
 
-def own_policy_statements(node: InfraNode) -> list[dict[str, Any]] | Unknown | None:
-    """The statements of the policy a node declares itself, None when it declares none."""
+def provider_computed(value: Any) -> bool:
+    """Whether an optional attribute holds the marker of a value the provider computes.
+
+    A Terraform plan marks an attribute that the configuration does not set but the provider
+    fills in after apply (the deprecated inline settings of an S3 bucket, the default policy of a
+    queue) as unknown, and gives that Unknown no reference.
+    An Unknown that carries a reference (``logging = var.logging``) is a value somebody wrote and
+    the scan cannot read, which is different.
+    """
+    return is_unknown(value) and not value.reference
+
+
+def stands_for_the_setting(node: InfraNode, ctx: EnrichContext, key: str, value: Any) -> bool:
+    """Whether an inline attribute may speak for the derived fact ``key`` of its node.
+
+    A computed marker says nothing about the setting, so once a companion resource has given the
+    setting (a bucket encryption resource beside a bucket whose inline ``server_side_encryption``
+    a plan prints unknown), the companion's value stands and the marker must not erase it.
+    Without a companion the marker still keeps the fact unknown: the scan cannot tell a bucket
+    that is unconfigured from one configured somewhere it cannot see.
+    """
+    return not (provider_computed(value) and key in ctx.supplied(node))
+
+
+# Resources whose ``policy`` is optional and computed, so a plan prints it unknown when unset
+_POLICY_COMPUTED_WHEN_UNSET = frozenset(
+    {"aws_s3_bucket", "aws_sqs_queue", "aws_sns_topic", "aws_kms_key"}
+)
+
+
+def own_policy_statements(
+    node: InfraNode, ctx: EnrichContext | None = None
+) -> list[dict[str, Any]] | Unknown | None:
+    """The statements of the policy a node declares itself, None when it declares none.
+
+    With ``ctx`` a computed marker in the ``policy`` of a bucket, queue, topic or key declares
+    nothing once a companion policy resource has given the node its statements.
+    """
     spec = POLICY_ATTRIBUTES.get(node.resource_type)
     if spec is None:
         return None
     for name in spec:
         value = node.properties.get(name)
-        if value is not None:
-            return statements_of(value)
+        if value is None:
+            continue
+        if (
+            ctx is not None
+            and node.resource_type in _POLICY_COMPUTED_WHEN_UNSET
+            and not stands_for_the_setting(node, ctx, "policy_statements", value)
+        ):
+            continue
+        return statements_of(value)
     return None
 
 
@@ -740,7 +783,7 @@ POLICY_ATTRIBUTES: dict[str, tuple[str, ...]] = {
 
 
 def _policy_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
-    found = own_policy_statements(node)
+    found = own_policy_statements(node, ctx)
     if found is None:
         return {}
     return {"policy_statements": found}
@@ -811,7 +854,9 @@ def _s3_inline(node: InfraNode, ctx: EnrichContext) -> Facts:
     props = node.properties
     facts: dict[str, Any] = {}
     versioning = _first(props, "versioning", "VersioningConfiguration")
-    if versioning is not None:
+    if versioning is not None and stands_for_the_setting(
+        node, ctx, "versioning_enabled", versioning
+    ):
         enabled = dig(versioning, "enabled")
         status = dig(versioning, "status")
         if status is None:
@@ -821,7 +866,7 @@ def _s3_inline(node: InfraNode, ctx: EnrichContext) -> Facts:
         elif enabled is not None or is_unknown(versioning):
             facts["versioning_enabled"] = versioning if is_unknown(versioning) else _flag(enabled)
     sse = _first(props, "server_side_encryption_configuration", "BucketEncryption")
-    if sse is not None:
+    if sse is not None and stands_for_the_setting(node, ctx, "sse_algorithm", sse):
         algorithm = dig(sse, "rule", "apply_server_side_encryption_by_default", "sse_algorithm")
         if algorithm is None:
             algorithm = dig(
@@ -832,10 +877,11 @@ def _s3_inline(node: InfraNode, ctx: EnrichContext) -> Facts:
             )
         facts["sse_algorithm"] = sse if is_unknown(sse) else text(algorithm)
     logging = _first(props, "logging", "LoggingConfiguration")
-    if logging is not None:
-        facts["logging_enabled"] = True if not is_unknown(logging) else logging
+    if logging is not None and stands_for_the_setting(node, ctx, "logging_enabled", logging):
+        # An unset block is the empty list a plan prints, which is not a bucket that logs
+        facts["logging_enabled"] = logging if is_unknown(logging) else any(blocks(logging))
     acl = _first(props, "acl", "AccessControl")
-    if acl is not None:
+    if acl is not None and stands_for_the_setting(node, ctx, "acl", acl):
         facts["acl"] = text(acl)
     return facts
 
