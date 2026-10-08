@@ -2024,6 +2024,34 @@ class TestStderrOnATerminal:
         lines = _wrap_for_terminal("short\n" + "word " * 30, 2).splitlines()
         assert lines[0] == "short" and len(lines) > 3
 
+    def test_the_width_is_the_width_of_the_terminal_stderr_is_on(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threatcode.cli as cli_module
+
+        monkeypatch.delenv("COLUMNS", raising=False)
+        monkeypatch.setattr(
+            cli_module.os, "get_terminal_size", lambda fd: os.terminal_size((123, 40))
+        )
+        assert cli_module._stderr_width() == 123
+        monkeypatch.setenv("COLUMNS", "77")
+        assert cli_module._stderr_width() == 77
+        monkeypatch.setenv("COLUMNS", "5")
+        assert cli_module._stderr_width() == 40
+
+    def test_without_a_terminal_the_width_is_the_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threatcode.cli as cli_module
+
+        monkeypatch.delenv("COLUMNS", raising=False)
+
+        def refuse(fd: int) -> os.terminal_size:
+            raise OSError("not a terminal")
+
+        monkeypatch.setattr(cli_module.os, "get_terminal_size", refuse)
+        assert cli_module._stderr_width() == 100
+
     def test_into_a_pipe_a_message_stays_on_one_line(self, tmp_path: Path) -> None:
         # A CI step that quotes the last line of stderr must get the whole message
         write(tmp_path, "main.tf", BAD_TF)

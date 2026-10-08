@@ -303,6 +303,25 @@ class TestTextReport:
         assert "LLM: failed: timed out. Only rule-based findings are shown." in format_text(failed)
         assert "LLM:" not in format_text(analysis_of(make_threat(1), llm={"status": "skipped"}))
 
+    def test_model_findings_that_named_no_resource_are_said_to_be_set_aside(self) -> None:
+        llm = {"status": "ran", "provider": "p", "model": "m", "threat_count": 1}
+        wide = RenderOptions(width=200)
+        one = format_text(analysis_of(make_threat(1), llm={**llm, "unattributed_count": 1}), wide)
+        assert (
+            "LLM: 1 model finding named no resource in the scan and was set aside "
+            "(see llm.unattributed in the JSON report)"
+        ) in one
+        two = format_text(analysis_of(make_threat(1), llm={**llm, "unattributed_count": 2}), wide)
+        assert "LLM: 2 model findings named no resource in the scan and were set aside" in two
+        none = format_text(analysis_of(make_threat(1), llm={**llm, "unattributed_count": 0}))
+        assert "named no resource" not in none
+
+    def test_a_finding_with_an_empty_title_is_still_an_entry(self) -> None:
+        text = format_text(analysis_of(make_threat(1, title=""), make_threat(2)))
+        found = entries(text)
+        assert len(found) == 2
+        assert found[0].body[0].startswith("-")
+
 
 class TestTextFromTheInputIsInert:
     """Names, titles, file names and messages come from the scanned files and are hostile."""

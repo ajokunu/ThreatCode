@@ -489,7 +489,7 @@ def _rows(
             _boundary_title(first)
             if first.source is ThreatSource.BOUNDARY
             else terminal_safe(first.title)
-        )
+        ) or "-"
         cause = ""
         if len(members) > 1:
             cause = terminal_safe(first.root_cause.replace("_", " ").replace("-", " "))
@@ -631,7 +631,7 @@ def _render_row(row: _Row, layout: _Layout, paint: _Painter, width: int) -> list
     for text in (row.location, _technique_text(row.techniques), row.stride):
         if text:
             detail.append((text, "info"))
-    out.extend(paint.runs(r) for r in flow(detail, width, sep="  ", first=indent))
+    out.extend(paint.runs(r).rstrip() for r in flow(detail, width, sep="  ", first=indent))
     if len(row.rules) > 1:
         out.extend(
             hanging(f"also {', '.join(row.rules[1:])}", width, first=indent, rest=indent + "     ")
@@ -733,7 +733,20 @@ def _llm_lines(report: ThreatReport, width: int) -> list[str]:
     if status == "ran":
         count = int(llm.get("threat_count", 0) or 0)
         text = f"LLM: ran{where}, {plural(count, 'advisory finding')} (never fail the gate)"
-        return hanging(text, width, rest="  ")
+        lines = hanging(text, width, rest="  ")
+        unattributed = int(llm.get("unattributed_count", 0) or 0)
+        if unattributed:
+            noun = plural(unattributed, "model finding")
+            lines.extend(
+                hanging(
+                    f"LLM: {noun} named no resource in the scan and "
+                    f"{'was' if unattributed == 1 else 'were'} set aside "
+                    "(see llm.unattributed in the JSON report)",
+                    width,
+                    rest="  ",
+                )
+            )
+        return lines
     if status == "failed":
         error = terminal_safe(str(llm.get("error", "")))
         text = f"LLM: failed{where}: {error}. Only rule-based findings are shown."

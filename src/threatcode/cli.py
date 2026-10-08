@@ -29,7 +29,7 @@ from threatcode.formatters.terminal_coverage import (
     unique_gaps,
 )
 from threatcode.formatters.terminal_layout import hanging
-from threatcode.formatters.text import plural, terminal_width
+from threatcode.formatters.text import plural
 from threatcode.models.threat import Severity
 
 if TYPE_CHECKING:
@@ -46,6 +46,8 @@ FAIL_ON_CHOICES: tuple[str, ...] = (*SEVERITY_CHOICES, "none")
 DEBUG_ENV = "THREATCODE_DEBUG"
 # Errors and gaps beyond this many are summarised on stderr; the JSON report lists them all.
 _LISTED_LIMIT = 10
+_MIN_STDERR_WIDTH = 40
+_DEFAULT_STDERR_WIDTH = 100
 
 _GROUP_EPILOG = """\b
 Examples:
@@ -134,9 +136,24 @@ def echo_err(message: str, *, hang: int = 0) -> None:
     click.echo(safe, err=True)
 
 
+def _stderr_width() -> int:
+    """The width of the terminal standard error is on: ``COLUMNS``, else the terminal, else 100.
+
+    Standard output may be a pipe while standard error is the terminal (``scan -f json > out``),
+    so the width of standard output says nothing about it.
+    """
+    columns = os.environ.get("COLUMNS", "")
+    if columns.isdigit() and int(columns) > 0:
+        return max(int(columns), _MIN_STDERR_WIDTH)
+    try:
+        return max(os.get_terminal_size(sys.stderr.fileno()).columns, _MIN_STDERR_WIDTH)
+    except (OSError, ValueError, AttributeError):
+        return _DEFAULT_STDERR_WIDTH
+
+
 def _wrap_for_terminal(message: str, hang: int) -> str:
     """``message`` wrapped at the terminal width, continuation lines ``hang`` spaces further in."""
-    width = terminal_width()
+    width = _stderr_width()
     out: list[str] = []
     for line in message.split("\n"):
         lead = line[: len(line) - len(line.lstrip(" "))]
