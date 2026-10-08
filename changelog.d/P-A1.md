@@ -7,3 +7,6 @@
   YAML that carries template delimiters (`{{ .Values.x }}`, `{% if %}`) and files that do not look like infrastructure (`tsconfig.json` with comments) are still counted as not infrastructure.
 - A directory whose only resource file fails to parse now says so, instead of "1 input(s) were parsed but produced no resources to model".
   The wording of that message for a scan that really finds no resources is now "1 input was parsed" or "2 inputs were parsed".
+- **A Rain module is reported as one.**
+  A CloudFormation resource whose type is `!Rain::Module <path>` was skipped with "Type must be a string, not a dict" (29 times in one scan of the AWS CloudFormation templates repository).
+  It is now skipped with "Rain module not expanded (Type is !Rain::Module <path>; run rain pkg to expand it), so the resources it creates are not analysed", and the template is marked incomplete, like a nested stack.

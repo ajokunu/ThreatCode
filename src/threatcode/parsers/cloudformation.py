@@ -254,6 +254,7 @@ class _Run:
         self.unmapped: dict[str, list[str]] = {}
         self.nested: list[tuple[str, str, int | None]] = []
         self.skipped = 0
+        self.rain_modules = 0
 
     # -- diagnostics -----------------------------------------------------------------
 
@@ -284,6 +285,8 @@ class _Run:
         problem = _for_each_problem(logical_id) or _validate(definition)
         if problem is not None:
             self.skipped += 1
+            if _rain_module(definition) is not None:
+                self.rain_modules += 1
             self.diagnose(
                 "warning",
                 "cfn.skipped_resource",
@@ -399,7 +402,7 @@ class _Run:
             metadata["sam"] = True
         if self.imports:
             metadata["imports"] = sorted(self.imports)
-        if self.nested:
+        if self.nested or self.rain_modules:
             metadata["incomplete"] = True
         if self.unresolved:
             metadata["unresolved_intrinsics"] = self.unresolved
@@ -503,10 +506,35 @@ def _for_each_problem(logical_id: str) -> str | None:
     return None
 
 
+_RAIN_MODULE_KEY = "Fn::Rain::Module"
+
+
+def _rain_module(definition: Any) -> str | None:
+    """The module path of a ``Type: !Rain::Module <path>`` entry; None for anything else.
+
+    Rain (``rain pkg``) packages a module into the template.
+    The template as written holds the tag where a resource type goes, and the YAML loader keeps it
+    as ``{"Fn::Rain::Module": path}``.
+    """
+    if not isinstance(definition, Mapping):
+        return None
+    cfn_type = definition.get("Type")
+    if isinstance(cfn_type, Mapping) and _RAIN_MODULE_KEY in cfn_type:
+        path = cfn_type[_RAIN_MODULE_KEY]
+        return path if isinstance(path, str) else str(path)
+    return None
+
+
 def _validate(definition: Any) -> str | None:
     """Why a Resources entry cannot be modelled, or None when it can."""
     if not isinstance(definition, Mapping):
         return f"the entry is a {_kind(definition)}, not a mapping with a Type"
+    module = _rain_module(definition)
+    if module is not None:
+        return (
+            f"Rain module not expanded (Type is !Rain::Module {module}; run rain pkg to expand "
+            "it), so the resources it creates are not analysed"
+        )
     cfn_type = definition.get("Type")
     if not isinstance(cfn_type, str) or not cfn_type.strip():
         return f"Type must be a string, not a {_kind(cfn_type)}"
