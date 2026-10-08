@@ -101,7 +101,7 @@ def _run(
     coverage = result.coverage
     if coverage.errors:
         shown = "; ".join(
-            f"{e.get('file') or '.'}: {str(e.get('message', '')).splitlines()[0]}"
+            f"{e.get('file') or '.'}: {(str(e.get('message', '')).splitlines() or [''])[0]}"
             for e in coverage.errors[:3]
         )
         more = len(coverage.errors) - 3

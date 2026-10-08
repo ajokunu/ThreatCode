@@ -23,7 +23,7 @@ threatcode scan examples/agent-workstation
 
 <!-- gen:report -->
 ```text
-ThreatCode scan of .: 4 resources, 6 findings
+ThreatCode scan of examples/agent-workstation: 4 resources, 6 findings
 
 Verdict: 1 critical, 4 high, 1 medium, 2 attack paths from the internet to private
 

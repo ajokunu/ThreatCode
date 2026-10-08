@@ -120,7 +120,7 @@ def _annotations(
     report: ThreatReport, graph: InfraGraph | None, prefix: str
 ) -> list[dict[str, Any]]:
     """Every annotation, most severe first, then most certain; external ids are unique."""
-    fallback = report.input_file.split(",")[0].strip() or "."
+    fallback = (report.input_paths or report.input_file.split(","))[0].strip() or "."
     ranked: list[tuple[tuple[int, int, float, str, str], dict[str, Any]]] = []
     for path in report.attack_paths:
         file, line = _path_location(path, graph, fallback)

@@ -140,6 +140,10 @@ class ThreatReport:
     # Rule evaluations that raised: {rule_id, node_id, error}.
     rule_errors: list[dict[str, str]] = field(default_factory=list)
     coverage: Coverage = field(default_factory=Coverage)
+    # The inputs relative to the scan root, as they were before ``input_file`` became the paths as
+    # typed. SARIF and Bitbucket anchor a result that has no location of its own at the first one,
+    # and SARIF names its alert category after them. Not serialized.
+    input_paths: list[str] = field(default_factory=list)
 
     def add(self, threat: Threat) -> None:
         self.threats.append(threat)

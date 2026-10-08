@@ -547,7 +547,8 @@ class TerraformHCLParser(BaseParser):
             raise ParseError(f"No Terraform files (.tf, .tofu, .tf.json) in {path.name}")
         documents, failures = _read_documents(files, session)
         if failures and not documents:
-            raise ParseError(failures[0])
+            name, message = failures[0]
+            raise ParseError(message, file=name)
         tfvars, tfvars_files = _read_tfvars(path, session)
         scope = _Scope(session, "", path, None, None, tfvars, directory_mode=True)
         return self._finish(
@@ -667,10 +668,13 @@ def _terraform_files(path: Path) -> list[Path]:
 
 def _read_documents(
     files: list[Path], session: _Session
-) -> tuple[list[tuple[str, HclDocument]], list[str]]:
-    """Parse each file; a failure is a diagnostic and the other files still load."""
+) -> tuple[list[tuple[str, HclDocument]], list[tuple[str, str]]]:
+    """Parse each file; a failure is a diagnostic and the other files still load.
+
+    The failures are ``(file name, message)`` pairs.
+    """
     documents: list[tuple[str, HclDocument]] = []
-    failures: list[str] = []
+    failures: list[tuple[str, str]] = []
     for file in files:
         label = str(file)
         try:
@@ -679,7 +683,7 @@ def _read_documents(
                 continue
             documents.append((label, TerraformHCLParser._load_text(text, file.name)))
         except ParseError as exc:
-            failures.append(str(exc))
+            failures.append((file.name, str(exc)))
             session.diagnose("error", "parse.failed", str(exc), label)
     return documents, failures
 

@@ -36,7 +36,7 @@ The report looks like this:
 
 <!-- gen:example-report -->
 ```text
-ThreatCode scan of .: 28 resources, 12 findings
+ThreatCode scan of examples/aws-webapp: 28 resources, 12 findings
 
 Verdict: 5 high, 6 medium, 1 low, 3 attack paths from the internet to data
 

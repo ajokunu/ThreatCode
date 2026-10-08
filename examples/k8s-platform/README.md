@@ -26,7 +26,7 @@ The manifests are in separate files, and one graph covers all of them, so paths 
 
 <!-- gen:report -->
 ```text
-ThreatCode scan of .: 9 resources, 30 findings
+ThreatCode scan of examples/k8s-platform: 9 resources, 30 findings
 
 Verdict: 1 critical, 6 high, 13 medium, 10 low, 2 attack paths from the internet to data
 

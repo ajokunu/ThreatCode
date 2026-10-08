@@ -29,7 +29,10 @@ if TYPE_CHECKING:
     from threatcode.models.report import ThreatReport
 
 __all__ = [
+    "ELLIPSIS",
     "attack_path_phrase",
+    "display_path",
+    "input_summary",
     "threat_source",
     "SEVERITY_ORDER",
     "STRIDE_ORDER",
@@ -65,6 +68,10 @@ _STRIDE_LABELS: dict[str, str] = {
 }
 
 ZERO_WIDTH_JOINER = "‍"
+
+# What the text report puts where it cut something; a single character, so it cannot be mistaken
+# for the ``...`` that a name may contain.
+ELLIPSIS = "…"
 
 _WHITESPACE = re.compile(r"\s+")
 # Control characters other than tab and newline, which collapse to spaces with the rest.
@@ -280,6 +287,67 @@ def repo_path(path: str, prefix: str = "") -> str:
             continue
         segments.append(segment)
     return "/".join(segments) or "."
+
+
+def display_path(
+    raw: str,
+    *,
+    cwd: str | os.PathLike[str] | None = None,
+    root: str | os.PathLike[str] | None = None,
+) -> str:
+    """``raw`` as a report names a scanned path: the way it was typed, never absolute, never ``.``.
+
+    A relative path is normalised (``./infra/`` is ``infra``) and kept as typed, so the directory
+    a file sits in is not lost.
+    An absolute path inside the current directory becomes relative to it, so a report made on one
+    machine does not carry the home directory of the person who ran it.
+    One outside it is shown relative to ``root`` (the common parent of everything scanned) when
+    that is given and the path is inside it, and is otherwise reduced to its own name.
+    The current directory itself, and a path that is only ``..``, is named by its directory name,
+    because ``.`` says nothing about what was scanned.
+    """
+    base = os.path.abspath(cwd) if cwd is not None else os.getcwd()
+    absolute = os.path.abspath(os.path.join(base, raw))
+    text = os.path.normpath(raw).replace(os.sep, "/")
+    if os.path.isabs(raw):
+        text = _inside(absolute, base)
+        if not text and root is not None:
+            anchor = os.path.abspath(root)
+            text = _inside(absolute, anchor)
+            if text == ".":
+                return PurePosixPath(anchor.replace(os.sep, "/")).name or "/"
+    if text in ("", ".", ".."):
+        return PurePosixPath(absolute.replace(os.sep, "/")).name or "/"
+    return text
+
+
+def _inside(absolute: str, base: str) -> str:
+    """``absolute`` relative to ``base`` as a POSIX path, or ``""`` when it is not inside."""
+    try:
+        relative = os.path.relpath(absolute, base).replace(os.sep, "/")
+    except ValueError:  # another drive on Windows
+        return ""
+    return "" if relative == ".." or relative.startswith("../") else relative
+
+
+def input_summary(label: str, *, limit: int = 60) -> str:
+    """The inputs of a scan in a few words: ``infra``, ``a.tf and b.tf`` or ``a.tf and 2 more``.
+
+    ``label`` is ``ThreatReport.input_file``, the inputs joined with ``, ``.
+    One input that is longer than ``limit`` keeps its end, because that is the part that names it.
+    """
+    parts = [part for part in label.split(", ") if part]
+    if len(parts) == 2 and len(label) <= limit:
+        return f"{parts[0]} and {parts[1]}"
+    if len(parts) > 1:
+        return f"{_keep_end(parts[0], limit - 12)} and {len(parts) - 1} more"
+    return _keep_end(parts[0], limit) if parts else ""
+
+
+def _keep_end(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return ELLIPSIS + text[len(text) - max(limit - 1, 1) :]
 
 
 def source_uri(path: str, prefix: str = "") -> str:

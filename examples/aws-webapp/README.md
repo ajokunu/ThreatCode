@@ -28,7 +28,7 @@ In a terminal the report is:
 
 <!-- gen:report -->
 ```text
-ThreatCode scan of .: 28 resources, 12 findings
+ThreatCode scan of examples/aws-webapp: 28 resources, 12 findings
 
 Verdict: 5 high, 6 medium, 1 low, 3 attack paths from the internet to data
 
@@ -93,7 +93,7 @@ Each path crosses an instance, and the critical CVE raises all three to critical
 
 <!-- gen:report-ingest -->
 ```text
-ThreatCode scan of .: 28 resources, 14 findings
+ThreatCode scan of examples/aws-webapp: 28 resources, 14 findings
 
 Verdict: 2 critical, 5 high, 6 medium, 1 low, 3 attack paths from the internet to data
 

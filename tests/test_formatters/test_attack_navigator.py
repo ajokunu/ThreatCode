@@ -208,6 +208,16 @@ class TestLayerSettings:
         layer = layer_of(_make_threat("A", ["T1530"]), _make_threat("B", ["T1530"]))
         assert "2 threats mapped to 1 ATT&CK techniques" in layer["description"]
 
+    def test_the_description_names_the_input_once_and_ends_each_sentence_once(self) -> None:
+        report = ThreatReport(
+            threats=[_make_threat("A", ["T1530"])], input_file="infra/prod, infra/dev, infra/qa"
+        )
+        description = json.loads(format_attack_navigator(report))["description"]
+        assert description.startswith(
+            "Auto-generated from ThreatCode scan of infra/prod and 2 more."
+        )
+        assert ".." not in description
+
     def test_valid_json_output(self) -> None:
         text = format_attack_navigator(
             ThreatReport(threats=[_make_threat("S3", ["T1530", "T1190"])])

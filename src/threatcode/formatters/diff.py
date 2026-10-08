@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from threatcode.exceptions import ThreatCodeError
-from threatcode.formatters._utils import md_code, md_inline, terminal_safe
+from threatcode.formatters._utils import display_path, md_code, md_inline, terminal_safe
 
 SEVERITY_ORDER: tuple[str, ...] = ("critical", "high", "medium", "low", "info")
 _RANK = {name: len(SEVERITY_ORDER) - index for index, name in enumerate(SEVERITY_ORDER)}
@@ -168,8 +168,8 @@ def compute_diff(baseline_path: str, current_path: str) -> dict[str, Any]:
     base_paths = {str(p["id"]): p for p in baseline.get("attack_paths", [])}
     cur_paths = {str(p["id"]): p for p in current.get("attack_paths", [])}
     return {
-        "baseline_file": baseline.get("input_file", ""),
-        "current_file": current.get("input_file", ""),
+        "baseline_file": display_path(baseline_path),
+        "current_file": display_path(current_path),
         "baseline_total": len(baseline["threats"]),
         "current_total": len(current["threats"]),
         "attack_paths_added": [

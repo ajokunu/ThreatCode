@@ -149,7 +149,8 @@ class TestScan:
         assert report["total_threats"] == len(report["threats"]) == 6
         assert report["attack_paths"] == []
         assert report["coverage"]["units_parsed"] == 1
-        assert report["input_file"] == "simple_exposed.tf"
+        # The way it was typed, so the directory a file sits in is not lost
+        assert report["input_file"] == "tests/fixtures/terraform/simple_exposed.tf"
 
     def test_accepts_a_string_a_path_or_a_list(self) -> None:
         one = threatcode.scan(str(SIMPLE_TF), no_timestamp=True)
@@ -168,7 +169,7 @@ class TestScan:
     def test_a_directory_is_scanned(self) -> None:
         report = threatcode.scan(FIXTURES / "kubernetes")
         assert report["coverage"]["units_parsed"] == len(list((FIXTURES / "kubernetes").iterdir()))
-        assert report["input_file"] == "."
+        assert report["input_file"] == "tests/fixtures/kubernetes"
 
     def test_a_finding_does_not_raise_whatever_the_gate(self) -> None:
         assert threatcode.scan(SIMPLE_TF, fail_on="info")["total_threats"] == 6

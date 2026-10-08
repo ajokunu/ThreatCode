@@ -10,6 +10,7 @@ import pytest
 
 from tests.helpers.scan import scan_files
 from threatcode.exceptions import ThreatCodeError
+from threatcode.formatters._utils import display_path
 from threatcode.formatters.diff import compute_diff, format_diff, gating_threats, load_report
 from threatcode.models.report import ThreatReport
 
@@ -189,9 +190,19 @@ class TestComputeDiff:
         result = diff_of(tmp_path, [], added)
         assert [t["id"] for t in result["added"]] == ["c", "b", "d", "a"]
 
-    def test_input_file_names_come_from_the_reports(self, tmp_path: Path) -> None:
-        result = diff_of(tmp_path, [], [])
-        assert (result["baseline_file"], result["current_file"]) == ("b.json", "c.json")
+    def test_the_file_names_are_the_two_files_that_were_compared(self, tmp_path: Path) -> None:
+        # Two scans of the same directory both say `input_file: infra`; the diff has to tell the
+        # baseline from the current report, so it names the files it was given
+        before = write_report(tmp_path / "before.json", [], input_file="infra")
+        after = write_report(tmp_path / "after.json", [], input_file="infra")
+        result = compute_diff(before, after)
+        assert (result["baseline_file"], result["current_file"]) == (
+            display_path(before),
+            display_path(after),
+        )
+        assert result["baseline_file"].endswith("before.json")
+        assert result["current_file"].endswith("after.json")
+        assert str(tmp_path.parent) not in result["baseline_file"]
 
 
 class TestGating:

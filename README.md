@@ -24,7 +24,7 @@ Pipe it, or pass `-f json`, and you get the full JSON report instead.
 
 <!-- gen:example-report -->
 ```text
-ThreatCode scan of .: 28 resources, 14 findings
+ThreatCode scan of examples/aws-webapp: 28 resources, 14 findings
 
 Verdict: 2 critical, 5 high, 6 medium, 1 low, 3 attack paths from the internet to data
 

@@ -25,7 +25,7 @@ from threatcode.engine.mitre import (
     TECHNIQUE_DB,
     normalize_technique,
 )
-from threatcode.formatters._utils import collapse_whitespace, truncate
+from threatcode.formatters._utils import collapse_whitespace, input_summary, truncate
 from threatcode.models.report import ThreatReport, threat_severity
 from threatcode.models.threat import Severity
 
@@ -138,7 +138,7 @@ def _build_layer(report: ThreatReport) -> dict[str, Any]:
 
     techniques = [_technique(tid, tactic, info) for (tid, tactic), info in sorted(entries.items())]
     description = (
-        f"Auto-generated from ThreatCode scan of {report.input_file}. "
+        f"Auto-generated from ThreatCode scan of {input_summary(report.input_file)}. "
         f"{len(report.threats)} threats mapped to {len({t['techniqueID'] for t in techniques})} "
         f"ATT&CK techniques."
     )

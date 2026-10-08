@@ -205,7 +205,7 @@ class TestCoverage:
         result = scan(tmp_path)
         assert "aws_s3_bucket.fine" in result.graph.nodes
         (error,) = result.coverage.errors
-        assert error["file"] == "bad"
+        assert error["file"] == "bad/main.tf"
         assert error["code"] == "parse.failed"
         assert error["message"]
         assert result.exit_code == EXIT_USAGE
@@ -562,7 +562,10 @@ class TestLocationsFingerprintsAndOrder:
             root = tmp_path / name
             write(root, "infra/main.tf", bucket("one"))
             write(root, "k8s/d.yaml", fixture_text("kubernetes/secure_deployment.yml"))
-            outputs.append(json.dumps(scan(root).to_dict(), indent=2))
+            report = scan(root).to_dict()
+            # What was scanned is named as typed, so it differs; nothing else may
+            assert report.pop("input_file") == root.name
+            outputs.append(json.dumps(report, indent=2))
         assert outputs[0] == outputs[1]
 
     def test_a_threat_without_a_location_gets_its_nodes_file(self, tmp_path: Path) -> None:

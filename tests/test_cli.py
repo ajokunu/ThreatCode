@@ -163,7 +163,7 @@ class TestScanFormats:
             ("bitbucket", '"report"'),
             ("navigator", '"techniques"'),
             ("diagram", "<svg"),
-            ("text", "ThreatCode scan of simple_s3.plan.json"),
+            ("text", "ThreatCode scan of tests/fixtures/terraform/simple_s3.plan.json"),
         ],
     )
     def test_every_format_renders(self, fmt: str, needle: str) -> None:
@@ -238,7 +238,8 @@ class TestExitCodeMatrix:
         result = invoke("scan", tmp_path)
         assert result.exit_code == 2
         data = report_of(result)
-        assert data["coverage"]["errors"][0]["file"] == "bad"
+        # The file inside the module that failed, not the directory (or `.`)
+        assert data["coverage"]["errors"][0]["file"] == "bad/main.tf"
         assert any(t["resource_address"] == "aws_s3_bucket.fine" for t in data["threats"])
 
     def test_nothing_found_exits_two(self, tmp_path: Path) -> None:
@@ -468,7 +469,7 @@ class TestTtyDefaultAndColor:
 
     def test_a_terminal_gets_text(self, tty: None) -> None:
         out = invoke("scan", SIMPLE_TF).stdout
-        assert out.startswith("ThreatCode scan of simple_exposed.tf")
+        assert out.startswith("ThreatCode scan of tests/fixtures/terraform/simple_exposed.tf")
         assert not out.lstrip().startswith("{")
 
     def test_a_terminal_with_an_output_file_still_gets_json(
@@ -1485,8 +1486,9 @@ class TestScanInputs:
         result = invoke("scan", SIMPLE_TF, K8S_FIXTURE, "--fail-on", "none")
         data = report_of(result)
         assert data["coverage"]["units_parsed"] == 2
-        assert (
-            data["input_file"] == "kubernetes/insecure_deployment.yml, terraform/simple_exposed.tf"
+        assert data["input_file"] == (
+            "tests/fixtures/kubernetes/insecure_deployment.yml, "
+            "tests/fixtures/terraform/simple_exposed.tf"
         )
 
     def test_state_json_is_rejected_with_the_corrective_command(self) -> None:

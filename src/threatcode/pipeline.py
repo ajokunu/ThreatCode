@@ -65,6 +65,7 @@ from threatcode.discovery import (
 )
 from threatcode.exceptions import ParseError, ThreatCodeError, UnsupportedFormatError, UsageError
 from threatcode.fingerprint import assign_fingerprints
+from threatcode.formatters._utils import display_path
 from threatcode.ir.addressing import split_location
 from threatcode.models.analysis import AnalysisResult
 from threatcode.models.report import (
@@ -351,11 +352,12 @@ def run_scan(request: ScanRequest) -> ScanResult:
         for relpath in discovery.oversized:
             coverage.note_not_iac(relpath)
 
-        _parse_units(discovery, root, coverage, errors)
+        label = _input_label(request, stdin_name, root)
+        _parse_units(discovery, root, coverage, errors, label)
         outputs = [unit.parsed for unit in discovery.units if unit.parsed is not None]
         coverage.units_parsed = len(outputs)
         if not outputs and not errors:
-            errors.append(_nothing_to_model(coverage))
+            errors.append(_nothing_to_model(coverage, label))
 
         graph = InfraGraph.from_units(
             outputs,
@@ -366,7 +368,7 @@ def run_scan(request: ScanRequest) -> ScanResult:
         if outputs and graph.node_count == 0 and not errors:
             errors.append(
                 {
-                    "file": ".",
+                    "file": label,
                     "code": "parse.zero_resources",
                     "message": f"{len(outputs)} input(s) were parsed but produced no resources "
                     "to model, so there is nothing to scan",
@@ -376,7 +378,6 @@ def run_scan(request: ScanRequest) -> ScanResult:
         secret_findings = find_secrets(discovery.units, graph)
         external, sources = _ingest(request, graph, root)
 
-        label = _input_label(request, discovery, stdin_name)
         client = _build_client(settings, graph)
         engine = HybridEngine(
             config=settings.config,
@@ -387,6 +388,7 @@ def run_scan(request: ScanRequest) -> ScanResult:
             input_label=label, secret_findings=secret_findings, external_findings=external
         )
         report = engine.analyze(graph, input_file=label, context=context)
+        report.input_paths = _input_paths(request, discovery, stdin_name)
 
         return _finish(
             request,
@@ -411,11 +413,11 @@ def _start_coverage(discovery: Discovery) -> Coverage:
     )
 
 
-def _nothing_to_model(coverage: Coverage) -> dict[str, str]:
+def _nothing_to_model(coverage: Coverage, label: str) -> dict[str, str]:
     skipped = coverage.not_iac_count
     detail = f" ({skipped} candidate file(s) were not infrastructure)" if skipped else ""
     return {
-        "file": ".",
+        "file": label,
         "code": "discovery.nothing_to_model",
         "message": f"no supported infrastructure files found{detail}; supported inputs are "
         "Terraform, CloudFormation, Kubernetes, Helm, Dockerfile and MCP configs",
@@ -446,22 +448,39 @@ def _save_stdin(name: str | None, directory: Path) -> tuple[str, Path]:
     return name, target
 
 
-def _input_label(request: ScanRequest, discovery: Discovery, stdin_name: str) -> str:
-    """The inputs as the report names them: root-relative POSIX, sorted, comma separated."""
-    labels: list[str] = []
+def _input_label(request: ScanRequest, stdin_name: str, root: Path) -> str:
+    """The inputs as the report names them: as typed, never absolute, sorted, comma separated.
+
+    ``scan infra/`` is ``infra`` and ``scan ./deploy/app.yaml`` is ``deploy/app.yaml``, so the
+    report says what was scanned and a file keeps the directory it sits in.
+    The current directory is named by its directory name, never ``.``.
+    """
+    labels = [
+        stdin_name if raw == STDIN_PATH else display_path(raw, root=root) for raw in request.paths
+    ]
+    return ", ".join(sorted(set(labels)))
+
+
+def _input_paths(request: ScanRequest, discovery: Discovery, stdin_name: str) -> list[str]:
+    """The inputs relative to the scan root, POSIX, sorted: where SARIF anchors a result."""
+    paths: list[str] = []
     for raw in request.paths:
         if raw == STDIN_PATH:
-            labels.append(stdin_name)
+            paths.append(stdin_name)
         else:
-            labels.append(Path(os.path.relpath(os.path.abspath(raw), discovery.root)).as_posix())
-    return ", ".join(sorted(set(labels)))
+            paths.append(Path(os.path.relpath(os.path.abspath(raw), discovery.root)).as_posix())
+    return sorted(set(paths))
 
 
 # ── Parsing ───────────────────────────────────────────────────────────
 
 
 def _parse_units(
-    discovery: Discovery, root: Path, coverage: Coverage, errors: list[dict[str, str]]
+    discovery: Discovery,
+    root: Path,
+    coverage: Coverage,
+    errors: list[dict[str, str]],
+    label: str = "",
 ) -> None:
     """Parse every unit, setting ``unit.parsed``. A bad file is recorded and skipped.
 
@@ -471,7 +490,7 @@ def _parse_units(
     units = discovery.units
     for unit in units:
         if unit.kind != HCL_MODULE:
-            unit.parsed = _parse_unit(unit, root, coverage, errors)
+            unit.parsed = _parse_unit(unit, root, coverage, errors, label)
     plans: dict[Path, ScanUnit] = {
         unit.path.parent: unit
         for unit in units
@@ -492,11 +511,15 @@ def _parse_units(
                 )
             )
             continue
-        unit.parsed = _parse_unit(unit, root, coverage, errors)
+        unit.parsed = _parse_unit(unit, root, coverage, errors, label)
 
 
 def _parse_unit(
-    unit: ScanUnit, root: Path, coverage: Coverage, errors: list[dict[str, str]]
+    unit: ScanUnit,
+    root: Path,
+    coverage: Coverage,
+    errors: list[dict[str, str]],
+    label: str = "",
 ) -> ParsedOutput | None:
     from threatcode.parsers import detect_and_parse
 
@@ -511,7 +534,7 @@ def _parse_unit(
             or unit.kind == HCL_MODULE
             or (unit.by_name and not _well_formed(unit.path))
         ):
-            errors.append(_parse_error(unit, exc))
+            errors.append(_parse_error(unit, exc, label))
         else:
             coverage.note_not_iac(unit.relpath)
         return None
@@ -520,15 +543,15 @@ def _parse_unit(
         if not (unit.explicit or unit.by_name) and not _readable_text(unit.path):
             coverage.note_not_iac(unit.relpath)
         else:
-            errors.append(_parse_error(unit, exc))
+            errors.append(_parse_error(unit, exc, label))
         return None
     except (ThreatCodeError, OSError) as exc:
-        errors.append(_parse_error(unit, exc))
+        errors.append(_parse_error(unit, exc, label))
         return None
     except Exception as exc:
         # A parser bug must not look like a clean file.
         logger.debug("Unexpected failure parsing %s", unit.relpath, exc_info=True)
-        errors.append(_parse_error(unit, exc, unexpected=True))
+        errors.append(_parse_error(unit, exc, label, unexpected=True))
         return None
     return _localize_parsed(parsed, unit, root)
 
@@ -574,9 +597,22 @@ def _well_formed(path: Path) -> bool:
     return True
 
 
-def _parse_error(unit: ScanUnit, exc: BaseException, *, unexpected: bool = False) -> dict[str, str]:
+def _parse_error(
+    unit: ScanUnit, exc: BaseException, label: str = "", *, unexpected: bool = False
+) -> dict[str, str]:
+    """The ``parse.failed`` error of a unit, naming the file that failed.
+
+    A Terraform module is a directory, so its parser says which file inside it failed; a module
+    at the scan root that does not say is named by the input label, never ``.``.
+    """
     message = f"{type(exc).__name__}: {exc}" if unexpected else str(exc)
-    return {"file": unit.relpath, "code": "parse.failed", "message": message}
+    where = unit.relpath
+    if unit.kind == HCL_MODULE:
+        inner = getattr(exc, "file", "")
+        where = (unit.base_rel / inner).as_posix() if inner else where
+    if where == ".":
+        where = label or where
+    return {"file": where, "code": "parse.failed", "message": message}
 
 
 # ── Root-relative paths ───────────────────────────────────────────────

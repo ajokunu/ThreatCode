@@ -110,9 +110,14 @@ _MAX_MESSAGE = 1500
 # ── paths ─────────────────────────────────────────────────────────────
 
 
+def _input_paths(report: ThreatReport) -> list[str]:
+    """The inputs relative to the scan root: ``input_paths``, else the ones ``input_file`` lists."""
+    return report.input_paths or [p.strip() for p in report.input_file.split(",")]
+
+
 def _input_file(report: ThreatReport) -> str:
     """The first path the report names as its input, for a result with no location of its own."""
-    first = report.input_file.split(",")[0].strip()
+    first = _input_paths(report)[0]
     return first or "."
 
 
@@ -230,7 +235,7 @@ def _threat_order(threat: Threat) -> tuple[int, str, str, str]:
 
 def _automation_id(report: ThreatReport) -> str:
     """``threatcode/<input>/``: the category GitHub keeps one alert set for, per scanned input."""
-    joined = "+".join(part.strip() for part in report.input_file.split(","))
+    joined = "+".join(part.strip() for part in _input_paths(report))
     label = re.sub(r"[^A-Za-z0-9._+-]+", "-", joined).strip("-.")
     return f"threatcode/{label[:80] or 'root'}/"
 
