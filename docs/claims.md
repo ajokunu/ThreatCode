@@ -13,7 +13,7 @@ The blocks on this page run in the test suite, so a claim that stops being true 
 | 3 | Attack paths are modeled for AWS, Kubernetes and MCP configs. Azure and GCP get findings but no topology. | `tests/test_docs.py::TestClaimsStayTrue::test_azure_and_gcp_have_rule_findings_and_no_attack_paths` |
 | 4 | It has 256<!-- count:rules --> built-in rules with STRIDE and ATT&CK mappings, in 6 groups. | [Rule catalog](rules.md), generated and checked by `scripts/gen_docs_counts.py --check` |
 | 5 | Rules and the engine reference 36<!-- count:techniques --> ATT&CK techniques in 12<!-- count:tactics --> tactics of ATT&CK v19.2<!-- count:attack_version -->. | [MITRE ATT&CK](mitre-attack.md), generated from the code |
-| 6 | It joins Trivy, Grype, OSV-Scanner and SARIF results to the graph, so a critical CVE on an exposed workload is a step in a path. | [Claim 6](#claim-6) and `tests/test_examples_ingest.py` |
+| 6 | It joins Trivy, Grype, OSV-Scanner and SARIF results to the graph, so a critical CVE on an exposed workload is a step in a path. | [Claim 6](#claim-6) |
 | 7 | The exit code is 0 clean, 1 gate tripped, 2 the scan cannot be trusted. | [Claim 7](#claim-7) and `tests/test_pipeline.py` |
 | 8 | A scan never reports a clean pass for input it did not analyse. | [Claim 8](#claim-8) |
 | 9 | Terraform state is rejected, not scanned as an empty plan. | [Claim 9](#claim-9) |
@@ -52,19 +52,41 @@ EOF
 ## Claim 6
 
 With the Trivy report ingested, the critical CVE sits on both instances and every path becomes critical.
+The CVE is also a step in the paths: in each of the three paths, the finding for the CVE is one of the findings that enable the hop through `aws_instance.app[0]`.
 
 <!-- runnable -->
 
 ```bash
+threatcode scan examples/aws-webapp --fail-on none -f json -o baseline.json
 threatcode scan examples/aws-webapp --ingest examples/aws-webapp/scanner/trivy-app-image.json --fail-on none -f json -o report.json
 python - <<'EOF'
 import json
 report = json.load(open("report.json"))
+baseline = json.load(open("baseline.json"))
+# Without the ingest there is no scanner finding and not every path is critical.
+assert not [t for t in baseline["threats"] if t["source"] == "scanner"]
+assert [p["severity"] for p in baseline["attack_paths"]] != ["critical"] * 3
 cves = [t for t in report["threats"] if t["source"] == "scanner"]
 assert sorted(t["resource_address"] for t in cves) == ["aws_instance.app[0]", "aws_instance.app[1]"]
 assert all(t["rule_id"] == "trivy:CVE-2022-37434" and t["severity"] == "critical" for t in cves)
 assert [p["severity"] for p in report["attack_paths"]] == ["critical"] * 3
 assert report["ingest"][0]["unattached"] == 0
+
+threats = {t["id"]: t for t in report["threats"]}
+for path in report["attack_paths"]:
+    hops = {hop["node_id"]: hop for hop in path["hops"]}
+    enablers = [threats[i] for i in hops["aws_instance.app[0]"]["enabled_by"]]
+    assert any(
+        t["source"] == "scanner"
+        and t["rule_id"] == "trivy:CVE-2022-37434"
+        and t["resource_address"] == "aws_instance.app[0]"
+        for t in enablers
+    ), (path["target"], [t["rule_id"] for t in enablers])
+    for hop in path["hops"]:
+        for finding_id in hop["enabled_by"]:
+            finding = threats[finding_id]
+            if finding["source"] == "scanner":
+                assert finding["resource_address"] == hop["node_id"], (hop["node_id"], finding_id)
 EOF
 ```
 

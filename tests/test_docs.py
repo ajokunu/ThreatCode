@@ -963,6 +963,52 @@ def connection_offenders(root: Path) -> list[str]:
     return offenders
 
 
+def _is_pending_marker(node: ast.expr) -> bool:
+    """True for ``pending(...)``, as a decorator or as a module-level ``pytestmark``."""
+    return (
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "pending"
+    )
+
+
+_DEFS = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def cited_pending_tests(cited: list[tuple[str, str]], root: Path) -> list[str]:
+    """The cited ``(file, "Class::test")`` pairs that the suite skips as pending.
+
+    A citation of a whole file (an empty name) is pending when any test in the file is.
+    A citation of a class or a test is pending when it, an enclosing class, or the module is.
+    """
+    found: list[str] = []
+    for relative, name in cited:
+        tree = ast.parse((root / relative).read_text("utf-8"))
+        pending_here = any(
+            isinstance(stmt, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in stmt.targets)
+            and _is_pending_marker(stmt.value)
+            for stmt in tree.body
+        )
+        scope: ast.AST = tree
+        for part in filter(None, name.split("::")):
+            scope = next(
+                (n for n in getattr(scope, "body", []) if isinstance(n, _DEFS) and n.name == part),
+                scope,
+            )
+            if isinstance(scope, _DEFS):
+                pending_here = pending_here or any(
+                    _is_pending_marker(d) for d in scope.decorator_list
+                )
+        pending_here = pending_here or any(
+            _is_pending_marker(d)
+            for node in ast.walk(scope)
+            if isinstance(node, _DEFS)
+            for d in node.decorator_list
+        )
+        if pending_here:
+            found.append(f"{relative}::{name}" if name else relative)
+    return found
+
+
 class TestClaimsAreProven:
     """docs/claims.md lists what may be said about ThreatCode, and the proof of each."""
 
@@ -983,6 +1029,75 @@ class TestClaimsAreProven:
                 if not re.search(rf"(?:def|class) {re.escape(name)}\b", source):
                     missing.append(f"{relative}::{name}")
         assert not missing, f"claims cite tests that do not exist: {missing}"
+
+    def test_no_claim_rests_on_a_test_that_is_skipped_as_pending(self) -> None:
+        """A pending test is skipped, so a claim that cites one is proven by nothing."""
+        cited = re.findall(r"`(tests/[\w/.-]+\.py)(?:::([\w:]+))?`", self.CLAIMS.read_text("utf-8"))
+        pending_cited = cited_pending_tests(cited, REPO)
+        assert not pending_cited, f"claims cite tests that are skipped as pending: {pending_cited}"
+
+    def test_the_pending_check_would_catch_a_claim_that_cites_a_pending_test(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_one.py").write_text(
+            "from tests.helpers.pending import pending\n"
+            "class TestOne:\n"
+            '    @pending("WP-9-9", "later")\n'
+            "    def test_skipped(self) -> None: ...\n"
+            "    def test_runs(self) -> None: ...\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "tests" / "test_two.py").write_text(
+            'from tests.helpers.pending import pending\npytestmark = pending("WP-9-9", "later")\n'
+            "def test_anything() -> None: ...\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "tests" / "test_three.py").write_text(
+            "class TestThree:\n    def test_runs(self) -> None: ...\n", encoding="utf-8"
+        )
+        cited = [
+            ("tests/test_one.py", "TestOne::test_skipped"),
+            ("tests/test_one.py", "TestOne::test_runs"),
+            ("tests/test_one.py", "TestOne"),
+            ("tests/test_one.py", ""),
+            ("tests/test_two.py", "test_anything"),
+            ("tests/test_two.py", ""),
+            ("tests/test_three.py", "TestThree::test_runs"),
+            ("tests/test_three.py", ""),
+        ]
+        assert cited_pending_tests(cited, tmp_path) == [
+            "tests/test_one.py::TestOne::test_skipped",
+            "tests/test_one.py::TestOne",
+            "tests/test_one.py",
+            "tests/test_two.py::test_anything",
+            "tests/test_two.py",
+        ]
+
+    @NEEDS_BASH
+    def test_the_pitch_claim_checks_that_the_cve_enables_the_instance_hop(
+        self, tmp_path: Path
+    ) -> None:
+        """The CVE-as-a-step claim fails if the block asks about a hop the CVE does not enable."""
+        text = self.CLAIMS.read_text("utf-8")
+        (block,) = [
+            b
+            for b in extract_blocks(text, self.CLAIMS)
+            if b.marker == "runnable" and "trivy-app-image.json" in b.text
+        ]
+        assert run_runnable(block, tmp_path / "real") == []
+        asked = 'hops["aws_instance.app[0]"]'
+        assert asked in block.text
+        wrong_hop = Block(
+            block.path,
+            block.line,
+            block.lang,
+            block.text.replace(asked, 'hops["aws_lb.front"]'),
+            block.marker,
+            block.attrs,
+        )
+        problems = run_runnable(wrong_hop, tmp_path / "wrong")
+        assert problems and "AssertionError" in problems[0]
 
     def test_every_claim_link_has_a_section(self) -> None:
         text = self.CLAIMS.read_text("utf-8")
