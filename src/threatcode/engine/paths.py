@@ -36,7 +36,12 @@ travel and never crosses a node only because two nodes share a network.
   edge to the next hop names in ``via`` (the security group whose rule admits the traffic, the
   listener, the role binding), except repudiation and denial of service findings, which do not
   help an attacker move.
-  The target's own findings enable the last hop.
+  The target's own findings enable the last hop only when they give access to it: an exposure (a
+  public policy, a world-open endpoint), a credential in the code, a scanner finding, or a
+  spoofing or privilege weakness.
+  A finding about how the store protects its data (no customer-managed key, no versioning, no
+  access log) does not open the way in, so it is not what makes a route to the store an attack
+  path.
   A path is kept only when it has an enabling finding: an architecture with nothing wrong on its
   way to the data has no attack path.
   The ids of the enabling findings go to ``Threat.path_ids``.
@@ -78,7 +83,7 @@ from dataclasses import dataclass, field
 
 from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.engine.mitre import PATH_TECHNIQUES, tactics_for_techniques
-from threatcode.engine.severity import is_sensitive_data_store
+from threatcode.engine.severity import is_exposure_finding, is_sensitive_data_store
 from threatcode.engine.stride import StrideCategory
 from threatcode.ir.addressing import base_address
 from threatcode.ir.edges import (
@@ -157,6 +162,19 @@ _NOT_ENABLING = frozenset(
     {StrideCategory.REPUDIATION.value, StrideCategory.DENIAL_OF_SERVICE.value}
 )
 _ENABLING_SOURCES = frozenset({ThreatSource.RULE, ThreatSource.SECRET, ThreatSource.SCANNER})
+# The categories of a finding on a target that give access to it, besides an exposure
+_GIVES_ACCESS = frozenset(
+    {StrideCategory.SPOOFING.value, StrideCategory.ELEVATION_OF_PRIVILEGE.value}
+)
+# Rules that report a credential written where anyone who reads the file can use it
+_CREDENTIAL_ROOT_CAUSES = frozenset(
+    {
+        "acr-shared-credentials",
+        "gcp-service-account-key",
+        "mcp-literal-credential",
+        "secret-baked-into-image",
+    }
+)
 _SEVERITIES = (Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL)
 _EDGE_ORDER = {EdgeType.NETWORK_FLOW: 0, EdgeType.DATA_FLOW: 1, EdgeType.IAM_BINDING: 2}
 _IMDS_RULE = "EC2_IMDSV1"
@@ -429,6 +447,8 @@ class _Finder:
             edge = route.edges[position] if position < len(route.edges) else None
             sites = [node_id] + (_edge_via(edge) if edge is not None else [])
             hop_threats = _unique(t for site in sites for t in enabling.get(site, ()))
+            if edge is None:
+                hop_threats = [t for t in hop_threats if _gives_access(t)]
             for threat in hop_threats:
                 used.setdefault(threat.id, threat)
             arrival = route.edges[position - 1] if position > 0 else None
@@ -524,6 +544,20 @@ class _Finder:
         )
         logger.warning(message)
         self.graph.diagnostics.append(Diagnostic("warning", "paths.search_truncated", message))
+
+
+def _gives_access(threat: Threat) -> bool:
+    """Whether a finding on the target of a path opens the way to it.
+
+    A credential or a scanner finding does, and so does an exposure (``is_exposure_finding``) or
+    a weakness of authentication or privilege.
+    The rest describe the protection of the data once someone has reached it.
+    """
+    if threat.source in (ThreatSource.SECRET, ThreatSource.SCANNER):
+        return True
+    if threat.root_cause in _CREDENTIAL_ROOT_CAUSES or is_exposure_finding(threat):
+        return True
+    return threat.stride_category in _GIVES_ACCESS
 
 
 def _executes_code(node: InfraNode) -> bool:
@@ -632,8 +666,21 @@ def _rationale(path: AttackPath, kind: str, used: list[Threat]) -> str:
     return (
         f"{start} reaches {reach}{where}{through} and ends at {path.target} ({kind}); "
         f"{count} finding{'s' if count != 1 else ''} enable{'' if count != 1 else 's'} it, "
-        f"the worst being {worst.title} ({threat_severity(worst).value})."
+        f"the worst being {worst.title} ({_severity_label(worst)})."
     )
+
+
+def _severity_label(threat: Threat) -> str:
+    """The severity of a finding as the report lists it, and what context made of it.
+
+    ``low`` for a finding the context left alone and ``low, raised to medium`` for one it
+    changed, so the rationale never names a severity that the finding itself does not show.
+    """
+    effective = threat_severity(threat)
+    if effective is threat.severity:
+        return threat.severity.value
+    direction = "raised" if effective > threat.severity else "lowered"
+    return f"{threat.severity.value}, {direction} to {effective.value}"
 
 
 # ---------------------------------------------------------------------------
