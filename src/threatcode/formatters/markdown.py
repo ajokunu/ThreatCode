@@ -5,11 +5,16 @@ The report reads in the order a reviewer needs it:
 1. a title, a hidden marker line (so a CI step can find its own comment and edit it in place) and
    a one-line verdict;
 2. the severity table;
-3. the attack paths, each as ordered hops, with a Mermaid flowchart;
+3. the attack paths, each as ordered hops, with a Mermaid flowchart of the hops;
 4. a table of the top risks across all categories;
-5. the findings, one section per STRIDE category in STRIDE order, with findings that share a root
-   cause on one resource collapsed into one entry;
+5. the findings, one section per STRIDE category with the category that holds the worst finding
+   first, and findings that share a root cause on one resource collapsed into one entry;
 6. what the scan could not analyse, and the state of the LLM phase.
+
+An attack path says what each hop does in words (``sends traffic on HTTPS 443``, ``assumes the
+role``), lists the findings that enable it once (a finding that enabled the hop before is not
+repeated) and, when it starts with hops an earlier path already lists, says so instead of
+repeating them.
 
 GitHub rejects a comment over 65,536 characters, so the report is capped at ``MAX_CHARS`` (60,000).
 When findings do not fit, the most severe are kept and a footer says how many were left out.
@@ -19,11 +24,14 @@ produce the same comment and an update in place shows no change.
 Everything that comes from the scanned input goes through ``md_inline`` or ``md_code``, so a
 hostile resource name or model output cannot start a heading, a list, a table row or an
 @-mention.
+A URL in running text becomes a code span rather than carrying an invisible character, so it can
+be copied as it is and never turns into a link.
 Severities are plain text labels such as ``[HIGH]``.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -31,6 +39,7 @@ from typing import TYPE_CHECKING
 from threatcode.engine.mitre import TECHNIQUE_DB
 from threatcode.formatters._utils import (
     STRIDE_ORDER,
+    collapse_whitespace,
     md_code,
     md_inline,
     plural,
@@ -39,7 +48,15 @@ from threatcode.formatters._utils import (
     stride_label,
     technique_url,
     threat_source,
+    truncate,
     verdict_line,
+)
+from threatcode.formatters.diagram_labels import (
+    Enabler,
+    edge_phrase,
+    hop_enablers,
+    humanize_tokens,
+    shared_prefix_length,
 )
 from threatcode.formatters.mermaid import attack_path_flowchart
 from threatcode.models.attack_path import AttackPath
@@ -62,11 +79,51 @@ _TITLE_LIMIT = 200
 _DESCRIPTION_LIMIT = 1500
 _MITIGATION_LIMIT = 800
 _SUB_BULLET_LIMIT = 300
+# A severity reason can name the whole route from the internet; cutting it leaves an open bracket
+_REASON_LIMIT = 600
 _RESERVE = 200
+# Fewer leading hops than this are not worth collapsing into a reference to an earlier path
+_MIN_SHARED_HOPS = 2
 
 
 # Where each finding sits: threat id -> (file, start line); "" when nothing knows.
 _Places = dict[str, tuple[str, int | None]]
+
+# A web address in running text, up to the first character that ends it
+_URL = re.compile(r"(?i)\b(?:https?|ftp)://[^\s<>\"'`|]+")
+_URL_TRAILING = ".,;:!?)]}"
+_URL_MARK = "\ue000{}\ue001"
+_URL_SLOT = re.compile("\ue000(\\d+)\ue001")
+_PRIVATE_USE = re.compile("[\ue000-\uf8ff]")
+
+
+def _prose(text: str, *, limit: int | None = None) -> str:
+    """Untrusted running text as inline Markdown, with each web address in a code span.
+
+    ``md_inline`` keeps a bare address from becoming a link by putting an invisible character
+    inside ``://``, which breaks the address for anyone who copies it.
+    A code span is inert for the same reason and copies exactly, so addresses go there and the
+    rest of the text goes through ``md_inline``.
+    The engine's edge type tokens (``network_flow``) read as words.
+    """
+    flat = _PRIVATE_USE.sub("", collapse_whitespace(humanize_tokens(text)))
+    if limit is not None:
+        flat = truncate(flat, limit)
+    urls: list[str] = []
+
+    def slot(match: re.Match[str]) -> str:
+        url = match.group(0)
+        tail = ""
+        while url and url[-1] in _URL_TRAILING:
+            tail = url[-1] + tail
+            url = url[:-1]
+        if not url:
+            return match.group(0)
+        urls.append(url)
+        return _URL_MARK.format(len(urls) - 1) + tail
+
+    marked = _URL.sub(slot, flat)
+    return _URL_SLOT.sub(lambda m: md_code(urls[int(m.group(1))]), md_inline(marked))
 
 
 @dataclass
@@ -213,16 +270,26 @@ def _attack_path_section(report: ThreatReport) -> list[str]:
     lines.append("")
     shown = paths[:MAX_PATHS]
     for number, path in enumerate(shown, start=1):
-        lines += _path_lines(number, path, by_id)
+        lines += _path_lines(number, path, by_id, shown[: number - 1])
     if len(paths) > len(shown):
         lines += [f"_{len(paths) - len(shown)} more attack paths are in the JSON report._", ""]
     diagram = attack_path_flowchart(shown, limit=MAX_PATH_DIAGRAMS)
     if diagram:
-        lines += ["```mermaid", diagram.rstrip("\n"), "```", ""]
+        lines += [
+            "_The diagram draws the hops of these paths only. "
+            "`threatcode scan -f mermaid` draws the whole graph._",
+            "",
+            "```mermaid",
+            diagram.rstrip("\n"),
+            "```",
+            "",
+        ]
     return lines
 
 
-def _path_lines(number: int, path: AttackPath, by_id: dict[str, Threat]) -> list[str]:
+def _path_lines(
+    number: int, path: AttackPath, by_id: dict[str, Threat], earlier: Sequence[AttackPath] = ()
+) -> list[str]:
     hops = path.hops
     lines = [
         f"### {number}. {severity_label(path.severity)} {md_code(path.entry)} to "
@@ -230,37 +297,39 @@ def _path_lines(number: int, path: AttackPath, by_id: dict[str, Threat]) -> list
         "",
     ]
     if path.rationale:
-        lines += [md_inline(path.rationale, limit=_DESCRIPTION_LIMIT), ""]
+        lines += [_prose(path.rationale, limit=_DESCRIPTION_LIMIT), ""]
+    shared, source = shared_prefix_length(path, earlier)
+    if shared < _MIN_SHARED_HOPS:
+        shared = 0
+    if shared:
+        named = ", ".join(md_code(hop.node_id) for hop in hops[:shared])
+        span = "Hop 1" if shared == 1 else f"Hops 1 to {shared}"
+        lines += [f"{span} are the same as in path {source + 1}: {named}.", ""]
+    enablers = hop_enablers(path, by_id)
     for index, hop in enumerate(hops, start=1):
+        if index <= shared:
+            continue
         zone = f" ({md_inline(hop.zone)} zone)" if hop.zone else ""
         line = f"{index}. {md_code(hop.node_id)}{zone}"
         if hop.edge_type_to_next:
-            via = _via(hop.via)
-            line += f", then {md_inline(hop.edge_type_to_next)}{via} to the next hop"
+            target_type = hops[index].resource_type if index < len(hops) else ""
+            phrase = edge_phrase(hop.edge_type_to_next, via=hop.via, target_type=target_type)
+            line += f", then {_prose(phrase)}"
         if hop.techniques:
             line += f"; ATT&CK {_technique_links(hop.techniques)}"
         lines.append(line)
-        for threat_id in hop.enabled_by:
-            known = by_id.get(threat_id)
-            if known is None:
-                lines.append(f"   - enabled by finding {md_code(threat_id)}")
-            else:
-                label = known.rule_id or known.source.value
-                lines.append(
-                    f"   - enabled by {severity_label(threat_severity(known))} "
-                    f"{md_inline(known.title, limit=_TITLE_LIMIT)} ({md_code(label)})"
-                )
+        lines += [_enabler_line(enabler) for enabler in enablers[index - 1]]
     lines.append("")
     return lines
 
 
-def _via(via: dict[str, object]) -> str:
-    ports = via.get("ports", via.get("port"))
-    if isinstance(ports, (list, tuple)) and ports:
-        return " on " + md_inline(",".join(str(p) for p in ports))
-    if isinstance(ports, (str, int)) and not isinstance(ports, bool):
-        return f" on {md_inline(str(ports))}"
-    return ""
+def _enabler_line(enabler: Enabler) -> str:
+    if not enabler.known or enabler.severity is None:
+        return f"   - enabled by finding {md_code(enabler.threat_id)}"
+    return (
+        f"   - enabled by {severity_label(enabler.severity)} "
+        f"{_prose(enabler.title, limit=_TITLE_LIMIT)} ({md_code(enabler.label)})"
+    )
 
 
 def _top_risks(entries: list[_Entry]) -> list[str]:
@@ -292,30 +361,54 @@ def _sections(entries: list[_Entry]) -> str:
     by_category: dict[str, list[_Entry]] = {}
     for entry in entries:
         by_category.setdefault(entry.first.stride_category, []).append(entry)
-    order = [c for c in STRIDE_ORDER if c in by_category]
-    order += sorted(c for c in by_category if c not in STRIDE_ORDER)
     lines: list[str] = []
-    for category in order:
+    for category in _category_order(by_category):
         lines += [_section_heading(category), ""]
         for entry in by_category[category]:
             lines += _entry_lines(entry)
     return "\n".join(lines) + "\n" if lines else ""
 
 
+def _category_order(by_category: dict[str, list[_Entry]]) -> list[str]:
+    """STRIDE categories with the worst finding first, then in the order STRIDE names them.
+
+    A reader of a pull request comment looks for what to fix first, and the only critical finding
+    of a scan should not be in the last section.
+    """
+
+    def key(category: str) -> tuple[int, int, str]:
+        worst = max(entry.severity.rank for entry in by_category[category])
+        place = STRIDE_ORDER.index(category) if category in STRIDE_ORDER else len(STRIDE_ORDER)
+        return (-worst, place, category)
+
+    return sorted(by_category, key=key)
+
+
 def _entry_title(entry: _Entry) -> str:
     if entry.grouped:
-        cause = md_inline(entry.first.root_cause.replace("_", " ").replace("-", " "), limit=80)
-        return f"{cause} ({len(entry.threats)} findings)"
-    return md_inline(entry.first.title, limit=_TITLE_LIMIT)
+        cause = entry.first.root_cause.replace("_", " ").replace("-", " ").strip()
+        return (
+            f"{md_inline(cause[:1].upper() + cause[1:], limit=80)} ({len(entry.threats)} findings)"
+        )
+    return _prose(entry.first.title, limit=_TITLE_LIMIT)
+
+
+def _entry_heading(entry: _Entry) -> str:
+    """The heading of a finding: its severity and title, and the resource unless the title names it.
+
+    A boundary crossing is titled with both of its resources, so repeating one of them at the end
+    only makes the heading longer; the facts line under it names the resource anyway.
+    """
+    first = entry.first
+    heading = f"### {severity_label(entry.severity)} {_entry_title(entry)}"
+    if not entry.grouped and first.resource_address and first.resource_address in first.title:
+        return heading
+    return f"{heading} - {md_code(first.resource_address)}"
 
 
 def _entry_lines(entry: _Entry) -> list[str]:
     first = entry.first
-    lines = [
-        f"### {severity_label(entry.severity)} {_entry_title(entry)} - "
-        f"{md_code(first.resource_address)}",
-        "",
-    ]
+    lines = [_entry_heading(entry), ""]
     if entry.grouped:
         facts = (
             f"**Severity:** {entry.severity.value.capitalize()} | "
@@ -333,21 +426,39 @@ def _entry_lines(entry: _Entry) -> list[str]:
     if techniques:
         lines += [f"**MITRE ATT&CK:** {_technique_links(techniques)}", ""]
     if first.description.strip():
-        lines += [md_inline(first.description, limit=_DESCRIPTION_LIMIT), ""]
+        lines += [_prose(first.description, limit=_DESCRIPTION_LIMIT), ""]
     if first.mitigation.strip():
-        mitigation = md_inline(first.mitigation, limit=_MITIGATION_LIMIT)
+        mitigation = _prose(first.mitigation, limit=_MITIGATION_LIMIT)
         lines += [f"> **Mitigation:** {mitigation}", ""]
     return lines
 
 
-def _facts_line(threat: Threat, places: _Places) -> str:
+def _severity_text(threat: Threat) -> str:
+    """``Medium (base low, raised one level because the data store is tagged ...)``.
+
+    The engine words a reason as ``raised one level: <why>``; written out after the base severity
+    that is a second colon in one line, so it becomes a clause with ``because``.
+    """
     effective = threat_severity(threat)
-    severity = effective.value.capitalize()
-    if effective != threat.severity:
-        reason = (
-            f": {md_inline(threat.severity_reason, limit=200)}" if threat.severity_reason else ""
-        )
-        severity += f" (base {threat.severity.value}{reason})"
+    text = effective.value.capitalize()
+    if effective == threat.severity:
+        return text
+    reasons = [_because(part) for part in threat.severity_reason.split("; ") if part.strip()]
+    reason = f", {_prose('; '.join(reasons), limit=_REASON_LIMIT)}" if reasons else ""
+    return f"{text} (base {threat.severity.value}{reason})"
+
+
+def _because(reason: str) -> str:
+    """``raised one level: marked intentional: tag x`` as ``raised one level because ...``."""
+    change, _, why = reason.partition(": ")
+    if not why:
+        return change
+    head, _, rest = why.partition(": ")
+    return f"{change} because {head}" + (f" ({rest})" if rest else "")
+
+
+def _facts_line(threat: Threat, places: _Places) -> str:
+    severity = _severity_text(threat)
     source = threat.source.value
     if threat.source is ThreatSource.LLM:
         source += " (advisory)"
@@ -371,10 +482,10 @@ def _location_part(threat: Threat, places: _Places) -> str:
 
 def _sub_bullet(threat: Threat) -> str:
     label = f" ({md_code(threat.rule_id)})" if threat.rule_id else ""
-    title = md_inline(threat.title, limit=_TITLE_LIMIT)
+    title = _prose(threat.title, limit=_TITLE_LIMIT)
     text = f"- {severity_label(threat_severity(threat))} {title}{label}"
     if threat.mitigation.strip():
-        text += f": {md_inline(threat.mitigation, limit=_SUB_BULLET_LIMIT)}"
+        text += f": {_prose(threat.mitigation, limit=_SUB_BULLET_LIMIT)}"
     return text
 
 
@@ -417,14 +528,14 @@ def _coverage(report: ThreatReport) -> str:
         lines.append(f"- **Input errors ({len(cov.errors)}):**")
         for err in cov.errors[:MAX_LISTED]:
             where = md_code(err.get("file", "")) + ": " if err.get("file") else ""
-            lines.append(f"  - {where}{md_inline(err.get('message', ''), limit=300)}")
+            lines.append(f"  - {where}{_prose(err.get('message', ''), limit=300)}")
         _more(lines, len(cov.errors))
     if cov.gaps:
         lines.append(f"- **Coverage gaps ({len(cov.gaps)}):** part of the input was not analysed")
         for gap in cov.gaps[:MAX_LISTED]:
             where = md_code(str(gap["file"])) + ": " if gap.get("file") else ""
             code = md_code(str(gap.get("code", "")))
-            lines.append(f"  - {code} {where}{md_inline(str(gap.get('message', '')), limit=300)}")
+            lines.append(f"  - {code} {where}{_prose(str(gap.get('message', '')), limit=300)}")
         _more(lines, len(cov.gaps))
     if cov.rule_errors:
         lines.append(f"- Rule errors: {plural(cov.rule_errors, 'rule evaluation')} failed")
@@ -454,6 +565,6 @@ def _llm_lines(report: ThreatReport) -> list[str]:
             "LLM findings never fail the gate."
         ]
     if status == "failed":
-        error = md_inline(str(llm.get("error", "")), limit=300)
+        error = _prose(str(llm.get("error", "")), limit=300)
         return [f"- **LLM analysis failed**{where}: {error}. Only rule-based findings are shown."]
     return []
