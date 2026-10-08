@@ -495,8 +495,10 @@ def load_generator() -> ModuleType:
 # Prose rules
 # ---------------------------------------------------------------------------------------
 
-EM_DASH = "—"
-_EMOJI = re.compile("[\U0001f000-\U0001faff☀-⛿✀-➿⭐⭕️‍⃣]")
+EM_DASH = "\u2014"
+_EMOJI = re.compile(
+    "[\U0001f000-\U0001faff\u2600-\u26ff\u2700-\u27bf\u2b50\u2b55\ufe0f\u200d\u20e3]"
+)
 _ABBREVIATIONS = ("e.g.", "i.e.", "etc.", "vs.", "cf.", "approx.", "a.k.a.")
 
 
