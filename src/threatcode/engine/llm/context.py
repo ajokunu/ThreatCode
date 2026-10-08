@@ -711,34 +711,9 @@ def _reduce(
     node_map: dict[str, str] = {}  # summarized handle -> group handle
 
     for threshold in GROUP_THRESHOLDS:
-        buckets: dict[tuple[str, str, str, str, str], list[str]] = defaultdict(list)
-        for handle in plain_handles:
-            if handle not in nodes:
-                continue
-            entry = nodes[handle]
-            key = (
-                handle_type[handle],
-                str(entry.get("zone")),
-                str(entry.get("exposure", "")),
-                str(entry.get("evidence", "")),
-                str(handle in crossing),
-            )
-            buckets[key].append(handle)
-        for (kind, zone, *_rest), members in sorted(buckets.items()):
-            if len(members) < threshold:
-                continue
-            group_handle = f"{_TYPE_RE.sub('_', kind)[:64] or 'resource'}.g{len(groups) + 1}"
-            groups.append(
-                {
-                    "id": group_handle,
-                    "summary": f"{len(members)} x {kind} in zone {zone}",
-                    "count": len(members),
-                }
-            )
-            for handle in members:
-                node_map[handle] = group_handle
-                del nodes[handle]
-            stats.nodes_summarized += len(members)
+        _summarize_groups(
+            threshold, plain_handles, nodes, handle_type, crossing, groups, node_map, stats
+        )
         stats.groups = len(groups)
         edges = _remap_edges(edges, node_map, stats)
         if _size(edges, nodes, groups) <= max_chars:
@@ -753,7 +728,61 @@ def _reduce(
     if _size(edges, nodes, groups) <= max_chars:
         return edges, nodes, groups
 
-    # Last: drop whole nodes, the least valuable first, with the edges that touch them.
+    edges = _drop_nodes(edges, nodes, groups, plain_set, crossing, max_chars, stats)
+    return edges, nodes, groups
+
+
+def _summarize_groups(
+    threshold: int,
+    plain_handles: list[str],
+    nodes: dict[str, dict[str, Any]],
+    handle_type: Mapping[str, str],
+    crossing: set[str],
+    groups: list[dict[str, Any]],
+    node_map: dict[str, str],
+    stats: ContextStats,
+) -> None:
+    """Fold runs of at least ``threshold`` alike nodes without findings into one group line."""
+    buckets: dict[tuple[str, str, str, str, str], list[str]] = defaultdict(list)
+    for handle in plain_handles:
+        if handle not in nodes:
+            continue
+        entry = nodes[handle]
+        key = (
+            handle_type[handle],
+            str(entry.get("zone")),
+            str(entry.get("exposure", "")),
+            str(entry.get("evidence", "")),
+            str(handle in crossing),
+        )
+        buckets[key].append(handle)
+    for (kind, zone, *_rest), members in sorted(buckets.items()):
+        if len(members) < threshold:
+            continue
+        group_handle = f"{_TYPE_RE.sub('_', kind)[:64] or 'resource'}.g{len(groups) + 1}"
+        groups.append(
+            {
+                "id": group_handle,
+                "summary": f"{len(members)} x {kind} in zone {zone}",
+                "count": len(members),
+            }
+        )
+        for handle in members:
+            node_map[handle] = group_handle
+            del nodes[handle]
+        stats.nodes_summarized += len(members)
+
+
+def _drop_nodes(
+    edges: list[dict[str, Any]],
+    nodes: dict[str, dict[str, Any]],
+    groups: list[dict[str, Any]],
+    plain_set: set[str],
+    crossing: set[str],
+    max_chars: int,
+    stats: ContextStats,
+) -> list[dict[str, Any]]:
+    """Drop whole nodes, the least valuable first, with the edges that touch them."""
     degree: dict[str, int] = defaultdict(int)
     for edge in edges:
         degree[edge["from"]] += 1
@@ -785,7 +814,7 @@ def _reduce(
             del nodes[handle]
         stats.nodes_dropped = len(dropped)
         stats.edges_dropped += len(dead_edges)
-    return edges, nodes, groups
+    return edges
 
 
 def _remap_edges(

@@ -64,8 +64,12 @@ from threatcode.ir.enrich import (
     CompanionSpec,
     Deriver,
     EnrichContext,
+    Produced,
     as_list,
     blocks,
+    merge_produced,
+    produced,
+    produced_by_companions,
     type_matcher,
 )
 from threatcode.ir.enrichment.companions import statements_of
@@ -444,4 +448,27 @@ DERIVERS: tuple[Deriver, ...] = (
     Deriver(("aws_security_group",), _temporary_marker),
     Deriver(("aws_eks_cluster",), _oidc_provider),
     Deriver(("aws_vpc",), _subnet_flow_logs),
+)
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = merge_produced(
+    produced_by_companions(COMPANIONS),
+    produced(
+        _WAF_TYPES,
+        "has_geo_match",
+        "has_ip_reputation",
+        "has_managed_rules",
+        "has_rate_based_rule",
+        "has_rules",
+        "has_sqli_rule",
+        "has_xss_rule",
+        "managed_rule_groups",
+        "rate_limit",
+    ),
+    produced(("aws_api_gateway_rest_api", "aws_ecr_repository"), "policy_statements"),
+    produced(("aws_security_group",), "temporary_marker"),
+    produced(("aws_eks_cluster",), "has_oidc_provider"),
+    produced(("aws_vpc",), "has_flow_log"),
 )

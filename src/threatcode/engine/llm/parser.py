@@ -289,9 +289,11 @@ def _validate_threat(raw: dict[str, Any]) -> dict[str, Any] | None:
         severity = "medium"
 
     confidence = raw.get("confidence", 0.7)
-    if isinstance(confidence, bool) or not isinstance(confidence, int | float):
-        confidence = 0.7
-    elif not 0 <= confidence <= 1:
+    if (
+        isinstance(confidence, bool)
+        or not isinstance(confidence, int | float)
+        or not 0 <= confidence <= 1
+    ):
         confidence = 0.7
 
     return {

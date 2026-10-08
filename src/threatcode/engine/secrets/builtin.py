@@ -67,7 +67,7 @@ def _assignment(
     )
 
 
-_TOKEN_CHARS: Final = r"[A-Za-z0-9_\-/+=.~]"
+_TOKEN_CHARS: Final = r"[A-Za-z0-9_\-/+=.~]"  # noqa: S105 - a regex character class
 
 _RULES: Final[tuple[SecretRule, ...]] = (
     # AWS

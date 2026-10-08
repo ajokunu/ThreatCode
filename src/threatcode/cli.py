@@ -26,6 +26,7 @@ from threatcode.models.threat import Severity
 
 if TYPE_CHECKING:
     from threatcode.config import LoadedConfig
+    from threatcode.models.report import Coverage
     from threatcode.pipeline import ScanResult
 
 logger = logging.getLogger("threatcode.cli")
@@ -141,7 +142,7 @@ class _ThreatCodeGroup(click.Group):
         except ThreatCodeError as exc:
             click.echo(f"Error: {exc}", err=True)
             ctx.exit(2)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - last resort: any crash must exit 2, never 1
             click.echo(
                 f"Error: unexpected {type(exc).__name__}: {exc} (run with --debug for a traceback)",
                 err=True,
@@ -455,11 +456,8 @@ def _announce_llm(settings: Any, state: CliState) -> None:
     state.info(f"LLM enrichment enabled: sending a redacted graph to {llm.provider}/{llm.model}")
 
 
-def _report_to_stderr(result: ScanResult, state: CliState) -> None:
-    """Print what a person must know about the scan; errors and gaps are never hidden."""
-    coverage = result.coverage
-    report = result.report
-
+def _report_input_errors(coverage: Coverage, state: CliState) -> None:
+    """One line per input that could not be read, then the exit-2 notice."""
     for error in coverage.errors[:_LISTED_LIMIT]:
         where = error.get("file", "")
         prefix = f"Error: {where}: " if where and where != "." else "Error: "
@@ -471,17 +469,30 @@ def _report_to_stderr(result: ScanResult, state: CliState) -> None:
             f"{plural(len(coverage.errors), 'input error')}: the scan is incomplete, exiting 2"
         )
 
-    if coverage.gaps:
-        state.warn(f"Coverage gaps ({len(coverage.gaps)}): part of the input was not analysed")
-        for gap in coverage.gaps[:_LISTED_LIMIT]:
-            place = f" {gap['file']}" if gap.get("file") else ""
-            line = f":{gap['line']}" if gap.get("line") else ""
-            state.warn(
-                f"  {gap.get('level', 'warning')} [{gap.get('code', '')}]{place}{line}: "
-                f"{_first_line(str(gap.get('message', '')))}"
-            )
-        if len(coverage.gaps) > _LISTED_LIMIT:
-            state.warn(f"  ... and {len(coverage.gaps) - _LISTED_LIMIT} more (see coverage.gaps)")
+
+def _report_coverage_gaps(coverage: Coverage, state: CliState) -> None:
+    """The parts of the input the scan did not analyse."""
+    if not coverage.gaps:
+        return
+    state.warn(f"Coverage gaps ({len(coverage.gaps)}): part of the input was not analysed")
+    for gap in coverage.gaps[:_LISTED_LIMIT]:
+        place = f" {gap['file']}" if gap.get("file") else ""
+        line = f":{gap['line']}" if gap.get("line") else ""
+        state.warn(
+            f"  {gap.get('level', 'warning')} [{gap.get('code', '')}]{place}{line}: "
+            f"{_first_line(str(gap.get('message', '')))}"
+        )
+    if len(coverage.gaps) > _LISTED_LIMIT:
+        state.warn(f"  ... and {len(coverage.gaps) - _LISTED_LIMIT} more (see coverage.gaps)")
+
+
+def _report_to_stderr(result: ScanResult, state: CliState) -> None:
+    """Print what a person must know about the scan; errors and gaps are never hidden."""
+    coverage = result.coverage
+    report = result.report
+
+    _report_input_errors(coverage, state)
+    _report_coverage_gaps(coverage, state)
     if coverage.rule_errors:
         state.warn(
             f"{plural(coverage.rule_errors, 'rule evaluation')} failed and "
@@ -496,10 +507,13 @@ def _report_to_stderr(result: ScanResult, state: CliState) -> None:
         state.warn(f"Warning: LLM analysis failed ({reason}); rule results are unaffected")
 
     if result.ignore_file is not None:
+        suppressed = plural(coverage.suppressed - result.suppressed_paths, "finding")
+        if result.suppressed_paths:
+            suppressed += f" and {plural(result.suppressed_paths, 'attack path')}"
         state.info(
             f"Using ignore file {result.ignore_file} "
             f"({plural(result.ignore_entries, 'active entry', 'active entries')}); "
-            f"suppressed {plural(coverage.suppressed, 'finding')}"
+            f"suppressed {suppressed}"
         )
     for notice in result.notices:
         state.info(f"Warning: {notice}")

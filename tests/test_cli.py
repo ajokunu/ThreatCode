@@ -6,6 +6,7 @@ import builtins
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from click.testing import CliRunner, Result
 
 from threatcode import __version__
 from threatcode.cli import cli
+from threatcode.engine.rules.loader import load_builtin_rules
 from threatcode.exceptions import LLMError
 from threatcode.formatters import format_names
 
@@ -30,6 +32,11 @@ K8S_FIXTURE = FIXTURES_DIR / "kubernetes" / "insecure_deployment.yml"
 SIMPLE_TF = FIXTURES_DIR / "terraform" / "simple_exposed.tf"
 SIMPLE_PLAN = FIXTURES_DIR / "terraform" / "simple_s3.plan.json"
 INSECURE_PLAN = FIXTURES_DIR / "terraform" / "multi_service_insecure.plan.json"
+WEBAPP_EXAMPLE = REPO_ROOT / "examples" / "aws-webapp"
+HYBRID_TF = FIXTURES_DIR / "realistic" / "05_hybrid_vpn_datacenter.tf"
+SECRETS_TREE = FIXTURES_DIR / "secrets" / "iac"
+GITLEAKS_SARIF = FIXTURES_DIR / "ingest" / "sarif-gitleaks.json"
+CHECKOV_SARIF = FIXTURES_DIR / "ingest" / "sarif-checkov.json"
 BUCKET = 'resource "aws_s3_bucket" "{name}" {{\n  bucket = "{name}"\n}}\n'
 EXPOSED = (
     'resource "aws_lambda_function_url" "{name}" {{\n'
@@ -90,6 +97,55 @@ def exposed(name: str) -> str:
     return EXPOSED.format(name=name)
 
 
+class TestFindingProvenance:
+    """A finding says how sure its rule is and what has to change, as the rule declares it."""
+
+    CONFIDENCE = {"definitive": 1.0, "heuristic": 0.7, "absence": 0.5}
+
+    def test_a_rule_finding_carries_the_confidence_and_root_cause_of_its_rule(self) -> None:
+        rules = {rule.id: rule for rule in load_builtin_rules()}
+        data = report_of(invoke("scan", INSECURE_PLAN, "--no-timestamp"))
+        findings = [t for t in data["threats"] if t["source"] == "rule"]
+        assert findings
+        for finding in findings:
+            rule = rules[finding["rule_id"]]
+            assert finding["confidence"] == self.CONFIDENCE[rule.confidence], rule.id
+            assert finding.get("root_cause", "") == rule.root_cause, rule.id
+        # Not vacuous: the fixture trips rules of all three kinds and some that name a cause
+        assert {f["confidence"] for f in findings} == {1.0, 0.7, 0.5}
+        assert any(f.get("root_cause") for f in findings)
+
+    def test_absence_findings_are_the_least_certain_and_never_critical(self) -> None:
+        data = report_of(invoke("scan", INSECURE_PLAN))
+        rules = {rule.id: rule for rule in load_builtin_rules()}
+        absent = [
+            t
+            for t in data["threats"]
+            if rules.get(t["rule_id"], None) and rules[t["rule_id"]].confidence == "absence"
+        ]
+        assert absent
+        assert all(t["confidence"] == 0.5 for t in absent)
+        assert all(t["severity"] in ("medium", "low", "info") for t in absent)
+
+    def test_sarif_precision_follows_the_confidence(self) -> None:
+        """A rule is as precise as its least certain finding: 1.0 high, 0.7 medium, 0.5 low."""
+        report = report_of(invoke("scan", INSECURE_PLAN, "--no-timestamp"))
+        least: dict[str, float] = {}
+        for finding in report["threats"]:
+            if finding["source"] == "rule":
+                rule_id = finding["rule_id"]
+                least[rule_id] = min(finding["confidence"], least.get(rule_id, 1.0))
+        sarif = json.loads(invoke("scan", INSECURE_PLAN, "-f", "sarif").stdout)
+        precision = {
+            rule["id"]: rule["properties"]["precision"]
+            for rule in sarif["runs"][0]["tool"]["driver"]["rules"]
+        }
+        expected = {1.0: "high", 0.7: "medium", 0.5: "low"}
+        assert {precision[rule_id] for rule_id in least} == {"high", "medium", "low"}
+        for rule_id, confidence in least.items():
+            assert precision[rule_id] == expected[confidence], rule_id
+
+
 class TestScanFormats:
     def test_json_output_is_the_v2_report(self) -> None:
         result = invoke("scan", SIMPLE_PLAN, "-f", "json")
@@ -105,7 +161,7 @@ class TestScanFormats:
             ("markdown", "ThreatCode Threat Model Report"),
             ("sarif", '"version": "2.1.0"'),
             ("bitbucket", '"report"'),
-            ("matrix", '"techniques"'),
+            ("navigator", '"techniques"'),
             ("diagram", "<svg"),
             ("text", "ThreatCode scan of simple_s3.plan.json"),
         ],
@@ -114,6 +170,14 @@ class TestScanFormats:
         result = invoke("scan", SIMPLE_PLAN, "-f", fmt)
         assert result.exit_code == 1, result.stderr
         assert needle in result.stdout
+
+    def test_the_matrix_alias_still_renders_the_navigator_layer(self) -> None:
+        """``matrix`` is the old name of ``navigator``; it keeps working and says nothing new."""
+        old = invoke("scan", SIMPLE_PLAN, "-f", "matrix", "--no-timestamp")
+        new = invoke("scan", SIMPLE_PLAN, "-f", "navigator", "--no-timestamp")
+        assert old.exit_code == 1
+        assert new.exit_code == 1
+        assert old.stdout == new.stdout
 
     def test_the_format_choices_come_from_the_registry(self) -> None:
         scan_command = cli.commands["scan"]
@@ -151,9 +215,14 @@ class TestExitCodeMatrix:
         assert invoke("scan", secure, "--fail-on", "high").exit_code == 0
         assert invoke("scan", secure, "--fail-on", "medium").exit_code == 1
 
-    def test_a_clean_input_exits_zero(self) -> None:
-        result = invoke("scan", FIXTURES_DIR / "docker" / "secure.Dockerfile")
+    def test_findings_below_the_gate_exit_zero(self) -> None:
+        """The hardened Dockerfile has a low finding; the default gate is high."""
+        result = invoke("scan", FIXTURES_DIR / "docker" / "secure.Dockerfile", "-f", "json")
         assert result.exit_code == 0
+        summary = report_of(result)["summary"]
+        assert summary
+        assert set(summary) <= {"medium", "low", "info"}
+        assert "found 1 finding" in result.stderr
 
     def test_a_parse_failure_exits_two_and_names_the_file(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", BAD_TF)
@@ -279,7 +348,10 @@ class TestStrictAndGaps:
         assert "--strict: coverage gaps make this scan fail" in result.stderr
 
     def test_strict_without_gaps_changes_nothing(self) -> None:
-        assert invoke("scan", SIMPLE_TF, "--strict", "--fail-on", "none").exit_code == 0
+        result = invoke("scan", SIMPLE_TF, "--strict", "--fail-on", "none", "-f", "json")
+        assert result.exit_code == 0
+        assert "Coverage gaps" not in result.stderr
+        assert report_of(result)["threats"]
 
     def test_errors_survive_quiet(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", BAD_TF)
@@ -568,6 +640,15 @@ class TestSuppressionsAndBaselineFlags:
         assert "GHOST matched no finding" in result.stderr
         assert report_of(result)["coverage"]["suppressed"] == 2
 
+    def test_an_entry_naming_a_rule_a_user_rule_file_deprecated_warns(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("one"))
+        rules = write(tmp_path, "mine.yml", "deprecated_ids:\n  - MY_OLD_RULE\nrules: []\n")
+        write(tmp_path, ".threatcodeignore", 'MY_OLD_RULE exp:2099-12-31 reason="was accepted"\n')
+        with_rules = invoke("scan", tmp_path, "--rules", rules, "--fail-on", "none")
+        assert "MY_OLD_RULE names a rule that was removed or renamed" in with_rules.stderr
+        without = invoke("scan", tmp_path, "--fail-on", "none")
+        assert "removed or renamed" not in without.stderr
+
     def test_no_ignore(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", exposed("one"))
         write(tmp_path, ".threatcodeignore", "LAMBDA_URL_NO_AUTH\n")
@@ -612,6 +693,209 @@ class TestSuppressionsAndBaselineFlags:
         result = invoke("scan", SIMPLE_TF, "--baseline", write(tmp_path, "b.json", "{}"))
         assert result.exit_code == 2
         assert "not a ThreatCode baseline" in result.stderr
+
+
+class TestAttackPathsHonorSuppressionsAndBaselines:
+    """An attack path gates the exit code, so the ways to set a known one aside must reach it."""
+
+    @staticmethod
+    def path_ids(result: Result) -> list[str]:
+        return [path["id"] for path in report_of(result)["attack_paths"]]
+
+    @pytest.fixture
+    def baseline(self, tmp_path: Path) -> Path:
+        written = tmp_path / "baseline.json"
+        assert invoke("scan", WEBAPP_EXAMPLE, "--write-baseline", written).exit_code == 0
+        return written
+
+    def test_the_example_fails_the_gate_on_its_attack_paths(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE)
+        assert result.exit_code == 1
+        assert len(self.path_ids(result)) == 3
+
+    def test_the_baseline_records_every_finding_and_attack_path(self, baseline: Path) -> None:
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        again = invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "none")
+        assert [p["id"] for p in document["attack_paths"]] == sorted(self.path_ids(again))
+        assert len(document["attack_paths"]) == 3
+        assert document["entries"]
+
+    def test_a_baseline_hides_known_attack_paths_from_the_gate_and_the_listing(
+        self, baseline: Path
+    ) -> None:
+        before = report_of(invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "none"))
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert again.exit_code == 0
+        data = report_of(again)
+        assert data["threats"] == []
+        assert data["attack_paths"] == []
+        assert data["coverage"]["baselined"] == len(before["threats"]) + len(before["attack_paths"])
+
+    def test_the_summary_line_counts_what_the_baseline_set_aside(self, baseline: Path) -> None:
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert re.search(r"found 0 findings \(\d+ baselined\)", again.stderr)
+
+    def test_an_attack_path_the_baseline_does_not_list_still_fails_the_gate(
+        self, baseline: Path
+    ) -> None:
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        new = document["attack_paths"].pop(0)["id"]
+        baseline.write_text(json.dumps(document), encoding="utf-8")
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert again.exit_code == 1
+        data = report_of(again)
+        assert data["threats"] == []
+        assert self.path_ids(again) == [new]
+
+    def test_a_baseline_without_attack_paths_does_not_hide_them(self, baseline: Path) -> None:
+        # The format written before attack paths were recorded has no attack_paths key.
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        del document["attack_paths"]
+        baseline.write_text(json.dumps(document), encoding="utf-8")
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert again.exit_code == 1
+        data = report_of(again)
+        assert data["threats"] == []
+        assert len(data["attack_paths"]) == 3
+
+    def test_an_ignore_entry_with_a_path_id_removes_that_path(self, tmp_path: Path) -> None:
+        plan = tmp_path / "plan"
+        plan.mkdir()
+        shutil.copy(WEBAPP_EXAMPLE / "tfplan.json", plan / "tfplan.json")
+        ids = self.path_ids(invoke("scan", plan, "--fail-on", "none"))
+        (plan / ".threatcodeignore").write_text(
+            f'{ids[0]} exp:2099-12-31 reason="accepted for this test"\n', encoding="utf-8"
+        )
+        result = invoke("scan", plan, "--fail-on", "none")
+        assert self.path_ids(result) == ids[1:]
+        assert report_of(result)["coverage"]["suppressed"] == 1
+        assert "suppressed 0 findings and 1 attack path" in result.stderr
+        assert "matched no finding or attack path" not in result.stderr
+
+    def test_ignoring_every_path_and_baselining_the_findings_reaches_green(
+        self, tmp_path: Path, baseline: Path
+    ) -> None:
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        ids = [p["id"] for p in document["attack_paths"]]
+        document["attack_paths"] = []
+        baseline.write_text(json.dumps(document), encoding="utf-8")
+        plan = tmp_path / "plan"
+        plan.mkdir()
+        shutil.copy(WEBAPP_EXAMPLE / "tfplan.json", plan / "tfplan.json")
+        lines = [f'{i} exp:2099-12-31 reason="accepted for this test"' for i in ids]
+        (plan / ".threatcodeignore").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        result = invoke("scan", plan, "--baseline", baseline)
+        assert result.exit_code == 0
+        assert report_of(result)["attack_paths"] == []
+        assert report_of(result)["coverage"]["suppressed"] == 3
+
+    def test_an_ignore_entry_that_names_no_path_still_warns(self, tmp_path: Path) -> None:
+        plan = tmp_path / "plan"
+        plan.mkdir()
+        shutil.copy(WEBAPP_EXAMPLE / "tfplan.json", plan / "tfplan.json")
+        (plan / ".threatcodeignore").write_text(
+            'ffffffffffff exp:2099-12-31 reason="a path that is gone"\n', encoding="utf-8"
+        )
+        result = invoke("scan", plan, "--fail-on", "none")
+        assert len(self.path_ids(result)) == 3
+        assert "ffffffffffff matched no finding or attack path" in result.stderr
+
+
+def sarif_with_results(source: Path, uri: str, lines: list[int], target: Path) -> Path:
+    """A copy of a SARIF fixture whose first result is repeated at ``lines`` of file ``uri``."""
+    document = json.loads(source.read_text(encoding="utf-8"))
+    run = document["runs"][0]
+    first = run["results"][0]
+    results = []
+    for line in lines:
+        result = json.loads(json.dumps(first))
+        physical = result["locations"][0]["physicalLocation"]
+        physical["artifactLocation"]["uri"] = uri
+        physical["region"] = {"startLine": line, "endLine": line}
+        results.append(result)
+    run["results"] = results
+    target.write_text(json.dumps(document), encoding="utf-8")
+    return target
+
+
+class TestIngestedFindingsAreReconciledWithNativeOnes:
+    """A scanner finding at the file and line of ThreatCode's own finding is reported once."""
+
+    @staticmethod
+    def scan(tree: Path, sarif: Path) -> dict[str, Any]:
+        result = invoke("scan", tree, "--ingest", sarif, "--fail-on", "none")
+        assert result.exit_code == 0, result.stderr
+        return report_of(result)
+
+    def test_a_scanner_secret_on_the_line_of_a_native_secret_is_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        sarif = sarif_with_results(
+            GITLEAKS_SARIF, "terraform/main.tf", [7, 2], tmp_path / "g.sarif"
+        )
+        data = self.scan(SECRETS_TREE, sarif)
+        scanner = [t for t in data["threats"] if t["source"] == "scanner"]
+        assert [t["location_start_line"] for t in scanner] == [2]
+        (native,) = [
+            t
+            for t in data["threats"]
+            if t["source"] == "secret"
+            and (t["location_file"], t["location_start_line"]) == ("terraform/main.tf", 7)
+        ]
+        assert native["metadata"]["corroborated_by"] == ["gitleaks"]
+
+    def test_the_kept_scanner_finding_is_not_marked_as_corroborating_anything(
+        self, tmp_path: Path
+    ) -> None:
+        sarif = sarif_with_results(GITLEAKS_SARIF, "terraform/main.tf", [2], tmp_path / "g.sarif")
+        data = self.scan(SECRETS_TREE, sarif)
+        assert len([t for t in data["threats"] if t["source"] == "scanner"]) == 1
+        assert not any(
+            "corroborated_by" in t["metadata"] for t in data["threats"] if t["source"] == "secret"
+        )
+
+    def test_the_source_counts_the_duplicate_it_lost(self, tmp_path: Path) -> None:
+        sarif = sarif_with_results(
+            GITLEAKS_SARIF, "terraform/main.tf", [7, 2], tmp_path / "g.sarif"
+        )
+        (source,) = self.scan(SECRETS_TREE, sarif)["ingest"]
+        assert (source["findings"], source["attached"], source["duplicates"]) == (2, 2, 1)
+
+    def test_a_scanner_finding_in_another_file_is_never_a_duplicate(self, tmp_path: Path) -> None:
+        sarif = sarif_with_results(GITLEAKS_SARIF, "terraform/other.tf", [7], tmp_path / "g.sarif")
+        data = self.scan(SECRETS_TREE, sarif)
+        assert len([t for t in data["threats"] if t["source"] == "scanner"]) == 1
+        (source,) = data["ingest"]
+        assert source["duplicates"] == 0
+
+    def test_the_report_without_the_overlap_equals_the_report_without_the_ingest(
+        self, tmp_path: Path
+    ) -> None:
+        sarif = sarif_with_results(GITLEAKS_SARIF, "terraform/main.tf", [7], tmp_path / "g.sarif")
+        with_ingest = self.scan(SECRETS_TREE, sarif)
+        plain = report_of(invoke("scan", SECRETS_TREE, "--fail-on", "none"))
+        natives = [t for t in with_ingest["threats"] if t["source"] != "scanner"]
+        assert [t["id"] for t in natives] == [t["id"] for t in plain["threats"]]
+        assert with_ingest["total_threats"] == plain["total_threats"]
+
+    def test_a_dropped_duplicate_leaves_no_dangling_reference_on_an_attack_path(
+        self, tmp_path: Path
+    ) -> None:
+        tree = tmp_path / "hybrid"
+        tree.mkdir()
+        shutil.copy(HYBRID_TF, tree / "main.tf")
+        lines = (tree / "main.tf").read_text(encoding="utf-8").splitlines()
+        start = 1 + lines.index('resource "aws_s3_bucket" "vpn_logs" {')
+        sarif = sarif_with_results(CHECKOV_SARIF, "main.tf", [start], tmp_path / "c.sarif")
+        data = self.scan(tree, sarif)
+        assert not any(t["source"] == "scanner" for t in data["threats"])
+        assert data["attack_paths"]
+        known = {t["id"] for t in data["threats"]}
+        enablers = [i for p in data["attack_paths"] for h in p["hops"] for i in h["enabled_by"]]
+        assert enablers
+        assert set(enablers) <= known
+        (source,) = data["ingest"]
+        assert source["duplicates"] == 1
 
 
 class TestLlmIsOptIn:
@@ -749,7 +1033,7 @@ class TestScanLLMConfig:
                         "description": "Returned by the fake local model server.",
                         "stride_category": "elevation_of_privilege",
                         "severity": "high",
-                        "resource_address": "Deployment/insecure-app",
+                        "resource_address": "kubernetes_deployment.default.insecure-app",
                     }
                 ]
             }
@@ -758,11 +1042,20 @@ class TestScanLLMConfig:
             tmp_path,
             f"llm:\n  provider: ollama\n  base_url: {fake_llm_server.base_url}\n"
             "  model: llama3.2\n  allow_local_network: true\n",
+            "-f",
+            "json",
         )
         assert result.exit_code == 1  # the insecure fixture has rule findings
         assert len(fake_llm_server.requests) == 1
         assert fake_llm_server.requests[0]["body"]["model"] == "llama3.2"
-        assert "Local model marker threat" in result.stdout
+        report = report_of(result)
+        advisory = [t for t in report["threats"] if t["source"] == "llm"]
+        assert [(t["title"], t["resource_address"]) for t in advisory] == [
+            ("Local model marker threat", "kubernetes_deployment.default.insecure-app")
+        ]
+        # The reply was attributed to a node, not parked in the unattributed list
+        assert report["llm"]["unattributed_count"] == 0
+        assert report["llm"]["status"] == "ran"
         assert "LLM analysis failed" not in result.stderr
         assert "sending a redacted graph to ollama/llama3.2" in result.stderr
 
@@ -877,6 +1170,7 @@ class TestDiffCommand:
         base, _ = self._reports(tmp_path, [], [])
         result = invoke("diff", base, tmp_path)
         assert result.exit_code == 2
+        assert "is a directory" in result.stderr
 
     def test_fail_on_new_gates_on_added_and_worsened_threats(self, tmp_path: Path) -> None:
         base, cur = self._reports(
@@ -893,7 +1187,11 @@ class TestDiffCommand:
 
     def test_resolved_threats_never_fail_the_gate(self, tmp_path: Path) -> None:
         base, cur = self._reports(tmp_path, [self.threat("old", "critical")], [])
-        assert invoke("diff", base, cur, "--fail-on-new", "info").exit_code == 0
+        result = invoke("diff", base, cur, "--fail-on-new", "info", "-f", "json")
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)
+        assert [t["id"] for t in data["removed"]] == ["old"]
+        assert data["added"] == []
 
     def test_a_real_scan_report_diffs_clean_against_itself(self, tmp_path: Path) -> None:
         out = tmp_path / "scan.json"
@@ -1074,7 +1372,7 @@ class TestDeterminism:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("SOURCE_DATE_EPOCH", "1700000000")
-        for fmt in ("markdown", "text", "sarif", "bitbucket", "matrix", "diagram"):
+        for fmt in ("markdown", "text", "sarif", "bitbucket", "navigator", "diagram"):
             assert (
                 invoke("scan", INSECURE_PLAN, "-f", fmt).stdout
                 == invoke("scan", INSECURE_PLAN, "-f", fmt).stdout

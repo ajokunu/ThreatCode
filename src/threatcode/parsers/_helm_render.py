@@ -137,8 +137,7 @@ class _TemplateError(Exception):
 # ---------------------------------------------------------------------------------------
 
 _SPECIAL = re.compile(r'["`}]')
-_STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')
-_DEFINITION_KEYWORDS = ("if", "else", "end", "range", "with", "define", "template", "block")
+_STRING = re.compile(r'"[^"\\\n]*(?:\\.[^"\\\n]*)*"')
 _KEYWORD = re.compile(
     r"(if|else|end|range|with|define|template|block|break|continue)(?![A-Za-z0-9_])"
 )
@@ -374,8 +373,9 @@ class _ExpressionParser:
 
     def parse(self) -> Pipeline:
         pipeline = self.pipeline(depth=0)
-        if self.peek() is not None:
-            raise _TemplateError(f"unexpected {self.peek().text!r}")  # type: ignore[union-attr]
+        leftover = self.peek()
+        if leftover is not None:
+            raise _TemplateError(f"unexpected {leftover.text!r}")
         return pipeline
 
     def pipeline(self, depth: int) -> Pipeline:
@@ -387,7 +387,7 @@ class _ExpressionParser:
         if names is not None:
             variables, declare = names
         commands = [self.command(depth)]
-        while self.peek() is not None and self.peek().kind == "pipe":  # type: ignore[union-attr]
+        while (following := self.peek()) is not None and following.kind == "pipe":
             self.next()
             commands.append(self.command(depth))
         return Pipeline(commands, variables, declare)
@@ -637,13 +637,15 @@ def _else(stack: list[_Frame], rest: str) -> None:
         # only `else if CONDITION` is supported
         if frame.kind != "if" or not rest.startswith("if") or rest[2:3].isalnum():
             raise _TemplateError("unsupported else clause")
-        assert frame.condition is not None
+        if frame.condition is None:
+            raise _TemplateError("else if without a condition to close")
         frame.branches.append((frame.condition, frame.body))
         frame.condition = parse_expression(rest[2:].strip())
         frame.body = []
         return
     if frame.kind == "if":
-        assert frame.condition is not None
+        if frame.condition is None:
+            raise _TemplateError("else without a condition to close")
         frame.branches.append((frame.condition, frame.body))
         frame.condition = None
         frame.body = []
@@ -662,10 +664,12 @@ def _end(stack: list[_Frame], root: list[Node], defines: dict[str, list[Node]]) 
             branches.append((frame.condition, frame.body))
         node = IfNode(branches, frame.otherwise, frame.line)
     elif frame.kind == "with":
-        assert frame.pipeline is not None
+        if frame.pipeline is None:
+            raise _TemplateError("with without a pipeline")
         node = WithNode(frame.pipeline, frame.body, frame.otherwise, frame.line)
     elif frame.kind == "range":
-        assert frame.pipeline is not None
+        if frame.pipeline is None:
+            raise _TemplateError("range without a pipeline")
         node = RangeNode(frame.pipeline, frame.body, frame.otherwise, frame.line)
     elif frame.kind == "define":
         defines[frame.name] = frame.body
@@ -756,7 +760,7 @@ def _kind(value: Any) -> str:
 class _YamlDumper(yaml.SafeDumper):
     """Dumps without anchors or aliases, and accepts the ``ValuesDict`` subclass."""
 
-    def ignore_aliases(self, data: Any) -> bool:
+    def ignore_aliases(self, data: Any) -> bool:  # noqa: ARG002 - the PyYAML hook signature
         return True
 
 
@@ -1146,7 +1150,7 @@ class Executor:
             if value is UNKNOWN:
                 return UNKNOWN
             if isinstance(value, ValuesDict):
-                value = value[name] if name in value else MISSING
+                value = value.get(name, MISSING)
             elif isinstance(value, dict):
                 value = value.get(name)
             else:
@@ -1915,7 +1919,7 @@ def f_index(ex: Executor, collection: Any, *keys: Any) -> Any:
         if value is UNKNOWN or key is UNKNOWN:
             return UNKNOWN
         if isinstance(value, ValuesDict):
-            value = value[key] if key in value else MISSING
+            value = value.get(key, MISSING)
         elif isinstance(value, dict):
             value = value.get(key)
         elif isinstance(value, (list, tuple)):

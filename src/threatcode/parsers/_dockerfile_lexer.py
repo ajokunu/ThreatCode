@@ -290,7 +290,11 @@ def lex(text: str) -> LexResult:
 
 # A shell-like word: runs of plain characters, quoted strings and escaped characters. A stray
 # quote or backslash that opens nothing is a word of its own, so scanning cannot stall.
-_WORD_RE = re.compile(r"""(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[^\s"'\\])+|["'\\]""", re.DOTALL)
+# Runs of plain characters are one repetition each, not one per character: the regex engine keeps
+# a backtracking entry for every repetition, so a word of five megabytes cost 700 MB the other way.
+# A quoted string is written as an unrolled loop (a run, then escape and run pairs) so that no
+# input can be split into runs in more than one way, which would make a failed match exponential.
+_WORD_RE = re.compile(r"""(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^']*'|\\.|[^\s"'\\]+)+|["'\\]""", re.DOTALL)
 
 
 def split_words_raw(text: str) -> list[str]:
@@ -408,7 +412,14 @@ _SHELL_RE = re.compile(
     | (?P<newline>\n)
     | (?P<redir>&>>?)
     | (?P<op>&&|\|\||\|&|\||;|&|\(|\))
-    | (?P<word>(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[<>]&[0-9]*-?|[^\s|&;()"'\\])+|["'\\])
+    | (?P<word>(?:
+          "[^"\\]*(?:\\.[^"\\]*)*"    # double quoted
+        | '[^']*'                     # single quoted
+        | \\.                         # an escaped character
+        | [<>]&[0-9]*-?               # a descriptor redirection: 2>&1, >&-
+        | [^\s|&;()"'\\<>]+          # a run of plain characters
+        | [<>]                        # a redirection sign that duplicates nothing
+      )+|["'\\])
     """,
     re.VERBOSE | re.DOTALL,
 )

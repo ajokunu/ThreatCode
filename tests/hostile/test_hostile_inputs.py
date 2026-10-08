@@ -50,6 +50,17 @@ class TestSurvivedToday:
         assert outcome.peak_mb < DEFAULT_MEMORY_BUDGET_MB
         assert outcome.nodes >= 1
 
+    def test_a_multi_megabyte_dockerfile_line_costs_memory_in_proportion_to_its_size(
+        self, tmp_path: Path
+    ) -> None:
+        """A word of five megabytes cost 1.5 GB (and more under load) while the word patterns
+        repeated once per character, because the regex engine keeps an entry per repetition.
+        That put the scan next to the budget of the test above and made it fail now and then.
+        The patterns now repeat once per run of characters."""
+        outcome = scan_in_child(gen.huge_line_dockerfile(tmp_path))
+        assert outcome.status == "ok", f"{outcome.exception}: {outcome.message}"
+        assert outcome.peak_mb < 300
+
     def test_a_yaml_alias_bomb_is_not_expanded(self, tmp_path: Path) -> None:
         """Nine levels of nine aliases is 387 million strings if anything walks the document."""
         path = gen.write_alias_bomb(tmp_path)

@@ -88,8 +88,11 @@ from typing import Any
 from threatcode.ir.enrich import (
     Deriver,
     EnrichContext,
+    Produced,
     as_list,
     blocks,
+    merge_produced,
+    produced,
     tri_bool,
     type_matcher,
 )
@@ -655,6 +658,34 @@ DERIVERS: tuple[Deriver, ...] = (
     Deriver(("aws_s3_bucket",), _inline_public_access_block),
     Deriver(("aws_ssm_parameter",), _ssm_facts),
     Deriver((_CLUSTER,), _redshift_facts),
+)
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = merge_produced(
+    produced(
+        _OWN_POLICY_IDENTITIES + _INLINE_BLOCK_IDENTITIES,
+        "allows_all_actions",
+        "allows_passrole_wildcard",
+        "allows_service_wildcard",
+    ),
+    produced(_ATTACHMENTS + _INLINE_BLOCK_IDENTITIES, "admin_policy_attached"),
+    produced(
+        (
+            "aws_iam_role",
+            "aws_kms_key",
+            "aws_s3_bucket",
+            "aws_sns_topic",
+            "aws_sns_topic_policy",
+            "aws_sqs_queue",
+            "aws_sqs_queue_policy",
+        ),
+        "allows_any_principal",
+    ),
+    produced(("aws_s3_bucket",), "public_access_block"),
+    produced(("aws_ssm_parameter",), "secret_name"),
+    produced((_CLUSTER,), "logging_enabled", "publicly_accessible"),
 )
 
 __all__ = [

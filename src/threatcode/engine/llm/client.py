@@ -122,46 +122,54 @@ def _validate_base_url(url: str, *, allow_local_network: bool = False) -> None:
         raise LLMError(f"Hostname '{hostname}' resolved to no addresses")
 
     for _family, _type, _proto, _canonname, sockaddr in addrinfo:
-        ip_str = sockaddr[0]
-        try:
-            addr = ipaddress.ip_address(ip_str)
-        except ValueError as e:
-            raise LLMError(f"base_url resolved to invalid IP: {ip_str}") from e
+        _check_resolved_address(
+            str(sockaddr[0]), hostname, parsed.scheme, allow_local_network=allow_local_network
+        )
 
-        # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
-        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-            addr = addr.ipv4_mapped
 
-        # Order matters: CPython also reports 169.254.0.0/16 and 240.0.0.0/4
-        # as private, and ::1 as reserved (it sits in ::/8).
-        if addr.is_unspecified:
-            raise LLMError(f"base_url resolves to unspecified address ({ip_str})")
-        if addr.is_link_local:
-            raise LLMError(f"base_url resolves to link-local address ({ip_str})")
-        if addr.is_multicast:
-            raise LLMError(f"base_url resolves to multicast address ({ip_str})")
-        kind: str | None
-        if addr.is_loopback:
-            kind = "loopback"
-        elif addr.is_reserved:
-            raise LLMError(f"base_url resolves to reserved address ({ip_str})")
-        elif addr.is_private:
-            kind = "private"
-        elif isinstance(addr, ipaddress.IPv4Address) and addr in _SHARED_ADDRESS_SPACE:
-            kind = "shared (RFC 6598)"
-        elif not addr.is_global:
-            raise LLMError(f"base_url resolves to non-public address ({ip_str})")
-        else:
-            kind = None  # public
+def _check_resolved_address(
+    ip_str: str, hostname: str, scheme: str, *, allow_local_network: bool
+) -> None:
+    """Refuse one address a base_url resolved to unless the policy admits it."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError as e:
+        raise LLMError(f"base_url resolved to invalid IP: {ip_str}") from e
 
-        if kind is None:
-            if parsed.scheme == "http":
-                raise LLMError(
-                    f"plain http is only allowed for loopback or private addresses; "
-                    f"'{hostname}' resolves to public address {ip_str} - use https"
-                )
-        elif not allow_local_network:
-            raise LLMError(f"base_url resolves to {kind} address ({ip_str}); {_LOCAL_NETWORK_HINT}")
+    # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
+
+    # Order matters: CPython also reports 169.254.0.0/16 and 240.0.0.0/4
+    # as private, and ::1 as reserved (it sits in ::/8).
+    if addr.is_unspecified:
+        raise LLMError(f"base_url resolves to unspecified address ({ip_str})")
+    if addr.is_link_local:
+        raise LLMError(f"base_url resolves to link-local address ({ip_str})")
+    if addr.is_multicast:
+        raise LLMError(f"base_url resolves to multicast address ({ip_str})")
+    kind: str | None
+    if addr.is_loopback:
+        kind = "loopback"
+    elif addr.is_reserved:
+        raise LLMError(f"base_url resolves to reserved address ({ip_str})")
+    elif addr.is_private:
+        kind = "private"
+    elif isinstance(addr, ipaddress.IPv4Address) and addr in _SHARED_ADDRESS_SPACE:
+        kind = "shared (RFC 6598)"
+    elif not addr.is_global:
+        raise LLMError(f"base_url resolves to non-public address ({ip_str})")
+    else:
+        kind = None  # public
+
+    if kind is None:
+        if scheme == "http":
+            raise LLMError(
+                f"plain http is only allowed for loopback or private addresses; "
+                f"'{hostname}' resolves to public address {ip_str} - use https"
+            )
+    elif not allow_local_network:
+        raise LLMError(f"base_url resolves to {kind} address ({ip_str}); {_LOCAL_NETWORK_HINT}")
 
 
 def _origin(url: str) -> tuple[str, str, int]:
@@ -214,7 +222,8 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
             # The stdlib never follows these for a POST; inside one origin the call (method and
             # body) is repeated as the server asked, so a local server that redirects to itself
             # keeps working.
-            new_request = urllib.request.Request(
+            # newurl passed _validate_base_url above: http or https only, public address
+            new_request = urllib.request.Request(  # noqa: S310
                 newurl,
                 data=req.data,
                 headers={k: v for k, v in req.headers.items() if k.lower() != "content-length"},
@@ -403,7 +412,8 @@ def _retry_delay(attempt: int, retry_after: str | None) -> float:
         except ValueError:
             pass
     base = _BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
-    delay: float = base + random.uniform(0.0, base / 2)
+    # Retry jitter only; nothing here depends on unpredictability
+    delay: float = base + random.uniform(0.0, base / 2)  # noqa: S311
     return min(delay, _RETRY_AFTER_CAP_SECONDS)
 
 
@@ -478,7 +488,10 @@ class OpenAICompatibleLLMClient(BaseLLMClient):
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         for attempt in range(1, self._attempts + 1):
-            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            # url is the validated base_url plus a fixed path: http or https only
+            req = urllib.request.Request(  # noqa: S310
+                url, data=body, headers=headers, method="POST"
+            )
             try:
                 return self._send(req)
             except urllib.error.HTTPError as e:

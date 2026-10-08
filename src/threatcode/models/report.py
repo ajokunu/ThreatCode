@@ -68,9 +68,9 @@ class Coverage:
     gaps: list[dict[str, Any]] = field(default_factory=list)
     # How many rule evaluations raised; the detail is in the report's rule_errors.
     rule_errors: int = 0
-    # Findings removed by .threatcodeignore entries.
+    # Findings and attack paths removed by .threatcodeignore entries.
     suppressed: int = 0
-    # Findings removed because the baseline already contains them.
+    # Findings and attack paths removed because the baseline already contains them.
     baselined: int = 0
 
     @property

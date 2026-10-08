@@ -162,7 +162,7 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
         except ParseError:
             # A detector may raise a ParseError to explain exactly why it rejects a file.
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a broken detector must not hide the others
             logger.debug("Detector '%s' failed for %s: %s", entry.name, path.name, exc)
             continue
         if claimed:

@@ -24,7 +24,7 @@ class NodeCategory(str, Enum):
     CONTAINER = "container"
     # Stores of secret material: KMS keys, Secrets Manager secrets, SSM parameters,
     # key vaults and Kubernetes Secrets. A data store, so the DATA zone
-    SECRET = "secret"
+    SECRET = "secret"  # noqa: S105 - a node category name, not a credential
     # A managed API front door: API Gateway REST and HTTP APIs, Lambda function URLs
     API = "api"
     UNKNOWN = "unknown"

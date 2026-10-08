@@ -9,8 +9,11 @@
    (``ingest.load_and_attach``) go into an ``AnalysisContext``;
 5. ``HybridEngine.analyze`` runs the rules, boundaries, severity, paths and, only when asked for,
    the LLM phase;
-6. root-relative locations, fingerprints and a deterministic order;
-7. suppressions, then the baseline, then the gate, then the ``--min-severity`` display filter;
+6. root-relative locations, scanner findings that ThreatCode's own finding at the same file and
+   line already reports dropped (``ingest.reconcile_native``), fingerprints and a deterministic
+   order;
+7. suppressions, then the baseline (both cover findings and attack paths), then the gate, then the
+   ``--min-severity`` display filter;
 8. the exit code.
 
 The pipeline never prints.
@@ -138,6 +141,9 @@ class ScanResult:
     ignore_entries: int = 0
     # The baseline file written by --write-baseline, when one was.
     baseline_written: Path | None = None
+    # Attack paths set aside; ``coverage.suppressed`` and ``coverage.baselined`` already count them.
+    suppressed_paths: int = 0
+    baselined_paths: int = 0
     # One mapping per ingested file, for the report.
     ingest_sources: list[dict[str, Any]] = field(default_factory=list)
 
@@ -373,6 +379,7 @@ def run_scan(request: ScanRequest) -> ScanResult:
             coverage=coverage,
             errors=errors,
             sources=sources,
+            external=external,
             baseline_fingerprints=baseline_fingerprints,
             stdin_dir=stdin_path.parent if stdin_path else None,
             stdin_name=stdin_name,
@@ -402,11 +409,9 @@ def _save_stdin(name: str | None, directory: Path) -> tuple[str, Path]:
     """Read standard input into ``directory`` under a name the format detection can use."""
     stream = sys.stdin
     buffer = getattr(stream, "buffer", None)
-    raw: bytes
-    if buffer is not None:
-        raw = buffer.read(_MAX_STDIN_BYTES + 1)
-    else:
-        raw = stream.read().encode("utf-8")
+    raw: bytes = (
+        buffer.read(_MAX_STDIN_BYTES + 1) if buffer is not None else stream.read().encode("utf-8")
+    )
     if len(raw) > _MAX_STDIN_BYTES:
         raise UsageError(f"standard input is larger than {_MAX_STDIN_BYTES // (1024 * 1024)} MB")
     if not raw.strip():
@@ -643,6 +648,7 @@ def _finish(
     coverage: Coverage,
     errors: list[dict[str, str]],
     sources: list[dict[str, Any]],
+    external: list[Threat],
     baseline_fingerprints: frozenset[str] | None,
     stdin_dir: Path | None,
     stdin_name: str,
@@ -653,24 +659,38 @@ def _finish(
     root = discovery.root
 
     _localize_threats(report.threats, graph, root, stdin_dir, stdin_name)
+    _reconcile_ingested(report, graph, external, sources)
     assign_fingerprints(report.threats, graph)
     report.threats.sort(key=_threat_order)
     report.timestamp = "" if request.no_timestamp else current_timestamp()
 
     notices: list[str] = []
-    ignore = suppressions.load(request.ignore_file, root, no_ignore=request.no_ignore)
-    outcome = suppressions.apply(report.threats, ignore)
+    ignore = suppressions.load(
+        request.ignore_file,
+        root,
+        no_ignore=request.no_ignore,
+        extra_rule_paths=list(settings.extra_rule_paths),
+    )
+    outcome = suppressions.apply(report.threats, ignore, attack_paths=report.attack_paths)
     report.threats = outcome.kept
+    report.attack_paths = outcome.kept_paths
     notices.extend(outcome.notices)
-    coverage.suppressed = len(outcome.suppressed)
+    suppressed_paths = len(outcome.suppressed_paths)
+    coverage.suppressed = len(outcome.suppressed) + suppressed_paths
 
+    # The baseline records what is left after suppressions, findings and attack paths alike.
     snapshot = list(report.threats)
+    snapshot_paths = list(report.attack_paths)
     baselined: list[Threat] = []
+    baselined_paths: list[AttackPath] = []
     if baseline_fingerprints is not None:
         report.threats, baselined = suppressions.apply_baseline(
             report.threats, baseline_fingerprints
         )
-    coverage.baselined = len(baselined)
+        report.attack_paths, baselined_paths = suppressions.apply_baseline_paths(
+            report.attack_paths, baseline_fingerprints
+        )
+    coverage.baselined = len(baselined) + len(baselined_paths)
 
     coverage.errors = [dict(e) for e in errors]
     coverage.gaps = [d.to_dict() for d in graph.diagnostics if d.level in ("warning", "error")]
@@ -694,7 +714,9 @@ def _finish(
                 "input errors; a baseline of a partial scan would hide findings later"
             )
         else:
-            baseline_written = suppressions.write_baseline(request.write_baseline, snapshot)
+            baseline_written = suppressions.write_baseline(
+                request.write_baseline, snapshot, snapshot_paths
+            )
 
     _apply_display_filter(report, settings.min_severity)
     report.coverage = coverage
@@ -708,8 +730,55 @@ def _finish(
         ignore_file=ignore.path if ignore is not None else None,
         ignore_entries=sum(1 for e in ignore.entries if not e.expired) if ignore else 0,
         baseline_written=baseline_written,
+        suppressed_paths=suppressed_paths,
+        baselined_paths=len(baselined_paths),
         ingest_sources=sources,
     )
+
+
+def _reconcile_ingested(
+    report: ThreatReport,
+    graph: InfraGraph,
+    external: list[Threat],
+    sources: list[dict[str, Any]],
+) -> None:
+    """Drop scanner findings that ThreatCode's own finding at the same file and line reports.
+
+    Needs root-relative locations, so it runs after ``_localize_threats``.
+    The dropped finding's diagnostic goes to the graph and its count to the source it came from.
+    Attack path hops and findings that referred to it are repointed at the native finding that
+    stands in for it, so no reference is left to a finding the report no longer holds.
+    """
+    from threatcode.ingest import reconcile_native
+
+    ingested = {id(threat) for threat in external}
+    scanner = [t for t in report.threats if id(t) in ingested]
+    if not scanner:
+        return
+    native = [t for t in report.threats if id(t) not in ingested]
+    twins: dict[str, Threat] = {}
+    remaining, diagnostics = reconcile_native(scanner, native, twins=twins)
+    if not diagnostics:
+        return
+    graph.diagnostics.extend(diagnostics)
+    kept = {id(t) for t in remaining}
+    for threat in scanner:
+        if id(threat) in kept:
+            continue
+        twin = twins[threat.id]
+        twin.path_ids = sorted({*twin.path_ids, *threat.path_ids})
+        for source in sources:
+            if source.get("file") == threat.metadata.get("ingest_file") and (
+                source.get("tool") == threat.tool
+            ):
+                source["duplicates"] = int(source.get("duplicates", 0)) + 1
+                break
+    report.threats = [t for t in report.threats if id(t) not in ingested or id(t) in kept]
+    for path in report.attack_paths:
+        for hop in path.hops:
+            hop.enabled_by = list(
+                dict.fromkeys(twins[i].id if i in twins else i for i in hop.enabled_by)
+            )
 
 
 def _threat_order(threat: Threat) -> tuple[int, str, str, str]:

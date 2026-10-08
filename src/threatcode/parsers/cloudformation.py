@@ -23,12 +23,18 @@ from bisect import bisect_right
 from collections.abc import Callable, Mapping
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic
 from threatcode.exceptions import ParseError
 from threatcode.parsers import _sam
-from threatcode.parsers._cfn_properties import TemplateContext, evaluate_condition, translate
+from threatcode.parsers._cfn_properties import (
+    RAW_KEY,
+    TemplateContext,
+    evaluate_condition,
+    translate,
+)
 from threatcode.parsers._cfn_refs import WorkBudget, scan_refs
 from threatcode.parsers._cfn_types import resolve_type
 from threatcode.parsers._json_lines import json_line_index
@@ -169,6 +175,13 @@ class LineIndex:
         return start
 
 
+# Every property the parser synthesizes, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py).
+# The properties of a resource are the template's, renamed to the Terraform attribute names the
+# rules use (see _cfn_properties); the one property of its own is the raw Properties mapping.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({"*": frozenset({RAW_KEY})})
+
+
 class CloudFormationParser(BaseParser):
     """Parse CloudFormation YAML or JSON templates, including AWS SAM templates."""
 
@@ -303,7 +316,7 @@ class _Run:
                 [*_depends_on(definition), *(i for i in scan.logical_ids if i not in covered)]
             )
         )
-        meta = self._meta(logical_id, cfn_type, definition, origin, scan.imports)
+        meta = self._meta(cfn_type, definition, origin, scan.imports)
         start, end = self.lines.span(span_id) if self.lines is not None else (None, None)
         if cfn_type == NESTED_STACK_TYPE:
             url = properties.get("TemplateURL")
@@ -347,7 +360,6 @@ class _Run:
 
     def _meta(
         self,
-        logical_id: str,
         cfn_type: str,
         definition: Mapping[str, Any],
         origin: _sam.SamOrigin | None,

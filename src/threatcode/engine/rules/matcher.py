@@ -208,7 +208,7 @@ class _Atom:
 
 
 @lru_cache(maxsize=4096)
-def parse_path(path: str) -> tuple[_Atom, ...]:
+def parse_path(path: str) -> tuple[_Atom, ...]:  # noqa: C901 - one-pass scanner, a branch per character class
     """Split a property path into steps.
 
     ``a.b`` is two steps, ``a['b.c']`` and ``a.b\\.c`` are steps whose second key contains a

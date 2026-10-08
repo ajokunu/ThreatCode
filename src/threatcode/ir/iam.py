@@ -50,12 +50,12 @@ from __future__ import annotations
 import fnmatch
 import re
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.ir.edges import EdgeType
-from threatcode.ir.enrich import EnrichContext
+from threatcode.ir.enrich import EnrichContext, Produced, produced
 from threatcode.ir.nodes import InfraNode
 from threatcode.ir.references import ArnParts, ReferenceIndex, parse_arn, type_is
 from threatcode.values import is_unknown
@@ -67,6 +67,10 @@ register_code(
     "graph.iam_fanout_capped",
     "A wildcard IAM permission matches more nodes than the per-role limit, so only some are linked",
 )
+
+# The one derived fact this module writes, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py)
+PRODUCED: Produced = produced(("aws_iam_role",), "assume_role_trust")
 
 # How many nodes a role's wildcard permissions are linked to, in total, before the rest are skipped
 MAX_WILDCARD_TARGETS = 25
@@ -408,57 +412,61 @@ def _grants_everyone(statements: Any) -> bool:
 # -- trust policies ----------------------------------------------------------
 
 
+@dataclass
+class _TrustFacts:
+    """Who a role's trust policies let assume it, gathered over every Allow statement."""
+
+    services: dict[str, None] = field(default_factory=dict)
+    accounts: dict[str, None] = field(default_factory=dict)
+    others: dict[str, None] = field(default_factory=dict)
+    principals: dict[str, None] = field(default_factory=dict)
+    any_principal: bool = False
+
+    def add_roles(self, index: ReferenceIndex, role: InfraNode, principal: Any) -> bool:
+        """Record the roles ``principal`` names; False when it names none in this graph."""
+        resolved = index.resolve_value(principal, role.module, required_type=type_is(ROLE)).ids
+        for source in resolved:
+            if source != role.id:
+                self.principals.setdefault(source)
+        return bool(resolved)
+
+    def read(self, index: ReferenceIndex, role: InfraNode, principal: Any) -> None:
+        if is_unknown(principal):
+            if not self.add_roles(index, role, principal):
+                self.others.setdefault(principal.reference or "unresolved")
+        elif not isinstance(principal, str):
+            return
+        elif principal == "*":
+            self.any_principal = True
+        elif _SERVICE_PRINCIPAL.match(principal):
+            self.services.setdefault(principal)
+        else:
+            arn = parse_arn(principal)
+            if arn is not None and arn.service == "iam" and arn.resource == "root":
+                self.accounts.setdefault(arn.account)
+            elif not self.add_roles(index, role, principal):
+                self.others.setdefault(principal)
+
+
 def _link_trust(graph: InfraGraph, ctx: EnrichContext, role: InfraNode) -> None:
     """principal role -> role for each role principal; the rest becomes `assume_role_trust`."""
     statements = ctx.derived(role).get("assume_role_statements")
     if not isinstance(statements, list):
         return
     index = ctx.index_for(role)
-    services: dict[str, None] = {}
-    accounts: dict[str, None] = {}
-    others: dict[str, None] = {}
-    principals: dict[str, None] = {}
-    any_principal = False
+    facts = _TrustFacts()
     for statement in statements:
         if not isinstance(statement, Mapping) or statement.get("effect") != "Allow":
             continue
         for principal in statement.get("principals") or ():
-            if is_unknown(principal):
-                resolved = index.resolve_value(
-                    principal, role.module, required_type=type_is(ROLE)
-                ).ids
-                for source in resolved:
-                    if source != role.id:
-                        principals.setdefault(source)
-                if not resolved:
-                    others.setdefault(principal.reference or "unresolved")
-            elif not isinstance(principal, str):
-                continue
-            elif principal == "*":
-                any_principal = True
-            elif _SERVICE_PRINCIPAL.match(principal):
-                services.setdefault(principal)
-            else:
-                arn = parse_arn(principal)
-                if arn is not None and arn.service == "iam" and arn.resource == "root":
-                    accounts.setdefault(arn.account)
-                    continue
-                resolved = index.resolve_value(
-                    principal, role.module, required_type=type_is(ROLE)
-                ).ids
-                if resolved:
-                    for source in resolved:
-                        if source != role.id:
-                            principals.setdefault(source)
-                else:
-                    others.setdefault(principal)
-    for source in principals:
+            facts.read(index, role, principal)
+    for source in facts.principals:
         graph.add_edge(source, role.id, EdgeType.IAM_BINDING, relation="can_assume")
     trust: dict[str, Any] = {
-        "services": sorted(services),
-        "accounts": sorted(accounts),
-        "principals": sorted(others),
-        "any_principal": any_principal,
+        "services": sorted(facts.services),
+        "accounts": sorted(facts.accounts),
+        "principals": sorted(facts.others),
+        "any_principal": facts.any_principal,
     }
     ctx.contribute(role, {"assume_role_trust": trust})
 
@@ -476,9 +484,8 @@ class _Grant:
     conditional: bool
 
 
-def _link_permissions(
-    graph: InfraGraph, ctx: EnrichContext, targets: _Targets, role: InfraNode
-) -> None:
+def _role_statements(graph: InfraGraph, ctx: EnrichContext, role: InfraNode) -> list[Any]:
+    """Every raw permission statement the role holds, inline, attached and by edge."""
     derived = ctx.derived(role)
     raw_statements: list[Any] = []
     for key in ("inline_policy_statements", "attached_policy_statements"):
@@ -494,25 +501,17 @@ def _link_permissions(
             found = ctx.derived(policy).get("policy_statements") if policy else None
             if isinstance(found, list):
                 raw_statements.extend(found)
-    grants: dict[str, _Grant] = {}
-    # Nodes an ARN pattern reaches: each is linked only while the role's budget lasts
-    pool: dict[str, list[_Statement]] = {}
-    # The types a `*` resource reaches, with the statements that reach them
-    everywhere: dict[str, list[_Statement]] = {}
-    for statement in _statements(raw_statements):
-        for node, wildcard in _concrete_targets(ctx, targets, role, statement):
-            if node.id == role.id:
-                continue
-            if wildcard:
-                pool.setdefault(node.id, []).append(statement)
-            else:
-                _record(grants, node.id, statement, False)
-        if statement.wants_everything:
-            for service in _statement_services(statement):
-                for resource_type in SERVICES[service].types:
-                    covering = everywhere.setdefault(resource_type, [])
-                    if statement not in covering:
-                        covering.append(statement)
+    return raw_statements
+
+
+def _link_within_budget(
+    targets: _Targets,
+    role: InfraNode,
+    grants: dict[str, _Grant],
+    pool: Mapping[str, list[_Statement]],
+    everywhere: Mapping[str, list[_Statement]],
+) -> int:
+    """Add the wildcard grants while the role's budget lasts; return how many nodes were skipped."""
     budget = MAX_WILDCARD_TARGETS
     skipped = 0
     for node_id in sorted(pool, key=lambda i: (_rank(targets, i), i)):
@@ -537,6 +536,32 @@ def _link_permissions(
                 budget -= 1
             for statement in everywhere[resource_type]:
                 _record(grants, node.id, statement, True)
+    return skipped
+
+
+def _link_permissions(
+    graph: InfraGraph, ctx: EnrichContext, targets: _Targets, role: InfraNode
+) -> None:
+    grants: dict[str, _Grant] = {}
+    # Nodes an ARN pattern reaches: each is linked only while the role's budget lasts
+    pool: dict[str, list[_Statement]] = {}
+    # The types a `*` resource reaches, with the statements that reach them
+    everywhere: dict[str, list[_Statement]] = {}
+    for statement in _statements(_role_statements(graph, ctx, role)):
+        for node, wildcard in _concrete_targets(ctx, targets, role, statement):
+            if node.id == role.id:
+                continue
+            if wildcard:
+                pool.setdefault(node.id, []).append(statement)
+            else:
+                _record(grants, node.id, statement, False)
+        if statement.wants_everything:
+            for service in _statement_services(statement):
+                for resource_type in SERVICES[service].types:
+                    covering = everywhere.setdefault(resource_type, [])
+                    if statement not in covering:
+                        covering.append(statement)
+    skipped = _link_within_budget(targets, role, grants, pool, everywhere)
     if skipped:
         graph.diagnostics.append(
             Diagnostic(

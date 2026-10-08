@@ -66,6 +66,17 @@ class TestPathReading:
         assert path_node_ids({"nodes": ["internet", "a", "b"]}) == ["internet", "a", "b"]
         assert path_node_ids({"nodes": [{"id": "x"}, {"address": "y"}]}) == ["x", "y"]
 
+    def test_the_hops_of_a_report_are_read_by_node_id(self) -> None:
+        """The shape ``AttackHop.to_dict`` writes, the one every scan produces."""
+        path = {
+            "hops": [
+                {"node_id": "internet", "enabled_by": []},
+                {"node_id": "aws_lb.front", "enabled_by": ["abc"]},
+                {"node_id": "aws_s3_bucket.data", "enabled_by": []},
+            ]
+        }
+        assert path_node_ids(path) == ["internet", "aws_lb.front", "aws_s3_bucket.data"]
+
     def test_hops_are_read_with_the_near_end_of_the_first_hop(self) -> None:
         path = {"hops": [{"from": "internet", "to": "lb"}, {"to": "db"}]}
         assert path_node_ids(path) == ["internet", "lb", "db"]

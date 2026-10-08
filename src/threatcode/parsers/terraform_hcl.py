@@ -39,9 +39,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.constants import is_terraform_json_name, is_terraform_name
@@ -499,6 +500,13 @@ def _render_policy_document(body: dict[str, Any], scope: Context) -> Any:
 
 
 # --- the parser --------------------------------------------------------------------------
+
+
+# Every property the parser synthesizes, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py).
+# None: each property of a resource is an attribute of the configuration under the provider's
+# own name.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({})
 
 
 class TerraformHCLParser(BaseParser):

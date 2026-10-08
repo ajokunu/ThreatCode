@@ -62,9 +62,13 @@ from threatcode.ir.enrich import (
     CompanionSpec,
     Deriver,
     EnrichContext,
+    Produced,
     as_list,
     block,
     blocks,
+    merge_produced,
+    produced,
+    produced_by_companions,
     text,
     tri_bool,
     type_matcher,
@@ -685,7 +689,7 @@ _SG_SPECS = (
         ("security_group_id",),
         _vpc_rule("ingress"),
         absent=_SG_ABSENT,
-        touches=lambda companion: ("ingress",),
+        touches=lambda _companion: ("ingress",),
     ),
     CompanionSpec(
         _SG,
@@ -693,7 +697,7 @@ _SG_SPECS = (
         ("security_group_id",),
         _vpc_rule("egress"),
         absent=_SG_ABSENT,
-        touches=lambda companion: ("egress",),
+        touches=lambda _companion: ("egress",),
     ),
 )
 
@@ -884,4 +888,32 @@ DERIVERS: tuple[Deriver, ...] = (
     Deriver(("aws_secretsmanager_secret",), _secret_inline),
     Deriver(("azurerm_mssql_server",), _mssql_inline),
     Deriver(("google_bigquery_dataset",), _bigquery_inline),
+)
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = merge_produced(
+    produced_by_companions(COMPANIONS),
+    produced(tuple(POLICY_ATTRIBUTES), "policy_statements"),
+    produced(
+        ("aws_iam_role",),
+        "assume_role_statements",
+        "attached_policy_arns",
+        "attached_policy_statements",
+        "inline_policy_statements",
+    ),
+    produced(("aws_ecs_task_definition",), "container_definitions"),
+    produced(("aws_sqs_queue",), "redrive_policy"),
+    produced(
+        ("aws_s3_bucket",),
+        "acl",
+        "logging_enabled",
+        "sse_algorithm",
+        "versioning_enabled",
+    ),
+    produced(("aws_security_group",), "egress", "ingress"),
+    produced(("aws_secretsmanager_secret",), "rotation_enabled"),
+    produced(("azurerm_mssql_server",), "auditing_enabled"),
+    produced(("google_bigquery_dataset",), "access_members"),
 )

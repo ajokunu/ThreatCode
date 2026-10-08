@@ -104,9 +104,10 @@ def scan_example(name: str) -> ScanResult:
 def path_node_ids(path: dict[str, Any]) -> list[str]:
     """The node ids an attack path visits, in order.
 
-    The JSON shape of an attack path is the attack-path package's to define. This reads either a
-    ``nodes`` list or ``hops`` (each hop naming its far end, the first also its near end), and
-    names the shapes it understood when it finds neither. Adjust it together with the shape.
+    The report writes an attack path as ``hops``, each with a ``node_id`` (see
+    ``models.attack_path.AttackHop``). Older shapes are still read: a ``nodes`` list, or hops that
+    name their far end (the first also its near end). A path in none of them is an error that names
+    the keys it has.
     """
     nodes = path.get("nodes")
     if isinstance(nodes, list) and nodes:
@@ -120,7 +121,7 @@ def path_node_ids(path: dict[str, Any]) -> list[str]:
                 ids.append(first[key])
                 break
         for hop in hops:
-            for key in ("node", "to", "target", "address", "resource", "id"):
+            for key in ("node_id", "node", "to", "target", "address", "resource", "id"):
                 if isinstance(hop.get(key), str):
                     ids.append(hop[key])
                     break

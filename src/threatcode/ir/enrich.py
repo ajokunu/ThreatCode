@@ -36,6 +36,13 @@ module may export any of these names:
     the policies of the role a function runs as.
 ``DEFAULTS``
     ``{resource_type: {attribute_path: default}}``, applied in place, see below.
+``PRODUCED``
+    ``{resource_type: {"derived.<fact>", ...}}``: every derived fact the module can write, by
+    resource type (an entry ending in '*' is a prefix).
+    Nothing here reads it at run time: the provenance gate
+    (tests/test_engine/test_rule_property_provenance.py) fails a rule that reads a fact no module
+    declares, and fails when a module writes a fact it did not declare.
+    `produced`, `produced_by_companions`, `produced_by_relations` and `merge_produced` build it.
 
 The work runs in phases across all modules (defaults, companions, derivers, relations), each in
 sorted module order, so a relation can rely on what every companion and deriver produced no matter
@@ -76,7 +83,7 @@ import pkgutil
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from types import ModuleType
+from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any
 
 from threatcode.ir.references import ReferenceIndex, Resolution, TypeMatcher
@@ -508,6 +515,51 @@ def _excluding(matcher: TypeMatcher, excluded: str) -> TypeMatcher:
 
 def _looks_like_reference(value: str) -> bool:
     return value.startswith(_REFERENCE_ROOTS) or bool(_RESOURCE_LIKE.match(value))
+
+
+# ---------------------------------------------------------------------------
+# What a module produces
+# ---------------------------------------------------------------------------
+
+Produced = Mapping[str, frozenset[str]]
+
+
+def produced(types: Iterable[str], *facts: str) -> dict[str, frozenset[str]]:
+    """A ``PRODUCED`` table: each of ``types`` carries ``derived.<fact>`` for every fact."""
+    names = frozenset(f"{DERIVED}.{fact}" for fact in facts)
+    return dict.fromkeys(types, names)
+
+
+def produced_by_companions(specs: Iterable[CompanionSpec]) -> dict[str, frozenset[str]]:
+    """The facts the companion specs give their parents: the keys of each ``absent``."""
+    table: dict[str, frozenset[str]] = {}
+    for spec in specs:
+        facts = frozenset(f"{DERIVED}.{key}" for key in spec.absent)
+        table[spec.parent_type] = table.get(spec.parent_type, frozenset()) | facts
+    return table
+
+
+def produced_by_relations(specs: Iterable[RelationSpec]) -> dict[str, frozenset[str]]:
+    """The facts the relation specs give their sources: the keys of each ``absent``."""
+    table: dict[str, frozenset[str]] = {}
+    for spec in specs:
+        facts = frozenset(f"{DERIVED}.{key}" for key in spec.absent)
+        for source_type in spec.source_types:
+            table[source_type] = table.get(source_type, frozenset()) | facts
+    return table
+
+
+def merge_produced(*tables: Mapping[str, Iterable[str]]) -> Produced:
+    """Union ``PRODUCED`` tables: a type named in several gets the union of its facts."""
+    merged: dict[str, frozenset[str]] = {}
+    for table in tables:
+        for resource_type, names in table.items():
+            merged[resource_type] = merged.get(resource_type, frozenset()) | frozenset(names)
+    return MappingProxyType(merged)
+
+
+# Written by the defaults phase below, on whichever type has a ``DEFAULTS`` table
+PRODUCED: Produced = MappingProxyType({"*": frozenset({f"{DERIVED}.{DEFAULTS_APPLIED}"})})
 
 
 # ---------------------------------------------------------------------------

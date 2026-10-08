@@ -195,6 +195,5 @@ class TestBudgetMachinery:
         self, tmp_path: Path
     ) -> None:
         run = cli_scan(tmp_path / "does-not-exist", budget=30.0)
-        assert run.exit_code is not None
-        assert run.exit_code != 0
+        assert run.exit_code == 2  # a path that does not exist is an input error
         assert sys.executable

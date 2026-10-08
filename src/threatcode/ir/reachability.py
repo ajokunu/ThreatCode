@@ -489,9 +489,12 @@ class _Reach:
             return False
         for edge in self.graph.edges_from(node.id):
             subnet = self.node(edge.target)
-            if subnet is not None and subnet.resource_type == "aws_subnet":
-                if subnet.exposure == "internet":
-                    return True
+            if (
+                subnet is not None
+                and subnet.resource_type == "aws_subnet"
+                and subnet.exposure == "internet"
+            ):
+                return True
         return False
 
     def _ingress_rules(self, group: InfraNode) -> list[Mapping[str, Any]]:

@@ -83,7 +83,7 @@ _SENSITIVE_KEYS = frozenset(
 RESTORABLE_LABELS = frozenset({"aws_arn", "ip_v4", "ip_v6", "aws_account_id", "arn", "boundary"})
 
 # Values that name no one in particular and matter to the analysis: "any address".
-_KEEP_IPV4 = frozenset({"0.0.0.0", "127.0.0.1"})
+_KEEP_IPV4 = frozenset({"0.0.0.0", "127.0.0.1"})  # noqa: S104 - values to keep, not a bind
 _KEEP_IPV6 = frozenset({"::", "::1"})
 
 _PEM_BLOCK = re.compile(r"-----BEGIN [A-Z0-9 ]+-----.*?(?:-----END [A-Z0-9 ]+-----|\Z)", re.DOTALL)

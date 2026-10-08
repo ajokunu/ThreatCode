@@ -98,7 +98,7 @@ _PRECISION_BY_LEVEL = {"definitive": "high", "heuristic": "medium", "absence": "
 
 _ACRONYMS = {
     word.lower(): word
-    for word in (
+    for word in (  # noqa: SIM905 - one string reads and diffs better than 40 quoted words
         "IAM RDS EC2 S3 VPC KMS EBS EKS ECS SNS SQS TLS SSH RDP API DNS MFA RBAC MCP LLM SQL SSL "
         "ACL CIDR IMDS IMDSv1 IMDSv2 ARN URL JSON AWS GCP CDN ALB WAF SSM ECR NSG AKS CVE IP"
     ).split()

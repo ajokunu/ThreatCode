@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 __all__ = ["format_text", "plural"]
 
-_STYLES: dict[str, dict[str, object]] = {
+_STYLES: dict[str, dict[str, Any]] = {
     "critical": {"fg": "red", "bold": True},
     "high": {"fg": "red"},
     "medium": {"fg": "yellow"},
@@ -106,7 +106,7 @@ class _Painter:
         self.enabled = enabled
 
     def __call__(self, text: str, severity: str) -> str:
-        return click.style(text, **_STYLES[severity]) if self.enabled else text  # type: ignore[arg-type]
+        return click.style(text, **_STYLES[severity]) if self.enabled else text
 
 
 def format_text(analysis: AnalysisResult, options: RenderOptions | None = None) -> str:

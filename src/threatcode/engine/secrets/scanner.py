@@ -25,6 +25,7 @@ import logging
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import Literal
 
 from threatcode.engine.secrets.builtin import entropy_rule, get_builtin_rules
 from threatcode.engine.secrets.config import MAX_PATTERN_LENGTH, ExtraRule, SecretScanConfig
@@ -271,12 +272,18 @@ def _build_extra(extra: ExtraRule) -> SecretRule | None:
     except re.error:
         return None
     rule_id = extra.id if extra.id.startswith("SECRET_") else f"SECRET_{extra.id}"
-    severity = extra.severity if extra.severity in ("critical", "high", "medium", "low") else "high"
+    levels: dict[str, Literal["critical", "high", "medium", "low"]] = {
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+    }
+    severity = levels.get(extra.severity, "high")
     return SecretRule(
         id=rule_id,
         category="custom",
         title=extra.title or rule_id,
-        severity=severity,  # type: ignore[arg-type]
+        severity=severity,
         regex=regex,
         keywords=list(extra.keywords),
         kind="provider",

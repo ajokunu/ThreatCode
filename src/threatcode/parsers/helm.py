@@ -25,7 +25,9 @@ import signal
 import subprocess
 import tempfile
 import threading
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from threatcode.diagnostics import Diagnostic, register_code
@@ -57,6 +59,13 @@ MAX_HELM_OUTPUT_BYTES = 20 * 1024 * 1024
 _STDERR_TAIL_BYTES = 500
 _SOURCE_COMMENT = re.compile(r"#\s*Source:\s*(\S.*?)\s*\Z")
 _SEPARATOR = re.compile(r"---[ \t]*\Z")
+
+
+# Every property the parser synthesizes, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py).
+# None: a chart is rendered to manifests and the Kubernetes parser reads them, so the properties
+# are the ones listed in ``threatcode.parsers.kubernetes.PRODUCED``.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType({})
 
 
 class HelmParser(BaseParser):
@@ -147,7 +156,9 @@ class HelmParser(BaseParser):
         state = {"size": 0, "overflow": False}
         with tempfile.TemporaryFile() as stderr:
             try:
-                process = subprocess.Popen(
+                # An argv list (no shell). The binary comes from shutil.which and the chart
+                # path cannot start with '-', so scanned content never becomes an option
+                process = subprocess.Popen(  # noqa: S603
                     command,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
@@ -159,9 +170,11 @@ class HelmParser(BaseParser):
                 return None, f"helm could not be started: {exc}"
 
             def pump() -> None:
-                assert process.stdout is not None
+                stream = process.stdout
+                if stream is None:  # stdout is a pipe above, so this does not happen
+                    return
                 while True:
-                    block = process.stdout.read(65536)
+                    block = stream.read(65536)
                     if not block:
                         return
                     state["size"] += len(block)
@@ -248,7 +261,7 @@ def _documents_from_render(
                 file,
             )
             continue
-        for data, index in zip(loaded, indexes):
+        for data, index in zip(loaded, indexes, strict=False):
             if _is_test_hook(data):
                 continue
             line = rendered.template_line(index.get("", 0)) if index else None

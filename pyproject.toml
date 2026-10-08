@@ -84,7 +84,38 @@ target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+# src/ runs under the widest set: a security tool should not carry blind excepts, bare asserts
+# (which -O strips), unchecked subprocess and URL calls, or branches nobody can read.
+# TRY is left out on purpose: its TRY003 fires on every message-carrying exception.
+select = [
+    "E", "F", "I", "N", "W", "UP",
+    "B", "BLE", "S", "ARG", "SIM", "C4", "C901",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and scripts keep the original selection: they assert, spawn processes, write fixtures
+# with throwaway tokens, and take fixture and callback arguments they do not read.
+"tests/**" = ["B", "BLE", "S", "ARG", "SIM", "C4", "C901"]
+"scripts/**" = ["B", "BLE", "S", "ARG", "SIM", "C4", "C901"]
+# Dispatch tables: every entry of a table has to take the same arguments, so an entry that
+# does not need one of them still names it. Renaming them to _x would hide which arguments exist.
+# Template functions in the Helm renderer all take the executor first.
+"src/threatcode/parsers/_helm_render.py" = ["ARG001"]
+# Derivers and companion handlers share (node or companion, parent, ctx).
+"src/threatcode/ir/enrichment/*.py" = ["ARG001"]
+# Exposure signals share (analysis, node).
+"src/threatcode/ir/exposure.py" = ["ARG001"]
+# Format detectors and loaders share (path, content, data).
+"src/threatcode/parsers/__init__.py" = ["ARG001"]
+# Intrinsic handlers share (argument, depth) and post hooks share (converter, raw, out).
+"src/threatcode/parsers/_cfn_properties.py" = ["ARG001", "ARG002"]
+# The resolver interface: the default implementation resolves nothing and ignores its arguments.
+"src/threatcode/parsers/_hcl_eval.py" = ["ARG002"]
+# Every renderer in the table takes (analysis, options).
+"src/threatcode/formatters/__init__.py" = ["ARG001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

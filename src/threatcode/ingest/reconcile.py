@@ -88,7 +88,10 @@ def merge_across_tools(threats: Sequence[Threat]) -> tuple[list[Threat], list[Th
 
 
 def reconcile_native(
-    external: Iterable[Threat], native: Iterable[Threat]
+    external: Iterable[Threat],
+    native: Iterable[Threat],
+    *,
+    twins: dict[str, Threat] | None = None,
 ) -> tuple[list[Threat], list[Diagnostic]]:
     """Drop scanner findings that a native finding already reports at the same file and line.
 
@@ -96,6 +99,8 @@ def reconcile_native(
     with root-relative ``location_file``.
     Returns the external threats that remain and one ``ingest.duplicate`` diagnostic per dropped
     one; the native findings are updated in place.
+    When ``twins`` is given it is filled with ``{dropped threat id: the native threat that stands
+    in for it}``, so a caller can repoint what referred to the dropped finding.
     """
     index: dict[tuple[ThreatSource, str, int], Threat] = {}
     for threat in native:
@@ -119,4 +124,6 @@ def reconcile_native(
             continue
         _note(twin, threat.tool)
         diagnostics.append(_diagnostic(threat, twin))
+        if twins is not None:
+            twins[threat.id] = twin
     return remaining, diagnostics

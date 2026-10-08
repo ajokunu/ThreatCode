@@ -39,7 +39,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from threatcode.ir.enrich import Deriver, EnrichContext, as_list, tri_bool
+from threatcode.ir.enrich import Deriver, EnrichContext, Produced, as_list, produced, tri_bool
 from threatcode.ir.nodes import InfraNode
 from threatcode.values import Unknown, is_unknown
 from threatcode.vocab import is_world_source
@@ -156,9 +156,8 @@ def _world_source(props: Mapping[str, Any]) -> Any:
         for item in [source] if is_unknown(source) else as_list(source):
             if is_unknown(item) and unreadable is None:
                 unreadable = item
-    if not is_unknown(ranges):
-        if any(_is_world(item) for item in as_list(ranges)):
-            return True
+    if not is_unknown(ranges) and any(_is_world(item) for item in as_list(ranges)):
+        return True
     if unreadable is not None:
         return Unknown(unreadable.reference)
     # No ranges, no tags and no service accounts: Compute Engine admits every source address
@@ -173,3 +172,8 @@ def _firewall_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
 
 
 DERIVERS: tuple[Deriver, ...] = (Deriver((_FIREWALL,), _firewall_facts),)
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = produced((_FIREWALL,), "ingress_allow", "world_source")

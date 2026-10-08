@@ -186,9 +186,12 @@ def _fixed_versions(members: list[dict[str, Any]], package: PackageInfo) -> str:
             if not isinstance(affected, dict):
                 continue
             named = affected.get("package")
-            if isinstance(named, dict) and package.name:
-                if clean_text(named.get("name")).lower() != package.name.lower():
-                    continue
+            if (
+                isinstance(named, dict)
+                and package.name
+                and clean_text(named.get("name")).lower() != package.name.lower()
+            ):
+                continue
             for rng in affected.get("ranges") or []:
                 if not isinstance(rng, dict):
                     continue

@@ -28,7 +28,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from threatcode.ir.enrich import EnrichContext, RelationSpec, merge_value
+from threatcode.ir.enrich import (
+    EnrichContext,
+    Produced,
+    RelationSpec,
+    merge_value,
+    produced_by_relations,
+)
 from threatcode.ir.nodes import InfraNode
 
 _ABSENT: dict[str, Any] = {
@@ -98,3 +104,8 @@ RELATIONS: tuple[RelationSpec, ...] = (
         absent=_ABSENT,
     ),
 )
+
+# Every derived fact this module can write, by resource type, for the provenance gate
+# (tests/test_engine/test_rule_property_provenance.py): a rule may read ``derived.<fact>`` of a
+# type only if some module declares it, and a module may write only what it declares.
+PRODUCED: Produced = produced_by_relations(RELATIONS)

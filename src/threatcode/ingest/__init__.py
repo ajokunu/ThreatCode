@@ -129,8 +129,7 @@ def _label(path: Path, root: Path) -> str:
 def _read(path: Path) -> tuple[str, list[ScannerReport]]:
     data = _load_json(path)
     for name, detect, load in _READERS:
-        if detect(data):
-            assert isinstance(data, dict)
+        if detect(data) and isinstance(data, dict):
             return name, load(data)
     raise UsageError(
         f"cannot ingest {path}: not a recognized scanner result; supported formats are "
