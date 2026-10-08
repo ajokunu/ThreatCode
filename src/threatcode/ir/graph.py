@@ -269,6 +269,10 @@ class InfraGraph:
         # "terraform_plan", ...). Enrichment and exposure read it to know where provider defaults
         # may be assumed: a plan materialises them, a template or HCL file leaves them out
         self.node_formats: dict[str, str] = {}
+        # node id -> the label of the input (the parse output) it came from. Enrichment reads it
+        # to keep a link it cannot resolve inside the input that wrote it: a CloudFormation
+        # template or a Terraform module never names a resource of another input
+        self.node_units: dict[str, str] = {}
         # Ids of the nodes whose zone the input declared; no later pass moves them
         self.zone_declared: set[str] = set()
         self._edges_skipped = 0
@@ -721,6 +725,7 @@ class InfraGraph:
         self._graph.add_node(node_id)
         if unit is not None:
             self.node_formats[node_id] = unit.parsed.format_type
+            self.node_units[node_id] = unit.label
             if resource.trust_zone is not None:
                 self.zone_declared.add(node_id)
             unit.by_key[local_key] = node

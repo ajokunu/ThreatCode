@@ -874,7 +874,8 @@ resource "aws_security_group_rule" "r" {
             ),
         )
         derived = _derived(graph, "aws_security_group.a")
-        assert is_unknown(derived["ingress"])
+        # A rule resource only adds, so the list stays a list with one entry nobody can read
+        assert [is_unknown(entry) for entry in derived["ingress"]] == [True]
         assert derived["egress"] == []
 
     def test_a_computed_rule_direction_marks_both_unknown(self) -> None:
@@ -888,8 +889,8 @@ resource "aws_security_group_rule" "r" {
             ),
         )
         derived = _derived(graph, "aws_security_group.a")
-        assert is_unknown(derived["ingress"])
-        assert is_unknown(derived["egress"])
+        assert [is_unknown(entry) for entry in derived["ingress"]] == [True]
+        assert [is_unknown(entry) for entry in derived["egress"]] == [True]
 
     def test_computed_cidr_blocks_stay_unknown_inside_the_rule(self) -> None:
         graph = _graph(
@@ -910,9 +911,29 @@ resource "aws_security_group_rule" "r" {
         assert is_unknown(rule["cidr_blocks"])
         assert rule["from_port"] == 22
 
-    def test_computed_inline_blocks_are_unknown(self) -> None:
+    def test_computed_inline_blocks_are_one_unknown_entry(self) -> None:
         graph = _graph(_resource("aws_security_group", "a", ingress=Unknown("var.rules")))
-        assert is_unknown(_derived(graph, "aws_security_group.a")["ingress"])
+        derived = _derived(graph, "aws_security_group.a")
+        assert [is_unknown(entry) for entry in derived["ingress"]] == [True]
+
+    def test_computed_inline_blocks_leave_the_standalone_rules_readable(self) -> None:
+        graph = _graph(
+            _resource("aws_security_group", "a", ingress=Unknown("var.rules")),
+            _resource(
+                "aws_security_group_rule",
+                "r",
+                type="ingress",
+                security_group_id="aws_security_group.a",
+                from_port=22,
+                to_port=22,
+                protocol="tcp",
+                cidr_blocks=["0.0.0.0/0"],
+            ),
+        )
+        entries = _derived(graph, "aws_security_group.a")["ingress"]
+        known = [entry for entry in entries if not is_unknown(entry)]
+        assert [rule["cidr_blocks"] for rule in known] == [["0.0.0.0/0"]]
+        assert any(is_unknown(entry) for entry in entries)
 
     def test_cloudformation_inline_spelling(self) -> None:
         graph = _graph(

@@ -10,8 +10,12 @@ at the parent, and which derived facts the companion contributes.
 
 Every parent gets the documented keys even when it has no companion (``versioning_enabled`` is
 ``False``, ``ingress`` is ``[]``), so a rule can read the fact directly.
-A companion whose link cannot be resolved makes the keys of every candidate parent Unknown, and a
-companion that names something outside the scan is ignored.
+A companion whose link cannot be resolved makes the keys of every candidate parent of its own
+input Unknown (and reports a coverage gap), and a companion that names something outside the scan
+or outside its own input is ignored.
+The rules of a security group are the exception to "Unknown": a rule resource can only add to the
+list, so an unresolved one adds a single Unknown entry and the rules the scan does know still
+decide ``SG_UNRESTRICTED_INGRESS``.
 Legacy inline attributes (provider v3 style) are merged in by the derivers at the bottom, with the
 companion winning when both say something.
 
@@ -617,7 +621,8 @@ def _standalone_rule() -> Any:
         props = companion.properties
         direction = props.get("type")
         if is_unknown(direction):
-            return {"ingress": direction, "egress": direction}
+            # One more rule in a direction the scan cannot tell
+            return {"ingress": [direction], "egress": [direction]}
         if direction not in ("ingress", "egress"):
             return {}
         source = props.get("source_security_group_id")
@@ -682,6 +687,7 @@ _SG_SPECS = (
         _standalone_rule(),
         absent=_SG_ABSENT,
         touches=_standalone_keys,
+        additive=True,
     ),
     CompanionSpec(
         _SG,
@@ -690,6 +696,7 @@ _SG_SPECS = (
         _vpc_rule("ingress"),
         absent=_SG_ABSENT,
         touches=lambda _companion: ("ingress",),
+        additive=True,
     ),
     CompanionSpec(
         _SG,
@@ -698,6 +705,7 @@ _SG_SPECS = (
         _vpc_rule("egress"),
         absent=_SG_ABSENT,
         touches=lambda _companion: ("egress",),
+        additive=True,
     ),
 )
 
@@ -842,7 +850,8 @@ def _security_group_inline(node: InfraNode, ctx: EnrichContext) -> Facts:
         if raw is None:
             continue
         if is_unknown(raw):
-            facts[key] = raw
+            # Rules the scan cannot read, next to the ones a standalone resource adds
+            facts[key] = [raw]
         else:
             facts[key] = [_inline_rule(item) for item in blocks(raw)]
     return facts

@@ -16,8 +16,14 @@ overwritten, and it replaces any ``derived`` the input already carried (the name
 so a hostile input cannot forge a derived fact).
 Rules read ``derived.<key>`` paths.
 An unknown fact is an `Unknown` (`threatcode.values`), never an absent key: a companion whose
-link cannot be resolved marks every candidate parent Unknown instead of leaving the parent
-looking unconfigured.
+link cannot be resolved marks the keys it would have set Unknown on every candidate parent
+instead of leaving the parent looking unconfigured.
+The candidates are the parents of the companion's own input, because a reference never names a
+resource of another input, and every such mark is reported as an ``enrich.unresolved_companion``
+coverage gap, so a suppressed finding is never silent.
+A fact that is a list of independent entries, to which a companion can only add (the rules of a
+security group), takes one Unknown entry instead: the entries the scan does know still count,
+and only a verdict that needs the whole list stays unknown.
 The one exception is ``DEFAULTS``, which fills an absent attribute in place (see below).
 
 Modules
@@ -86,12 +92,18 @@ from dataclasses import dataclass, field
 from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any
 
+from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.ir.references import ReferenceIndex, Resolution, TypeMatcher
 from threatcode.values import Unknown, is_unknown
 
 if TYPE_CHECKING:
     from threatcode.ir.graph import InfraGraph
     from threatcode.ir.nodes import InfraNode
+
+register_code(
+    "enrich.unresolved_companion",
+    "A resource that configures another could not be linked, so some findings are not reported",
+)
 
 DERIVED = "derived"
 """The reserved property namespace enrichment writes to."""
@@ -104,6 +116,9 @@ DEFAULT_FORMATS: frozenset[str] = frozenset({"terraform_hcl", "cloudformation"})
 # Resource types are matched exactly, or by prefix when the entry ends with '*'
 _SEPARATOR = "::"
 _REFERENCE_ROOTS = ("var.", "local.", "module.", "data.", "each.", "count.", "self.", "path.")
+# A CloudFormation `Ref` (`Name`) or `Fn::GetAtt` (`Name.Attribute`) target: logical ids are
+# alphanumeric
+_CFN_LOGICAL_REFERENCE = re.compile(r"^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*$")
 _RESOURCE_LIKE = re.compile(r"^[a-z][a-z0-9]*_[a-z0-9_]+(\[[^\]]*\])?\.[A-Za-z_]")
 # Properties a literal link value is compared with on a candidate parent
 LITERAL_KEYS: tuple[str, ...] = (
@@ -148,6 +163,10 @@ class CompanionSpec:
     ``absent`` is what the parent's keys hold when no companion links to it; its keys are also the
     keys marked Unknown when the companion's link cannot be resolved, unless ``touches`` narrows
     them for one companion.
+    ``additive`` says the keys are lists to which a companion can only add entries, never take
+    one away or replace the others (the ingress rules of a security group): an unresolved
+    companion then adds one Unknown entry instead of making the whole list Unknown, so an entry
+    the scan does know still decides a rule that fires on it.
     """
 
     parent_type: str
@@ -158,6 +177,7 @@ class CompanionSpec:
     touches: Callable[[InfraNode], Iterable[str]] | None = None
     # False for a companion that does not configure this parent (a flow log of a subnet)
     applies: Callable[[InfraNode], bool] | None = None
+    additive: bool = False
 
 
 @dataclass(frozen=True)
@@ -301,7 +321,7 @@ def _unit_prefix(node_id: str) -> str:
 
 
 class EnrichContext:
-    """The graph, the enrichable nodes and reference resolution scoped to a node's unit."""
+    """The graph, the enrichable nodes and reference resolution scoped to a node's input."""
 
     def __init__(self, graph: InfraGraph, index: ReferenceIndex) -> None:
         self.graph = graph
@@ -316,29 +336,67 @@ class EnrichContext:
             self._by_type.setdefault(node.resource_type, []).append(node)
         self._scoped: dict[str, ReferenceIndex] = {}
         self._by_prefix: dict[str, dict[str, InfraNode]] = {}
+        self._unit_indexes: dict[str, ReferenceIndex] = {}
+        self._unit_members: dict[str, dict[str, InfraNode]] | None = None
         # Candidate lists and literal indexes are built once per (unit, type set) and reused,
         # so a companion's literal link is an O(1) lookup instead of a scan of every parent.
         self._groups: dict[str, dict[str, list[InfraNode]]] = {}
         self._peer_cache: dict[tuple[str | None, tuple[str, ...]], tuple[InfraNode, ...]] = {}
+        self._same_input_cache: dict[tuple[str, tuple[str, ...]], tuple[InfraNode, ...]] = {}
         self._literal_cache: dict[
             tuple[str, tuple[str, ...], tuple[str, ...]], dict[str, list[InfraNode]]
+        ] = {}
+        self._expression_cache: dict[
+            tuple[str, tuple[str, ...], tuple[str, ...]], dict[tuple[str, str], list[InfraNode]]
         ] = {}
         for node in self.nodes:
             prefix = _unit_prefix(node.id)
             if prefix:
                 self._by_prefix.setdefault(prefix, {})[node.id[len(prefix) + 2 :]] = node
 
-    def index_for(self, node: InfraNode) -> ReferenceIndex:
-        """A reference index whose keys are written the way `node` writes references.
+    def unit_of(self, node: InfraNode) -> str | None:
+        """The label of the input `node` came from, None when the graph does not record it."""
+        units = getattr(self.graph, "node_units", None)
+        if isinstance(units, Mapping):
+            found = units.get(node.id)
+            return found if isinstance(found, str) else None
+        return None
 
-        Most graphs have no qualified ids and share one index.
-        When several inputs define the same address the graph qualifies every copy with its input
-        label, and a reference inside one of them is resolved among that input's qualified nodes
-        only, so it never names a node of another input.
-        The graph does not say which unqualified nodes share an input with a qualified one, so a
-        companion whose parent sits on the other side of that line is unresolved, not resolved
-        to the wrong node (the keys it decides become Unknown on every candidate).
+    def same_input(self, first: InfraNode, second: InfraNode) -> bool:
+        """Whether two nodes come from one input; true when the graph cannot tell."""
+        a, b = self.unit_of(first), self.unit_of(second)
+        return a is None or b is None or a == b
+
+    def _members_of(self, unit: str) -> dict[str, InfraNode]:
+        """Every node of one input keyed the way that input writes its addresses."""
+        if self._unit_members is None:
+            members: dict[str, dict[str, InfraNode]] = {}
+            units = getattr(self.graph, "node_units", {})
+            for node_id, node in self.graph.nodes.items():
+                label = units.get(node_id)
+                if label is None:
+                    continue
+                marker = f"{label}{_SEPARATOR}"
+                key = node_id[len(marker) :] if node_id.startswith(marker) else node_id
+                members.setdefault(label, {})[key] = node
+            self._unit_members = members
+        return self._unit_members.get(unit, {})
+
+    def index_for(self, node: InfraNode) -> ReferenceIndex:
+        """A reference index over the input of `node`, keyed the way that input writes references.
+
+        A reference never names a resource of another input: a CloudFormation `Ref` is a logical
+        id of its own template, and a Terraform expression names its own module.
+        Two inputs can hold the same address (the graph then qualifies both), and one holding a
+        unique logical id must not satisfy a `Ref` in another that means a parameter.
+        A graph that does not record the input of its nodes falls back to the shared index, and
+        to one index per qualifying label for the nodes the graph qualified.
         """
+        unit = self.unit_of(node)
+        if unit is not None:
+            if unit not in self._unit_indexes:
+                self._unit_indexes[unit] = ReferenceIndex(self._members_of(unit))
+            return self._unit_indexes[unit]
         prefix = _unit_prefix(node.id)
         if not prefix:
             return self._index
@@ -368,14 +426,28 @@ class EnrichContext:
         """Enrichable nodes of the same input as `node` whose type matches.
 
         With ``any_input`` the nodes of every input.
-        The graph qualifies only the addresses that collide between inputs, so an input can hold
-        both qualified and unqualified ids and the label prefix cannot say which nodes belong
-        together.
-        Marking candidates Unknown therefore uses every input: a link that cannot be resolved
-        must never leave a parent in another scope looking confidently unconfigured.
-        The result is cached per unit and set of matching types, and must not be modified.
+        A graph that records the input of each node (``graph.node_units``) gives the exact
+        answer.
+        One that does not can only go by the label prefix the graph puts on colliding addresses,
+        which says nothing about the unqualified nodes of an input, so a scope that cannot be
+        told apart there is every unqualified node.
+        The result is cached per input and set of matching types, and must not be modified.
         """
-        return self._peers_of(None if any_input else _unit_prefix(node.id), matcher)
+        if any_input:
+            return self._peers_of(None, matcher)
+        unit = self.unit_of(node)
+        if unit is not None:
+            return self._same_input_peers(unit, matcher)
+        return self._peers_of(_unit_prefix(node.id), matcher)
+
+    def _same_input_peers(self, unit: str, matcher: TypeMatcher) -> tuple[InfraNode, ...]:
+        types = self._matching_types(matcher)
+        key = (unit, types)
+        found = self._same_input_cache.get(key)
+        if found is None:
+            found = tuple(n for t in types for n in self._by_type[t] if self.unit_of(n) == unit)
+            self._same_input_cache[key] = found
+        return found
 
     def _peers_of(self, prefix: str | None, matcher: TypeMatcher) -> tuple[InfraNode, ...]:
         types = self._matching_types(matcher)
@@ -416,6 +488,39 @@ class EnrichContext:
         hits: list[InfraNode] = []
         for resource_type in self._matching_types(matcher):
             hits.extend(self._literal_index(prefix, resource_type, key_tuple).get(literal, ()))
+        return hits
+
+    def expression_hits(
+        self, node: InfraNode, reference: str, matcher: TypeMatcher, keys: Sequence[str]
+    ) -> list[InfraNode]:
+        """Peers of `node` that state their name with the very expression `reference` is.
+
+        A bucket named ``!Sub "${AppName}-data"`` and a policy that points at the bucket named
+        ``!Sub "${AppName}-data"`` name one bucket, though the scan cannot compute the name:
+        the same expression in one input and one module has one value, and bucket names are
+        unique.
+        Two nodes of different modules are not matched, because a module's variables can hold a
+        different value in each call.
+        """
+        unit = self.unit_of(node)
+        if unit is None:
+            return []
+        key_tuple = tuple(keys)
+        hits: list[InfraNode] = []
+        for resource_type in self._matching_types(matcher):
+            cache_key = (unit, (resource_type,), key_tuple)
+            index = self._expression_cache.get(cache_key)
+            if index is None:
+                index = {}
+                for candidate in self._same_input_peers(unit, type_matcher(resource_type)):
+                    for key in key_tuple:
+                        value = candidate.properties.get(key)
+                        if is_unknown(value) and value.reference:
+                            entry = index.setdefault((candidate.module, value.reference), [])
+                            if candidate not in entry:
+                                entry.append(candidate)
+                self._expression_cache[cache_key] = index
+            hits.extend(index.get((node.module, reference), ()))
         return hits
 
     def contribute(self, node: InfraNode, values: Mapping[str, Any]) -> None:
@@ -479,34 +584,73 @@ class EnrichContext:
     ) -> tuple[list[InfraNode], str, str]:
         """Return (nodes, status, reference) with status 'ok', 'orphan', 'unresolved' or 'none'."""
         if is_unknown(value):
-            raw: Any = value.reference
-            if not raw:
+            if not value.reference:
                 return [], "unresolved", ""
-        elif isinstance(value, (str, dict)):
-            raw = value
-        else:
+            # The reference an Unknown carries is a reference by construction, so even a bare
+            # word (a CloudFormation `Ref` to a logical id) goes through the index of its input
+            return self._resolve_reference(node, value.reference, matcher, literal_keys)
+        if not isinstance(value, (str, dict)):
             return [], "none", ""
-        label = raw if isinstance(raw, str) else ""
+        label = value if isinstance(value, str) else ""
         # A plain word is a literal name or id. Sent through the index it would be matched to a
         # node's label, which is a guess: a bucket named "logs" is not the resource labelled logs
-        plain = isinstance(raw, str) and "." not in raw and "${" not in raw
+        plain = isinstance(value, str) and "." not in value and "${" not in value
         if not plain:
-            resolution = self.resolve(node, raw, matcher)
-            if resolution.ids:
-                return [self.graph.nodes[i] for i in resolution.ids], "ok", label
-            if resolution.ambiguous:
-                return [], "unresolved", label
-            if resolution.rejected:
-                return [], "orphan", label
-        if isinstance(raw, str) and "${" not in raw and not is_unknown(value):
-            hits = self.literal_hits(node, raw, matcher, literal_keys)
+            decided = self._through_index(node, value, label, matcher)
+            if decided is not None:
+                return decided
+        if isinstance(value, str) and "${" not in value:
+            hits = self.literal_hits(node, value, matcher, literal_keys)
             if len(hits) == 1:
                 return hits, "ok", label
             if len(hits) > 1:
                 return [], "unresolved", label
-            if not _looks_like_reference(raw):
+            if not _looks_like_reference(value):
                 return [], "orphan", label
         return [], "unresolved", label
+
+    def _through_index(
+        self, node: InfraNode, raw: Any, label: str, matcher: TypeMatcher
+    ) -> tuple[list[InfraNode], str, str] | None:
+        """The verdict of the reference index of the node's input, None when it has none."""
+        resolution = self.resolve(node, raw, matcher)
+        if resolution.ids:
+            return [self.graph.nodes[i] for i in resolution.ids], "ok", label
+        if resolution.ambiguous:
+            return [], "unresolved", label
+        if resolution.rejected:
+            return [], "orphan", label
+        return None
+
+    def _resolve_reference(
+        self, node: InfraNode, reference: str, matcher: TypeMatcher, literal_keys: Sequence[str]
+    ) -> tuple[list[InfraNode], str, str]:
+        """Resolve the reference an Unknown carries: the index, then the template, then a name."""
+        decided = self._through_index(node, reference, reference, matcher)
+        if decided is not None:
+            return decided
+        if self._names_outside_template(node, reference):
+            return [], "orphan", reference
+        hits = self.expression_hits(node, reference, matcher, literal_keys)
+        if len(hits) == 1:
+            return hits, "ok", reference
+        return [], "unresolved", reference
+
+    def _names_outside_template(self, node: InfraNode, reference: str) -> bool:
+        """Whether an unresolved CloudFormation reference names something outside its template.
+
+        A `Ref` or `Fn::GetAtt` target is a logical id of the template itself, and one that is
+        not a resource of it is a parameter, whose value comes from outside; `Fn::ImportValue`
+        names an export of another stack by definition.
+        Neither can be the parent of a companion of the same template, so they are not candidates
+        for it and nothing is left unknown on their account.
+        """
+        formats = getattr(self.graph, "node_formats", None)
+        if not isinstance(formats, Mapping) or formats.get(node.id) != "cloudformation":
+            return False
+        return bool(_CFN_LOGICAL_REFERENCE.match(reference)) or reference.startswith(
+            "Fn::ImportValue"
+        )
 
 
 def _excluding(matcher: TypeMatcher, excluded: str) -> TypeMatcher:
@@ -663,10 +807,54 @@ def _run_companions(ctx: EnrichContext, modules: Sequence[ModuleType]) -> None:
             for parent in link.resolved:
                 ctx.contribute(parent, spec.derive(companion, parent, ctx))
             if link.unresolved:
-                keys = tuple(spec.touches(companion)) if spec.touches else tuple(spec.absent)
-                marker = {key: Unknown(link.reference) for key in keys}
-                for candidate in ctx.peers(companion, parent_only, any_input=True):
-                    ctx.contribute(candidate, marker)
+                _mark_unresolved(ctx, spec, companion, link)
+
+
+def _mark_unresolved(
+    ctx: EnrichContext, spec: CompanionSpec, companion: InfraNode, link: LinkResult
+) -> None:
+    """Record that a companion whose parent cannot be found might configure any candidate.
+
+    The candidates are the matching parents of the companion's own input.
+    A list that a companion can only add to takes one Unknown entry, and any other fact becomes
+    Unknown, which a rule treats as neither passed nor failed.
+    The mark is reported as a coverage gap, once per companion, so a finding that this
+    suppresses is visible in every output and `--strict` counts it.
+    """
+    keys = tuple(spec.touches(companion)) if spec.touches else tuple(spec.absent)
+    parent_only = _excluding(type_matcher(spec.parent_type), spec.companion_type)
+    candidates = ctx.peers(companion, parent_only)
+    if not keys or not candidates:
+        return
+    unknown = Unknown(link.reference)
+    marker = {key: [unknown] if spec.additive else unknown for key in keys}
+    for candidate in candidates:
+        ctx.contribute(candidate, marker)
+    through = f"through '{link.reference}'" if link.reference else "through an expression"
+    parent_types = _and_list({c.resource_type for c in candidates})
+    if len(candidates) == 1:
+        scope = f"the {parent_types} resource"
+    else:
+        scope = f"any of the {len(candidates)} {parent_types} resources"
+    effect = (
+        f"it might add entries to {_and_list(keys)} that this scan cannot see"
+        if spec.additive
+        else f"findings that rest on {_and_list(keys)} being unset are not reported for them"
+    )
+    ctx.graph.diagnostics.append(
+        Diagnostic(
+            "warning",
+            "enrich.unresolved_companion",
+            f"{companion.resource_type} '{companion.id}' points at its target {through}, which "
+            f"this scan cannot resolve, so it might configure {scope} of this input; {effect}",
+            companion.source_file,
+            companion.start_line,
+        )
+    )
+
+
+def _and_list(items: Iterable[str]) -> str:
+    return ", ".join(sorted(items))
 
 
 def _run_derivers(ctx: EnrichContext, modules: Sequence[ModuleType]) -> None:
