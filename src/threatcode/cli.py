@@ -507,10 +507,13 @@ def _report_to_stderr(result: ScanResult, state: CliState) -> None:
         state.warn(f"Warning: LLM analysis failed ({reason}); rule results are unaffected")
 
     if result.ignore_file is not None:
+        suppressed = plural(coverage.suppressed - result.suppressed_paths, "finding")
+        if result.suppressed_paths:
+            suppressed += f" and {plural(result.suppressed_paths, 'attack path')}"
         state.info(
             f"Using ignore file {result.ignore_file} "
             f"({plural(result.ignore_entries, 'active entry', 'active entries')}); "
-            f"suppressed {plural(coverage.suppressed, 'finding')}"
+            f"suppressed {suppressed}"
         )
     for notice in result.notices:
         state.info(f"Warning: {notice}")

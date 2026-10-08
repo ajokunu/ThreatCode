@@ -6,6 +6,7 @@ import builtins
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -31,6 +32,7 @@ K8S_FIXTURE = FIXTURES_DIR / "kubernetes" / "insecure_deployment.yml"
 SIMPLE_TF = FIXTURES_DIR / "terraform" / "simple_exposed.tf"
 SIMPLE_PLAN = FIXTURES_DIR / "terraform" / "simple_s3.plan.json"
 INSECURE_PLAN = FIXTURES_DIR / "terraform" / "multi_service_insecure.plan.json"
+WEBAPP_EXAMPLE = REPO_ROOT / "examples" / "aws-webapp"
 BUCKET = 'resource "aws_s3_bucket" "{name}" {{\n  bucket = "{name}"\n}}\n'
 EXPOSED = (
     'resource "aws_lambda_function_url" "{name}" {{\n'
@@ -634,6 +636,15 @@ class TestSuppressionsAndBaselineFlags:
         assert "GHOST matched no finding" in result.stderr
         assert report_of(result)["coverage"]["suppressed"] == 2
 
+    def test_an_entry_naming_a_rule_a_user_rule_file_deprecated_warns(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("one"))
+        rules = write(tmp_path, "mine.yml", "deprecated_ids:\n  - MY_OLD_RULE\nrules: []\n")
+        write(tmp_path, ".threatcodeignore", 'MY_OLD_RULE exp:2099-12-31 reason="was accepted"\n')
+        with_rules = invoke("scan", tmp_path, "--rules", rules, "--fail-on", "none")
+        assert "MY_OLD_RULE names a rule that was removed or renamed" in with_rules.stderr
+        without = invoke("scan", tmp_path, "--fail-on", "none")
+        assert "removed or renamed" not in without.stderr
+
     def test_no_ignore(self, tmp_path: Path) -> None:
         write(tmp_path, "main.tf", exposed("one"))
         write(tmp_path, ".threatcodeignore", "LAMBDA_URL_NO_AUTH\n")
@@ -678,6 +689,112 @@ class TestSuppressionsAndBaselineFlags:
         result = invoke("scan", SIMPLE_TF, "--baseline", write(tmp_path, "b.json", "{}"))
         assert result.exit_code == 2
         assert "not a ThreatCode baseline" in result.stderr
+
+
+class TestAttackPathsHonorSuppressionsAndBaselines:
+    """An attack path gates the exit code, so the ways to set a known one aside must reach it."""
+
+    @staticmethod
+    def path_ids(result: Result) -> list[str]:
+        return [path["id"] for path in report_of(result)["attack_paths"]]
+
+    @pytest.fixture
+    def baseline(self, tmp_path: Path) -> Path:
+        written = tmp_path / "baseline.json"
+        assert invoke("scan", WEBAPP_EXAMPLE, "--write-baseline", written).exit_code == 0
+        return written
+
+    def test_the_example_fails_the_gate_on_its_attack_paths(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE)
+        assert result.exit_code == 1
+        assert len(self.path_ids(result)) == 3
+
+    def test_the_baseline_records_every_finding_and_attack_path(self, baseline: Path) -> None:
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        again = invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "none")
+        assert [p["id"] for p in document["attack_paths"]] == sorted(self.path_ids(again))
+        assert len(document["attack_paths"]) == 3
+        assert document["entries"]
+
+    def test_a_baseline_hides_known_attack_paths_from_the_gate_and_the_listing(
+        self, baseline: Path
+    ) -> None:
+        before = report_of(invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "none"))
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert again.exit_code == 0
+        data = report_of(again)
+        assert data["threats"] == []
+        assert data["attack_paths"] == []
+        assert data["coverage"]["baselined"] == len(before["threats"]) + len(before["attack_paths"])
+
+    def test_the_summary_line_counts_what_the_baseline_set_aside(self, baseline: Path) -> None:
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert re.search(r"found 0 findings \(\d+ baselined\)", again.stderr)
+
+    def test_an_attack_path_the_baseline_does_not_list_still_fails_the_gate(
+        self, baseline: Path
+    ) -> None:
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        new = document["attack_paths"].pop(0)["id"]
+        baseline.write_text(json.dumps(document), encoding="utf-8")
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert again.exit_code == 1
+        data = report_of(again)
+        assert data["threats"] == []
+        assert self.path_ids(again) == [new]
+
+    def test_a_baseline_without_attack_paths_does_not_hide_them(self, baseline: Path) -> None:
+        # The format written before attack paths were recorded has no attack_paths key.
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        del document["attack_paths"]
+        baseline.write_text(json.dumps(document), encoding="utf-8")
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert again.exit_code == 1
+        data = report_of(again)
+        assert data["threats"] == []
+        assert len(data["attack_paths"]) == 3
+
+    def test_an_ignore_entry_with_a_path_id_removes_that_path(self, tmp_path: Path) -> None:
+        plan = tmp_path / "plan"
+        plan.mkdir()
+        shutil.copy(WEBAPP_EXAMPLE / "tfplan.json", plan / "tfplan.json")
+        ids = self.path_ids(invoke("scan", plan, "--fail-on", "none"))
+        (plan / ".threatcodeignore").write_text(
+            f'{ids[0]} exp:2099-12-31 reason="accepted for this test"\n', encoding="utf-8"
+        )
+        result = invoke("scan", plan, "--fail-on", "none")
+        assert self.path_ids(result) == ids[1:]
+        assert report_of(result)["coverage"]["suppressed"] == 1
+        assert "suppressed 0 findings and 1 attack path" in result.stderr
+        assert "matched no finding or attack path" not in result.stderr
+
+    def test_ignoring_every_path_and_baselining_the_findings_reaches_green(
+        self, tmp_path: Path, baseline: Path
+    ) -> None:
+        document = json.loads(baseline.read_text(encoding="utf-8"))
+        ids = [p["id"] for p in document["attack_paths"]]
+        document["attack_paths"] = []
+        baseline.write_text(json.dumps(document), encoding="utf-8")
+        plan = tmp_path / "plan"
+        plan.mkdir()
+        shutil.copy(WEBAPP_EXAMPLE / "tfplan.json", plan / "tfplan.json")
+        lines = [f'{i} exp:2099-12-31 reason="accepted for this test"' for i in ids]
+        (plan / ".threatcodeignore").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        result = invoke("scan", plan, "--baseline", baseline)
+        assert result.exit_code == 0
+        assert report_of(result)["attack_paths"] == []
+        assert report_of(result)["coverage"]["suppressed"] == 3
+
+    def test_an_ignore_entry_that_names_no_path_still_warns(self, tmp_path: Path) -> None:
+        plan = tmp_path / "plan"
+        plan.mkdir()
+        shutil.copy(WEBAPP_EXAMPLE / "tfplan.json", plan / "tfplan.json")
+        (plan / ".threatcodeignore").write_text(
+            'ffffffffffff exp:2099-12-31 reason="a path that is gone"\n', encoding="utf-8"
+        )
+        result = invoke("scan", plan, "--fail-on", "none")
+        assert len(self.path_ids(result)) == 3
+        assert "ffffffffffff matched no finding or attack path" in result.stderr
 
 
 class TestLlmIsOptIn:

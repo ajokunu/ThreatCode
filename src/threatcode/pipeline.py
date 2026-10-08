@@ -10,7 +10,8 @@
 5. ``HybridEngine.analyze`` runs the rules, boundaries, severity, paths and, only when asked for,
    the LLM phase;
 6. root-relative locations, fingerprints and a deterministic order;
-7. suppressions, then the baseline, then the gate, then the ``--min-severity`` display filter;
+7. suppressions, then the baseline (both cover findings and attack paths), then the gate, then the
+   ``--min-severity`` display filter;
 8. the exit code.
 
 The pipeline never prints.
@@ -138,6 +139,9 @@ class ScanResult:
     ignore_entries: int = 0
     # The baseline file written by --write-baseline, when one was.
     baseline_written: Path | None = None
+    # Attack paths set aside; ``coverage.suppressed`` and ``coverage.baselined`` already count them.
+    suppressed_paths: int = 0
+    baselined_paths: int = 0
     # One mapping per ingested file, for the report.
     ingest_sources: list[dict[str, Any]] = field(default_factory=list)
 
@@ -656,19 +660,32 @@ def _finish(
     report.timestamp = "" if request.no_timestamp else current_timestamp()
 
     notices: list[str] = []
-    ignore = suppressions.load(request.ignore_file, root, no_ignore=request.no_ignore)
-    outcome = suppressions.apply(report.threats, ignore)
+    ignore = suppressions.load(
+        request.ignore_file,
+        root,
+        no_ignore=request.no_ignore,
+        extra_rule_paths=list(settings.extra_rule_paths),
+    )
+    outcome = suppressions.apply(report.threats, ignore, attack_paths=report.attack_paths)
     report.threats = outcome.kept
+    report.attack_paths = outcome.kept_paths
     notices.extend(outcome.notices)
-    coverage.suppressed = len(outcome.suppressed)
+    suppressed_paths = len(outcome.suppressed_paths)
+    coverage.suppressed = len(outcome.suppressed) + suppressed_paths
 
+    # The baseline records what is left after suppressions, findings and attack paths alike.
     snapshot = list(report.threats)
+    snapshot_paths = list(report.attack_paths)
     baselined: list[Threat] = []
+    baselined_paths: list[AttackPath] = []
     if baseline_fingerprints is not None:
         report.threats, baselined = suppressions.apply_baseline(
             report.threats, baseline_fingerprints
         )
-    coverage.baselined = len(baselined)
+        report.attack_paths, baselined_paths = suppressions.apply_baseline_paths(
+            report.attack_paths, baseline_fingerprints
+        )
+    coverage.baselined = len(baselined) + len(baselined_paths)
 
     coverage.errors = [dict(e) for e in errors]
     coverage.gaps = [d.to_dict() for d in graph.diagnostics if d.level in ("warning", "error")]
@@ -692,7 +709,9 @@ def _finish(
                 "input errors; a baseline of a partial scan would hide findings later"
             )
         else:
-            baseline_written = suppressions.write_baseline(request.write_baseline, snapshot)
+            baseline_written = suppressions.write_baseline(
+                request.write_baseline, snapshot, snapshot_paths
+            )
 
     _apply_display_filter(report, settings.min_severity)
     report.coverage = coverage
@@ -706,6 +725,8 @@ def _finish(
         ignore_file=ignore.path if ignore is not None else None,
         ignore_entries=sum(1 for e in ignore.entries if not e.expired) if ignore else 0,
         baseline_written=baseline_written,
+        suppressed_paths=suppressed_paths,
+        baselined_paths=len(baselined_paths),
         ingest_sources=sources,
     )
 
