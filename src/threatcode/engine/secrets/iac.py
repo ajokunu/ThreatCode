@@ -332,7 +332,8 @@ def _scan_source(
     graph: InfraGraph,
     seen_ids: set[str],
 ) -> list[Threat]:
-    outcome = scanner.scan_text(text, path=source.relpath)
+    # A Helm chart's templates are Go templates: a match inside a {{ }} action is code
+    outcome = scanner.scan_text(text, path=source.relpath, templated=format_type == "helm")
     context = _FileScan(
         relpath=source.relpath,
         nodes=list(by_file.get(source.relpath, ())),
