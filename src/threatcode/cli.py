@@ -21,6 +21,7 @@ import click
 from threatcode import __version__
 from threatcode.exceptions import ThreatCodeError, UsageError
 from threatcode.formatters import RenderOptions, format_names, render, write_text_file
+from threatcode.formatters._utils import terminal_safe
 from threatcode.formatters.text import plural
 from threatcode.models.threat import Severity
 
@@ -102,6 +103,17 @@ Exit codes:
 """
 
 
+def echo_err(message: str) -> None:
+    """One message on stderr, safe for a terminal.
+
+    Messages quote the scanned input (a file name, a resource address, a parser's complaint), and
+    that text is hostile: an escape sequence in a server name must not clear the screen or retitle
+    the window.
+    Every message the CLI prints on stderr goes through here.
+    """
+    click.echo(terminal_safe(message, keep_lines=True), err=True)
+
+
 @dataclass
 class CliState:
     """Group-level settings that every command reads."""
@@ -114,11 +126,11 @@ class CliState:
     def info(self, message: str) -> None:
         """A message that ``--quiet`` hides."""
         if not self.quiet:
-            click.echo(message, err=True)
+            echo_err(message)
 
     def warn(self, message: str) -> None:
         """A message that is always shown."""
-        click.echo(message, err=True)
+        echo_err(message)
 
 
 def _state(ctx: click.Context) -> CliState:
@@ -140,18 +152,24 @@ class _ThreatCodeGroup(click.Group):
         except (click.exceptions.ClickException, click.exceptions.Abort, click.exceptions.Exit):
             raise
         except ThreatCodeError as exc:
-            click.echo(f"Error: {exc}", err=True)
+            echo_err(f"Error: {exc}")
             ctx.exit(2)
         except Exception as exc:  # noqa: BLE001 - last resort: any crash must exit 2, never 1
-            click.echo(
-                f"Error: unexpected {type(exc).__name__}: {exc} (run with --debug for a traceback)",
-                err=True,
+            echo_err(
+                f"Error: unexpected {type(exc).__name__}: {exc} (run with --debug for a traceback)"
             )
             if bool(ctx.params.get("debug")) or os.environ.get(DEBUG_ENV) == "1":
                 # The traceback is for the person debugging; the exit status stays 2 so a crash
                 # can never be read as "findings" (1).
                 traceback.print_exc(file=sys.stderr)
             ctx.exit(2)
+
+
+class _SafeFormatter(logging.Formatter):
+    """A log formatter whose output cannot carry a control sequence from the scanned input."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return terminal_safe(super().format(record), keep_lines=True)
 
 
 def _configure_logging(ctx: click.Context, verbose: int, quiet: bool, debug: bool) -> None:
@@ -165,7 +183,7 @@ def _configure_logging(ctx: click.Context, verbose: int, quiet: bool, debug: boo
     else:
         level = logging.WARNING
     handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    handler.setFormatter(_SafeFormatter("%(levelname)s: %(message)s"))
     target = logging.getLogger("threatcode")
     previous = target.level
     target.addHandler(handler)
@@ -232,7 +250,7 @@ def write_output(
         return
     target = write_text_file(path, body)
     if not quiet:
-        click.echo(f"{label} written to {target}", err=True)
+        echo_err(f"{label} written to {target}")
 
 
 def _default_format(output_path: str | None) -> str:

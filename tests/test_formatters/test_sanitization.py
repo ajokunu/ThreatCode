@@ -17,6 +17,7 @@ from threatcode.formatters._utils import (
     md_inline,
     stride_label,
     technique_url,
+    terminal_safe,
     truncate,
 )
 from threatcode.formatters.mermaid import mermaid_label
@@ -192,3 +193,48 @@ class TestMermaidLabels:
     def test_the_label_is_capped_and_one_line(self) -> None:
         out = mermaid_label("word " * 100)
         assert len(out) <= 60 and "\n" not in out and out.endswith("...")
+
+
+# The characters that must never reach a terminal as themselves
+UNSAFE = re.compile(
+    "[\x00-\x08\x0b-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]"
+)
+
+
+class TestTerminalSafe:
+    HOSTILE = "evil\x1b[2J\x1b[Hpwned\x1b]0;TITLE\x07"
+
+    def test_an_escape_sequence_is_printed_as_text_not_executed(self) -> None:
+        out = terminal_safe(self.HOSTILE)
+        assert out == "evil\\x1b[2J\\x1b[Hpwned\\x1b]0;TITLE\\x07"
+        assert not UNSAFE.search(out)
+
+    @pytest.mark.parametrize("code", [*range(0x00, 0x20), 0x7F, *range(0x80, 0xA0)])
+    def test_no_c0_c1_or_delete_character_survives(self, code: int) -> None:
+        for keep_lines in (False, True):
+            out = terminal_safe(f"a{chr(code)}b", keep_lines=keep_lines)
+            if chr(code) in "\t\n" and keep_lines:
+                continue
+            assert not UNSAFE.search(out), (hex(code), keep_lines)
+            assert out.startswith("a") and out.endswith("b")
+
+    def test_c1_controls_show_their_code(self) -> None:
+        assert terminal_safe("a\x9bb\x9d") == "a\\x9bb\\x9d"
+
+    @pytest.mark.parametrize("char", ["\u202e", "\u2066", "\u200f", "\u2028", "\u2029"])
+    def test_bidirectional_and_separator_controls_show_their_code(self, char: str) -> None:
+        out = terminal_safe(f"a{char}b")
+        assert out == f"a\\u{ord(char):04x}b"
+
+    def test_whitespace_collapses_to_one_line(self) -> None:
+        assert terminal_safe("a\n\n\tb \r\n  c ") == "a b c"
+
+    def test_keeping_lines_keeps_newlines_and_tabs_but_not_a_carriage_return(self) -> None:
+        assert terminal_safe("a\tb\r\nc\rd", keep_lines=True) == "a\tb\nc d"
+
+    def test_ordinary_text_including_non_ascii_is_untouched(self) -> None:
+        text = 'aws_s3_bucket.donn\u00e9es["a"] -> \u65e5\u672c\u8a9e (private)'
+        assert terminal_safe(text) == text
+
+    def test_collapse_whitespace_also_drops_c1_controls_from_markdown(self) -> None:
+        assert collapse_whitespace("a\x9bb\x9dc") == "a b c"

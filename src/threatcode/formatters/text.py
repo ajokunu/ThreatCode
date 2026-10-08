@@ -25,9 +25,9 @@ import click
 from threatcode.formatters import RenderOptions
 from threatcode.formatters._utils import (
     attack_path_phrase,
-    collapse_whitespace,
     plural,
     severity_counts,
+    terminal_safe,
     threat_source,
     truncate,
 )
@@ -78,6 +78,7 @@ def _location(threat: Threat, graph: InfraGraph | None = None) -> str:
     file, line, _end = threat_source(threat, graph)
     if not file:
         return ""
+    file = terminal_safe(file)
     return f"{file}:{line}" if line else file
 
 
@@ -117,7 +118,7 @@ def format_text(analysis: AnalysisResult, options: RenderOptions | None = None) 
     width = terminal_width(options)
 
     lines: list[str] = []
-    target = f" of {report.input_file}" if report.input_file else ""
+    target = f" of {terminal_safe(report.input_file)}" if report.input_file else ""
     lines.append(
         f"ThreatCode scan{target}: {plural(report.scanned_resources, 'resource')}, "
         f"{plural(len(report.threats), 'finding')}"
@@ -168,8 +169,9 @@ def _one_path(path: AttackPath, paint: _Painter, width: int) -> list[str]:
     severity = path.severity.value
     hops = max(len(path.hops) - 1, 0)
     label = paint(severity.upper().ljust(8), severity)
-    lines = [f"{label}  {path.entry} -> {path.target}  ({plural(hops, 'hop')}, id {path.id})"]
-    chain = " > ".join(hop.node_id for hop in path.hops)
+    entry, target = terminal_safe(path.entry), terminal_safe(path.target)
+    lines = [f"{label}  {entry} -> {target}  ({plural(hops, 'hop')}, id {terminal_safe(path.id)})"]
+    chain = " > ".join(terminal_safe(hop.node_id) for hop in path.hops)
     indent = " " * 10
     lines.extend(_wrap(chain, width - len(indent), indent))
     return lines
@@ -212,21 +214,23 @@ def _rows(
     rows: list[dict[str, str | Threat]] = []
     for members in ordered:
         first = members[0]
-        title = collapse_whitespace(first.title)
+        title = terminal_safe(first.title)
         if len(members) > 1:
-            cause = first.root_cause.replace("_", " ").replace("-", " ")
+            cause = terminal_safe(first.root_cause.replace("_", " ").replace("-", " "))
             title += f" (+{len(members) - 1} related: {cause})"
         techniques: dict[str, None] = {}
         for member in members:
             for technique in member.mitre_techniques:
-                techniques.setdefault(technique, None)
+                techniques.setdefault(terminal_safe(technique), None)
         rows.append(
             {
                 "severity": max(threat_severity(m) for m in members).value,
-                "resource": first.resource_address or "-",
-                "rule": first.rule_id or first.source.value,
+                "resource": terminal_safe(first.resource_address) or "-",
+                "rule": terminal_safe(first.rule_id or first.source.value),
                 "finding": title,
-                "stride": _STRIDE_SHORT.get(first.stride_category, first.stride_category),
+                "stride": terminal_safe(
+                    _STRIDE_SHORT.get(first.stride_category, first.stride_category)
+                ),
                 "attck": ",".join(techniques),
                 "location": _location(first, graph),
             }
@@ -334,13 +338,19 @@ def _coverage_lines(report: ThreatReport) -> list[str]:
     if cov.errors:
         lines.append(f"  Errors ({len(cov.errors)}):")
         for err in cov.errors[:_LISTED_LIMIT]:
-            lines.append(f"    {err.get('file', '')}: {err.get('message', '')}")
+            lines.append(
+                f"    {terminal_safe(str(err.get('file', '')))}: "
+                f"{terminal_safe(str(err.get('message', '')))}"
+            )
         _more(lines, len(cov.errors))
     if cov.gaps:
         lines.append(f"  Gaps ({len(cov.gaps)}):")
         for gap in cov.gaps[:_LISTED_LIMIT]:
-            where = f" {gap['file']}" if gap.get("file") else ""
-            lines.append(f"    [{gap.get('code', '')}]{where}: {gap.get('message', '')}")
+            where = f" {terminal_safe(str(gap['file']))}" if gap.get("file") else ""
+            lines.append(
+                f"    [{terminal_safe(str(gap.get('code', '')))}]{where}: "
+                f"{terminal_safe(str(gap.get('message', '')))}"
+            )
         _more(lines, len(cov.gaps))
     if cov.rule_errors:
         lines.append(f"  Rule errors: {plural(cov.rule_errors, 'rule evaluation')} failed")
@@ -353,14 +363,14 @@ def _llm_lines(report: ThreatReport) -> list[str]:
     llm = report.llm
     if not llm:
         return []
-    status = str(llm.get("status", ""))
-    where = "/".join(str(llm[k]) for k in ("provider", "model") if llm.get(k))
+    status = terminal_safe(str(llm.get("status", "")))
+    where = "/".join(terminal_safe(str(llm[k])) for k in ("provider", "model") if llm.get(k))
     where = f" ({where})" if where else ""
     if status == "ran":
         count = int(llm.get("threat_count", 0) or 0)
         return [f"LLM: ran{where}, {plural(count, 'advisory finding')} (never fail the gate)"]
     if status == "failed":
-        error = collapse_whitespace(str(llm.get("error", "")))
+        error = terminal_safe(str(llm.get("error", "")))
         return [f"LLM: failed{where}: {error}. Only rule-based findings are shown."]
     return []
 

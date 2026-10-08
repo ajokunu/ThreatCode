@@ -286,6 +286,115 @@ class TestTextReport:
         assert "Set aside: 3 suppressed, 5 baselined" in text
 
 
+class TestTextFromTheInputIsInert:
+    """Names, titles, file names and messages come from the scanned files and are hostile."""
+
+    ESC = "\x1b[2J\x1b[H\x1b]0;TITLE\x07\x9b31m\u202e"
+    UNSAFE = re.compile("[\x00-\x09\x0b-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e]")
+
+    def hostile_analysis(self) -> AnalysisResult:
+        evil = f"evil{self.ESC}name"
+        threat = make_threat(
+            1,
+            address=f"mcp_server.{evil}",
+            title=f"Title {evil}",
+            rule_id=f"RULE_{evil}",
+            file=f"dir{self.ESC}/main.tf",
+            root_cause=f"cause{self.ESC}",
+            mitre_techniques=[f"T{self.ESC}"],
+        )
+        related = make_threat(
+            2,
+            address=f"mcp_server.{evil}",
+            title="Another",
+            root_cause=f"cause{self.ESC}",
+        )
+        coverage = Coverage(
+            files_discovered=2,
+            units_parsed=1,
+            not_iac_count=1,
+            not_iac_paths=[f"data{self.ESC}.json"],
+            errors=[
+                {"file": f"bad{self.ESC}.tf", "code": "parse.failed", "message": f"m{self.ESC}"}
+            ],
+            gaps=[
+                {
+                    "level": "warning",
+                    "code": f"hcl.{self.ESC}",
+                    "message": f"gap {self.ESC}",
+                    "file": f"g{self.ESC}.tf",
+                }
+            ],
+        )
+        return analysis_of(
+            threat,
+            related,
+            input_file=f"in{self.ESC}put",
+            coverage=coverage,
+            llm={"status": "failed", "error": f"boom {self.ESC}", "provider": f"p{self.ESC}"},
+        )
+
+    def test_no_control_character_reaches_the_report(self) -> None:
+        text = format_text(self.hostile_analysis(), RenderOptions(width=200))
+        assert not self.UNSAFE.search(text)
+        assert "\\x1b[2J" in text and "\\x07" in text
+
+    def test_with_color_the_only_escapes_are_the_severity_styles(self) -> None:
+        text = format_text(self.hostile_analysis(), RenderOptions(color=True, width=200))
+        assert not self.UNSAFE.search(re.sub(r"\x1b\[[0-9;]*m", "", text))
+        # Nothing the input said could have introduced a sequence of its own
+        assert text.count("\x1b") == len(re.findall(r"\x1b\[[0-9;]*m", text))
+
+    def test_an_attack_path_through_a_hostile_name_is_inert(self) -> None:
+        evil = f"evil{self.ESC}name"
+        path = AttackPath(
+            id="abc123abc123",
+            entry="internet",
+            target=f"mcp_server.{evil}",
+            hops=[
+                AttackHop(node_id="internet", zone="internet"),
+                AttackHop(node_id=f"mcp_server.{evil}", zone="private"),
+            ],
+            severity=Severity.HIGH,
+            rationale=f"The internet reaches {evil}",
+        )
+        text = format_text(analysis_of(make_threat(1), attack_paths=[path]))
+        assert not self.UNSAFE.search(text)
+        assert "internet > mcp_server.evil\\x1b[2J" in text
+
+    def test_the_diff_report_is_inert_too(self) -> None:
+        from threatcode.formatters.diff import format_diff
+
+        diff = {
+            "baseline_total": 0,
+            "current_total": 1,
+            "unchanged_count": 0,
+            "attack_paths_added": [
+                {
+                    "id": "x",
+                    "entry": "internet",
+                    "target": f"t{self.ESC}",
+                    "severity": "high",
+                    "hops": 1,
+                }
+            ],
+            "attack_paths_removed": [],
+            "added": [
+                {
+                    "id": "a",
+                    "severity": "high",
+                    "title": f"title {self.ESC}",
+                    "resource_address": f"addr {self.ESC}",
+                }
+            ],
+            "removed": [],
+            "changed": [],
+        }
+        text = format_diff(diff, "text")
+        assert not self.UNSAFE.search(text.replace("\n", " "))
+        assert "\\x1b[2J" in text
+
+
 class TestCoverageSummary:
     def _report(self, analysis: AnalysisResult, coverage: Coverage) -> str:
         original = analysis.report.coverage

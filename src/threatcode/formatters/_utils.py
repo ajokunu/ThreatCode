@@ -44,6 +44,7 @@ __all__ = [
     "source_uri",
     "stride_label",
     "technique_url",
+    "terminal_safe",
     "truncate",
     "verdict_line",
 ]
@@ -67,7 +68,15 @@ ZERO_WIDTH_JOINER = "‍"
 
 _WHITESPACE = re.compile(r"\s+")
 # Control characters other than tab and newline, which collapse to spaces with the rest.
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+# C0, DEL and C1: the 8-bit forms of CSI (0x9b) and OSC (0x9d) are controls on some terminals.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+# What must never reach a terminal as itself: every C0 control, DEL, every C1 control, the line and
+# paragraph separators, and the bidirectional controls that reorder what is printed around them.
+# Tab, newline and carriage return are in the set too; `terminal_safe` decides what they become.
+_TERMINAL_UNSAFE = re.compile(
+    "[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]"
+)
+_LINE_BREAKS = frozenset("\t\n\r")
 # Characters that start a block when they open a line: headings, lists, quotes, tables, fences,
 # setext underlines, thematic breaks and ordered-list numbers.
 _LEADING_BLOCK = re.compile(
@@ -87,6 +96,33 @@ _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:/")
 def collapse_whitespace(text: str) -> str:
     """One line: control characters and every whitespace run, newlines included, become a space."""
     return _WHITESPACE.sub(" ", _CONTROL.sub(" ", text)).strip()
+
+
+def _visible(match: re.Match[str]) -> str:
+    code = ord(match.group())
+    return f"\\x{code:02x}" if code <= 0xFF else f"\\u{code:04x}"
+
+
+def terminal_safe(text: str, *, keep_lines: bool = False) -> str:
+    """``text`` made safe to print on a terminal: no control character reaches it as itself.
+
+    Text from the scanned input is hostile: a resource name, a server key or a file name can carry
+    ESC, BEL or a C1 control that clears the screen, moves the cursor, retitles the window or
+    overwrites what was printed before it.
+    Every C0 control, DEL, C1 control, line and paragraph separator and bidirectional control is
+    replaced by a visible escape, ``\\x1b`` or ``\\u202e``, so the reader sees that something was
+    there and nothing is executed.
+    Tab, newline and carriage return become a single space, as in ``collapse_whitespace``, unless
+    ``keep_lines`` is set: a message that is printed as it is keeps its own line breaks and tabs
+    and loses a carriage return, which would overwrite the line.
+    """
+    if keep_lines:
+        text = text.replace("\r\n", "\n").replace("\r", " ")
+        return _TERMINAL_UNSAFE.sub(
+            lambda m: m.group() if m.group() in ("\t", "\n") else _visible(m), text
+        )
+    flat = _TERMINAL_UNSAFE.sub(lambda m: " " if m.group() in _LINE_BREAKS else _visible(m), text)
+    return _WHITESPACE.sub(" ", flat).strip()
 
 
 def truncate(text: str, limit: int) -> str:

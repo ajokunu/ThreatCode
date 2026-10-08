@@ -1660,3 +1660,47 @@ class TestPackagingMetadata:
     def test_the_new_subpackages_are_found_by_setuptools(self) -> None:
         for package in ("ingest", "engine/secrets", "engine/llm", "formatters"):
             assert (REPO_ROOT / "src" / "threatcode" / package / "__init__.py").is_file()
+
+
+class TestHostileNamesNeverReachTheTerminal:
+    """A server key or file name with an escape sequence is shown as text on both streams."""
+
+    EVIL = "evil\x1b[2J\x1b[Hpwned\x1b]0;TITLE\x07"
+    UNSAFE = re.compile("[\x00-\x09\x0b-\x1f\x7f-\x9f]")
+
+    def _tree(self, root: Path) -> Path:
+        config = {
+            "mcpServers": {
+                self.EVIL: {"command": "npx", "args": ["-y", "some-server"]},
+                "fs": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"],
+                },
+            }
+        }
+        write(root, ".mcp.json", json.dumps(config))
+        write(root, f"main{self.EVIL}.tf", bucket("b"))
+        write(root, "modules/main.tf", 'module "net" {\n  source = "./modules/net"\n}\n')
+        return root
+
+    def test_the_text_report_and_stderr_carry_no_raw_control_character(
+        self, tmp_path: Path
+    ) -> None:
+        tree = self._tree(tmp_path / "tree")
+        result = invoke("scan", tree, "-f", "text", "--fail-on", "none", "--strict")
+        assert result.exit_code == 2
+        for stream in (result.stdout, result.stderr):
+            assert not self.UNSAFE.search(stream.replace("\n", " ").replace("\t", " "))
+        assert "\\x07" in result.stdout
+
+    def test_an_error_message_that_quotes_the_input_is_inert(self, tmp_path: Path) -> None:
+        write(tmp_path, f"bad{self.EVIL}.tf", BAD_TF)
+        result = invoke("scan", tmp_path)
+        assert result.exit_code == 2
+        assert not self.UNSAFE.search(result.stderr.replace("\n", " "))
+        assert not self.UNSAFE.search(result.stdout.replace("\n", " "))
+
+    def test_a_path_named_on_the_command_line_is_inert_in_the_error(self, tmp_path: Path) -> None:
+        result = invoke("scan", tmp_path / f"no{self.EVIL}such")
+        assert result.exit_code == 2
+        assert not self.UNSAFE.search(result.output.replace("\n", " "))

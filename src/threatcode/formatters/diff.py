@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from threatcode.exceptions import ThreatCodeError
-from threatcode.formatters._utils import md_code, md_inline
+from threatcode.formatters._utils import md_code, md_inline, terminal_safe
 
 SEVERITY_ORDER: tuple[str, ...] = ("critical", "high", "medium", "low", "info")
 _RANK = {name: len(SEVERITY_ORDER) - index for index, name in enumerate(SEVERITY_ORDER)}
@@ -294,6 +294,11 @@ def _format_diff_markdown(diff: dict[str, Any]) -> str:
 
 def _format_diff_text(diff: dict[str, Any]) -> str:
     added, removed, changed = diff["added"], diff["removed"], diff["changed"]
+
+    def safe(value: object) -> str:
+        """Report text is untrusted: it may carry a control sequence meant for the terminal."""
+        return terminal_safe(str(value))
+
     lines = [
         f"Baseline {_plural(diff['baseline_total'], 'threat')}, "
         f"current {_plural(diff['current_total'], 'threat')}, "
@@ -301,22 +306,28 @@ def _format_diff_text(diff: dict[str, Any]) -> str:
     ]
     for p in diff.get("attack_paths_added", []):
         lines.append(
-            f"+ {p['severity']:<8} attack path {p['entry']} -> {p['target']} "
+            f"+ {safe(p['severity']):<8} attack path {safe(p['entry'])} -> {safe(p['target'])} "
             f"({_plural(int(p['hops']), 'hop')})"
         )
     for p in diff.get("attack_paths_removed", []):
         lines.append(
-            f"- {p['severity']:<8} attack path {p['entry']} -> {p['target']} "
+            f"- {safe(p['severity']):<8} attack path {safe(p['entry'])} -> {safe(p['target'])} "
             f"({_plural(int(p['hops']), 'hop')})"
         )
     for t in added:
-        lines.append(f"+ {_severity(t):<8} {t.get('resource_address', '')}  {t.get('title', '')}")
+        lines.append(
+            f"+ {safe(_severity(t)):<8} {safe(t.get('resource_address', ''))}  "
+            f"{safe(t.get('title', ''))}"
+        )
     for t in removed:
-        lines.append(f"- {_severity(t):<8} {t.get('resource_address', '')}  {t.get('title', '')}")
+        lines.append(
+            f"- {safe(_severity(t)):<8} {safe(t.get('resource_address', ''))}  "
+            f"{safe(t.get('title', ''))}"
+        )
     for c in changed:
         lines.append(
-            f"~ {c['severity_before']} -> {c['severity_after']}  "
-            f"{c['resource_address']}  {c['title_after']}"
+            f"~ {safe(c['severity_before'])} -> {safe(c['severity_after'])}  "
+            f"{safe(c['resource_address'])}  {safe(c['title_after'])}"
         )
     if not _any_change(diff):
         lines.append("No changes detected.")
