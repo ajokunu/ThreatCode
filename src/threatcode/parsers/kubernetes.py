@@ -33,6 +33,7 @@ from threatcode.parsers._k8s_links import (
     workload_references,
 )
 from threatcode.parsers._k8s_security import (
+    PLACEHOLDER_PREFIX,
     WORKLOAD_KINDS,
     PodTemplate,
     as_dict,
@@ -393,10 +394,13 @@ class KubernetesParser(BaseParser):
         metadata = as_dict(doc.get("metadata"))
         spec = as_dict(doc.get("spec"))
         name, name_source = _resource_name(metadata, index)
+        name = readable_placeholders(name, "name")
         cluster_scoped = kind in CLUSTER_SCOPED_KINDS
         namespace_value = metadata.get("namespace")
         namespace = (
-            namespace_value if isinstance(namespace_value, str) and namespace_value else "default"
+            readable_placeholders(namespace_value, "namespace")
+            if isinstance(namespace_value, str) and namespace_value
+            else "default"
         )
 
         resource_type = resource_type_for(kind)
@@ -578,6 +582,39 @@ def _is_list_kind(doc: Mapping[str, Any]) -> bool:
     if not isinstance(kind, str):
         return False
     return kind == "List" or (kind.endswith("List") and "items" in doc)
+
+
+_PLACEHOLDER = re.compile(rf"{PLACEHOLDER_PREFIX}([a-z0-9]+(?:-[a-z0-9]+)*?)-(\d+)-(\d+)")
+_CHART_FOLDERS = frozenset({"charts", "templates"})
+_TEMPLATE_SUFFIXES = ("-yaml", "-yml", "-tpl", "-json")
+
+
+def readable_placeholders(value: str, field: str) -> str:
+    """A name or namespace the Helm fallback renderer could not resolve, in words.
+
+    The renderer prints ``placeholder-<template>-<document>-<n>`` for a value it cannot know,
+    which made an address such as ``kubernetes_service.placeholder-templates-svc-yaml-0-2.
+    placeholder-templates-svc-yaml-0-1``.
+    The template (``svc``) and the document number are what tell two unresolved names apart, so
+    the name becomes ``unresolved-svc`` (``unresolved-svc-1`` for the second document) and the
+    namespace ``unresolved-namespace``, which every template of the chart shares because they
+    all print the same expression.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        if field == "namespace":
+            return "unresolved-namespace"
+        template = match.group(1)
+        for suffix in _TEMPLATE_SUFFIXES:
+            if template.endswith(suffix):
+                template = template[: -len(suffix)]
+                break
+        # `charts/redis/templates/svc.yaml` is the slug `charts-redis-templates-svc-yaml`
+        template = "-".join(part for part in template.split("-") if part not in _CHART_FOLDERS)
+        document = int(match.group(2))
+        return f"unresolved-{template}{f'-{document}' if document else ''}"
+
+    return _PLACEHOLDER.sub(replace, value) if PLACEHOLDER_PREFIX in value else value
 
 
 def _resource_name(metadata: Mapping[str, Any], index: int) -> tuple[str, str]:

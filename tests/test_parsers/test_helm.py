@@ -20,6 +20,7 @@ from threatcode.ir.graph import InfraGraph
 from threatcode.parsers import _detect_helm_chart, detect_and_parse
 from threatcode.parsers.base import ParsedOutput
 from threatcode.parsers.helm import HelmParser
+from threatcode.parsers.kubernetes import readable_placeholders
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 TEST_CHART = FIXTURES / "helm" / "test-chart"
@@ -254,9 +255,8 @@ class TestUnresolvedValues:
         (chart / "values.yaml").write_text(yaml.safe_dump(values))
         output = fallback(chart)
         names = [r.name for r in output.resources]
-        assert len(set(names)) == 2
-        assert all(n.startswith("placeholder-templates-deployments-yaml-") for n in names)
-        assert names[0].split("-")[-2] == "0" and names[1].split("-")[-2] == "1"
+        assert names == ["unresolved-deployments", "unresolved-deployments-1"]
+        assert all("placeholder" not in a for a in addresses(output))
 
     def test_a_privileged_deployment_among_them_produces_the_privileged_finding(self) -> None:
         graph = InfraGraph.from_parsed(fallback(TWO_DEPLOYMENTS))
@@ -320,6 +320,177 @@ class TestUnresolvedValues:
         assert addresses(output) == ["kubernetes_deployment.default.release-app"]
         messages = [d.message for d in output.diagnostics if d.code == "helm.render_warning"]
         assert any("invalid YAML" in m and "bad.yaml" in m for m in messages)
+
+
+LIBRARY_USER = (
+    "apiVersion: v1\nkind: Service\nmetadata:\n"
+    '  name: {{ include "common.names.fullname" . }}\n'
+    '  namespace: {{ include "common.names.namespace" . | quote }}\n'
+    '  labels: {{- include "common.labels.standard" . | nindent 4 }}\n'
+    "    app.kubernetes.io/component: primary\nspec:\n  ports:\n    - port: 80\n"
+)
+
+
+def library_chart(root: Path, dependencies: str = "") -> Path:
+    chart = root / "app"
+    (chart / "templates").mkdir(parents=True)
+    (chart / "Chart.yaml").write_text(
+        "apiVersion: v2\nname: app\nversion: 1.0.0\n"
+        f"dependencies:\n  - name: common\n    version: 2.x.x\n    repository: oci://x\n{dependencies}",
+        encoding="utf-8",
+    )
+    (chart / "templates" / "svc.yaml").write_text(LIBRARY_USER, encoding="utf-8")
+    return chart
+
+
+class TestAMissingLibraryChart:
+    """A chart whose library dependency is not vendored must say so (RW-09)."""
+
+    @pytest.fixture
+    def output(self, tmp_path: Path) -> ParsedOutput:
+        return fallback(library_chart(tmp_path))
+
+    @staticmethod
+    def warnings(output: ParsedOutput) -> list[str]:
+        return [d.message for d in output.diagnostics if d.code == "helm.render_warning"]
+
+    def test_the_skipped_template_names_the_includes_nothing_defines(
+        self, output: ParsedOutput
+    ) -> None:
+        (skipped,) = [m for m in self.warnings(output) if "svc.yaml" in m]
+        assert "rendered to invalid YAML and was skipped" in skipped
+        assert (
+            "it includes common.names.fullname, common.names.namespace, common.labels.standard"
+            in skipped
+        )
+        assert "which no chart defines" in skipped
+        assert "dependency common is not vendored" in skipped
+
+    def test_the_dependency_is_one_gap_that_says_what_to_run(self, output: ParsedOutput) -> None:
+        (gap,) = [m for m in self.warnings(output) if m.startswith("dependency common")]
+        assert "not vendored in charts/" in gap
+        assert "helm dependency build" in gap
+
+    def test_the_parse_is_marked_incomplete_with_what_is_missing(
+        self, output: ParsedOutput
+    ) -> None:
+        assert output.metadata["incomplete"] is True
+        assert output.metadata["skipped_templates"] == ["templates/svc.yaml"]
+        assert output.metadata["missing_dependencies"] == ["common"]
+
+    def test_a_vendored_dependency_is_not_missing(self, tmp_path: Path) -> None:
+        chart = library_chart(tmp_path)
+        helpers = chart / "charts" / "common" / "templates"
+        helpers.mkdir(parents=True)
+        (chart / "charts" / "common" / "Chart.yaml").write_text(
+            "apiVersion: v2\nname: common\nversion: 2.0.0\ntype: library\n", encoding="utf-8"
+        )
+        (helpers / "_names.tpl").write_text(
+            '{{- define "common.names.fullname" -}}x{{- end -}}\n'
+            '{{- define "common.names.namespace" -}}ns{{- end -}}\n'
+            '{{- define "common.labels.standard" -}}a: b{{- end -}}\n',
+            encoding="utf-8",
+        )
+        output = fallback(chart)
+        assert not [m for m in self.warnings(output) if "not vendored" in m]
+        assert "incomplete" not in output.metadata
+        assert addresses(output) == ["kubernetes_service.ns.x"]
+
+    def test_a_packed_dependency_is_not_missing_either(self, tmp_path: Path) -> None:
+        chart = library_chart(tmp_path)
+        (chart / "charts").mkdir()
+        (chart / "charts" / "common-2.0.0.tgz").write_bytes(b"x")
+        output = fallback(chart)
+        assert not [m for m in self.warnings(output) if m.startswith("dependency")]
+        assert output.metadata["missing_dependencies"] == []
+
+    def test_a_dependency_its_condition_turns_off_is_not_missing(self, tmp_path: Path) -> None:
+        chart = library_chart(tmp_path, "    condition: common.enabled\n")
+        (chart / "values.yaml").write_text("common:\n  enabled: false\n", encoding="utf-8")
+        output = fallback(chart)
+        assert not [m for m in self.warnings(output) if m.startswith("dependency")]
+
+    def test_two_missing_dependencies_are_one_plural_gap(self, tmp_path: Path) -> None:
+        chart = library_chart(
+            tmp_path, "  - name: redis\n    version: 1.x.x\n    repository: oci://x\n"
+        )
+        (gap,) = [m for m in self.warnings(fallback(chart)) if m.startswith("dependencies")]
+        assert gap.startswith("dependencies common, redis are not vendored")
+
+    def test_a_chart_without_dependencies_has_nothing_to_report(self) -> None:
+        output = fallback(TEST_CHART)
+        assert "missing_dependencies" not in output.metadata
+        assert not [d for d in output.diagnostics if "not vendored" in d.message]
+
+    def test_a_template_with_an_unrelated_yaml_error_does_not_blame_a_dependency(
+        self, tmp_path: Path
+    ) -> None:
+        chart = copy_chart(TEST_CHART, tmp_path / "c")
+        (chart / "templates" / "bad.yaml").write_text("a: [1, 2\nb: : :\n")
+        (skipped,) = [
+            d.message
+            for d in fallback(chart).diagnostics
+            if d.code == "helm.render_warning" and "bad.yaml" in d.message
+        ]
+        assert "which no chart defines" not in skipped
+        assert "not vendored" not in skipped
+
+
+class TestUnresolvedNamesAreReadable:
+    def test_an_unresolved_service_name_and_namespace_are_words(self, tmp_path: Path) -> None:
+        chart = tmp_path / "c"
+        (chart / "templates").mkdir(parents=True)
+        (chart / "Chart.yaml").write_text("apiVersion: v2\nname: c\nversion: 1.0.0\n")
+        (chart / "templates" / "svc.yaml").write_text(
+            "apiVersion: v1\nkind: Service\nmetadata:\n  name: {{ .Values.name }}\n"
+            "  namespace: {{ .Values.ns }}\nspec:\n  ports:\n    - port: 80\n"
+        )
+        (service,) = fallback(chart).resources
+        assert service.address == "kubernetes_service.unresolved-namespace.unresolved-svc"
+        assert service.name == "unresolved-svc"
+
+    def test_a_name_with_text_around_the_placeholder_keeps_the_text(self, tmp_path: Path) -> None:
+        chart = tmp_path / "c"
+        (chart / "templates").mkdir(parents=True)
+        (chart / "Chart.yaml").write_text("apiVersion: v2\nname: c\nversion: 1.0.0\n")
+        (chart / "templates" / "svc.yaml").write_text(
+            "apiVersion: v1\nkind: Service\nmetadata:\n  name: {{ .Values.name }}-web\n"
+            "spec:\n  ports:\n    - port: 80\n"
+        )
+        (service,) = fallback(chart).resources
+        assert service.name == "unresolved-svc-web"
+
+    def test_a_resolved_name_is_untouched(self) -> None:
+        assert readable_placeholders("web-frontend", "name") == "web-frontend"
+        assert readable_placeholders("shop", "namespace") == "shop"
+
+    @pytest.mark.parametrize(
+        ("token", "field", "expected"),
+        [
+            ("placeholder-templates-svc-yaml-0-1", "name", "unresolved-svc"),
+            ("placeholder-templates-svc-yaml-2-1", "name", "unresolved-svc-2"),
+            ("placeholder-templates-primary-svc-yaml-0-3", "name", "unresolved-primary-svc"),
+            (
+                "placeholder-charts-redis-templates-svc-yaml-0-1",
+                "name",
+                "unresolved-redis-svc",
+            ),
+            ("placeholder-templates-svc-yaml-0-2", "namespace", "unresolved-namespace"),
+            (
+                "placeholder-templates-a-yaml-0-1-placeholder-templates-a-yaml-0-2",
+                "name",
+                "unresolved-a-unresolved-a",
+            ),
+        ],
+    )
+    def test_the_placeholder_forms(self, token: str, field: str, expected: str) -> None:
+        assert readable_placeholders(token, field) == expected
+        assert "placeholder" not in expected
+
+    def test_two_documents_of_one_template_stay_distinct(self) -> None:
+        first = readable_placeholders("placeholder-templates-d-yaml-0-1", "name")
+        second = readable_placeholders("placeholder-templates-d-yaml-1-1", "name")
+        assert first != second
 
 
 # ---------------------------------------------------------------------------------------

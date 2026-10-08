@@ -30,3 +30,9 @@
   In the module that is scanned itself a value from `-var`, `-var-file` or `TF_VAR_*` could replace the default, so the drop is also one `hcl.default_disabled` warning per module that names the resources left out and the variables, and `--strict` fails on it; a `terraform.tfvars` or `*.auto.tfvars` value settles it.
   terraform-aws-vpc now reports `VPC_NO_FLOW_LOGS` for 10 VPCs, with the same result under python-hcl2 4.x and 8.x.
   A default that enables the resource still keeps it, flagged `count_from_default` in its meta.
+- **A Helm chart whose library dependency is not vendored says why its workloads are missing.**
+  A Bitnami chart lists the `common` library chart as a dependency and a fresh checkout has no `charts/common`, so every `include "common.names.fullname"` prints a placeholder where a block of YAML belongs, the template renders to invalid YAML and is skipped, and the scan ended with "Verdict: no findings".
+  The skipped-template gap now names the includes that no chart defines and the dependency that should have supplied them, a chart-level gap says "dependency common is not vendored in charts/ ... run 'helm dependency build' in the chart, or install helm", and the parse is marked `incomplete` with `skipped_templates` and `missing_dependencies` in its metadata.
+  A dependency that is vendored (a directory or a packed `.tgz`) or switched off by its `condition` is not reported.
+- **Unresolved Helm names are words.**
+  `kubernetes_service.placeholder-templates-svc-yaml-0-2.placeholder-templates-svc-yaml-0-1` is now `kubernetes_service.unresolved-namespace.unresolved-svc`, and a second unresolved document of the same template is `unresolved-svc-1`, so a boundary finding or an attack path through such a service can be read.

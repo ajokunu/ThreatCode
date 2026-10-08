@@ -840,6 +840,8 @@ class Executor:
         self.source = ""
         self.document = 0
         self.document_has_content = False
+        # Templates this one includes that no chart defines, in the order they were met
+        self.undefined: dict[str, None] = {}
         self._tokens: dict[tuple[int, str], int] = {}
         self._token_counts: dict[int, int] = {}
 
@@ -1045,6 +1047,7 @@ class Executor:
             argument = self.evaluate(node.pipeline, dot, scopes)
         nodes = self.env.defines.get(node.name)
         if nodes is None:
+            self.undefined[node.name] = None
             self.source = f"template {node.name}"
             self.emit(self.printable(UNKNOWN), node.line, literal=False)
             return
@@ -1455,6 +1458,7 @@ def f_include(ex: Executor, name: Any, context: Any = None) -> Any:
         return UNKNOWN
     nodes = ex.env.defines.get(name)
     if nodes is None:
+        ex.undefined[name] = None
         return UNKNOWN
     return ex.call_define(nodes, context)
 
@@ -2096,6 +2100,8 @@ class RenderedFile:
     text: str
     marks: list[tuple[int, int]] = field(default_factory=list)
     approximated: bool = False
+    # The templates it includes that no chart defines (a library chart that is not vendored)
+    undefined: tuple[str, ...] = ()
     _line_starts: list[int] = field(default_factory=list, repr=False)
     _mark_offsets: list[int] = field(default_factory=list, repr=False)
 
@@ -2118,6 +2124,8 @@ class ChartRender:
     files: list[RenderedFile] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     aborted: bool = False
+    # Dependencies that Chart.yaml lists, that are not disabled and that charts/ does not hold
+    missing_dependencies: list[str] = field(default_factory=list)
 
 
 def _read_text(path: Path, label: str, warnings: list[str]) -> str | None:
@@ -2352,6 +2360,44 @@ def _load_subcharts(chart: _Chart, depth: int, warnings: list[str], loaded: list
             chart.subcharts.append(sub)
 
 
+def _missing_dependencies(charts: Sequence[_Chart]) -> list[str]:
+    """The dependencies that would be rendered by ``helm`` but are not in a chart's ``charts/``.
+
+    A dependency is vendored by ``helm dependency build``; a repository usually ignores the
+    result, so a fresh checkout of a chart that depends on a library chart (``common``) holds
+    templates that include definitions nothing here supplies.
+    A dependency disabled by its condition is not missing, and neither is one that is a
+    directory or an archive in ``charts/``.
+    """
+    missing: list[str] = []
+    for chart in charts:
+        present = {sub.directory.name for sub in chart.subcharts} | {
+            sub.name for sub in chart.subcharts
+        }
+        archives: list[str] = []
+        charts_dir = chart.directory / "charts"
+        if charts_dir.is_dir() and not charts_dir.is_symlink():
+            try:
+                archives = [
+                    e.name for e in charts_dir.iterdir() if e.name.endswith((".tgz", ".tar.gz"))
+                ]
+            except OSError:
+                archives = []
+        for dependency in chart.meta.get("dependencies") or []:
+            if not isinstance(dependency, dict):
+                continue
+            name = dependency.get("name")
+            if not isinstance(name, str) or not name or name in present:
+                continue
+            if not _dependency_enabled(dependency, chart.values):
+                continue
+            if any(archive.startswith(f"{name}-") for archive in archives):
+                continue
+            if name not in missing:
+                missing.append(name)
+    return missing
+
+
 def _walk(chart: _Chart) -> list[_Chart]:
     """The chart and its subcharts, parents before their children."""
     ordered = [chart]
@@ -2423,7 +2469,9 @@ def _render_template(chart: _Chart, template: _Template, env: _Env) -> RenderedF
         except (_BreakError, _ContinueError):
             pass  # a stray break or continue outside a range: approximate the file instead
         else:
-            return RenderedFile(template.path, executor.text(), executor.marks)
+            return RenderedFile(
+                template.path, executor.text(), executor.marks, undefined=tuple(executor.undefined)
+            )
     flat = Executor(env, slug, track_lines=True)
     for token in template.tokens:
         if token.kind == "text":
@@ -2454,6 +2502,7 @@ def render_chart(
     if root is None:
         return result
     charts = _walk(root)
+    result.missing_dependencies = _missing_dependencies(charts)
     env = _Env(defines={}, deadline=time.monotonic() + time_budget)
     try:
         _parse_all(charts, env, result.warnings)
