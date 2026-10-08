@@ -122,11 +122,22 @@ class TestFindingProvenance:
         assert all(t["severity"] in ("medium", "low", "info") for t in absent)
 
     def test_sarif_precision_follows_the_confidence(self) -> None:
+        """A rule is as precise as its least certain finding: 1.0 high, 0.7 medium, 0.5 low."""
+        report = report_of(invoke("scan", INSECURE_PLAN, "--no-timestamp"))
+        least: dict[str, float] = {}
+        for finding in report["threats"]:
+            if finding["source"] == "rule":
+                rule_id = finding["rule_id"]
+                least[rule_id] = min(finding["confidence"], least.get(rule_id, 1.0))
         sarif = json.loads(invoke("scan", INSECURE_PLAN, "-f", "sarif").stdout)
-        precisions = {
-            rule["properties"]["precision"] for rule in sarif["runs"][0]["tool"]["driver"]["rules"]
+        precision = {
+            rule["id"]: rule["properties"]["precision"]
+            for rule in sarif["runs"][0]["tool"]["driver"]["rules"]
         }
-        assert precisions == {"high", "medium", "low"}
+        expected = {1.0: "high", 0.7: "medium", 0.5: "low"}
+        assert {precision[rule_id] for rule_id in least} == {"high", "medium", "low"}
+        for rule_id, confidence in least.items():
+            assert precision[rule_id] == expected[confidence], rule_id
 
 
 class TestScanFormats:
