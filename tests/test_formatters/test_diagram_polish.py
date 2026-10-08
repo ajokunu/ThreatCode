@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 import threatcode
+from threatcode.formatters import RenderOptions
 from threatcode.formatters.diagram import (
     ATTACK_PATH_MAX_ENABLERS,
     NODE_NAME_MAX_CHARS,
@@ -27,6 +28,9 @@ from threatcode.formatters.diagram import (
     format_diagram,
 )
 from threatcode.formatters.diagram_routing import Rect
+from threatcode.formatters.markdown import format_markdown
+from threatcode.formatters.sarif import format_sarif
+from threatcode.formatters.text import format_text
 from threatcode.ir.edges import EdgeType, InfraEdge
 from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
@@ -1289,3 +1293,177 @@ class TestExamplesAsAWhole:
         svg = example_svg(name)
         assert f"{report.scanned_resources} resources" in svg
         assert f"{len(report.threats)} threats" in svg
+
+
+# -- One numbering for every format -----------------------------------------------
+
+
+def _svg_path_order(svg: str) -> list[tuple[int, str]]:
+    """``(number, target address)`` of each strip, in the order the strips are drawn."""
+    found: list[tuple[int, str]] = []
+    for strip in groups(root_of(svg), "attack-path"):
+        header = next(strip.iter(f"{NS}text")).text or ""
+        number = re.match(r"Attack Path (\d+) ", header)
+        assert number, header
+        last_hop = groups(strip, "attack-path-hop")[-1]
+        target = " ".join(next(last_hop.iter(f"{NS}title")).itertext()).split("\n")[0]
+        found.append((int(number.group(1)), target))
+    return found
+
+
+def _svg_strip_hops(svg: str) -> dict[int, list[str]]:
+    """The addresses along each strip, by the number in the strip's heading."""
+    strips: dict[int, list[str]] = {}
+    for strip in groups(root_of(svg), "attack-path"):
+        header = next(strip.iter(f"{NS}text")).text or ""
+        number = re.match(r"Attack Path (\d+) ", header)
+        assert number, header
+        strips[int(number.group(1))] = [
+            " ".join(next(hop.iter(f"{NS}title")).itertext()).split("\n")[0]
+            for hop in groups(strip, "attack-path-hop")
+        ]
+    return strips
+
+
+def _connector_claims(svg: str) -> list[tuple[int, int, str, str]]:
+    """``(path number, step, source, target)`` for each hop a connector tooltip claims."""
+    claims: list[tuple[int, int, str, str]] = []
+    for g in groups(root_of(svg), "edge-group"):
+        tooltip = g.findtext(f"{NS}title") or ""
+        ends = re.match(r"(\S+) → (\S+)", tooltip)
+        assert ends, tooltip
+        for number, step in re.findall(r"Attack path (\d+) \(\w+\), step (\d+) of \d+", tooltip):
+            claims.append((int(number), int(step), ends.group(1), ends.group(2)))
+    return claims
+
+
+def _markdown_path_order(markdown: str) -> list[tuple[int, str]]:
+    section = markdown.split("## Attack paths", 1)[1]
+    return [
+        (int(number), target)
+        for number, target in re.findall(r"^### (\d+)\. .*? to `([^`]+)` \(", section, re.M)
+    ]
+
+
+def _text_path_order(text: str) -> list[str]:
+    return re.findall(r"^\S+\s+\S+ -> (\S+)\s+\(\d+ hops?, id ", text, re.M)
+
+
+def _sarif_path_order(sarif: str, targets_by_id: dict[str, str]) -> list[str]:
+    import json
+
+    results = json.loads(sarif)["runs"][0]["results"]
+    return [
+        targets_by_id[r["properties"]["attack_path_id"]]
+        for r in results
+        if r["ruleId"] == "THREATCODE_ATTACK_PATH"
+    ]
+
+
+class TestPathNumbersAgreeAcrossFormats:
+    """A number names the same path in the SVG, the Markdown, the terminal report and SARIF.
+
+    The engine breaks a tie on severity and score by discovery order, and the ids sort another
+    way, so the SVG used to give ``P2`` to the path the Markdown calls path 3.
+    """
+
+    @staticmethod
+    def tied_report() -> tuple[ThreatReport, InfraGraph]:
+        nodes = [node("aws_instance.entry", TrustZone.INTERNET)] + [
+            node(f"aws_s3_bucket.{name}", TrustZone.DATA, NodeCategory.STORAGE)
+            for name in ("lowest", "tie_c", "tie_b", "tie_a", "top")
+        ]
+        # The engine's order is the reverse of the right one on every key: the high path first,
+        # then the three critical 9.0 paths in descending id order, and the best path last.
+        specs = [
+            ("d-high", "lowest", Severity.HIGH, 9.9),
+            ("c-tie", "tie_c", Severity.CRITICAL, 9.0),
+            ("b-tie", "tie_b", Severity.CRITICAL, 9.0),
+            ("a-tie", "tie_a", Severity.CRITICAL, 9.0),
+            ("0-top", "top", Severity.CRITICAL, 9.2),
+        ]
+        paths = [
+            AttackPath(
+                id=path_id,
+                entry="aws_instance.entry",
+                target=f"aws_s3_bucket.{name}",
+                hops=[hop("aws_instance.entry", "data_flow"), hop(f"aws_s3_bucket.{name}", None)],
+                severity=severity,
+                score=score,
+                rationale=f"Reaches {name}.",
+            )
+            for path_id, name, severity, score in specs
+        ]
+        report = ThreatReport(threats=[], scanned_resources=len(nodes), input_file="t.plan.json")
+        report.attack_paths = paths
+        return report, graph_of(nodes)
+
+    EXPECTED = ["top", "tie_a", "tie_b", "tie_c", "lowest"]
+
+    def test_the_strips_are_numbered_in_the_markdown_order_for_paths_that_tie(self) -> None:
+        report, graph = self.tied_report()
+        svg = _svg_path_order(format_diagram(report, graph))
+        markdown = _markdown_path_order(format_markdown(report, graph))
+        assert [n for n, _ in svg] == [1, 2, 3, 4, 5]
+        assert svg == markdown
+        assert [t.split(".")[1] for _, t in svg] == self.EXPECTED
+
+    def test_the_strips_are_not_in_the_engine_order(self) -> None:
+        report, graph = self.tied_report()
+        engine = [p.target.split(".")[1] for p in report.attack_paths]
+        assert engine != self.EXPECTED
+        drawn = [t.split(".")[1] for _, t in _svg_path_order(format_diagram(report, graph))]
+        assert drawn != engine
+
+    def test_the_text_report_and_sarif_list_the_same_order(self) -> None:
+        report, graph = self.tied_report()
+        expected = [f"aws_s3_bucket.{name}" for name in self.EXPECTED]
+        analysis = AnalysisResult(graph=graph, report=report)
+        assert _text_path_order(format_text(analysis, RenderOptions(color=False))) == expected
+        targets_by_id = {p.id: p.target for p in report.attack_paths}
+        assert _sarif_path_order(format_sarif(report, graph), targets_by_id) == expected
+        assert [t for _, t in _svg_path_order(format_diagram(report, graph))] == expected
+
+    def test_every_connector_names_the_path_number_of_the_strip_that_holds_its_hop(self) -> None:
+        report, graph = self.tied_report()
+        svg = format_diagram(report, graph)
+        strips = _svg_strip_hops(svg)
+        claims = _connector_claims(svg)
+        assert {number for number, *_ in claims} == {1, 2, 3, 4, 5}
+        for number, step, source, target in claims:
+            assert strips[number][step - 1 : step + 1] == [source, target], (number, step)
+        by_number = {number: (source, target) for number, _step, source, target in claims}
+        assert by_number[2][1] == "aws_s3_bucket.tie_a"
+
+    def test_the_cap_drops_the_same_paths_the_markdown_lists_last(self) -> None:
+        report, graph = self.tied_report()
+        extra = [
+            AttackPath(
+                id=f"z-low-{i}",
+                entry="aws_instance.entry",
+                target=f"aws_s3_bucket.low{i}",
+                hops=[hop("aws_instance.entry", "data_flow"), hop(f"aws_s3_bucket.low{i}", None)],
+                severity=Severity.LOW,
+                score=1.0,
+            )
+            for i in range(3)
+        ]
+        report.attack_paths = [*extra, *report.attack_paths]
+        drawn = [t.split(".")[1] for _, t in _svg_path_order(format_diagram(report, graph))]
+        assert drawn == self.EXPECTED
+        listed = [t for _, t in _markdown_path_order(format_markdown(report, graph))]
+        assert [t.split(".")[1] for t in listed[: len(drawn)]] == drawn
+
+    @pytest.mark.parametrize("name", EXAMPLES)
+    def test_the_examples_agree(self, name: str) -> None:
+        analysis = example_analysis(name)
+        svg = _svg_path_order(example_svg(name))
+        markdown = _markdown_path_order(format_markdown(analysis.report, analysis.graph))
+        assert svg
+        assert svg == markdown[: len(svg)]
+
+    def test_the_aws_example_gives_the_secret_path_2_and_the_database_path_3(self) -> None:
+        # The two paths tie at 9.0; the engine lists the database first, the id order does not
+        svg = dict(_svg_path_order(example_svg("aws-webapp")))
+        assert svg[2] == "aws_secretsmanager_secret.db_credentials"
+        assert svg[3] == "aws_db_instance.orders"

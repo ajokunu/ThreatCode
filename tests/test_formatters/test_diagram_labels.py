@@ -14,6 +14,7 @@ from threatcode.formatters.diagram_labels import (
     hop_enablers,
     humanize_tokens,
     node_labels,
+    ordered_attack_paths,
     port_phrase,
     shared_prefix_length,
     short_type,
@@ -394,3 +395,43 @@ class TestSharedPrefix:
 
     def test_no_earlier_path_means_nothing_shared(self) -> None:
         assert shared_prefix_length(self.path(self.hop("a", None)), []) == (0, -1)
+
+
+class TestOrderedAttackPaths:
+    def path(self, path_id: str, severity: Severity, score: float) -> AttackPath:
+        return AttackPath(
+            id=path_id,
+            entry="entry",
+            target=f"target-{path_id}",
+            hops=[AttackHop("entry"), AttackHop(f"target-{path_id}")],
+            severity=severity,
+            score=score,
+        )
+
+    def ids(self, paths: list[AttackPath]) -> list[str]:
+        return [p.id for p in ordered_attack_paths(paths)]
+
+    def test_severity_comes_before_score(self) -> None:
+        paths = [
+            self.path("a", Severity.HIGH, 9.9),
+            self.path("b", Severity.CRITICAL, 5.0),
+            self.path("c", Severity.MEDIUM, 9.9),
+        ]
+        assert self.ids(paths) == ["b", "a", "c"]
+
+    def test_score_comes_before_id_within_a_severity(self) -> None:
+        paths = [self.path("a", Severity.HIGH, 5.0), self.path("z", Severity.HIGH, 8.0)]
+        assert self.ids(paths) == ["z", "a"]
+
+    def test_a_tie_on_severity_and_score_is_broken_by_id_whatever_the_input_order(self) -> None:
+        tied = [self.path(i, Severity.CRITICAL, 9.0) for i in ("e716", "1e87", "5453")]
+        assert self.ids(tied) == ["1e87", "5453", "e716"]
+        assert self.ids(tied[::-1]) == ["1e87", "5453", "e716"]
+
+    def test_the_input_is_left_as_it_was(self) -> None:
+        paths = [self.path("b", Severity.LOW, 1.0), self.path("a", Severity.LOW, 1.0)]
+        ordered_attack_paths(paths)
+        assert [p.id for p in paths] == ["b", "a"]
+
+    def test_no_paths_is_an_empty_list(self) -> None:
+        assert ordered_attack_paths([]) == []

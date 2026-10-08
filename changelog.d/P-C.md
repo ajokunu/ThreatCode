@@ -11,6 +11,9 @@
 - **Path numbers are `P1`, `P2`, not red circles.**
   The numbers sat in the same round badge as the severity count of a resource, and the legend explained only one of them.
   A path number is now an outlined square (`P1`, `P1 P3`, or `P1-P3` for a run), the legend has an entry for it, and the placement keeps it off nodes, severity badges, other labels and the line between two zones.
+  The numbers are the ones the Markdown report, the terminal report and SARIF give the same paths: worst severity first, then score, then path id.
+  Two paths that tie on severity and score used to swap places, because the diagram kept the engine's order and the other reports sorted by id, so `P2` was the database in the SVG and the secret in the Markdown report.
+  The strips are numbered after that sort, and a path beyond the cap of five is dropped by it, so the strips shown are the first five of the Markdown list.
 - **One zone label per transition.**
   `DMZ -> PRIVATE` appeared seven times in the AWS example.
   Each transition now has one label on the longest route that makes it, with the number of connectors (`DMZ -> PRIVATE x7`), and the tooltip lists them.
@@ -107,3 +110,4 @@
 
 - `formatters/diagram_labels.py` is the one place that says an edge in words, shortens an address, and lists the findings that enable each hop.
   The diagram, the Mermaid charts and the Markdown report use it.
+  `ordered_attack_paths` there is the one order that numbers attack paths; the diagram and the Markdown report use it, and the terminal report and SARIF sort with the same key.

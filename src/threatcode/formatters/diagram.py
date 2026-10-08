@@ -2,7 +2,7 @@
 
 The diagram draws what the report and the graph say and computes nothing of its own about attack
 routes: attack paths come from ``report.attack_paths`` and are drawn hop by hop in the direction
-of their edges.
+of their edges, numbered in the order the Markdown, terminal and SARIF reports number them.
 Containment (a VPC around its subnets, a subnet around its instances, a Dockerfile stage around
 its instructions) is drawn as labelled nested frames, not as arrows from every child to its
 parent.
@@ -32,6 +32,7 @@ from threatcode.formatters.diagram_labels import (
     hop_enablers,
     humanize_tokens,
     node_labels,
+    ordered_attack_paths,
     shorten_address,
     shorten_middle,
 )
@@ -986,9 +987,9 @@ class DiagramRenderer:
 
     def _number_attack_paths(self) -> float:
         """Number the report's attack paths, find their connectors, return the width they need."""
-        self._attack_paths = [
-            (i + 1, path) for i, path in enumerate(self.report.attack_paths[:ATTACK_PATH_MAX_PATHS])
-        ]
+        # The numbers are the ones the Markdown, text and SARIF reports give the same paths
+        ordered = ordered_attack_paths(self.report.attack_paths)
+        self._attack_paths = list(enumerate(ordered[:ATTACK_PATH_MAX_PATHS], start=1))
         self._paths_by_number = dict(self._attack_paths)
         self._build_edge_attack_path_map()
         attack_path_w = 0.0

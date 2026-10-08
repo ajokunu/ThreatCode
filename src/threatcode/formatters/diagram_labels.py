@@ -36,6 +36,7 @@ __all__ = [
     "hop_enablers",
     "humanize_tokens",
     "node_labels",
+    "ordered_attack_paths",
     "port_phrase",
     "short_type",
     "shorten_address",
@@ -442,6 +443,19 @@ def hop_enablers(path: AttackPath, by_id: Mapping[str, Threat]) -> list[list[Ena
         result.append(found)
         previous = set(ids)
     return result
+
+
+def ordered_attack_paths(paths: Iterable[AttackPath]) -> list[AttackPath]:
+    """The attack paths in the one order every format numbers them: worst first.
+
+    Severity decides, then score, then the path id, so two paths that tie on both always come out
+    the same way round.
+    The engine's own order is not enough: it breaks such a tie by discovery order, which differs
+    from the id order, so the SVG's "P2" would be another path than the Markdown's "path 2".
+    Every report that numbers or caps its attack paths sorts with this, so a number means the same
+    path in every format.
+    """
+    return sorted(paths, key=lambda p: (-p.severity.rank, -p.score, p.id))
 
 
 def shared_prefix_length(path: AttackPath, earlier: Sequence[AttackPath]) -> tuple[int, int]:

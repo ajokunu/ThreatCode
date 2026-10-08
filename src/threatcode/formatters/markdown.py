@@ -56,6 +56,7 @@ from threatcode.formatters.diagram_labels import (
     edge_phrase,
     hop_enablers,
     humanize_tokens,
+    ordered_attack_paths,
     shared_prefix_length,
 )
 from threatcode.formatters.mermaid import attack_path_flowchart
@@ -258,7 +259,7 @@ def _head(report: ThreatReport, entries: list[_Entry], top_risks: int) -> str:
 
 
 def _attack_path_section(report: ThreatReport) -> list[str]:
-    paths = sorted(report.attack_paths, key=lambda p: (-p.severity.rank, -p.score, p.id))
+    paths = ordered_attack_paths(report.attack_paths)
     if not paths:
         return []
     by_id = {t.id: t for t in report.threats}
