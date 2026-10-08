@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
@@ -33,6 +34,10 @@ __all__ = [
     "attack_path_phrase",
     "display_path",
     "input_summary",
+    "join_verdict",
+    "join_words",
+    "rule_label",
+    "set_aside_phrase",
     "threat_source",
     "SEVERITY_ORDER",
     "STRIDE_ORDER",
@@ -49,6 +54,7 @@ __all__ = [
     "technique_url",
     "terminal_safe",
     "truncate",
+    "verdict_items",
     "verdict_line",
 ]
 
@@ -226,36 +232,147 @@ def technique_url(technique_id: str) -> str:
     return f"https://attack.mitre.org/techniques/{technique_id.replace('.', '/')}/"
 
 
-def _zone_phrase(zones: Sequence[str]) -> str:
-    named = ["the internet" if z == "internet" else z for z in zones]
-    if len(named) <= 1:
-        return "".join(named)
-    return ", ".join(named[:-1]) + " and " + named[-1]
+def join_words(words: Sequence[str]) -> str:
+    """``a``, ``a and b`` or ``a, b and c``."""
+    if len(words) <= 1:
+        return "".join(words)
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
+# What a path ends at, by the kind the engine gives its target: how one such target reads and how
+# several do.
+_TARGET_NOUNS: dict[str, tuple[str, str]] = {
+    "data store": ("a data store", "data stores"),
+    "secret store": ("a secret store", "secret stores"),
+    "administrator identity": ("an administrator identity", "administrator identities"),
+    "cluster-admin grant": ("a cluster-admin grant", "cluster-admin grants"),
+    "private data": ("private data", "private data"),
+}
+# What the last hop of a path with no target kind (one built by hand) sits in, and where a path
+# starts. The zone is where the target is, not what it is, so the phrase is deliberately vague.
+_ZONE_NOUNS: dict[str, str] = {
+    "internet": "the internet",
+    "dmz": "the DMZ",
+    "private": "private workloads",
+    "data": "data",
+    "management": "management resources",
+}
+# A verdict is one line of fixed words: a kind or a zone the tables do not know is never echoed,
+# because Markdown prints the verdict as it is.
+_UNKNOWN_TARGET = "sensitive targets"
+_UNKNOWN_ENTRY = "an exposed entry point"
+
+
+def _target_noun(path: AttackPath, *, single: bool) -> str:
+    """What ``path`` ends at, in words: ``a data store``, ``secret stores``, ``data``."""
+    nouns = _TARGET_NOUNS.get(path.target_kind)
+    if nouns is not None:
+        return nouns[0] if single else nouns[1]
+    zone = path.hops[-1].zone if path.hops else ""
+    return _ZONE_NOUNS.get(zone, _UNKNOWN_TARGET)
 
 
 def attack_path_phrase(paths: Sequence[AttackPath]) -> str:
-    """``2 attack paths from the internet to data``, or ``""`` when there are none."""
+    """``2 attack paths from the internet to data stores, worst critical``, or ``""`` for none.
+
+    The targets are named by what they are (a data store, a secret store, an administrator
+    identity), not by the trust zone the last hop sits in, and the phrase says how bad the worst
+    path is, so a critical path is not hidden behind a verdict that counts only findings.
+    A path built by hand, with no target kind, falls back to a noun for its zone.
+    """
     if not paths:
         return ""
-    entries = sorted({p.hops[0].zone for p in paths if p.hops and p.hops[0].zone})
-    targets = sorted({p.hops[-1].zone for p in paths if p.hops and p.hops[-1].zone})
+    entries = sorted({_ZONE_NOUNS.get(p.hops[0].zone, _UNKNOWN_ENTRY) for p in paths if p.hops})
+    single = len(paths) == 1
+    nouns = Counter(_target_noun(p, single=single) for p in paths)
+    ordered = sorted(nouns.items(), key=lambda item: (-item[1], item[0]))
     phrase = plural(len(paths), "attack path")
-    if entries and targets:
-        return f"{phrase} from {_zone_phrase(entries)} to {_zone_phrase(targets)}"
-    return phrase
+    if entries:
+        phrase += f" from {join_words(entries)} to {join_words([noun for noun, _ in ordered])}"
+    worst = max(p.severity for p in paths).value
+    return f"{phrase} ({worst})" if single else f"{phrase}, worst {worst}"
+
+
+def rule_label(threat: Threat) -> str:
+    """The key a finding is suppressed and reported by: its rule id, else the kind of boundary.
+
+    A trust boundary finding has no rule of the rule engine; the kind of crossing it reports
+    (``BOUNDARY_GENERIC_FLOW``) is the id the suppressions file accepts for it.
+    A finding with neither is named by its source (``llm``).
+    """
+    if threat.rule_id:
+        return threat.rule_id
+    boundary = threat.metadata.get("boundary_rule")
+    if isinstance(boundary, str) and boundary:
+        return boundary
+    return threat.source.value
+
+
+def verdict_items(report: ThreatReport) -> list[tuple[str, str]]:
+    """The verdict as phrases, each with the severity that colors it (``""`` for none).
+
+    Severities are the effective ones the gate uses.
+    A scan that could not read part of its input says so (``incomplete``), because a verdict
+    of ``no findings`` over a scan that failed reads as clean.
+    A scan with nothing left says why: nothing was found, the baseline accepted it or
+    ``--min-severity`` hid it.
+    """
+    cov = report.coverage
+    items = [(f"{n} {name}", name) for name, n in severity_counts(report.threats).items()]
+    paths = attack_path_phrase(report.attack_paths)
+    if paths:
+        items.append((paths, max(p.severity for p in report.attack_paths).value))
+    if cov.errors:
+        problem = plural(len(cov.errors), "input error")
+        if cov.units_parsed == 0:
+            return [(f"no result ({problem}; nothing was analysed)", "high")]
+        return [
+            (f"incomplete ({problem}); in the rest:", "high"),
+            *(items or [("no findings", "")]),
+        ]
+    return items or [(_nothing_left(report), "")]
+
+
+def join_verdict(items: Sequence[tuple[str, str]]) -> str:
+    """The phrases of a verdict as one line: comma separated, a colon introduces the rest."""
+    line = ""
+    for text, _style in items:
+        if not line:
+            line = text
+        elif line.endswith((":", ";")):
+            line += f" {text}"
+        else:
+            line += f", {text}"
+    return line
 
 
 def verdict_line(report: ThreatReport) -> str:
     """One line that says where the scan landed: ``3 critical, 14 high, 2 attack paths from ...``.
 
-    Severities are the effective ones the gate uses.
-    A scan with nothing to report says so.
+    Markdown, the terminal report and Bitbucket all print this one, so they never disagree.
     """
-    parts = [f"{n} {name}" for name, n in severity_counts(report.threats).items()]
-    paths = attack_path_phrase(report.attack_paths)
-    if paths:
-        parts.append(paths)
-    return ", ".join(parts) if parts else "no findings"
+    return join_verdict(verdict_items(report))
+
+
+def set_aside_phrase(findings: int, paths: int) -> str:
+    """``6 findings and 2 attack paths``; ``findings`` and ``paths`` are counts."""
+    return join_words(
+        [
+            *([plural(findings, "finding")] if findings else []),
+            *([plural(paths, "attack path")] if paths else []),
+        ]
+    )
+
+
+def _nothing_left(report: ThreatReport) -> str:
+    cov = report.coverage
+    baselined = set_aside_phrase(cov.baselined - cov.baselined_paths, cov.baselined_paths)
+    if baselined:
+        return f"no new findings ({baselined} baselined)"
+    if cov.hidden_findings or cov.hidden_paths:
+        hidden = set_aside_phrase(cov.hidden_findings, cov.hidden_paths)
+        return f"no findings at or above {cov.min_severity} ({hidden} hidden by --min-severity)"
+    return "no findings"
 
 
 # ── paths ─────────────────────────────────────────────────────────────
