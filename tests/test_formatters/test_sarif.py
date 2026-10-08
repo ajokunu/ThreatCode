@@ -791,11 +791,13 @@ class TestInvocation:
         assert note["descriptor"]["id"] == "llm.failed"
         assert "timed out" in note["message"]["text"]
 
-    def test_a_skipped_or_successful_llm_phase_adds_nothing(self) -> None:
-        for status in ("ran", "skipped"):
-            invocation = run_of(make_threat(), llm={"status": status})["invocations"][0]
-            assert invocation["executionSuccessful"] is True
-            assert invocation["toolExecutionNotifications"] == []
+    def test_a_skipped_llm_phase_adds_nothing_and_a_finished_one_only_its_note(self) -> None:
+        skipped = run_of(make_threat(), llm={"status": "skipped"})["invocations"][0]
+        assert skipped["executionSuccessful"] is True
+        assert skipped["toolExecutionNotifications"] == []
+        ran = run_of(make_threat(), llm={"status": "ran"})["invocations"][0]
+        assert ran["executionSuccessful"] is True
+        assert [n["descriptor"]["id"] for n in ran["toolExecutionNotifications"]] == ["llm.ran"]
 
     def test_notifications_are_capped(self) -> None:
         gaps = [{"level": "warning", "code": "g", "message": f"gap {i}"} for i in range(250)]
@@ -1246,3 +1248,99 @@ class TestOneSeverityPerRule:
         assert "security-severity" not in run["tool"]["driver"]["rules"][0]["properties"]
         assert "security-severity" not in run["results"][0]["properties"]
         assert run["results"][0]["level"] == "note"
+
+
+# ---------------------------------------------------------------------------------------
+# What the report leaves out, and what it was joined to
+# ---------------------------------------------------------------------------------------
+
+
+def notes_of(run: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {n["descriptor"]["id"]: n for n in run["invocations"][0]["toolExecutionNotifications"]}
+
+
+class TestSetAsideNotifications:
+    def test_suppressed_findings_and_paths_are_counted(self) -> None:
+        coverage = Coverage(suppressed=3, suppressed_paths=1)
+        note = notes_of(run_of(make_threat(), coverage=coverage))["suppressions.applied"]
+        assert note["level"] == "note"
+        assert note["message"]["text"] == (
+            "2 findings and 1 attack path suppressed by the ignore file and not in this report"
+        )
+
+    def test_baselined_findings_are_counted(self) -> None:
+        coverage = Coverage(baselined=1)
+        text = notes_of(run_of(make_threat(), coverage=coverage))["baseline.applied"]["message"][
+            "text"
+        ]
+        assert text == "1 finding already in the baseline and not in this report"
+
+    def test_findings_hidden_by_min_severity_are_counted_with_the_severity(self) -> None:
+        coverage = Coverage(hidden_findings=4, hidden_paths=2, min_severity="high")
+        text = notes_of(run_of(make_threat(), coverage=coverage))["min_severity.hidden"]["message"][
+            "text"
+        ]
+        assert text.startswith("4 findings and 2 attack paths below high left out")
+
+    def test_a_report_that_sets_nothing_aside_says_nothing(self) -> None:
+        assert notes_of(run_of(make_threat())) == {}
+
+    def test_set_aside_notes_keep_the_invocation_successful(self) -> None:
+        coverage = Coverage(suppressed=1, baselined=1, hidden_findings=1, min_severity="low")
+        assert run_of(make_threat(), coverage=coverage)["invocations"][0]["executionSuccessful"]
+
+
+class TestIngestAndLlmNotifications:
+    SOURCE = {
+        "tool": "trivy",
+        "file": "scanner/trivy-app-image.json",
+        "findings": 3,
+        "attached": 2,
+        "unattached": 1,
+        "duplicates": 1,
+    }
+
+    def run_with(self, sources: list[dict[str, Any]], **report_fields: Any) -> dict[str, Any]:
+        report = ThreatReport(threats=[make_threat()], input_file="main.tf", **report_fields)
+        return json.loads(format_sarif(report, ingest_sources=sources))["runs"][0]  # type: ignore[no-any-return]
+
+    def test_each_ingested_source_is_a_note(self) -> None:
+        text = notes_of(self.run_with([self.SOURCE]))["ingest.source"]["message"]["text"]
+        assert text == (
+            "ingested 3 trivy findings from scanner/trivy-app-image.json: 2 attached to a "
+            "resource, 1 not attached, 1 dropped as already reported"
+        )
+
+    def test_no_source_is_no_note(self) -> None:
+        assert "ingest.source" not in notes_of(self.run_with([]))
+
+    def test_the_render_path_carries_the_sources_of_the_analysis(self) -> None:
+        from threatcode.formatters import render
+        from threatcode.models.analysis import AnalysisResult
+
+        analysis = AnalysisResult(
+            graph=InfraGraph(),
+            report=ThreatReport(threats=[make_threat()], input_file="main.tf"),
+            ingest_sources=[dict(self.SOURCE)],
+        )
+        run = json.loads(render("sarif", analysis))["runs"][0]
+        assert "ingest.source" in notes_of(run)
+
+    def test_a_finished_llm_phase_says_its_findings_are_advisory(self) -> None:
+        llm = {
+            "status": "ran",
+            "provider": "anthropic",
+            "model": "claude-sonnet-5-5",
+            "threat_count": 2,
+            "unattributed_count": 1,
+            "context": {"reduced": True, "nodes_dropped": 7},
+        }
+        text = notes_of(self.run_with([], llm=llm))["llm.ran"]["message"]["text"]
+        assert "anthropic/claude-sonnet-5-5" in text
+        assert "2 advisory findings" in text
+        assert "never failing the gate" in text
+        assert "reduced to fit the token limit (7 nodes left out)" in text
+        assert "1 named no resource in the scan and were set aside" in text
+
+    def test_a_skipped_llm_phase_adds_no_note(self) -> None:
+        assert "llm.ran" not in notes_of(self.run_with([], llm={"status": "skipped"}))

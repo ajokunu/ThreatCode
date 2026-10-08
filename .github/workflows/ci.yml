@@ -277,6 +277,30 @@ jobs:
           test "$BAD_PATH" = "failure" || { echo "a missing path did not fail: $BAD_PATH" >&2; exit 1; }
           test "$NOT_GATED" = "success" || { echo "fail-on none failed: $NOT_GATED" >&2; exit 1; }
 
+  # Dogfooding: uploads the SARIF of an example stack to this repository's Code Scanning on every
+  # push to main. It is the one run of the upload path (upload: "true", security-events: write)
+  # that the self-test job above, which needs no permission, cannot make. It never runs for a pull
+  # request, a fork, a merge queue or when publish.yml calls this workflow, and the gate is off, so
+  # it cannot fail a build for a finding. The examples are hand-built and insecure on purpose, so
+  # their alerts are dismissed in the Security tab as "used in tests".
+  code-scanning:
+    if: github.workflow == 'CI' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Scan the AWS example and upload the SARIF
+        uses: ./.github/actions/threatcode
+        with:
+          path: examples/aws-webapp
+          ingest: examples/aws-webapp/scanner/trivy-app-image.json
+          format: sarif
+          fail-on: none
+          upload: "true"
+
   docs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest

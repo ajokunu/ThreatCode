@@ -346,6 +346,25 @@ class TestOtherWorkflowsUseTheAction:
         for step in local:
             assert step["with"]["upload"] == "false", step.get("name")
 
+    def test_one_job_uploads_the_sarif_on_pushes_to_main_and_only_that_job_may_write_alerts(
+        self,
+    ) -> None:
+        ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+        assert ci["permissions"] == {"contents": "read"}
+        job = ci["jobs"]["code-scanning"]
+        assert job["permissions"] == {"contents": "read", "security-events": "write"}
+        condition = job["if"]
+        assert "github.event_name == 'push'" in condition
+        assert "github.ref == 'refs/heads/main'" in condition
+        # publish.yml calls ci.yml, and a release must not upload alerts
+        assert "github.workflow == 'CI'" in condition
+        (step,) = [s for s in job["steps"] if s.get("uses") == "./.github/actions/threatcode"]
+        assert step["with"]["upload"] == "true"
+        assert step["with"]["format"] == "sarif"
+        assert step["with"]["fail-on"] == "none"
+        others = {name: j for name, j in ci["jobs"].items() if name != "code-scanning"}
+        assert not any("security-events" in (j.get("permissions") or {}) for j in others.values())
+
 
 def workflow(name: str) -> dict[str, Any]:
     data = yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))

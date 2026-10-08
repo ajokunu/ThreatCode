@@ -45,7 +45,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from threatcode.ir.graph import InfraGraph
     from threatcode.ir.nodes import InfraNode
     from threatcode.models.attack_path import AttackHop, AttackPath
+    from threatcode.models.report import Coverage
 
 __all__ = [
     "ATTACK_PATH_RULE",
@@ -153,6 +154,7 @@ def format_sarif(
     *,
     source_root: str | os.PathLike[str] | None = None,
     repo_root: str | os.PathLike[str] | None = None,
+    ingest_sources: Sequence[Mapping[str, Any]] = (),
     indent: int = 2,
 ) -> str:
     """Format a report as SARIF 2.1.0 JSON.
@@ -164,8 +166,12 @@ def format_sarif(
     against: ``repo_root`` when given, else the git top level above ``source_root``.
     A scan root that is in no checkout, and a file outside the repository, are reported as
     notifications so a run whose alerts GitHub cannot place never looks right.
+    ``ingest_sources`` (``AnalysisResult.ingest_sources``) become one notification each, and what
+    suppressions, the baseline and ``--min-severity`` left out is counted in notifications, so a
+    report that hides findings says so.
     """
-    sarif = _build_sarif(report, graph, RepoPaths.resolve(source_root, repo_root))
+    paths = RepoPaths.resolve(source_root, repo_root)
+    sarif = _build_sarif(report, graph, paths, list(ingest_sources))
     return json.dumps(sarif, indent=indent, sort_keys=False)
 
 
@@ -174,6 +180,7 @@ class _Context:
     report: ThreatReport
     graph: InfraGraph | None
     paths: RepoPaths
+    ingest_sources: list[Mapping[str, Any]] = field(default_factory=list)
     path_ids_by_node: dict[str, list[str]] = field(default_factory=dict)
     # The SARIF rule id each finding's result carries, by finding id.
     rule_id_by_threat: dict[str, str] = field(default_factory=dict)
@@ -204,9 +211,12 @@ class _Context:
 
 
 def _build_sarif(
-    report: ThreatReport, graph: InfraGraph | None, paths: RepoPaths
+    report: ThreatReport,
+    graph: InfraGraph | None,
+    paths: RepoPaths,
+    ingest_sources: list[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    ctx = _Context(report, graph, paths)
+    ctx = _Context(report, graph, paths, ingest_sources)
     threats = sorted(report.threats, key=_threat_order)
     attack_paths = sorted(report.attack_paths, key=lambda p: (-p.severity.rank, -p.score, p.id))
     for path in attack_paths:
@@ -806,6 +816,81 @@ def _via_detail(via: dict[str, Any]) -> str:
 # ── invocation ────────────────────────────────────────────────────────
 
 
+def _counted(findings: int, paths: int) -> str:
+    """``2 findings and 1 attack path``, leaving out a zero."""
+    parts = []
+    if findings:
+        parts.append(f"{findings} finding{'' if findings == 1 else 's'}")
+    if paths:
+        parts.append(f"{paths} attack path{'' if paths == 1 else 's'}")
+    return " and ".join(parts)
+
+
+def _set_aside_notes(cov: Coverage, note: Callable[..., None]) -> None:
+    """Say what the report leaves out on purpose, so a smaller report never reads as a safer one."""
+    suppressed = _counted(cov.suppressed - cov.suppressed_paths, cov.suppressed_paths)
+    if suppressed:
+        note(
+            "note",
+            "suppressions.applied",
+            f"{suppressed} suppressed by the ignore file and not in this report",
+        )
+    baselined = _counted(cov.baselined - cov.baselined_paths, cov.baselined_paths)
+    if baselined:
+        note(
+            "note",
+            "baseline.applied",
+            f"{baselined} already in the baseline and not in this report",
+        )
+    hidden = _counted(cov.hidden_findings, cov.hidden_paths)
+    if hidden:
+        note(
+            "note",
+            "min_severity.hidden",
+            f"{hidden} below {cov.min_severity or 'the minimum severity'} left out of this report; "
+            "the gate counted them",
+        )
+
+
+def _count(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _llm_note(llm: Mapping[str, Any], note: Callable[..., None]) -> None:
+    """What the model phase did: its findings are advisory and the rest of the report is not."""
+    found = _count(llm.get("threat_count"))
+    text = (
+        f"LLM analysis ran ({llm.get('provider', '')}/{llm.get('model', '')}): {found} advisory "
+        f"finding{'' if found == 1 else 's'}, not checked against a rule and never failing the gate"
+    )
+    context = llm.get("context")
+    if isinstance(context, dict) and context.get("reduced"):
+        dropped = _count(context.get("nodes_dropped"))
+        text += f"; the graph was reduced to fit the token limit ({dropped} nodes left out)"
+    unattributed = _count(llm.get("unattributed_count"))
+    if unattributed:
+        text += f"; {unattributed} named no resource in the scan and were set aside"
+    note("note", "llm.ran", text)
+
+
+def _ingest_notes(ctx: _Context, note: Callable[..., None]) -> None:
+    """One notification per scanner result that was joined to the graph."""
+    for source in ctx.ingest_sources:
+        tool = str(source.get("tool") or source.get("format") or "scanner")
+        findings = int(source.get("findings") or 0)
+        attached = int(source.get("attached") or 0)
+        unattached = int(source.get("unattached") or 0)
+        duplicates = int(source.get("duplicates") or 0)
+        text = (
+            f"ingested {findings} {tool} finding{'' if findings == 1 else 's'} from "
+            f"{source.get('file') or 'a file'}: {attached} attached to a resource, "
+            f"{unattached} not attached"
+        )
+        if duplicates:
+            text += f", {duplicates} dropped as already reported"
+        note("note", "ingest.source", text)
+
+
 def _path_notes(ctx: _Context, note: Callable[..., None]) -> None:
     """Say so when GitHub cannot place the alerts: no checkout around the scan, files outside it."""
     paths = ctx.paths
@@ -871,7 +956,11 @@ def _invocation(ctx: _Context, truncated: int) -> dict[str, Any]:
             "llm.failed",
             f"LLM analysis failed, only rule-based findings are reported: {llm.get('error', '')}",
         )
+    if llm.get("status") == "ran":
+        _llm_note(llm, note)
     _path_notes(ctx, note)
+    _set_aside_notes(cov, note)
+    _ingest_notes(ctx, note)
     if truncated:
         note(
             "warning",

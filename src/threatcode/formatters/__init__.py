@@ -89,7 +89,11 @@ def _sarif(analysis: AnalysisResult, options: RenderOptions) -> str:
     from threatcode.formatters.sarif import format_sarif
 
     return format_sarif(
-        analysis.report, analysis.graph, source_root=analysis.root, repo_root=options.repo_root
+        analysis.report,
+        analysis.graph,
+        source_root=analysis.root,
+        repo_root=options.repo_root,
+        ingest_sources=analysis.ingest_sources,
     )
 
 

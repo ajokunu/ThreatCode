@@ -11,6 +11,7 @@
   A finding whose effective severity differs from its rule's belongs to a variant rule, `<id>/<severity>` (for example `EC2_IMDSV1/high` beside `EC2_IMDSV1`), with the level and `security-severity` of that severity.
   The bare id keeps the findings at the rule's reference severity, the highest base severity it has, so an alert that context did not change keeps its id from run to run.
   Alerts that context raised or lowered move to the variant id once, and GitHub shows them as new alerts.
+  The one case where a bare id can still move is a rule whose instances have different base severities in one scan, which only a trust boundary crossing does (an encrypted and authenticated flow is one level lower): when the instances at the highest base severity are fixed, the remaining ones become the reference and change id once.
   Attack paths follow the same rule: `THREATCODE_ATTACK_PATH` is a critical path and `THREATCODE_ATTACK_PATH/high`, `/medium` and so on are the others.
   Every result also carries its own `properties.security-severity`, which is the same value as its rule's.
 - **The rule id `trivy:trivy:CVE-2022-37434` is `trivy:CVE-2022-37434`.**
@@ -33,17 +34,23 @@
   A finding that names its tactic keeps it.
   The gradient has five stops that are the five legend colors at 0, 25, 50, 75 and 100, so a score of 25 is the Low blue and not a gray-yellow.
   The description no longer ends a sentence twice (`scan of .. 14 threats`), names `.` as the current directory, uses the singular for one, and counts only the threats that name a technique.
-- **Bitbucket: `report.result` follows the gate, and annotations are short.**
+- **Bitbucket: `report.result` can follow the gate, and annotations are short.**
   The result was `FAILED` for any high or critical finding even with `--fail-on none`.
   `format_bitbucket(fail_on=...)` and `RenderOptions(fail_on=...)` make it `FAILED` when a finding or attack path at or above the gate remains (model findings never count), and the default gate is `high`.
+  The command line passes the gate to the formatter once `cli.py` sets `RenderOptions.fail_on`; until then `threatcode scan -f bitbucket` keeps the default gate, `high`, whatever `--fail-on` says.
   An annotation was 600 to 1047 characters of generic rule text.
   It is now the resource, the first sentence for findings that are about the instance, the reason for the severity and a mitigation cut at 300 characters.
   `annotations` and `annotation_batches` still carry the same annotations twice, on purpose: one is for a client that posts one report, the other for the bulk endpoint, which takes at most 100.
+- **A SARIF run says what it left out and what it was joined to.**
+  Findings and attack paths removed by `.threatcodeignore` (`suppressions.applied`), by the baseline (`baseline.applied`) or by `--min-severity` (`min_severity.hidden`, which the gate still counted) are counted in note-level notifications, so a smaller report never reads as a safer one.
+  Each ingested scanner result is an `ingest.source` notification (tool, file, findings, how many attached to a resource and how many did not), and a finished LLM phase is an `llm.ran` notification that says its findings are advisory.
+  None of them fails the invocation.
 - **The GitHub Action.**
   The `format` input lists the formats the CLI advertises (`sarif, json, markdown, bitbucket, navigator, mermaid, diagram, text`), and a test keeps the list equal to the registry.
   A Mermaid report was saved as `threatcode-results.json`; it is now `threatcode-results.mmd`.
   The sticky comment is found by the marker anywhere in its body, not only at its start, because the Markdown report carries the marker on its second line.
   CI checks that the SARIF the action writes names files from the repository root.
+  A new `code-scanning` job uploads the SARIF of `examples/aws-webapp` to this repository on pushes to `main`, the only run of the `upload: true` path.
 
 ### Added
 - `threatcode.formatters.RepoPaths`, `find_repo_root`, `format_for_extension`, `extension_mismatch`, `deprecation_notice` and `visible_format_names`.
