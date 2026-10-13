@@ -21,6 +21,7 @@ from threatcode.engine.rules.loader import (
     FrozenList,
     Rule,
     clear_builtin_cache,
+    condition_properties,
     deprecated_rule_ids,
     load_all_rules,
     load_builtin_rules,
@@ -703,6 +704,102 @@ class TestConditionValidation:
         assert "condition.ingress.any_item.cidr_blocks.is_world" in message
 
 
+class TestRuleTextNamesNothingInternal:
+    """FV-16: a finding's text is read by people who never see the properties behind it."""
+
+    @staticmethod
+    def internal_names() -> set[str]:
+        import importlib
+
+        from threatcode.ir.edges import EdgeType
+
+        names = {edge_type.value for edge_type in EdgeType}
+        for module in (
+            "threatcode.parsers.kubernetes",
+            "threatcode.parsers.mcp_config",
+            "threatcode.parsers.dockerfile",
+        ):
+            for properties in importlib.import_module(module).PRODUCED.values():
+                names |= {p for p in properties if "_" in p}
+        return names
+
+    def test_no_builtin_rule_text_names_an_internal_property_or_edge_type(self) -> None:
+        internal = self.internal_names()
+        assert {"network_flow", "container_findings", "unpinned_reasons"} <= internal
+        word = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+        leaks = {
+            rule.id: sorted(
+                set(word.findall(f"{rule.title}\n{rule.description}\n{rule.mitigation}")) & internal
+            )
+            for rule in load_builtin_rules()
+        }
+        assert {rule_id: names for rule_id, names in leaks.items() if names} == {}
+
+    def test_the_check_would_catch_a_leak(self) -> None:
+        word = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+        text = "The container_findings property of the workload names the containers."
+        assert set(word.findall(text)) & self.internal_names() == {"container_findings"}
+
+
+class TestPropertiesRead:
+    """The properties a rule reads: what a finding's location is looked up by."""
+
+    def test_a_flat_condition_names_its_properties_in_order(self) -> None:
+        assert condition_properties({"b": {"exists": True}, "a": {"equals": 1}}) == ("b", "a")
+
+    def test_logical_operators_are_walked_and_name_nothing(self) -> None:
+        condition = {
+            "any_of": [
+                {"has_seccomp_profile": {"equals": False}},
+                {"all_of": [{"seccomp_profile_type": {"equals": "Unconfined"}}]},
+                {"not": {"privileged": {"equals": True}}},
+            ]
+        }
+        assert condition_properties(condition) == (
+            "has_seccomp_profile",
+            "seccomp_profile_type",
+            "privileged",
+        )
+
+    def test_a_property_is_named_once(self) -> None:
+        condition = {"any_of": [{"a": {"equals": 1}}, {"a": {"equals": 2}}]}
+        assert condition_properties(condition) == ("a",)
+
+    def test_a_path_is_reduced_to_its_top_level_property(self) -> None:
+        condition = {
+            "labels.app": {"exists": True},
+            "labels['a.b']": {"exists": True},
+            "ingress[0].cidr": {"exists": True},
+            "ports.*.protocol": {"equals": "tcp"},
+        }
+        assert condition_properties(condition) == ("labels", "ingress", "ports")
+
+    def test_the_exposure_pseudo_property_and_element_predicates_are_not_properties(self) -> None:
+        condition = {
+            "_exposure": {"equals": "internet"},
+            "port_overlaps": [22],
+            "a": {"exists": True},
+        }
+        assert condition_properties(condition) == ("a",)
+
+    def test_a_rule_reports_the_properties_of_its_condition(self) -> None:
+        by_id = {rule.id: rule for rule in load_builtin_rules()}
+        assert by_id["K8S_NO_SECCOMP_PROFILE"].properties_read == (
+            "has_seccomp_profile",
+            "seccomp_profile_type",
+        )
+        assert by_id["K8S_PRIVILEGED_CONTAINER"].properties_read == ("privileged",)
+
+    def test_every_builtin_rule_reads_at_least_one_property(self) -> None:
+        for rule in load_builtin_rules():
+            assert rule.properties_read, rule.id
+
+    def test_nothing_reads_a_property_for_an_empty_or_malformed_condition(self) -> None:
+        assert condition_properties({}) == ()
+        assert condition_properties({"any_of": "x"}) == ()
+        assert condition_properties({"": {"exists": True}}) == ()
+
+
 class TestMetadataValidation:
     def test_techniques_must_be_a_list_of_strings(self, tmp_path: Path) -> None:
         for bad in ("T1530", {"a": 1}, [1530], ["T1530", None]):
@@ -734,6 +831,35 @@ class TestMetadataValidation:
         messages = " ".join(r.message for r in caplog.records)
         assert "T9999" in messages
         assert "bogus" in messages
+
+    def test_a_revoked_technique_warns_and_names_its_replacement(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # T1002 was revoked and folded into T1560
+        with caplog.at_level(logging.WARNING):
+            (rule,) = _load(tmp_path, _rule(metadata={"mitre": {"techniques": ["T1002"]}}))
+        messages = [r.message for r in caplog.records if "T1002" in r.message]
+        assert len(messages) == 1
+        assert "revoked" in messages[0]
+        assert "T1560" in messages[0]
+        # A warning, not a refusal: the rule still loads
+        assert rule.metadata["mitre"]["techniques"] == ["T1002"]
+
+    def test_a_deprecated_technique_warns_without_a_replacement(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            _load(tmp_path, _rule(metadata={"mitre": {"techniques": ["T1026"]}}))
+        messages = [r.message for r in caplog.records if "T1026" in r.message]
+        assert len(messages) == 1
+        assert "deprecated" in messages[0]
+
+    def test_a_current_technique_does_not_warn(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            _load(tmp_path, _rule(metadata={"mitre": {"techniques": ["T1530", "T1190"]}}))
+        assert not [r for r in caplog.records if "MITRE" in r.message]
 
     @pytest.mark.parametrize("cwe", ["CWE-312", 312, "312", ["CWE-312", "CWE-319"], "cwe-79"])
     def test_cwe_ids_load(self, tmp_path: Path, cwe: Any) -> None:

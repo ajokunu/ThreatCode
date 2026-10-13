@@ -3,8 +3,8 @@
 #
 # The parser folds every container of a pod into one set of properties with Kubernetes
 # precedence (a container value wins, else the pod value) and one aggregation rule: a flag
-# describes the workload as unsafe when ANY applicable container is unsafe. The property
-# container_findings on the workload names the containers behind each flag.
+# describes the workload as unsafe when ANY applicable container is unsafe. The finding points
+# at the line of the first container that makes it so.
 #
 # Calibration: each rule declares how its condition was established.
 #   definitive  the configuration proves the condition
@@ -28,7 +28,7 @@ rules:
     description: >
       A container is configured with privileged: true, giving it full access to the host.
       This effectively disables all container isolation.
-      The container_findings property of the workload names the containers.
+      It applies to regular, init and ephemeral containers alike.
     stride_category: elevation_of_privilege
     severity: critical
     confidence: definitive

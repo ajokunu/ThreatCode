@@ -154,7 +154,6 @@ rules:
       without a change to the config. Every launch can fetch new code, so a compromised
       release, a typosquatted or hallucinated package name, or a hijacked maintainer
       account runs on the developer's machine with access to whatever the agent can reach.
-      The reason for each package is in unpinned_reasons.
     stride_category: tampering
     severity: medium
     confidence: absence
