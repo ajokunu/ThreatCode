@@ -1346,7 +1346,7 @@ def _markdown_path_order(markdown: str) -> list[tuple[int, str]]:
 
 
 def _text_path_order(text: str) -> list[str]:
-    return re.findall(r"^\S+\s+\S+ -> (\S+)\s+\(\d+ hops?, id ", text, re.M)
+    return re.findall(r"^P\d+\s+[A-Z]+\s+\S+ -> (\S+)\s*$", text, re.M)
 
 
 def _sarif_path_order(sarif: str, targets_by_id: dict[str, str]) -> list[str]:
