@@ -9,7 +9,6 @@ The tests assert that every example parses, models the nodes it names, has the s
 paths depend on (a world-open load balancer, an app group reachable from it only, a privileged
 DaemonSet, a literal token over plain http), reports the findings that the rules produce and, run
 through the command line, reports every attack path the expectation file lists.
-Findings that later packages add are pending on those packages.
 """
 
 from __future__ import annotations
@@ -31,22 +30,16 @@ from tests.helpers.examples import (
     scan_example,
 )
 from tests.helpers.graph_assert import assert_nodes
-from tests.helpers.pending import pending
 from tests.helpers.plan_shape import plan_shape_problems
 from threatcode.parsers import detect_and_parse
 
 
-def _finding_params(*, pending_only: bool) -> list[Any]:
+def _finding_params() -> list[Any]:
     params = []
     for name in EXAMPLES:
         for entry in expected_for(name)["key_findings"]:
-            if ("pending" in entry) != pending_only:
-                continue
-            marks = []
-            if pending_only:
-                marks.append(pending(entry["pending"]["package"], entry["pending"]["reason"]))
             ident = f"{name}-{entry['resource']}-{entry.get('kind') or entry['rule_ids'][0]}"
-            params.append(pytest.param(name, entry, id=ident, marks=marks))
+            params.append(pytest.param(name, entry, id=ident))
     return params
 
 
@@ -220,14 +213,20 @@ class TestAgentWorkstationStructure:
 # ---------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("name", "entry"), _finding_params(pending_only=False))
-def test_the_key_finding_is_reported_today(name: str, entry: dict[str, Any]) -> None:
+@pytest.mark.parametrize(("name", "entry"), _finding_params())
+def test_the_key_finding_is_reported(name: str, entry: dict[str, Any]) -> None:
     assert finding_present(scan_example(name), entry), f"{name}: no finding for {entry['resource']}"
 
 
-@pytest.mark.parametrize(("name", "entry"), _finding_params(pending_only=True))
-def test_the_key_finding_a_later_package_adds(name: str, entry: dict[str, Any]) -> None:
-    assert finding_present(scan_example(name), entry), f"{name}: no finding for {entry['resource']}"
+def test_no_expected_finding_waits_for_a_package() -> None:
+    # An entry that is not reported yet would be a permanent skip, which hides a missing finding
+    waiting = [
+        f"{name}/{entry['resource']}"
+        for name in EXAMPLES
+        for entry in expected_for(name)["key_findings"]
+        if "pending" in entry
+    ]
+    assert not waiting, f"expected.yml entries marked pending: {waiting}"
 
 
 def path_node_ids(path: dict[str, Any]) -> list[str]:

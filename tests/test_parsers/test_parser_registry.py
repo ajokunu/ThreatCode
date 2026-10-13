@@ -483,7 +483,7 @@ class TestCloudFormationDetection:
     def test_sam_template_without_a_version(self, tmp_path: Path) -> None:
         result = detect_and_parse(_write(tmp_path, "template.yaml", SAM_TEMPLATE))
         assert result.format_type == "cloudformation"
-        # the function and the execution role SAM creates for it (WP-2-3)
+        # the function and the execution role SAM creates for it
         assert [r.name for r in result.resources] == ["Fn", "FnRole"]
 
     @pytest.mark.parametrize("resource_type", ["Custom::Thing", "Alexa::ASK::Skill"])
@@ -532,7 +532,7 @@ class TestCloudFormationDetection:
         assert {r.name for r in result.resources} == {"Bucket", "Instance", "Subnets"}
         bucket = next(r for r in result.resources if r.name == "Bucket")
         props = bucket.properties
-        # the short forms are expanded to the long form and kept as written under _cfn (WP-2-3)
+        # the short forms are expanded to the long form and kept as written under _cfn
         assert props["_cfn"]["BucketName"] == {"Fn::Sub": "${AWS::StackName}-data"}
         assert props["_cfn"]["AccessControl"] == {"Fn::If": ["IsProd", "Private", "PublicRead"]}
         assert result.metadata["template_version"] == "2010-09-09"
@@ -723,7 +723,7 @@ class TestTerraformDirectory:
         shutil.copytree(SHAPES / "tf_module", module)
         (module / "zz_bad.tf").write_text("resource {{{\n", encoding="utf-8")
         # a broken file is an error diagnostic that names it; the rest of the module is
-        # still read (WP-2-2), so the scan reports the file instead of aborting
+        # still read, so the scan reports the file instead of aborting
         result = detect_and_parse(module)
         failed = [d for d in result.diagnostics if d.code == "parse.failed"]
         assert len(failed) == 1
