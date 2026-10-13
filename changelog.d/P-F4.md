@@ -9,10 +9,12 @@
 - **SARIF attack path hops say what the edge does.**
   A hop read `aws_lb.web -> aws_instance.app (network_flow tcp/8080)`.
   It now reads `(sends traffic on tcp 8080)`, the wording the diagram and the Markdown report use.
-- **No zero-width joiner in Markdown output.**
-  `md_inline` used to put an invisible character inside `://`, after `@` and after `#` to stop GitHub from linking and notifying, which broke a copied address.
-  A web address, an `@user` or `@org/team` handle and an issue number such as `#12` are now inline code spans, which GitHub neither links nor notifies from and which copy exactly.
+- **A web address in Markdown is a code span, not text with an invisible character.**
+  `md_inline` used to put a zero-width joiner inside `://` to keep GitHub from linking an address, which broke a copied address.
+  An address is now an inline code span, which GitHub does not link and which copies exactly, with trailing punctuation left outside it.
+  An `@mention` or issue number inside an address stays as written.
   This affects the Markdown report, the diff report and the Markdown in SARIF rule help and LLM results.
+  The joiner after `@` and before an issue number remains.
 - **The Action names the report file from the format registry.**
   The extension table in the action script is gone: the extension comes from the same registry as `-o` format inference, so a format added later cannot be saved under the wrong name.
   `format: mermaid` writes `threatcode-results.mmd`, and the deprecated `matrix` alias still writes JSON.

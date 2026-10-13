@@ -83,20 +83,26 @@ class TestMdInline:
         assert md_inline("_emphasis_ here") == "\\_emphasis\\_ here"
         assert md_inline("snake_ case") == "snake\\_ case"
 
-    def test_mentions_are_code_spans(self) -> None:
+    def test_mentions_are_defused_with_a_zero_width_joiner(self) -> None:
         out = md_inline("CC @octocat and @org/security-team, (@x) and a@b.com")
-        assert out == "CC `@octocat` and `@org/security-team`, (`@x`) and a@b.com"
-        assert ZWJ not in out
+        assert f"@{ZWJ}octocat" in out
+        assert f"@{ZWJ}org/security-team" in out
+        assert f"(@{ZWJ}x)" in out
+        assert "a@b.com" in out
+        assert "@octocat" not in out and "@org" not in out
 
-    def test_issue_references_are_code_spans(self) -> None:
-        out = md_inline("fixes #123 and org/repo#45, see #abc and C# and #")
-        assert out == "fixes `#123` and org/repo`#45`, see #abc and C# and #"
-        assert ZWJ not in out
+    def test_issue_references_are_defused(self) -> None:
+        out = md_inline("fixes #123 and org/repo#45")
+        assert f"#{ZWJ}123" in out and f"#{ZWJ}45" in out
+        assert "#123" not in out
+
+    def test_a_hash_that_is_not_an_issue_number_is_left_alone(self) -> None:
+        assert md_inline("see #abc and C# and #") == "see #abc and C# and #"
 
     def test_bare_urls_are_code_spans_that_copy_exactly(self) -> None:
         out = md_inline("see https://evil.example/x and HTTP://E.example and ftp://f")
         assert out == "see `https://evil.example/x` and `HTTP://E.example` and `ftp://f`"
-        assert ZWJ not in out
+        assert ZWJ not in out, "an address copies exactly: nothing is inserted into it"
 
     def test_trailing_punctuation_stays_outside_the_span(self) -> None:
         out = md_inline("See http://a.example. Then (see http://a.example), or http://a.example!")
@@ -104,7 +110,7 @@ class TestMdInline:
             "See `http://a.example`. Then (see `http://a.example`), or `http://a.example`!"
         )
 
-    def test_a_mention_inside_an_address_is_not_wrapped_twice(self) -> None:
+    def test_a_mention_or_issue_number_inside_an_address_is_left_alone(self) -> None:
         out = md_inline("https://example.com/@octocat#12 ok")
         assert out == "`https://example.com/@octocat#12` ok"
 
@@ -113,7 +119,7 @@ class TestMdInline:
 
     def test_hostile_markup_next_to_a_span_is_still_escaped(self) -> None:
         out = md_inline("<script>@octocat</script> [x](http://e) *b* | ~")
-        assert out == "\\<script>`@octocat`\\</script> \\[x\\](`http://e`) \\*b\\* \\| \\~"
+        assert out == f"\\<script>@{ZWJ}octocat\\</script> \\[x\\](`http://e`) \\*b\\* \\| \\~"
 
     def test_private_use_characters_cannot_forge_a_span(self) -> None:
         assert md_inline("odd \ue0000\ue001 x") == "odd 0 x"

@@ -639,8 +639,7 @@ class TestTagsAndHelp:
         assert "\\<b>" in help_["markdown"]
         assert "<b>" not in help_["markdown"].replace("\\<b>", "")
         assert "[x](" not in help_["markdown"]
-        assert "`@octocat`" in help_["markdown"]
-        assert "@octocat" not in help_["markdown"].replace("`@octocat`", "")
+        assert "@octocat" not in help_["markdown"]
         assert help_["text"].startswith("Use *less*")
 
     def test_an_empty_mitigation_and_no_techniques_omit_help_markdown(self) -> None:
@@ -720,8 +719,7 @@ class TestMessages:
         assert "\\`curl" in markdown
         assert "`curl" not in markdown.replace("\\`curl", "")
         assert "\n## Heading" not in markdown
-        assert "`@octocat`" in markdown
-        assert "@octocat" not in markdown.replace("`@octocat`", "")
+        assert "@octocat" not in markdown
         assert "`http://evil`" in markdown
         assert "http://evil" not in markdown.replace("`http://evil`", "")
 
