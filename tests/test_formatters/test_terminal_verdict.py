@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -137,6 +138,36 @@ class TestTheVerdict:
             "incomplete (1 template not analysed); in the rest: "
             "no new findings (2 findings and 1 attack path baselined)"
         )
+
+
+class TestWorstStaysTogether:
+    def path(self) -> Any:
+        from threatcode.models.attack_path import AttackHop, AttackPath
+
+        return AttackPath(
+            id="p",
+            entry="internet",
+            target="t",
+            hops=[AttackHop(node_id="internet", zone="internet"), AttackHop(node_id="t")],
+            severity=Severity.CRITICAL,
+            target_kind="data store",
+        )
+
+    def test_a_worst_critical_is_never_split_across_two_lines(self) -> None:
+        threats = [make_threat(i, s) for i, s in enumerate(Severity, start=1)]
+        paths = [self.path(), self.path()]
+        for width in range(44, 130):
+            analysis = analysis_of(*threats, attack_paths=paths)
+            text = format_text(analysis, RenderOptions(width=width))
+            head = text.split("Verdict: ")[1].split("\n\n")[0]
+            assert not re.search(r"worst\s*\n\s*critical", head), width
+            assert "worst critical" in " ".join(head.split())
+
+    def test_the_tie_is_not_in_the_phrases_the_report_prints(self) -> None:
+        text = format_text(
+            analysis_of(make_threat(1), attack_paths=[self.path()]), RenderOptions(width=60)
+        )
+        assert "\u2060" not in text
 
 
 class TestInTheTextReport:

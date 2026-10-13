@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from tests.test_formatters.test_text import WIDTHS, analysis_of, example, make_threat
 from threatcode.formatters import RenderOptions
 from threatcode.formatters.terminal_table import build_rows, layout_of
 from threatcode.formatters.text import format_text
+from threatcode.models.attack_path import AttackHop, AttackPath
 from threatcode.models.threat import Severity, ThreatSource
 
 HEAD = ("LOCATION", "ATT&CK", "STRIDE")
@@ -219,11 +223,51 @@ class TestTheLayoutIsDecidedOncePerTable:
         self, width: int
     ) -> None:
         text = format_text(example("k8s-platform"), RenderOptions(width=width))
-        stacked = header(text)[1].split() == ["RULE", "PATHS"]
+        stacked = len(header(text)[0].split()) == 2
         for one in blocks(text):
             has_rule_beside_resource = len(one[0].split()) >= 3
             # A stacked table has the resource alone on its line; an inline one has the rule too
             assert has_rule_beside_resource != stacked, (width, one[0])
+
+
+class TestAPathsCellThatDoesNotFitBesideTheRule:
+    RULE = "AZURE_STORAGE_NO_NETWORK_RESTRICTION"
+
+    def analysis(self) -> Any:
+        threat = make_threat(1, address="azurerm_storage_account.main", rule_id=self.RULE)
+        threat.path_ids = ["p1"]
+        path = AttackPath(
+            id="p1",
+            entry="internet",
+            target="azurerm_storage_account.main",
+            hops=[
+                AttackHop(node_id="internet", zone="internet", enabled_by=[threat.id]),
+                AttackHop(node_id="azurerm_storage_account.main", zone="data"),
+            ],
+            severity=Severity.HIGH,
+            target_kind="data store",
+        )
+        return analysis_of(threat, attack_paths=[path])
+
+    def test_the_rule_id_is_kept_whole_and_the_paths_take_the_next_line(self) -> None:
+        text = format_text(self.analysis(), RenderOptions(width=50))
+        (one,) = blocks(text)
+        assert one[1].strip() == self.RULE
+        assert one[2].strip() == "P1"
+        assert all(len(line) <= 50 for line in text.splitlines())
+
+    def test_the_header_shows_the_same_shape(self) -> None:
+        head = header(format_text(self.analysis(), RenderOptions(width=50)))
+        assert [line.split() for line in head[:3]] == [
+            ["SEVERITY", "RESOURCE"],
+            ["RULE"],
+            ["PATHS"],
+        ]
+
+    def test_with_room_enough_the_paths_stay_beside_the_rule(self) -> None:
+        text = format_text(self.analysis(), RenderOptions(width=60))
+        (one,) = blocks(text)
+        assert one[1].split() == [self.RULE, "P1"]
 
 
 class TestTheSeverityColumn:
@@ -320,3 +364,94 @@ class TestLayoutOf:
         )
         assert layout_of(marked, 100).indent == len("CRITICAL^") + 2
         assert layout_of(self.rows(make_threat(1)), 100).indent == 10
+
+
+class TestTheKey:
+    def test_the_key_is_set_apart_from_the_last_finding(self) -> None:
+        raised = make_threat(1, Severity.LOW, effective_severity=Severity.MEDIUM)
+        lines = format_text(analysis_of(raised), RenderOptions(width=120)).splitlines()
+        key = next(i for i, line in enumerate(lines) if line.startswith("Key:"))
+        assert lines[key - 1] == ""
+        assert lines[key - 2].strip()
+
+    def test_no_key_and_no_stray_blank_line_when_nothing_needs_explaining(self) -> None:
+        lines = format_text(analysis_of(make_threat(1)), RenderOptions(width=120)).splitlines()
+        assert not any(line.startswith("Key:") for line in lines)
+        findings = next(i for i, line in enumerate(lines) if line.startswith("Findings ("))
+        coverage = next(i for i, line in enumerate(lines) if line.startswith("Coverage:"))
+        assert lines[findings:coverage].count("") == 1
+
+
+class TestEveryFieldIsMadeSafeForTheTerminal:
+    HOSTILE = "evil\x1b[2J\x1b]0;TITLE\x07"
+
+    @pytest.mark.parametrize("width", [40, 80, 120])
+    def test_no_escape_or_bell_reaches_the_terminal_from_any_cell(self, width: int) -> None:
+        threat = make_threat(
+            1,
+            address=f"aws_s3_bucket.{self.HOSTILE}",
+            rule_id=f"RULE_{self.HOSTILE}",
+            title=f"Title {self.HOSTILE}",
+            file=f"dir/{self.HOSTILE}.tf",
+            mitre_techniques=[f"T1{self.HOSTILE}"],
+        )
+        text = format_text(analysis_of(threat), RenderOptions(width=width, color=False))
+        assert "\x1b" not in text and "\x07" not in text
+        assert "\\x1b" in text
+
+    def test_an_unmatched_scanner_finding_with_a_hostile_rule_is_made_safe_too(self) -> None:
+        threat = make_threat(
+            1, source=ThreatSource.SCANNER, address="", rule_id=f"trivy:{self.HOSTILE}"
+        )
+        text = format_text(analysis_of(threat), RenderOptions(width=100))
+        assert "\x1b" not in text and "(unmatched)" in text
+
+
+NAMES = st.text(alphabet="abcdefgxyz_.-:/[]0123456789", min_size=1, max_size=70)
+WORDS = st.lists(st.text(alphabet="abcdefg", min_size=1, max_size=12), min_size=1, max_size=14)
+
+
+class TestAnyTableAtAnyWidth:
+    @given(
+        st.lists(
+            st.tuples(
+                NAMES,
+                st.text(alphabet="ABCDEFG_", min_size=2, max_size=40),
+                WORDS,
+                NAMES,
+                st.integers(min_value=1, max_value=99999),
+                st.sampled_from(list(Severity)),
+            ),
+            min_size=1,
+            max_size=6,
+        ),
+        st.integers(min_value=40, max_value=200),
+    )
+    @settings(max_examples=120, deadline=None)
+    def test_no_line_is_wider_than_the_terminal_and_every_name_is_kept_whole(
+        self,
+        rows: list[tuple[str, str, list[str], str, int, Severity]],
+        width: int,
+    ) -> None:
+        threats = [
+            make_threat(
+                i,
+                severity,
+                address=f"aws_x.{address}",
+                rule_id=rule,
+                title=" ".join(words),
+                file=file,
+                line=line,
+                mitre_techniques=["T1190"] if i % 2 else [],
+            )
+            for i, (address, rule, words, file, line, severity) in enumerate(rows, start=1)
+        ]
+        text = format_text(analysis_of(*threats), RenderOptions(width=width))
+        assert max(len(line) for line in text.splitlines()) <= width
+        flat = re.sub(r"\s+", "", text)
+        for threat in threats:
+            assert threat.rule_id in flat
+            assert threat.resource_address in flat
+            assert f"{threat.location_file}:{threat.location_start_line}" in flat
+        assert len(blocks(text)) == len(threats)
+        assert all(line.strip() for line in section(text))

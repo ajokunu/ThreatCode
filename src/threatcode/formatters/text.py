@@ -15,14 +15,17 @@ print as the same row.
 The width is the terminal's (``COLUMNS``, then the terminal, else 100); a narrow terminal gets
 a narrower layout, never a broken one.
 
-Each finding takes two lines.
+Each finding is a block of lines in a fixed order (``terminal_table`` has the layout).
 The first has the severity, the resource, the rule and the attack paths the finding enables
-(``P1`` is the first path listed above); the second has the finding, then where it is in the
-file and its ATT&CK techniques.
+(``P1`` is the first path listed above); the second is the finding; the third, dim, is where it is
+in the file, its ATT&CK techniques and its STRIDE category, in columns that line up from one
+finding to the next under a header that names them.
 The RULE is the key a suppression is written with, so it is printed in full; findings that share a
 root cause on one resource are one entry whose other rules are listed on a line of their own.
 A severity marked ``^`` was raised by context from the one its rule assigns (``v`` lowered), and
 the legend under the findings says so.
+A scan that left part of a Helm chart out says ``incomplete`` in the verdict, with the count of
+templates it could not analyse (``terminal_verdict``).
 
 Colors are used only when ``RenderOptions.color`` is set (the CLI sets it for a terminal) and
 ``NO_COLOR`` is not, so redirected output and CI logs stay plain.

@@ -286,6 +286,8 @@ class Layout:
     path: int
     # Whether the rule (and the paths) sit on a line of their own under the resource
     stacked: bool
+    # Whether the paths then need a line of their own too, because the longest rule leaves no room
+    split_paths: bool
     # The columns of the line under the title that have any content, in order
     heads: tuple[str, ...]
     # Their widths, or empty when the line is too narrow to line them up and they flow instead
@@ -333,11 +335,14 @@ def layout_of(rows: Sequence[Row], width: int) -> Layout:
     resource = max([len("RESOURCE"), *(len(row.resource) for row in rows)])
     side_by_side = resource + GAP + rule + (GAP + path if path else 0)
     stacked = side_by_side > room
+    split_paths = False
     if stacked:
         resource = room
-        rule = min(rule, max(room - (GAP + path if path else 0), 1))
+        # A rule id is a key: it keeps the line to itself before it is ever wrapped
+        split_paths = bool(path) and rule + GAP + path > room
+        rule = min(rule, room)
     heads, widths = _meta_columns(rows, room)
-    return Layout(severity, resource, rule, path, stacked, heads, widths)
+    return Layout(severity, resource, rule, path, stacked, split_paths, heads, widths)
 
 
 # ── lines ─────────────────────────────────────────────────────────────
@@ -381,10 +386,14 @@ def _identity(
             cells.append((paths, layout.path, ""))
         return columns(cells, gap=GAP)
     top = columns([sev, (resource, layout.resource, "")], gap=GAP)
+    lead = " " * layout.indent
     tail = [(rule, layout.rule, "")]
-    if layout.path:
+    if layout.path and not layout.split_paths:
         tail.append((paths, layout.path, ""))
-    return [*top, *columns(tail, gap=GAP, lead=" " * layout.indent)]
+    lines = [*top, *columns(tail, gap=GAP, lead=lead)]
+    if layout.path and layout.split_paths:
+        lines.extend(columns([(paths, layout.path, "")], gap=GAP, lead=lead))
+    return lines
 
 
 def _meta(layout: Layout, cells: Sequence[str], style: str, width: int) -> list[list[Run]]:
@@ -440,4 +449,5 @@ def _legend(rows: Sequence[Row], width: int) -> list[str]:
         notes.append("P1, P2: the attack paths above that the finding enables")
     if not notes:
         return []
-    return hanging("Key: " + "; ".join(notes), width, first="", rest="     ")
+    # Apart from the last finding, so it is read as a note on the table and not as a row
+    return ["", *hanging("Key: " + "; ".join(notes), width, first="", rest="     ")]

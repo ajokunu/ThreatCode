@@ -18,17 +18,21 @@ Nothing here prints; it returns the phrases the report flows into a line.
 from __future__ import annotations
 
 import posixpath
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from threatcode.formatters._utils import plural
 from threatcode.formatters._utils import verdict_items as shared_verdict_items
 from threatcode.formatters.terminal_coverage import unique_gaps
+from threatcode.formatters.terminal_layout import TIE
 from threatcode.models.report import ThreatReport
 
 __all__ = ["incomplete_phrase", "unanalysed_templates", "verdict_items"]
 
 HELM_WARNING = "helm.render_warning"
+# ``..., worst critical``: the severity is not left alone at the start of the next line
+_WORST = re.compile(r"(, worst) (\w+)$")
 # A warning about the chart as a whole is filed under its Chart.yaml; one about a template that
 # rendered to nothing usable is filed under that template.
 _CHART_FILES = frozenset({"chart.yaml", "chart.yml"})
@@ -81,8 +85,9 @@ def verdict_items(report: ThreatReport) -> list[tuple[str, str]]:
     alone: it has said so, and the coverage block lists the gaps.
     The one phrase it changes is the bare ``no findings``, which after the prefix would read as
     a statement about the whole chart; the rest of the chart had ``nothing found``.
+    A ``worst critical`` at the end of a phrase is kept on one line.
     """
-    items = shared_verdict_items(report)
+    items = [(_keep_worst(text), style) for text, style in shared_verdict_items(report)]
     problem = incomplete_phrase(report.coverage.gaps)
     if not problem or report.coverage.errors:
         return items
@@ -92,3 +97,7 @@ def verdict_items(report: ThreatReport) -> list[tuple[str, str]]:
         ("nothing found", "") if text == "no findings" else (text, style) for text, style in items
     ]
     return [(f"incomplete ({problem}); in the rest:", "high"), *rest]
+
+
+def _keep_worst(text: str) -> str:
+    return _WORST.sub(rf"\1{TIE}\2", text)
