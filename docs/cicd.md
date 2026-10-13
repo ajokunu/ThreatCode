@@ -66,7 +66,7 @@ Inputs:
 | --- | --- | --- |
 | `path` | empty | What to scan: a file (Terraform plan JSON, .tf, CloudFormation, Kubernetes, Dockerfile, MCP config) or a directory of them. Several paths go on separate lines. |
 | `input-file` | empty | Deprecated alias of path, kept so existing workflows keep working. |
-| `format` | `sarif` | Output format (sarif, json, markdown, text, bitbucket, matrix, diagram) |
+| `format` | `sarif` | Output format (sarif, json, markdown, bitbucket, navigator, mermaid, diagram, text) |
 | `fail-on` | `none` | Fail the job when a finding or attack path at or above this severity remains after suppressions and the baseline (critical, high, medium, low, info). none never fails on findings, which is the default so that adopting the action does not break a build. |
 | `min-severity` | empty | Hide findings below this severity (critical, high, medium, low, info). Display only: it does not change the gate. Empty means the CLI default. |
 | `config-file` | empty | Path to a .threatcode.yml config file. Only an explicit config can set fail_on. |

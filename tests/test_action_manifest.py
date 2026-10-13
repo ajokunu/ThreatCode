@@ -119,6 +119,18 @@ class TestManifestShape:
     def test_the_scan_step_has_the_id_the_outputs_read(self) -> None:
         assert step_named("Run ThreatCode scan")["id"] == "scan"
 
+    def test_the_format_input_lists_the_formats_the_cli_advertises(self) -> None:
+        """The list in the description is the registry's, so it cannot drift from the CLI."""
+        from threatcode.formatters import visible_format_names
+
+        description = load_action()["inputs"]["format"]["description"]
+        listed = re.search(r"\(([^)]*)\)", description)
+        assert listed is not None, description
+        names = [n.strip() for n in listed.group(1).split(",")]
+        assert sorted(names) == sorted(visible_format_names())
+        assert "matrix" not in description
+        assert "navigator" in names and "mermaid" in names
+
     def test_the_file_input_was_renamed_without_breaking_old_workflows(self) -> None:
         inputs = load_action()["inputs"]
         assert "deprecated" in inputs["input-file"]["description"].lower()
@@ -302,6 +314,13 @@ class TestPullRequestComment:
         assert COMMENT_MARKER in step_named("Comment on the pull request")["run"]
         assert COMMENT_MARKER in scan_script()
 
+    def test_the_marker_is_found_anywhere_in_a_comment_not_only_at_its_start(self) -> None:
+        # The Markdown report carries the marker on its second line, so a comment made from it
+        # elsewhere than through this action still has the marker, but not as its first line.
+        script = step_named("Comment on the pull request")["run"]
+        assert f'contains("{COMMENT_MARKER}")' in script
+        assert "startswith" not in script
+
     def test_forks_and_read_only_tokens_skip_with_a_notice(self) -> None:
         step = step_named("Comment on the pull request")
         assert "head.repo.full_name != github.repository" in step["env"]["TC_IS_FORK"]
@@ -326,6 +345,25 @@ class TestOtherWorkflowsUseTheAction:
         assert len(local) >= 3
         for step in local:
             assert step["with"]["upload"] == "false", step.get("name")
+
+    def test_one_job_uploads_the_sarif_on_pushes_to_main_and_only_that_job_may_write_alerts(
+        self,
+    ) -> None:
+        ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+        assert ci["permissions"] == {"contents": "read"}
+        job = ci["jobs"]["code-scanning"]
+        assert job["permissions"] == {"contents": "read", "security-events": "write"}
+        condition = job["if"]
+        assert "github.event_name == 'push'" in condition
+        assert "github.ref == 'refs/heads/main'" in condition
+        # publish.yml calls ci.yml, and a release must not upload alerts
+        assert "github.workflow == 'CI'" in condition
+        (step,) = [s for s in job["steps"] if s.get("uses") == "./.github/actions/threatcode"]
+        assert step["with"]["upload"] == "true"
+        assert step["with"]["format"] == "sarif"
+        assert step["with"]["fail-on"] == "none"
+        others = {name: j for name, j in ci["jobs"].items() if name != "code-scanning"}
+        assert not any("security-events" in (j.get("permissions") or {}) for j in others.values())
 
 
 def workflow(name: str) -> dict[str, Any]:
@@ -610,6 +648,46 @@ class TestTheScanStepRuns:
         assert int(out["path-count"]) >= 0
         report = json.loads((runner.workspace / out["report-file"]).read_text())
         assert int(out["threat-count"]) == len(report["threats"])
+
+    @pytest.mark.parametrize("fmt", ["sarif", "json", "markdown", "bitbucket", "navigator"])
+    def test_the_report_file_has_the_extension_of_its_format(
+        self, runner: Runner, fmt: str
+    ) -> None:
+        from threatcode.formatters import FORMATTERS
+
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format=fmt)
+        assert proc.returncode == 0, proc.stderr
+        report = runner.outputs()["report-file"]
+        assert report == f"threatcode-results{FORMATTERS[fmt].extension}"
+        assert (runner.workspace / report).is_file()
+
+    @pytest.mark.parametrize("fmt", ["mermaid", "diagram", "text"])
+    def test_the_other_formats_are_not_saved_under_a_json_name(
+        self, runner: Runner, fmt: str
+    ) -> None:
+        from threatcode.formatters import FORMATTERS
+
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format=fmt)
+        assert proc.returncode == 0, proc.stderr
+        report = runner.outputs()["report-file"]
+        assert report == f"threatcode-results{FORMATTERS[fmt].extension}"
+        assert not report.endswith(".json")
+
+    def test_the_sarif_paths_are_relative_to_the_repository_for_a_subdirectory_input(
+        self, runner: Runner
+    ) -> None:
+        (runner.workspace / ".git").mkdir()
+        target = runner.workspace / "deploy" / "k8s"
+        shutil.copytree(K8S_EXAMPLE, target)
+        proc = runner.run(path="deploy/k8s", format="sarif")
+        assert proc.returncode == 0, proc.stderr
+        sarif = json.loads((runner.workspace / "threatcode-results.sarif").read_text())
+        uris = {
+            r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            for r in sarif["runs"][0]["results"]
+        }
+        assert uris
+        assert all(u.startswith("deploy/k8s/") for u in uris), uris
 
     def test_the_sarif_file_is_advertised_only_for_sarif(self, runner: Runner) -> None:
         proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format="sarif")

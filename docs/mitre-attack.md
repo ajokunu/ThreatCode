@@ -169,7 +169,7 @@ The first entry of the layer for `examples/aws-webapp`:
   "techniques": [
     {
       "techniqueID": "T1078.004",
-      "tactic": "initial-access",
+      "tactic": "privilege-escalation",
       "score": 100,
       "color": "#ff0000",
       "comment": "2 attack path(s): internet to aws_s3_bucket.customer_data; internet to aws_secretsmanager_secret.db_credentials",

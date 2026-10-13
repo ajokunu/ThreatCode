@@ -206,7 +206,7 @@ class TestLayerSettings:
 
     def test_the_description_counts_threats_and_techniques(self) -> None:
         layer = layer_of(_make_threat("A", ["T1530"]), _make_threat("B", ["T1530"]))
-        assert "2 threats mapped to 1 ATT&CK techniques" in layer["description"]
+        assert "2 threats mapped to 1 ATT&CK technique." in layer["description"]
 
     def test_the_description_names_the_input_once_and_ends_each_sentence_once(self) -> None:
         report = ThreatReport(
@@ -264,3 +264,138 @@ class TestAttackPathTechniques:
         path.techniques = []
         ids = {t["techniqueID"] for t in layer_of(paths=[path])["techniques"]}
         assert ids == {"T1190", "T1530"}
+
+
+class TestDescription:
+    @pytest.mark.parametrize("label", [".", "..", "", "infra", "infra/prod, infra/dev"])
+    def test_no_sentence_ends_in_two_periods(self, label: str) -> None:
+        report = ThreatReport(threats=[_make_threat("A", ["T1530"])], input_file=label)
+        description = json.loads(format_attack_navigator(report))["description"]
+        assert ".." not in description
+        assert description.count(". ") == 1
+        assert description.endswith(".")
+
+    def test_the_current_directory_is_named_not_dotted(self) -> None:
+        report = ThreatReport(threats=[_make_threat("A", ["T1530"])], input_file=".")
+        description = json.loads(format_attack_navigator(report))["description"]
+        assert description.startswith(
+            "Auto-generated from ThreatCode scan of the current directory."
+        )
+
+    def test_counts_are_singular_for_one(self) -> None:
+        description = layer_of(_make_threat("A", ["T1530"]))["description"]
+        assert "1 threat mapped to 1 ATT&CK technique." in description
+
+    def test_only_threats_with_a_technique_count_as_mapped(self) -> None:
+        layer = layer_of(_make_threat("A", ["T1530"]), _make_threat("B", []))
+        assert "1 threat mapped" in layer["description"]
+
+
+class TestLegendAndGradient:
+    def test_the_gradient_stops_are_the_legend_colors(self) -> None:
+        layer = layer_of(_make_threat("A", ["T1530"]))
+        legend = {item["label"]: item["color"] for item in layer["legendItems"]}
+        colors = layer["gradient"]["colors"]
+        assert layer["gradient"]["minValue"] == 0 and layer["gradient"]["maxValue"] == 100
+        # Five stops spread evenly over 0 to 100 are at 0, 25, 50, 75 and 100.
+        assert colors == [
+            legend["Info"],
+            legend["Low"],
+            legend["Medium"],
+            legend["High"],
+            legend["Critical"],
+        ]
+
+    @pytest.mark.parametrize(
+        ("severity", "label"),
+        [
+            (Severity.LOW, "Low"),
+            (Severity.MEDIUM, "Medium"),
+            (Severity.HIGH, "High"),
+            (Severity.CRITICAL, "Critical"),
+        ],
+    )
+    def test_a_techniques_score_sits_on_the_gradient_stop_of_its_legend_color(
+        self, severity: Severity, label: str
+    ) -> None:
+        layer = layer_of(_make_threat("A", ["T1530"], severity))
+        technique = layer["techniques"][0]
+        legend = {item["label"]: item["color"] for item in layer["legendItems"]}
+        stops = layer["gradient"]["colors"]
+        position = technique["score"] / layer["gradient"]["maxValue"] * (len(stops) - 1)
+        assert position == int(position)
+        assert stops[int(position)] == legend[label] == technique["color"]
+
+
+class TestOneTacticPerPathStep:
+    """A path uses a technique once; the layer must not paint it in every tactic column."""
+
+    def long_path(self) -> AttackPath:
+        # valid cloud accounts are filed under four tactics, and the path lists them all
+        return AttackPath(
+            id="0123456789ab",
+            entry="internet",
+            target="aws_s3_bucket.data",
+            hops=[
+                AttackHop(node_id="internet"),
+                AttackHop(node_id="aws_lb.front", techniques=["T1190"]),
+                AttackHop(node_id="aws_instance.app", techniques=["T1552.005"]),
+                AttackHop(node_id="aws_iam_role.app", techniques=["T1078.004"]),
+                AttackHop(node_id="aws_s3_bucket.data", techniques=["T1530"]),
+            ],
+            severity=Severity.CRITICAL,
+            techniques=["T1190", "T1552.005", "T1078.004", "T1530"],
+            tactics=["TA0001", "TA0003", "TA0004", "TA0005", "TA0006", "TA0009"],
+        )
+
+    def test_a_technique_in_four_tactics_is_drawn_once(self) -> None:
+        layer = layer_of(paths=[self.long_path()])
+        accounts = [t for t in layer["techniques"] if t["techniqueID"] == "T1078.004"]
+        assert [t["tactic"] for t in accounts] == ["privilege-escalation"]
+
+    def test_the_entry_step_is_initial_access_and_a_later_step_is_not(self) -> None:
+        layer = layer_of(paths=[self.long_path()])
+        tactic_of = {t["techniqueID"]: t["tactic"] for t in layer["techniques"]}
+        assert tactic_of["T1190"] == "initial-access"
+        assert tactic_of["T1078.004"] != "initial-access"
+
+    def test_no_technique_of_a_path_is_in_two_columns(self) -> None:
+        layer = layer_of(paths=[self.long_path()])
+        ids = [t["techniqueID"] for t in layer["techniques"]]
+        assert len(ids) == len(set(ids))
+
+    def test_a_finding_that_names_the_tactic_keeps_it(self) -> None:
+        threat = _make_threat("A", ["T1078.004"], tactics=["TA0003"])
+        layer = layer_of(threat, paths=[self.long_path()])
+        tactics = {t["tactic"] for t in layer["techniques"] if t["techniqueID"] == "T1078.004"}
+        assert tactics == {"persistence", "privilege-escalation"}
+
+    def test_a_path_level_technique_no_hop_carries_is_drawn_once_too(self) -> None:
+        path = self.long_path()
+        for hop in path.hops:
+            hop.techniques = []
+        layer = layer_of(paths=[path])
+        accounts = [t for t in layer["techniques"] if t["techniqueID"] == "T1078.004"]
+        assert len(accounts) == 1
+        assert accounts[0]["tactic"] != "initial-access"
+
+    def test_a_single_tactic_technique_is_unchanged(self) -> None:
+        layer = layer_of(paths=[self.long_path()])
+        tactic_of = {t["techniqueID"]: t["tactic"] for t in layer["techniques"]}
+        assert tactic_of["T1552.005"] == "credential-access"
+        assert tactic_of["T1530"] == "collection"
+
+    def test_the_example_stacks_draw_each_path_only_technique_once(self) -> None:
+        from tests.test_formatters.test_schema_conformance import EXAMPLE_SCANS, example_analysis
+
+        drawn = 0
+        for name in EXAMPLE_SCANS:
+            layer = json.loads(format_attack_navigator(example_analysis(name).report))
+            by_id: dict[str, int] = {}
+            for technique in layer["techniques"]:
+                meta = {m["name"]: m["value"] for m in technique["metadata"]}
+                if meta["findings"] == "0":
+                    by_id[technique["techniqueID"]] = by_id.get(technique["techniqueID"], 0) + 1
+            drawn += len(by_id)
+            assert all(count == 1 for count in by_id.values()), (name, by_id)
+        assert drawn  # the check is not vacuous

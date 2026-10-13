@@ -14,10 +14,18 @@ because Bitbucket shows it in the diff of that file.
 The input file and line 1 stand in when a location is unknown.
 Attack paths are annotations on the first resource of the path that has a file.
 
-``report.result`` is ``FAILED`` when any finding or attack path is critical or high after context
-(its effective severity) and ``PASSED`` otherwise.
-That is a fixed reporting policy, not the scan gate: ``threatcode scan --fail-on`` decides the exit
-code.
+Paths are relative to the repository root (the git top level of the scan root, or ``repo_root``),
+which is what Bitbucket resolves them against, whatever directory the scan was started from.
+
+``report.result`` follows the scan gate: ``FAILED`` when a finding or attack path at or above
+``fail_on`` (its effective severity; model findings are advisory and never count) remains, and
+``PASSED`` otherwise; ``fail_on`` ``none`` always passes.
+Without a ``fail_on`` the gate is the default one, ``high``.
+The exit code of ``threatcode scan`` and this result therefore never disagree.
+
+An annotation says what is true of its resource (the title, the address, why the severity is what
+it is and the mitigation); the explanation that is the same for every instance of a rule is in the
+JSON and Markdown reports, not repeated on every line of the diff.
 """
 
 from __future__ import annotations
@@ -26,16 +34,16 @@ import json
 import os
 from typing import TYPE_CHECKING, Any
 
+from threatcode.formatters import RepoPaths
 from threatcode.formatters._utils import (
     collapse_whitespace,
     plural,
-    repo_path,
-    root_prefix,
     threat_source,
     truncate,
 )
+from threatcode.formatters.sarif import first_sentence
 from threatcode.models.report import ThreatReport, threat_severity
-from threatcode.models.threat import Severity, Threat
+from threatcode.models.threat import Severity, Threat, ThreatSource
 
 if TYPE_CHECKING:
     from threatcode.ir.graph import InfraGraph
@@ -48,6 +56,10 @@ MAX_ANNOTATIONS = 1000
 BATCH_SIZE = 100
 SUMMARY_LIMIT = 450
 DETAILS_LIMIT = 2000
+# What an annotation says beyond its title: the reason for the severity and the mitigation.
+MITIGATION_LIMIT = 300
+DETAIL_LIMIT = 240
+DEFAULT_FAIL_ON = "high"
 REPORT_DETAILS_LIMIT = 2000
 EXTERNAL_ID_LIMIT = 64
 
@@ -65,14 +77,23 @@ def format_bitbucket(
     graph: InfraGraph | None = None,
     *,
     source_root: str | os.PathLike[str] | None = None,
+    repo_root: str | os.PathLike[str] | None = None,
+    fail_on: str | None = None,
     indent: int = 2,
 ) -> str:
-    """Format as Bitbucket Code Insights JSON (report, annotations and bulk batches)."""
-    annotations = _annotations(report, graph, root_prefix(source_root))
+    """Format as Bitbucket Code Insights JSON (report, annotations and bulk batches).
+
+    ``source_root`` is the directory the report's relative paths are relative to (the current
+    directory when None) and ``repo_root`` the repository root they are written relative to
+    (default: the git top level above ``source_root``).
+    ``fail_on`` is the scan gate (a severity name or ``none``) that ``report.result`` follows.
+    """
+    paths = RepoPaths.resolve(source_root, repo_root)
+    annotations = _annotations(report, graph, paths)
     kept = annotations[:MAX_ANNOTATIONS]
     omitted = len(annotations) - len(kept)
     output = {
-        "report": _build_report(report, len(kept), omitted),
+        "report": _build_report(report, len(kept), omitted, fail_on, len(paths.outside)),
         "annotations": kept,
         "annotation_batches": [
             kept[start : start + BATCH_SIZE] for start in range(0, len(kept), BATCH_SIZE)
@@ -81,17 +102,38 @@ def format_bitbucket(
     return json.dumps(output, indent=indent, sort_keys=False)
 
 
-def _build_report(report: ThreatReport, shown: int, omitted: int) -> dict[str, Any]:
+def _gate_tripped(report: ThreatReport, fail_on: str | None) -> bool:
+    """Whether a finding or attack path at or above the gate remains: what makes exit code 1."""
+    gate = fail_on or DEFAULT_FAIL_ON
+    if gate == "none":
+        return False
+    try:
+        threshold = Severity(gate)
+    except ValueError:
+        threshold = Severity(DEFAULT_FAIL_ON)
+    return any(
+        threat_severity(threat) >= threshold
+        for threat in report.threats
+        if threat.source is not ThreatSource.LLM
+    ) or any(path.severity >= threshold for path in report.attack_paths)
+
+
+def _build_report(
+    report: ThreatReport, shown: int, omitted: int, fail_on: str | None, outside: int
+) -> dict[str, Any]:
     """The Code Insights report payload."""
     summary = report.summary
-    failed = any(summary.get(name, 0) for name in ("critical", "high")) or any(
-        path.severity >= Severity.HIGH for path in report.attack_paths
-    )
+    failed = _gate_tripped(report, fail_on)
     details = (
         f"Scanned {report.scanned_resources} resources, "
         f"found {plural(len(report.threats), 'threat')} "
         f"and {plural(len(report.attack_paths), 'attack path')}."
     )
+    if outside:
+        details += (
+            f" {plural(outside, 'file')} outside the repository root cannot be placed in a diff, "
+            "so their annotations name the file only."
+        )
     if omitted:
         details += (
             f" {shown} annotations are shown, the most severe first; {omitted} more were left out"
@@ -117,7 +159,7 @@ def _build_report(report: ThreatReport, shown: int, omitted: int) -> dict[str, A
 
 
 def _annotations(
-    report: ThreatReport, graph: InfraGraph | None, prefix: str
+    report: ThreatReport, graph: InfraGraph | None, paths: RepoPaths
 ) -> list[dict[str, Any]]:
     """Every annotation, most severe first, then most certain; external ids are unique."""
     fallback = (report.input_paths or report.input_file.split(","))[0].strip() or "."
@@ -127,7 +169,7 @@ def _annotations(
         ranked.append(
             (
                 (-path.severity.rank, 0, -path.score, path.entry, path.id),
-                _path_annotation(path, repo_path(file, prefix), line),
+                _path_annotation(path, paths.locate(file), line),
             )
         )
     for threat in report.threats:
@@ -141,7 +183,7 @@ def _annotations(
                     threat.resource_address,
                     threat.id,
                 ),
-                _threat_annotation(threat, repo_path(file, prefix), line),
+                _threat_annotation(threat, paths.locate(file), line),
             )
         )
     ranked.sort(key=lambda item: item[0])
@@ -173,15 +215,30 @@ def _path_location(path: AttackPath, graph: InfraGraph | None, fallback: str) ->
 
 
 def _threat_annotation(threat: Threat, file: str, line: int) -> dict[str, Any]:
-    details = collapse_whitespace(threat.description)
+    """An annotation: the title, then what is true of this instance, then the fix.
+
+    A rule's description is the same on every instance, so it is left to the reports; a crossing,
+    a scanner's finding, a secret and a model's suggestion are about this instance, and their
+    first sentence says how.
+    """
+    parts = []
+    if threat.resource_address:
+        parts.append(f"Resource: {collapse_whitespace(threat.resource_address)}.")
+    if threat.source is not ThreatSource.RULE:
+        detail = first_sentence(threat.description, DETAIL_LIMIT)
+        if detail:
+            parts.append(detail if detail.endswith((".", "!", "?")) else f"{detail}.")
+    reason = collapse_whitespace(threat.severity_reason)
+    if reason:
+        parts.append(f"Severity: {reason}.")
     mitigation = collapse_whitespace(threat.mitigation)
     if mitigation:
-        details = f"{details} Mitigation: {mitigation}".strip()
+        parts.append(f"Mitigation: {truncate(mitigation, MITIGATION_LIMIT)}")
     return {
         "external_id": truncate(threat.id, EXTERNAL_ID_LIMIT),
         "annotation_type": "VULNERABILITY",
         "summary": truncate(collapse_whitespace(threat.title), SUMMARY_LIMIT),
-        "details": truncate(details, DETAILS_LIMIT),
+        "details": truncate(" ".join(parts), DETAILS_LIMIT),
         "severity": _BB_SEVERITIES.get(threat_severity(threat), "MEDIUM"),
         "path": file,
         "line": line,

@@ -684,6 +684,160 @@ class TestMoreGithubLints:
 
 
 # ---------------------------------------------------------------------------------------
+# Lints for what GitHub shows: severity, names, messages and code flows
+# ---------------------------------------------------------------------------------------
+
+# critical 9.5, high 8.0, medium 5.5, low 3.0 by the level they map to; info has no score
+_LEVEL_OF_SCORE = {"9.5": "error", "8.0": "error", "5.5": "warning", "3.0": "note"}
+MAX_RULE_NAME = 64
+MAX_MESSAGE = 600
+
+
+def _rules(run: dict[str, Any]) -> list[dict[str, Any]]:
+    return (run.get("tool") or {}).get("driver", {}).get("rules") or []  # type: ignore[no-any-return]
+
+
+def lint_result_matches_rule(sarif: dict[str, Any]) -> list[str]:
+    """GitHub ranks an alert by its rule, so a result must carry its rule's level and score."""
+    problems = []
+    for run in sarif.get("runs") or []:
+        rules = {rule["id"]: rule for rule in _rules(run)}
+        for index, result in enumerate(run.get("results") or []):
+            rule = rules.get(result.get("ruleId"))
+            if rule is None:
+                continue
+            level = (rule.get("defaultConfiguration") or {}).get("level")
+            if result.get("level") != level:
+                problems.append(
+                    f"results[{index}] is {result.get('level')} but rule {rule['id']} is {level}"
+                )
+            rule_score = (rule.get("properties") or {}).get("security-severity")
+            score = (result.get("properties") or {}).get("security-severity")
+            if score != rule_score:
+                problems.append(
+                    f"results[{index}] has security-severity {score} but rule {rule['id']} "
+                    f"has {rule_score}"
+                )
+    return problems
+
+
+def lint_score_matches_level(sarif: dict[str, Any]) -> list[str]:
+    """A security-severity and the level of the same rule or result tell one story."""
+    problems = []
+    for run in sarif.get("runs") or []:
+        for rule in _rules(run):
+            score = (rule.get("properties") or {}).get("security-severity")
+            level = (rule.get("defaultConfiguration") or {}).get("level")
+            if score in _LEVEL_OF_SCORE and _LEVEL_OF_SCORE[score] != level:
+                problems.append(f"rule {rule['id']} has score {score} and level {level}")
+    return problems
+
+
+def lint_rule_names_and_ids(sarif: dict[str, Any]) -> list[str]:
+    """A rule name is short and a rule id carries its tool prefix once."""
+    problems = []
+    for run in sarif.get("runs") or []:
+        for rule in _rules(run):
+            if len(rule.get("name", "")) > MAX_RULE_NAME:
+                problems.append(f"rule {rule['id']} has a {len(rule['name'])} character name")
+            if rule["id"].count(":") > 1:
+                problems.append(f"rule id {rule['id']} has a doubled prefix")
+    return problems
+
+
+def lint_messages(sarif: dict[str, Any]) -> list[str]:
+    """A message is the headline of an alert: one line, not a page."""
+    problems = []
+    for run in sarif.get("runs") or []:
+        for index, result in enumerate(run.get("results") or []):
+            text = (result.get("message") or {}).get("text", "")
+            if "\n" in text or len(text) > MAX_MESSAGE:
+                problems.append(f"results[{index}] message is {len(text)} characters or multiline")
+    return problems
+
+
+def lint_code_flows(sarif: dict[str, Any]) -> list[str]:
+    """When any step of a code flow has a file, every step has, or GitHub drops the others."""
+    problems = []
+    for run in sarif.get("runs") or []:
+        for index, result in enumerate(run.get("results") or []):
+            for flow in result.get("codeFlows") or []:
+                for thread in flow.get("threadFlows") or []:
+                    steps = thread.get("locations") or []
+                    located = ["physicalLocation" in (s.get("location") or {}) for s in steps]
+                    if any(located) and not all(located):
+                        problems.append(f"results[{index}] has a code flow step without a file")
+    return problems
+
+
+class TestLintsOnWhatGithubShows:
+    @pytest.mark.parametrize("name", LINT_INPUTS)
+    def test_a_result_has_the_level_and_score_of_its_rule(self, name: str) -> None:
+        assert lint_result_matches_rule(sarif_for(name)) == [], name
+
+    @pytest.mark.parametrize("name", LINT_INPUTS)
+    def test_a_score_and_a_level_agree(self, name: str) -> None:
+        assert lint_score_matches_level(sarif_for(name)) == [], name
+
+    @pytest.mark.parametrize("name", LINT_INPUTS)
+    def test_rule_names_are_short_and_ids_are_not_doubly_prefixed(self, name: str) -> None:
+        assert lint_rule_names_and_ids(sarif_for(name)) == [], name
+
+    @pytest.mark.parametrize("name", LINT_INPUTS)
+    def test_messages_are_one_short_line(self, name: str) -> None:
+        assert lint_messages(sarif_for(name)) == [], name
+
+    @pytest.mark.parametrize("name", LINT_INPUTS)
+    def test_code_flows_have_a_file_on_every_step(self, name: str) -> None:
+        assert lint_code_flows(sarif_for(name)) == [], name
+
+    def run_with(self, rules: list[dict[str, Any]], results: list[dict[str, Any]]) -> Any:
+        return {"runs": [{"tool": {"driver": {"rules": rules}}, "results": results}]}
+
+    def test_the_level_lint_catches_a_result_that_outranks_its_rule(self) -> None:
+        rule = {
+            "id": "A",
+            "defaultConfiguration": {"level": "warning"},
+            "properties": {"security-severity": "5.5"},
+        }
+        result = {"ruleId": "A", "level": "note", "properties": {"security-severity": "3.0"}}
+        assert len(lint_result_matches_rule(self.run_with([rule], [result]))) == 2
+        good = {"ruleId": "A", "level": "warning", "properties": {"security-severity": "5.5"}}
+        assert lint_result_matches_rule(self.run_with([rule], [good])) == []
+
+    def test_the_score_lint_catches_a_level_that_disagrees(self) -> None:
+        rule = {
+            "id": "A",
+            "defaultConfiguration": {"level": "note"},
+            "properties": {"security-severity": "8.0"},
+        }
+        assert lint_score_matches_level(self.run_with([rule], []))
+
+    def test_the_name_lint_catches_a_long_name_and_a_doubled_prefix(self) -> None:
+        rules = [
+            {"id": "trivy:trivy:CVE-1", "name": "ok"},
+            {"id": "X", "name": "N" * 65},
+            {"id": "trivy:CVE-1", "name": "CVE-1"},
+        ]
+        assert len(lint_rule_names_and_ids(self.run_with(rules, []))) == 2
+
+    def test_the_message_lint_catches_a_wall_and_a_line_break(self) -> None:
+        results = [{"message": {"text": "a" * 601}}, {"message": {"text": "a\nb"}}]
+        assert len(lint_messages(self.run_with([], results))) == 2
+
+    def test_the_code_flow_lint_catches_a_step_without_a_file(self) -> None:
+        located = {"location": {"physicalLocation": {}}}
+        flow = {"threadFlows": [{"locations": [located, {"location": {}}]}]}
+        assert lint_code_flows(self.run_with([], [{"codeFlows": [flow]}]))
+        assert (
+            lint_code_flows(
+                self.run_with([], [{"codeFlows": [{"threadFlows": [{"locations": [located]}]}]}])
+            )
+            == []
+        )
+
+
+# ---------------------------------------------------------------------------------------
 # The real pipeline: what `threatcode scan` hands the formatters
 # ---------------------------------------------------------------------------------------
 
@@ -757,6 +911,126 @@ class TestPipelineSarif:
         assert uris
         assert all(u.startswith("tests/fixtures/kubernetes/") for u in uris)
         assert lint_unique_fingerprints(sarif) == []
+
+
+# ---------------------------------------------------------------------------------------
+# The three example stacks, scanned the way a user scans them
+# ---------------------------------------------------------------------------------------
+
+EXAMPLE_SCANS = {
+    "aws-webapp": ("examples/aws-webapp", "examples/aws-webapp/scanner/trivy-app-image.json"),
+    "k8s-platform": ("examples/k8s-platform", ""),
+    "agent-workstation": ("examples/agent-workstation", ""),
+}
+
+
+@cache
+def example_analysis(name: str) -> Any:
+    from threatcode.pipeline import prepare_request, run_scan
+
+    target, ingest = EXAMPLE_SCANS[name]
+    prepared = prepare_request(
+        [str(REPO_ROOT / target)],
+        ingest=[REPO_ROOT / ingest] if ingest else [],
+        fail_on="none",
+    )
+    return run_scan(prepared.request).analysis
+
+
+def example_sarif(name: str) -> dict[str, Any]:
+    from threatcode.formatters import render
+
+    return json.loads(render("sarif", example_analysis(name)))  # type: ignore[no-any-return]
+
+
+class TestExampleStacks:
+    """Findings that reach the Security tab: ranked right, named right, placed right."""
+
+    LINTS = (
+        lint_locations,
+        lint_fingerprints,
+        lint_security_severity,
+        lint_tag_count,
+        lint_unique_rule_ids,
+        lint_uris,
+        lint_rule_references,
+        lint_unique_fingerprints,
+        lint_result_matches_rule,
+        lint_score_matches_level,
+        lint_rule_names_and_ids,
+        lint_messages,
+        lint_code_flows,
+    )
+
+    @pytest.mark.parametrize("name", sorted(EXAMPLE_SCANS))
+    def test_it_validates_and_passes_every_lint(self, name: str) -> None:
+        sarif = example_sarif(name)
+        assert schema_errors(sarif_validator(), sarif) == []
+        for lint in self.LINTS:
+            assert lint(sarif) == [], (name, lint.__name__)
+
+    @pytest.mark.parametrize("name", sorted(EXAMPLE_SCANS))
+    def test_every_uri_is_relative_to_the_repository_root(
+        self, name: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = EXAMPLE_SCANS[name][0]
+        for cwd in (REPO_ROOT, REPO_ROOT / "examples", REPO_ROOT / target):
+            monkeypatch.chdir(cwd)
+            from threatcode.formatters import render
+
+            sarif = json.loads(render("sarif", example_analysis(name)))
+            for run in sarif["runs"]:
+                for result in run["results"]:
+                    for location in result["locations"]:
+                        uri = location["physicalLocation"]["artifactLocation"]["uri"]
+                        assert uri.startswith(f"{target}/"), (cwd, uri)
+
+    def test_the_trivy_rule_has_one_prefix_and_a_short_name(self) -> None:
+        rules = {
+            r["id"]: r for r in example_sarif("aws-webapp")["runs"][0]["tool"]["driver"]["rules"]
+        }
+        assert "trivy:CVE-2022-37434" in rules
+        assert "trivy:trivy:CVE-2022-37434" not in rules
+        assert rules["trivy:CVE-2022-37434"]["name"] == "CVE-2022-37434"
+
+    def test_a_low_severity_instance_does_not_show_as_medium(self) -> None:
+        run = example_sarif("k8s-platform")["runs"][0]
+        rules = {r["id"]: r for r in run["tool"]["driver"]["rules"]}
+        by_rule: dict[str, set[str]] = {}
+        for result in run["results"]:
+            by_rule.setdefault(result["ruleId"], set()).add(result["level"])
+        assert all(len(levels) == 1 for levels in by_rule.values())
+        base = [rid for rid in rules if rid.startswith("K8S_AUTOMOUNT_SA_TOKEN")]
+        assert len(base) == 2
+        levels = {rid: rules[rid]["defaultConfiguration"]["level"] for rid in base}
+        assert set(levels.values()) == {"note", "warning"}
+
+    def test_a_path_is_anchored_at_its_entry_resource_and_walks_located_hops(self) -> None:
+        run = example_sarif("aws-webapp")["runs"][0]
+        paths = [r for r in run["results"] if r["ruleId"].startswith("THREATCODE_ATTACK_PATH")]
+        assert paths
+        for result in paths:
+            assert result["locations"][0]["logicalLocations"][0]["fullyQualifiedName"] == (
+                "aws_lb.front"
+            )
+            steps = result["codeFlows"][0]["threadFlows"][0]["locations"]
+            assert all("physicalLocation" in s["location"] for s in steps)
+            assert "enabled by" in " ".join(s["location"]["message"]["text"] for s in steps)
+
+    def test_messages_do_not_repeat_the_rule_description(self) -> None:
+        for name in EXAMPLE_SCANS:
+            run = example_sarif(name)["runs"][0]
+            descriptions = {r["fullDescription"]["text"] for r in run["tool"]["driver"]["rules"]}
+            for result in run["results"]:
+                text = result["message"]["text"]
+                assert len(text) <= 600
+                assert not any(d[:80] in text for d in descriptions if len(d) > 80), text
+
+    def test_the_unpinned_package_message_names_no_hidden_property(self) -> None:
+        results = example_sarif("agent-workstation")["runs"][0]["results"]
+        unpinned = [r for r in results if r["ruleId"].startswith("MCP_UNPINNED_PACKAGE")]
+        assert unpinned
+        assert not any("unpinned_reasons" in r["message"]["text"] for r in unpinned)
 
 
 # ---------------------------------------------------------------------------------------
