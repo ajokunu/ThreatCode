@@ -72,6 +72,8 @@ To move to a new release, run the script with `--version`, review the diff, and 
    A flow declared unauthenticated is spoofing (T1557), one declared unencrypted is information disclosure (T1040), and any other is tampering with a flow in transit (T1565.002).
    A flow from the internet into the DMZ adds T1190, into the data zone T1530, and into the management zone T1078.
    The tactics are derived from the techniques.
+   The text report shows the kind of crossing in its RULE column and the JSON report in `metadata.boundary_rule`, as one of: `BOUNDARY_UNAUTHENTICATED_FLOW` (spoofing), `BOUNDARY_UNENCRYPTED_FLOW` (information disclosure), `BOUNDARY_UNVALIDATED_FLOW` (a flow declared not validated) and `BOUNDARY_GENERIC_FLOW` (tampering).
+   These are not rules, since no rule file defines them, but an ignore entry can name one, and it then hides every crossing of that kind.
 
 3. **Attack paths.**
    Each hop lists the technique of the step that reaches it, and the path lists their union and the tactics that follow:
@@ -138,12 +140,16 @@ threatcode scan infra/ -f navigator -o layer.json
 ```
 
 Load `layer.json` at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/).
-`matrix` is the old name of the format and still works; it will be removed in a later release.
 
-A layer has one entry per (technique, tactic) with the tactic's Navigator shortname, so a technique that ATT&CK puts in two tactics appears in both and an entry never has an empty tactic.
+A layer has one entry per (technique, tactic), written with the tactic's Navigator shortname, so an entry never has an empty tactic.
 There is no platform filter, so Docker, Kubernetes and MCP techniques are visible.
 `versions.attack` is the bundled ATT&CK release, the Navigator version is a full semantic version, a revoked technique id is mapped to its replacement, and an id ATT&CK does not know is kept with a warning and listed in the layer metadata instead of being dropped.
-Techniques of attack paths are in the layer with their own comment.
+
+A technique that ATT&CK files under several tactics goes in the tactic the finding names.
+An attack path does not name one, so the layer picks the tactic the step plays: initial access for the entry step, and for a later step the tactic that moves the attacker closest to the target.
+Painting a technique in every column of the matrix would claim that one step does four things.
+In the sample below `T1078.004` (Valid Accounts: Cloud Accounts) belongs to four tactics in ATT&CK, and the layer draws it once, under privilege escalation, because the step is a role assumption.
+Techniques of attack paths are in the layer with their own comment, a score from the worst path that uses them and the number of paths.
 
 The first entry of the layer for `examples/aws-webapp`:
 

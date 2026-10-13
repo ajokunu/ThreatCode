@@ -19,6 +19,8 @@ The tables on this page are generated from the code, and `tests/test_docs.py` sc
 
 Anything else is not read.
 A directory scan counts files it does not recognize under "not infrastructure" in the coverage block, and a single file that nothing recognizes is an input error and exit 2.
+A file that looks like infrastructure but cannot be parsed is never counted as "not infrastructure": a `.tf` file with a syntax error, and a JSON or YAML file whose name or first lines say it is a Terraform plan, a CloudFormation template or a Kubernetes manifest, is an input error and exit 2.
+A plan-named file (`plan.json`, `tfplan.json`, `*.tfplan.json`, `plan-*.json`) over the 50 MB limit is an input error too, while any other file over the limit is set aside as not infrastructure.
 Terraform state JSON (`terraform show -json` without a plan file) and a plan that only destroys resources are rejected with a message that names the right command.
 Docker Compose files and Azure ARM or Bicep templates are not supported.
 A Kustomize `kustomization.yaml` becomes one node and is not evaluated, because overlays are not built.
@@ -41,6 +43,27 @@ Azure and GCP resources are parsed, categorized and checked by rules, so they pr
 They have no exposure analysis and no reachability edges yet, so a scan of an Azure or GCP stack reports no attack path.
 That is "not modeled", not "no path exists".
 
+## Coverage gaps
+
+Whatever a scan could not analyse is a coverage gap: it is printed on stderr even with `-q`, listed in the `coverage.gaps` of the JSON report and in the SARIF, Markdown and text reports, and `--strict` turns any gap into exit 2.
+These are the gaps to know:
+
+| Code | Raised when | What to do |
+|------|-------------|------------|
+| `hcl.module_call_skipped` | A Terraform module comes from a registry, git or another remote source. | Scan `terraform show -json` output, or vendor the module. |
+| `hcl.default_disabled` | A resource is dropped because the default of a variable makes `count` 0 or `for_each` empty, and nothing in the scan can say the default is the value used. | Put the real values in a `terraform.tfvars` or `*.auto.tfvars` file beside the module. |
+| `hcl.unresolved_reference` | A Terraform expression names a variable, local or resource that is not in the directory scanned, so the value reads as unknown. It is a gap when the name is not declared anywhere in the module and a note otherwise. | Scan the whole module, or a plan, which holds the resolved values. |
+| `enrich.unresolved_companion` | A resource that configures another (a bucket versioning, an encryption configuration, a public access block) points at its target through an expression the scan cannot resolve, so it might configure any resource of its kind in that input. | Name the target with a literal reference, or scan a plan. |
+| `cfn.unresolved_intrinsic`, `cfn.nested_stack` | A CloudFormation intrinsic needs the deployed stack, or a nested stack is not followed. | Scan the nested template as well. |
+| `helm.fallback_render` | A chart was rendered without the `helm` binary. | Install `helm`, or set `THREATCODE_HELM=required` to fail without it. |
+| `k8s.skipped_document` | A YAML document is not a Kubernetes object (no `kind`, or not a mapping). | Fix the document. |
+| `ingest.unattached` | A scanner finding named an image, file or directory that no resource has. | Check the scanner ran on the same tree. |
+
+`enrich.unresolved_companion` exists so that an unresolved link is never silent.
+When a companion cannot be tied to its target, the facts it would have set are marked unknown on every resource of the right kind in that input, and a rule never reports a verdict that rests on an unknown fact.
+So `S3_NO_VERSIONING` is not reported for a bucket whose versioning resource points at `var.bucket`, because that resource might be configuring it, and the gap tells you the finding was held back and why.
+Under `--strict` the gap fails the scan with exit 2.
+
 ## Terraform
 
 - **Plan JSON** needs `format_version` together with `planned_values` or `resource_changes`.
@@ -50,6 +73,8 @@ That is "not modeled", not "no path exists".
   A directory is one module: variables take their value from `terraform.tfvars` and `*.auto.tfvars`, then their default, then the module call's input; locals, string interpolation, arithmetic, conditionals and a few pure functions are evaluated; `dynamic` blocks over known collections are expanded; and local modules (`./` and `../`) are followed up to 8 levels.
   A registry, git or other remote module is **not** downloaded: it is a coverage gap that names the source, and a root that only calls remote modules cannot scan to a clean pass.
   Scan `terraform show -json` output when you need modules resolved.
+  A resource whose `count` or `for_each` comes out empty from a variable default in the module you scan is dropped, but a default can be replaced by `-var`, `-var-file` or `TF_VAR_*`, so the drop is reported as one `hcl.default_disabled` gap that lists the resources left out.
+  Put the real values in a `terraform.tfvars` or `*.auto.tfvars` file beside the module and the variable is settled, the gap goes away, and the resource is analysed or dropped on the real value.
 - Provider defaults that a plan materialises are filled in for HCL and CloudFormation only (for example an EKS cluster's public endpoint), never for a plan.
   An attribute the provider defaults to a secure value is not reported as missing.
 
@@ -313,6 +338,10 @@ The secret detectors (34<!-- count:secret_detectors --> of them) run over the fi
 - Dockerfile `ENV` and `ARG` and MCP configs, through their own rules.
 
 A secret outside every resource (a variable default, a `*.tfvars` entry) has an empty address.
+A detector for a secret that spans lines is marked `multiline` (`SecretRule.multiline`): the PEM private key block is the one built-in.
+It runs over the whole file instead of line by line, reports the line where the block starts, and keeps a match only when the lines between the header and the footer are base64 of at least key length.
+A comment that only names `-----BEGIN PRIVATE KEY-----`, or a documentation example with the body elided, is not a finding.
+In a templated file (a Helm template) `SecretScanner.scan_text(text, templated=True)` drops a generic `key = value` match that sits inside a `{{ }}` action, because that is template code and not a literal.
 Previews never contain secret characters.
 The high-entropy detector is off by default.
 For a whole-repository secret scan, run Gitleaks and pass its SARIF to `--ingest`.

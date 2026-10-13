@@ -60,7 +60,11 @@ try:
         load_rule_file,
     )
     from threatcode.engine.secrets.builtin import get_builtin_rules as get_secret_rules
-    from threatcode.formatters import FORMATTERS
+    from threatcode.formatters import (
+        DEPRECATED_FORMATS,
+        FORMATTERS,
+        visible_format_names,
+    )
     from threatcode.parsers import _REGISTRY as PARSER_REGISTRY
 except ImportError as exc:  # pragma: no cover - only when ThreatCode is not importable
     print(f"error: cannot import threatcode ({exc}); run pip install -e .", file=sys.stderr)
@@ -158,7 +162,7 @@ def _counts(facts: Facts) -> dict[str, Any]:
     all_techniques = set(facts.rule_techniques) | set(facts.engine_techniques)
     rule_tactics = set(mitre.tactics_for_techniques(list(facts.rule_techniques)))
     all_tactics = set(mitre.tactics_for_techniques(sorted(all_techniques)))
-    formats = [name for name in FORMATTERS if name != "matrix"]
+    formats = visible_format_names()
     counts: dict[str, Any] = {
         "rules": len(facts.rules),
         "rule_files": len(facts.by_group),
@@ -406,7 +410,8 @@ def _option_row(param: click.Parameter) -> list[object] | None:
         return None
     names = ", ".join(code(n) for n in [*param.opts, *param.secondary_opts])
     if isinstance(param.type, click.Choice):
-        values = " \\| ".join(param.type.choices)
+        # A deprecated alias still works but is not advertised, here as in --help
+        values = " \\| ".join(c for c in param.type.choices if c not in DEPRECATED_FORMATS)
     elif param.is_flag or param.count:
         values = ""
     elif isinstance(param.type, click.Path):
@@ -458,7 +463,8 @@ def render_cli_diff(facts: Facts) -> str:
 
 def render_formats(facts: Facts) -> str:
     rows = []
-    for name, spec in FORMATTERS.items():
+    for name in visible_format_names():
+        spec = FORMATTERS[name]
         what = spec.description
         rows.append([code(name), spec.extension, what])
     return table(["`-f` value", "Extension", "What it is"], rows)

@@ -68,6 +68,7 @@ SRC = REPO / "src"
 DOC_FILES: list[Path] = [
     REPO / "README.md",
     REPO / "SECURITY.md",
+    REPO / "CONTRIBUTING.md",
     *sorted((REPO / "docs").glob("*.md")),
     *sorted((REPO / "examples").rglob("README.md")),
 ]
@@ -1466,3 +1467,303 @@ class TestTheHarnessCanFail:
         assert two_sentences("This is one. This is another.")
         assert not two_sentences("This is one sentence, e.g. with an abbreviation.")
         assert not two_sentences("See `a. B` and version 0.9.1 for details.")
+
+
+# ---------------------------------------------------------------------------------------
+# The pages describe the code as it is
+# ---------------------------------------------------------------------------------------
+
+_DEPRECATED_FORMAT = re.compile(r"`matrix`|-f matrix|--format matrix|\| matrix\b|\bmatrix \|")
+
+
+def deprecated_format_mentions(text: str) -> list[str]:
+    """The lines of ``text`` that name the deprecated ``matrix`` output format."""
+    return [line.strip() for line in text.splitlines() if _DEPRECATED_FORMAT.search(line)]
+
+
+def _scan_cli(*args: str) -> Any:
+    from tests.helpers.cli import run_cli
+
+    return run_cli(["scan", *args])
+
+
+def _heading_section(text: str, heading: str) -> str:
+    """The text under ``heading`` (a ``##`` line) up to the next heading of the same level."""
+    start = text.index(f"\n{heading}\n")
+    end = text.find("\n## ", start + len(heading) + 2)
+    return text[start : end if end != -1 else len(text)]
+
+
+class TestTheDeprecatedFormatIsNotAdvertised:
+    def test_only_the_migration_page_names_the_old_format(self) -> None:
+        offenders = [
+            f"{path.relative_to(REPO)}: {line[:80]}"
+            for path in DOC_FILES
+            if path.name != "migrating.md"
+            for line in deprecated_format_mentions(_text(path))
+        ]
+        assert not offenders, "\n".join(offenders)
+
+    def test_the_migration_page_does_name_it_and_says_what_replaces_it(self) -> None:
+        text = _text(REPO / "docs" / "migrating.md")
+        assert deprecated_format_mentions(text)
+        assert "-f navigator" in text
+
+    def test_the_guard_catches_a_table_row_and_a_flag_and_ignores_the_support_matrix(self) -> None:
+        assert deprecated_format_mentions("| `matrix` | .json | Deprecated alias |")
+        assert deprecated_format_mentions("Run it with -f matrix to get a layer.")
+        assert not deprecated_format_mentions("See the support matrix for what each input does.")
+        assert not deprecated_format_mentions("The STRIDE-per-element matrix is deferred.")
+
+    def test_the_generated_tables_list_the_advertised_formats_and_no_other(self) -> None:
+        from threatcode.formatters import format_names, visible_format_names
+
+        hidden = set(format_names()) - set(visible_format_names())
+        assert hidden, "the registry has a deprecated alias to hide"
+        generator = load_generator()
+        facts = generator.collect()
+        shown = set(re.findall(r"^\| `([a-z]+)` \|", generator.render_formats(facts), re.MULTILINE))
+        assert shown == set(visible_format_names())
+        options = generator.render_cli_scan(facts)
+        for name in hidden:
+            assert f"| {name}" not in options and f"\\| {name}" not in options
+
+
+class TestTheCommandLinePagesMatchTheCli:
+    """The behaviors of `-o`, `-q` and the removed commands, as the pages state them."""
+
+    def test_cli_page_states_the_output_rules(self) -> None:
+        text = _text(REPO / "docs" / "cli.md")
+        for phrase in (
+            "`-o results.sarif` writes SARIF",
+            "`-o -`",
+            "/dev/stdout",
+            "`--source-root DIR`",
+            "`-q`, `-v` and `--no-color`",
+        ):
+            assert phrase in text, f"docs/cli.md does not say {phrase!r}"
+
+    def test_every_removed_command_is_listed_on_the_migration_page(self) -> None:
+        text = _text(REPO / "docs" / "migrating.md")
+        for command in ("fs", "repo", "image", "vuln", "db", "secret", "sbom", "license"):
+            assert f"`threatcode {command}" in text, command
+
+    def test_the_removed_commands_are_not_documented_as_commands_elsewhere(self) -> None:
+        removed = re.compile(
+            r"^\s*(?:\$ )?threatcode (?:fs|repo|image|vuln|db|secret|sbom|license)\b"
+        )
+        offenders = [
+            f"{path.relative_to(REPO)}:{number}"
+            for path in DOC_FILES
+            if path.name != "migrating.md"
+            for number, line in enumerate(_text(path).splitlines(), start=1)
+            if removed.search(line)
+        ]
+        assert not offenders, offenders
+
+
+class TestTheGettingStartedWalkthroughReadsTheRealReport:
+    def _parts(self) -> tuple[str, str]:
+        page = _text(REPO / "docs" / "getting-started.md")
+        report = page[
+            page.index("<!-- gen:example-report -->") : page.index("<!-- /gen:example-report -->")
+        ]
+        prose = page[page.index("Read it from the top.") : page.index("The JSON report has")]
+        return report, prose
+
+    def test_every_marker_the_walkthrough_explains_is_in_the_report_it_shows(self) -> None:
+        report, prose = self._parts()
+        for name, shown in {
+            "`P1`": "P1",
+            "`enabled by:`": "enabled by:",
+            "`ignore id`": "ignore id:",
+            "`BOUNDARY_*`": "BOUNDARY_GENERIC_FLOW",
+            "`^` raised": "HIGH^",
+            "PATHS column": "PATHS",
+        }.items():
+            assert name in prose, f"the walkthrough does not explain {name}"
+            assert shown in report, f"the example report does not show {shown}"
+
+    def test_the_old_description_of_boundary_is_gone(self) -> None:
+        _, prose = self._parts()
+        assert "is a trust-boundary crossing, which is not a rule" not in prose
+        assert "are listed in the JSON report under" not in prose
+
+    def test_the_text_report_prints_the_findings_behind_each_hop(self) -> None:
+        run = _scan_cli("examples/aws-webapp", "-f", "text", "--fail-on", "none")
+        assert run.exit_code == 0, run.stderr
+        assert "enabled by:" in run.stdout
+        assert "EC2_IMDSV1" in run.stdout.split("enabled by:")[1]
+        assert "BOUNDARY_" in run.stdout
+
+
+class TestTheCoveragePagesMatchTheCode:
+    def test_every_gap_code_in_the_gap_table_is_a_registered_code(self) -> None:
+        import threatcode.cli  # noqa: F401  (registers the codes of the modules it imports)
+        import threatcode.ir.enrich  # noqa: F401
+        import threatcode.parsers.terraform_hcl  # noqa: F401
+        from threatcode.diagnostics import DIAGNOSTIC_CODES
+
+        section = _heading_section(_text(REPO / "docs" / "support-matrix.md"), "## Coverage gaps")
+        first_cells = re.findall(r"^\| ((?:`[a-z_.]+`(?:, )?)+) \|", section, re.MULTILINE)
+        listed = {code for cell in first_cells for code in re.findall(r"`([a-z_.]+)`", cell)}
+        assert {"hcl.default_disabled", "enrich.unresolved_companion"} <= listed
+        assert listed <= set(DIAGNOSTIC_CODES), sorted(listed - set(DIAGNOSTIC_CODES))
+
+    def test_every_sarif_notification_code_is_documented(self) -> None:
+        source = _text(SRC / "threatcode" / "formatters" / "sarif.py")
+        emitted = set(re.findall(r'"(?:note|warning|error)",\s*"([a-z_]+\.[a-z_.]+)"', source))
+        assert {"sarif.paths.unanchored", "suppressions.applied", "llm.ran"} <= emitted
+        cli = _text(REPO / "docs" / "cli.md")
+        missing = sorted(code for code in emitted if f"`{code}`" not in cli)
+        assert not missing, f"docs/cli.md does not name these SARIF notifications: {missing}"
+
+    def test_the_sarif_variant_rule_id_the_pages_use_is_in_the_real_report(self) -> None:
+        run = _scan_cli("examples/aws-webapp", "-f", "sarif", "--fail-on", "none")
+        rules = {r["id"] for r in json.loads(run.stdout)["runs"][0]["tool"]["driver"]["rules"]}
+        assert "EC2_IMDSV1/high" in rules and "THREATCODE_ATTACK_PATH" in rules
+        for name in ("cli.md", "cicd.md", "migrating.md"):
+            assert "EC2_IMDSV1/high" in _text(REPO / "docs" / name), name
+
+    def test_a_plan_named_file_over_the_limit_is_an_input_error_and_another_is_not(
+        self, tmp_path: Path
+    ) -> None:
+        limit = 51 * 1024 * 1024
+        plan_dir, other_dir = tmp_path / "plan", tmp_path / "other"
+        plan_dir.mkdir()
+        other_dir.mkdir()
+        with (plan_dir / "tfplan.json").open("wb") as handle:
+            handle.truncate(limit)
+        with (other_dir / "inventory.json").open("wb") as handle:
+            handle.truncate(limit)
+        plan = _scan_cli(str(plan_dir), "-f", "json")
+        other = _scan_cli(str(other_dir), "-f", "json")
+        assert plan.exit_code == 2 and "exceeding the 50 MB limit" in plan.stderr
+        assert [e["code"] for e in plan.json()["coverage"]["errors"]] == ["parse.failed"]
+        # the other file is set aside as not infrastructure, so the scan finds nothing to model
+        assert other.exit_code == 2
+        assert [e["code"] for e in other.json()["coverage"]["errors"]] == [
+            "discovery.nothing_to_model"
+        ]
+        assert other.json()["coverage"]["not_iac"]["count"] == 1
+
+    def test_an_unparseable_infrastructure_file_is_exit_two_and_an_unparseable_other_is_not(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "main.tf").write_text('resource "aws_s3_bucket" "a" {}\n', encoding="utf-8")
+        (tmp_path / "package.json").write_text('{"name": "x",', encoding="utf-8")
+        assert _scan_cli(str(tmp_path), "--fail-on", "none").exit_code == 0
+        (tmp_path / "template.json").write_text(
+            '{"AWSTemplateFormatVersion": "2010-09-09", "Resources": {', encoding="utf-8"
+        )
+        broken = _scan_cli(str(tmp_path), "--fail-on", "none")
+        assert broken.exit_code == 2
+        assert "template.json" in broken.stderr
+
+    def test_a_variable_default_that_switches_a_resource_off_is_a_gap_the_tfvars_settles(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "main.tf").write_text(
+            'variable "enabled" {\n  default = false\n}\n'
+            'resource "aws_s3_bucket" "a" {\n  count  = var.enabled ? 1 : 0\n  bucket = "x"\n}\n'
+            'resource "aws_s3_bucket" "b" {\n  bucket = "y"\n}\n',
+            encoding="utf-8",
+        )
+        gap = _scan_cli(str(tmp_path), "--fail-on", "none", "--strict", "-f", "json")
+        assert gap.exit_code == 2
+        assert [g["code"] for g in gap.json()["coverage"]["gaps"]] == ["hcl.default_disabled"]
+        (tmp_path / "terraform.tfvars").write_text("enabled = true\n", encoding="utf-8")
+        settled = _scan_cli(str(tmp_path), "--fail-on", "none", "--strict", "-f", "json")
+        assert settled.exit_code == 0, settled.stderr
+        assert settled.json()["coverage"]["gaps"] == []
+
+    def test_an_unresolved_companion_holds_back_the_finding_and_fails_strict(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "main.tf").write_text(
+            'variable "b" {}\nresource "aws_s3_bucket" "a" {\n  bucket = "x"\n}\n'
+            'resource "aws_s3_bucket_versioning" "v" {\n  bucket = var.b\n'
+            '  versioning_configuration {\n    status = "Enabled"\n  }\n}\n',
+            encoding="utf-8",
+        )
+        run = _scan_cli(str(tmp_path), "--fail-on", "none", "--strict", "-f", "json")
+        assert run.exit_code == 2
+        assert [g["code"] for g in run.json()["coverage"]["gaps"]] == [
+            "enrich.unresolved_companion"
+        ]
+        assert "S3_NO_VERSIONING" not in {t["rule_id"] for t in run.json()["threats"]}
+        # without the unresolved companion the same bucket does get the finding
+        (tmp_path / "main.tf").write_text(
+            'resource "aws_s3_bucket" "a" {\n  bucket = "x"\n}\n', encoding="utf-8"
+        )
+        plain = _scan_cli(str(tmp_path), "--fail-on", "none", "--strict", "-f", "json")
+        assert plain.exit_code == 0
+        assert "S3_NO_VERSIONING" in {t["rule_id"] for t in plain.json()["threats"]}
+
+
+class TestTheRuleAndSecretPagesMatchTheCode:
+    def test_the_documented_exposure_rule_fires_on_the_exposed_resource_only(
+        self, tmp_path: Path
+    ) -> None:
+        block = next(b for b in RULE_FILES if "_exposure: internet" in b.text)
+        rules = tmp_path / "rules.yml"
+        rules.write_text(block.text, encoding="utf-8")
+        rule_id = yaml.safe_load(block.text)["rules"][0]["id"]
+        common = ["--rules", str(rules), "--fail-on", "none", "-f", "json"]
+        hit = _scan_cli("examples/aws-webapp", *common)
+        fired = [t["resource_address"] for t in hit.json()["threats"] if t["rule_id"] == rule_id]
+        assert fired == ["aws_lb.front"]
+        miss = _scan_cli("examples/k8s-platform", *common)
+        assert rule_id not in {t["rule_id"] for t in miss.json()["threats"]}
+
+    def test_the_pages_describe_the_multiline_secret_rule_as_it_behaves(
+        self, tmp_path: Path
+    ) -> None:
+        import base64
+
+        body = base64.b64encode(bytes(range(120))).decode()
+        wrapped = "\n".join(body[i : i + 64] for i in range(0, len(body), 64))
+        key = f"-----BEGIN PRIVATE KEY-----\n{wrapped}\n-----END PRIVATE KEY-----"
+        real, mention = tmp_path / "real", tmp_path / "mention"
+        real.mkdir()
+        mention.mkdir()
+        (real / "main.tf").write_text(
+            f'resource "aws_instance" "a" {{\n  user_data = <<EOT\n{key}\nEOT\n}}\n',
+            encoding="utf-8",
+        )
+        (mention / "main.tf").write_text(
+            "# a certificate should start with -----BEGIN PRIVATE KEY-----\n"
+            'resource "aws_instance" "a" {\n  ami = "x"\n}\n',
+            encoding="utf-8",
+        )
+
+        def secrets(directory: Path) -> list[Any]:
+            run = _scan_cli(str(directory), "--fail-on", "none", "-f", "json")
+            return [t for t in run.json()["threats"] if t["source"] == "secret"]
+
+        found = secrets(real)
+        assert [t["rule_id"] for t in found] == ["SECRET_PRIVATE_KEY"]
+        assert found[0]["location_start_line"] == 3, "the finding sits where the block starts"
+        assert secrets(mention) == [], "a header named in a comment is not a key"
+        text = _text(REPO / "docs" / "support-matrix.md")
+        assert "SecretRule.multiline" in text and "-----BEGIN PRIVATE KEY-----" in text
+
+    def test_the_markdown_chart_draws_the_path_hops_and_the_mermaid_format_draws_more(self) -> None:
+        markdown = _scan_cli("examples/aws-webapp", "-f", "markdown", "--fail-on", "none").stdout
+        mermaid = _scan_cli("examples/aws-webapp", "-f", "mermaid", "--fail-on", "none").stdout
+        chart = markdown.split("```mermaid")[1].split("```")[0]
+        in_chart = len(re.findall(r"\bn\d+\[", chart))
+        in_format = len(re.findall(r"\bn\d+\[", mermaid))
+        assert 0 < in_chart < in_format, (in_chart, in_format)
+        for relative in ("docs/cli.md", "docs/getting-started.md", "README.md"):
+            assert "draws the hops of the attack paths only" in _text(REPO / relative), relative
+
+    def test_the_navigator_layer_draws_a_path_technique_once_as_the_page_says(self) -> None:
+        layer = _scan_cli("examples/aws-webapp", "-f", "navigator", "--fail-on", "none").json()
+        entries = [t for t in layer["techniques"] if t["techniqueID"] == "T1078.004"]
+        assert [e["tactic"] for e in entries] == ["privilege-escalation"]
+        text = _text(REPO / "docs" / "mitre-attack.md")
+        assert "appears in both" not in text, (
+            "the old claim that a technique is drawn in every tactic"
+        )
+        assert "under privilege escalation" in text

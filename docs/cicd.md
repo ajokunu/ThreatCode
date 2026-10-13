@@ -135,6 +135,20 @@ A baseline written by an older version lists no path and hides none, so write it
 The first scan reports without failing so the upload step always has a file; the last scan is the gate.
 Run the scan from the repository root so the SARIF locations are repository-relative, which is what code scanning needs to place an alert on a line.
 
+### What the SARIF file contains
+
+SARIF paths are relative to the top of the git checkout that holds the scan root, wherever the scan was started, because that is what GitHub resolves them against.
+A checkout without a `.git` directory (an exported archive) needs `--source-root DIR` with the repository root.
+When GitHub could not place the alerts, the run carries a warning notification: `sarif.paths.unanchored` when the scanned path is in no checkout, and `sarif.paths.outside_repository` for files outside the repository root.
+
+A finding whose effective severity differs from its rule's belongs to a variant rule `<id>/<severity>` (`EC2_IMDSV1/high`), because GitHub ranks an alert by the severity of its rule, and the bare id is the rule's highest base severity.
+The first scan after upgrading may close an alert and open its variant once.
+The run also says what the file leaves out and what it joined, in note-level notifications: `suppressions.applied`, `baseline.applied`, `min_severity.hidden`, `ingest.source` and `llm.ran`.
+They never fail the invocation, and they keep a smaller report from reading as a safer one.
+[The CLI reference](cli.md#format-details) lists them.
+
+The Bitbucket report's `result` follows the gate: `--fail-on none` is never `FAILED`.
+
 ## GitLab CI
 
 GitLab does not read SARIF as a SAST report (its format is a different schema), so keep the report as a job artifact instead of registering it under `reports: sast`.

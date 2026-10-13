@@ -116,12 +116,24 @@ Coverage: 3 files discovered, 1 unit parsed, 2 not infrastructure
 
 Read it from the top.
 
-- **The verdict line** counts findings by effective severity and the attack paths.
+- **The verdict line** counts findings by effective severity and says how many attack paths there are and what they reach (data stores, secret stores, admin identities, MCP data readers).
 - **An attack path** is a route an attacker can follow from the internet to something worth having.
-  Each hop is a resource, and the findings that make the hop possible are listed in the JSON report under `hops[].enabled_by`.
-- **The findings table** lists every finding, most severe first, with the rule that fired (`boundary` is a trust-boundary crossing, which is not a rule), the resource, and the file and line.
+  `P1`, `P2` and `P3` number the paths, the severity is the worst one on the route, and the chain below it is the route itself, one resource per hop.
+  Each hop is followed by the findings that make it possible, worst first, under `enabled by:`.
+  A finding that already enabled the hop before it is not repeated, and a path with nothing wrong on a hop prints no line for that hop.
+  The same lists are in the JSON report under `hops[].enabled_by`.
+  `ignore id` is the 12-hex-digit id you write in a `.threatcodeignore` file to accept the path (see [Accept what is already there](#accept-what-is-already-there)).
+  `plus 1 equivalent route` counts routes through other instances of the same resources, such as `aws_instance.app[1]`, which are folded into the path shown.
+- **The findings table** lists every finding, most severe first.
+  The RULE column is the rule id.
+  A trust boundary crossing is a finding like any other and carries a `BOUNDARY_*` id (`BOUNDARY_GENERIC_FLOW`, `BOUNDARY_UNENCRYPTED_FLOW`), and a result ingested from another scanner is prefixed with the tool, such as `trivy:CVE-2022-37434`.
+  The PATHS column names the attack paths that finding enables, so you can tell the findings that matter for an attack from the ones that do not.
+- **The severity mark** after a severity says that context moved it from the rule's own: `^` raised it, `v` lowered it.
+  `HIGH^` on `EC2_IMDSV1` means the rule assigns medium and the instance is reachable from the internet.
+  A line under the table spells the marks out whenever one is used.
 - **The coverage block** says what was not analysed.
   An empty list of gaps means the scan read everything it was given.
+  A skipped Helm template, an unreadable input or any other gap is listed there, and a clean verdict does not mean those files were read.
 
 The JSON report has the same content in a form a program can read:
 
@@ -271,6 +283,10 @@ A scanner finding that no key can place on the graph is kept and reported as a c
 | An SVG data-flow diagram | `-f diagram -o threat-model.svg` |
 | An ATT&CK Navigator layer | `-f navigator -o layer.json`, then load it at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/) |
 | Bitbucket Code Insights | `-f bitbucket -o insights.json` |
+
+You can leave `-f` out when the file name says the format: `-o threatcode.sarif` writes SARIF, `-o report.md` Markdown and `-o paths.mmd` Mermaid.
+`-o -` writes the report to standard output.
+The Mermaid chart inside the Markdown report draws the hops of the attack paths only, so it fits in a pull request comment, and `-f mermaid` draws every resource an attacker can act through.
 
 ## Compare two scans
 
