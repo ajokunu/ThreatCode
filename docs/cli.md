@@ -63,8 +63,8 @@ cat examples/aws-webapp/tfplan.json | threatcode scan - --stdin-name plan.json -
 <!-- gen:scan -->
 | Option | Values | What it does |
 | --- | --- | --- |
-| `--format`, `-f` | json \\| sarif \\| markdown \\| bitbucket \\| navigator \\| mermaid \\| diagram \\| text \\| matrix | Output format. Default: the config's output_format, else text on a terminal, else json. |
-| `--output`, `-o` | PATH | Write the report to this file instead of stdout. |
+| `--format`, `-f` | json \\| sarif \\| markdown \\| bitbucket \\| navigator \\| mermaid \\| diagram \\| text | Output format: json, sarif, markdown, bitbucket, navigator, mermaid, diagram, text. Default: THREATCODE_FORMAT or the config's format, else the one the -o extension names (.sarif, .md, .mmd, .svg, .json), else text on a terminal and json otherwise. |
+| `--output`, `-o` | PATH | Write the report to this file instead of stdout. - means stdout. |
 | `--min-severity` | critical \\| high \\| medium \\| low \\| info | Hide findings below this severity. Display only: the gate is --fail-on. |
 | `--fail-on` | critical \\| high \\| medium \\| low \\| info \\| none | Exit 1 when a finding or attack path at or above this severity remains. 'none' never fails on findings. Default: high. |
 | `--strict` |  | Exit 2 when any coverage gap was reported (unanalysed module, fallback render, unknown value, unresolved intrinsic, skipped document). |
@@ -81,8 +81,15 @@ cat examples/aws-webapp/tfplan.json | threatcode scan - --stdin-name plan.json -
 | `--no-timestamp` |  | Leave the timestamp out of the report. SOURCE_DATE_EPOCH fixes it instead. |
 | `--stdin-name` | TEXT | File name for standard input (main.tf, Dockerfile, plan.json) so its format is found. |
 | `--include-graph` |  | Add the graph (nodes and edges, no properties) to the JSON report. |
-| `--max-nodes` | N | Graph node limit. |
-| `--max-edges` | N | Graph edge limit. |
+| `--source-root` | PATH | The repository root that SARIF and Bitbucket paths are relative to, for a checkout with no .git directory. Default: the git top level above the scan root. |
+| `--diagram-max-rows` | N | -f diagram: findings rows drawn in the table (default 200; 0 draws every row). |
+| `--diagram-expand-docker` |  | -f diagram: draw every Dockerfile instruction, not one node per large build stage. |
+| `--diagram-detail` | auto \\| full \\| collapsed | -f diagram: auto collapses nodes by zone and type once the graph is large (default), full never collapses, collapsed always does. |
+| `--max-nodes` | N | Graph node limit (default 10,000). |
+| `--max-edges` | N | Graph edge limit (default 50,000). |
+| `-v`, `--verbose` |  | More log detail on stderr (-vv for debug). Also works before the command. |
+| `-q`, `--quiet` |  | Hide progress and notices; errors and coverage gaps stay. Also works before the command. |
+| `--no-color` |  | Never use colors (NO_COLOR does the same). Also works before the command. |
 <!-- /gen:scan -->
 
 ### Output formats
@@ -192,8 +199,11 @@ Attack paths that appeared or were closed are compared by id and listed first.
 | Option | Values | What it does |
 | --- | --- | --- |
 | `--format`, `-f` | json \\| markdown \\| text | Output format. Default: text on a terminal, else json. |
-| `--output`, `-o` | PATH | Write the diff to this file instead of stdout. |
-| `--fail-on-new` | critical \\| high \\| medium \\| low \\| info | Exit 1 when a threat at or above SEVERITY was added or got worse (critical, high, medium, low, info). |
+| `--output`, `-o` | PATH | Write the diff to this file instead of stdout. - means stdout. |
+| `--fail-on-new` | critical \\| high \\| medium \\| low \\| info \\| none | Exit 1 when a threat at or above this severity was added or got worse. 'none' never fails. Default: never fail. |
+| `-v`, `--verbose` |  | More log detail on stderr (-vv for debug). Also works before the command. |
+| `-q`, `--quiet` |  | Hide progress and notices; errors and coverage gaps stay. Also works before the command. |
+| `--no-color` |  | Never use colors (NO_COLOR does the same). Also works before the command. |
 <!-- /gen:diff -->
 
 Compare the findings of two scans, and fail when the second has a new critical one:
