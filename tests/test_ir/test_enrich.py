@@ -1719,9 +1719,9 @@ class TestPartialAddressCollision:
 class TestLiteralLinkScaling:
     BUCKETS = 2000
 
-    def _plan_graph(self) -> InfraGraph:
+    def _plan_graph(self, buckets: int | None = None) -> InfraGraph:
         resources: list[ParsedResource] = []
-        for i in range(self.BUCKETS):
+        for i in range(self.BUCKETS if buckets is None else buckets):
             resources.append(_resource("aws_s3_bucket", f"b{i}", bucket=f"bucket-{i}"))
             resources.append(
                 _resource(
@@ -1759,12 +1759,18 @@ class TestLiteralLinkScaling:
             return original(self, prefix, resource_type)
 
         monkeypatch.setattr(enrich_module.EnrichContext, "_group", counting)
+        # An absolute wall-clock bound fails on a loaded machine, so compare two sizes measured
+        # back to back: linear growth scales about 4x for 4x the input, quadratic about 16x.
+        started = time.perf_counter()
+        self._plan_graph(self.BUCKETS // 4)
+        small = time.perf_counter() - started
         started = time.perf_counter()
         graph = self._plan_graph()
         elapsed = time.perf_counter() - started
-
-        # Quadratic resolution took about 6 s here, the indexed lookup well under one second
-        assert elapsed < 4.0, f"enrichment took {elapsed:.1f}s for {len(graph.nodes)} nodes"
+        assert elapsed < 10 * max(small, 0.01), (
+            f"enrichment took {elapsed:.1f}s for {len(graph.nodes)} nodes, "
+            f"{small:.1f}s for a quarter of them"
+        )
         # Candidate lists and literal indexes are built once per type, never once per companion
         assert builds["group"] < 100
         for i in (0, self.BUCKETS // 2, self.BUCKETS - 1):
