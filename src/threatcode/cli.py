@@ -21,7 +21,14 @@ import click
 from threatcode import __version__
 from threatcode.exceptions import ThreatCodeError, UsageError
 from threatcode.formatters import RenderOptions, format_names, render, write_text_file
-from threatcode.formatters._utils import terminal_safe
+from threatcode.formatters._utils import set_aside_phrase, terminal_safe
+from threatcode.formatters.terminal_coverage import (
+    error_text,
+    gap_lines,
+    gap_summary,
+    unique_gaps,
+)
+from threatcode.formatters.terminal_layout import hanging
 from threatcode.formatters.text import plural
 from threatcode.models.threat import Severity
 
@@ -39,6 +46,8 @@ FAIL_ON_CHOICES: tuple[str, ...] = (*SEVERITY_CHOICES, "none")
 DEBUG_ENV = "THREATCODE_DEBUG"
 # Errors and gaps beyond this many are summarised on stderr; the JSON report lists them all.
 _LISTED_LIMIT = 10
+_MIN_STDERR_WIDTH = 40
+_DEFAULT_STDERR_WIDTH = 100
 
 _GROUP_EPILOG = """\b
 Examples:
@@ -103,15 +112,53 @@ Exit codes:
 """
 
 
-def echo_err(message: str) -> None:
+def _stderr_is_tty() -> bool:
+    try:
+        return sys.stderr.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def echo_err(message: str, *, hang: int = 0) -> None:
     """One message on stderr, safe for a terminal.
 
     Messages quote the scanned input (a file name, a resource address, a parser's complaint), and
     that text is hostile: an escape sequence in a server name must not clear the screen or retitle
     the window.
     Every message the CLI prints on stderr goes through here.
+    On a terminal a long message wraps at the terminal width with ``hang`` spaces of hanging
+    indent; into a pipe or a log it stays one line, because tools that read the stream
+    (a CI step that quotes the last line) read lines.
     """
-    click.echo(terminal_safe(message, keep_lines=True), err=True)
+    safe = terminal_safe(message, keep_lines=True)
+    if hang and _stderr_is_tty():
+        safe = _wrap_for_terminal(safe, hang)
+    click.echo(safe, err=True)
+
+
+def _stderr_width() -> int:
+    """The width of the terminal standard error is on: ``COLUMNS``, else the terminal, else 100.
+
+    Standard output may be a pipe while standard error is the terminal (``scan -f json > out``),
+    so the width of standard output says nothing about it.
+    """
+    columns = os.environ.get("COLUMNS", "")
+    if columns.isdigit() and int(columns) > 0:
+        return max(int(columns), _MIN_STDERR_WIDTH)
+    try:
+        return max(os.get_terminal_size(sys.stderr.fileno()).columns, _MIN_STDERR_WIDTH)
+    except (OSError, ValueError, AttributeError):
+        return _DEFAULT_STDERR_WIDTH
+
+
+def _wrap_for_terminal(message: str, hang: int) -> str:
+    """``message`` wrapped at the terminal width, continuation lines ``hang`` spaces further in."""
+    width = _stderr_width()
+    out: list[str] = []
+    for line in message.split("\n"):
+        lead = line[: len(line) - len(line.lstrip(" "))]
+        out.extend(hanging(line.lstrip(" "), width, first=lead, rest=" " * (len(lead) + hang)))
+    return "\n".join(out)
 
 
 @dataclass
@@ -123,14 +170,14 @@ class CliState:
     debug: bool = False
     color: bool = True
 
-    def info(self, message: str) -> None:
+    def info(self, message: str, *, hang: int = 0) -> None:
         """A message that ``--quiet`` hides."""
         if not self.quiet:
-            echo_err(message)
+            echo_err(message, hang=hang)
 
-    def warn(self, message: str) -> None:
+    def warn(self, message: str, *, hang: int = 0) -> None:
         """A message that is always shown."""
-        echo_err(message)
+        echo_err(message, hang=hang)
 
 
 def _state(ctx: click.Context) -> CliState:
@@ -377,6 +424,11 @@ def _first_line(text: str) -> str:
     default=None,
     help="File name for standard input (main.tf, Dockerfile, plan.json) so its format is found.",
 )
+@click.option(
+    "--include-graph",
+    is_flag=True,
+    help="Add the graph (nodes and edges, no properties) to the JSON report.",
+)
 @click.option("--max-nodes", type=click.IntRange(min=1), default=None, help="Graph node limit.")
 @click.option("--max-edges", type=click.IntRange(min=1), default=None, help="Graph edge limit.")
 @click.pass_context
@@ -400,6 +452,7 @@ def scan(
     dry_run_output: str | None,
     no_timestamp: bool,
     stdin_name: str | None,
+    include_graph: bool,
     max_nodes: int | None,
     max_edges: int | None,
 ) -> None:
@@ -444,13 +497,21 @@ def scan(
     _announce_llm(settings, state)
 
     result = run_scan(prepared.request)
+    # A parser that meets one cause twice reports it twice; the count and the listing are of causes
+    result.coverage.gaps[:] = unique_gaps(result.coverage.gaps)
 
-    options = RenderOptions(color=_use_color(state, output_path))
+    options = RenderOptions(color=_use_color(state, output_path), include_graph=include_graph)
     text = render(chosen, result.analysis, options)
     write_output(output_path, text, label="Report", quiet=state.quiet)
     if result.baseline_written is not None:
         state.info(f"Baseline written to {result.baseline_written}")
-    _report_to_stderr(result, state)
+    _report_to_stderr(
+        result,
+        state,
+        # The text report on standard output already lists every gap and error
+        listed_in_report=chosen == "text" and output_path is None,
+        fail_on=settings.fail_on,
+    )
     ctx.exit(result.exit_code)
 
 
@@ -474,55 +535,91 @@ def _announce_llm(settings: Any, state: CliState) -> None:
     state.info(f"LLM enrichment enabled: sending a redacted graph to {llm.provider}/{llm.model}")
 
 
-def _report_input_errors(coverage: Coverage, state: CliState) -> None:
-    """One line per input that could not be read, then the exit-2 notice."""
+def _report_input_errors(coverage: Coverage, state: CliState, *, listed_in_report: bool) -> None:
+    """Every input error once, when the report does not list them; the exit-2 line comes last."""
+    if listed_in_report or len(coverage.errors) < 2:
+        # One error is named by the exit line; the text report lists them all itself
+        return
     for error in coverage.errors[:_LISTED_LIMIT]:
-        where = error.get("file", "")
-        prefix = f"Error: {where}: " if where and where != "." else "Error: "
-        state.warn(prefix + error.get("message", ""))
+        state.warn(f"Error: {error_text(error)}", hang=7)
     if len(coverage.errors) > _LISTED_LIMIT:
         state.warn(f"Error: ... and {len(coverage.errors) - _LISTED_LIMIT} more input errors")
-    if coverage.errors:
-        state.warn(
-            f"{plural(len(coverage.errors), 'input error')}: the scan is incomplete, exiting 2"
-        )
 
 
-def _report_coverage_gaps(coverage: Coverage, state: CliState) -> None:
-    """The parts of the input the scan did not analyse."""
+def _report_coverage_gaps(coverage: Coverage, state: CliState, *, listed_in_report: bool) -> None:
+    """The parts of the input the scan did not analyse: the list, or one line pointing to it."""
     if not coverage.gaps:
         return
-    state.warn(f"Coverage gaps ({len(coverage.gaps)}): part of the input was not analysed")
-    for gap in coverage.gaps[:_LISTED_LIMIT]:
-        place = f" {gap['file']}" if gap.get("file") else ""
-        line = f":{gap['line']}" if gap.get("line") else ""
+    if listed_in_report:
         state.warn(
-            f"  {gap.get('level', 'warning')} [{gap.get('code', '')}]{place}{line}: "
-            f"{_first_line(str(gap.get('message', '')))}"
+            f"Warning: part of the input was not analysed: {gap_summary(coverage.gaps)}; "
+            "the report lists them",
+            hang=9,
         )
-    if len(coverage.gaps) > _LISTED_LIMIT:
-        state.warn(f"  ... and {len(coverage.gaps) - _LISTED_LIMIT} more (see coverage.gaps)")
+        return
+    lines = gap_lines(coverage.gaps)
+    state.warn(
+        f"Coverage gaps ({len(unique_gaps(coverage.gaps))}): part of the input was not analysed"
+    )
+    for gap in lines[:_LISTED_LIMIT]:
+        state.warn(f"  {gap.text()}", hang=4)
+    if len(lines) > _LISTED_LIMIT:
+        state.warn(
+            f"  ... and {len(lines) - _LISTED_LIMIT} more (see coverage.gaps in the JSON report)"
+        )
 
 
-def _report_to_stderr(result: ScanResult, state: CliState) -> None:
-    """Print what a person must know about the scan; errors and gaps are never hidden."""
+def _gate_line(result: ScanResult, fail_on: str) -> str:
+    gated = set_aside_phrase(result.gate_findings, result.gate_paths)
+    return f"Gate failed: {gated} at or above {fail_on} (--fail-on {fail_on}), exiting 1"
+
+
+def _summary_extras(result: ScanResult) -> str:
+    """What the ``Scanned`` line says was left out, set aside or not read."""
+    coverage = result.coverage
+    extras = []
+    if coverage.baselined:
+        baselined = set_aside_phrase(
+            coverage.baselined - coverage.baselined_paths, coverage.baselined_paths
+        )
+        extras.append(f"{baselined} baselined")
+    if coverage.suppressed:
+        suppressed = set_aside_phrase(
+            coverage.suppressed - coverage.suppressed_paths, coverage.suppressed_paths
+        )
+        extras.append(f"{suppressed} suppressed")
+    if coverage.hidden_findings or coverage.hidden_paths:
+        hidden = set_aside_phrase(coverage.hidden_findings, coverage.hidden_paths)
+        extras.append(f"{hidden} below {coverage.min_severity} hidden by --min-severity")
+    if coverage.errors:
+        extras.append(f"incomplete: {plural(len(coverage.errors), 'input error')}")
+    return f" ({', '.join(extras)})" if extras else ""
+
+
+def _report_to_stderr(
+    result: ScanResult, state: CliState, *, listed_in_report: bool = False, fail_on: str = "high"
+) -> None:
+    """Print what a person must know about the scan; errors and gaps are never hidden.
+
+    When the text report went to standard output it already lists every error and gap and says
+    how many findings there are, so stderr keeps one line per kind instead of repeating them.
+    Whatever is printed last explains the exit code.
+    """
     coverage = result.coverage
     report = result.report
 
-    _report_input_errors(coverage, state)
-    _report_coverage_gaps(coverage, state)
+    _report_input_errors(coverage, state, listed_in_report=listed_in_report)
+    _report_coverage_gaps(coverage, state, listed_in_report=listed_in_report)
     if coverage.rule_errors:
         state.warn(
             f"{plural(coverage.rule_errors, 'rule evaluation')} failed and "
             "were skipped; see rule_errors in the JSON report"
         )
-    if result.exit_code == 2 and not coverage.errors and coverage.has_gaps:
-        state.warn("--strict: coverage gaps make this scan fail, exiting 2")
 
     llm = report.llm or {}
     if llm.get("status") == "failed":
         reason = _first_line(str(llm.get("error") or "unknown error"))
-        state.warn(f"Warning: LLM analysis failed ({reason}); rule results are unaffected")
+        state.warn(f"Warning: LLM analysis failed ({reason}); rule results are unaffected", hang=9)
 
     if result.ignore_file is not None:
         suppressed = plural(coverage.suppressed - result.suppressed_paths, "finding")
@@ -531,29 +628,38 @@ def _report_to_stderr(result: ScanResult, state: CliState) -> None:
         state.info(
             f"Using ignore file {result.ignore_file} "
             f"({plural(result.ignore_entries, 'active entry', 'active entries')}); "
-            f"suppressed {suppressed}"
+            f"suppressed {suppressed}",
+            hang=2,
         )
     for notice in result.notices:
-        state.info(f"Warning: {notice}")
+        state.info(f"Warning: {notice}", hang=9)
 
     if state.verbose and coverage.not_iac_count:
         shown = ", ".join(coverage.not_iac_paths[:5])
         state.info(f"{coverage.not_iac_count} file(s) are not infrastructure: {shown}")
-    extras = []
-    if coverage.baselined:
-        extras.append(f"{coverage.baselined} baselined")
-    if coverage.suppressed:
-        extras.append(f"{coverage.suppressed} suppressed")
-    if coverage.errors:
-        extras.append(f"incomplete: {plural(len(coverage.errors), 'input error')}")
-    tail = f" ({', '.join(extras)})" if extras else ""
-    if coverage.units_parsed == 0:
-        return  # nothing was scanned, so a "found 0 findings" line would read as a clean scan
-    state.info(
-        f"Scanned {plural(report.scanned_resources, 'resource')} in "
-        f"{plural(coverage.units_parsed, 'unit')}, found "
-        f"{plural(len(report.threats), 'finding')}{tail}."
-    )
+    if coverage.units_parsed and not listed_in_report:
+        shown_findings = len(report.threats)
+        found = plural(shown_findings, "finding")
+        if coverage.hidden_findings:
+            found = f"{shown_findings} of {shown_findings + coverage.hidden_findings} findings"
+        state.info(
+            f"Scanned {plural(report.scanned_resources, 'resource')} in "
+            f"{plural(coverage.units_parsed, 'unit')}, found {found}{_summary_extras(result)}.",
+            hang=2,
+        )
+
+    # The last line says why the exit code is not 0
+    if result.exit_code == 2:
+        if coverage.errors:
+            problem = plural(len(coverage.errors), "input error")
+            state.warn(
+                f"Error: scan incomplete ({problem}), exiting 2: {error_text(coverage.errors[0])}",
+                hang=7,
+            )
+        elif coverage.has_gaps:
+            state.warn("--strict: coverage gaps make this scan fail, exiting 2")
+    elif result.exit_code == 1:
+        state.warn(_gate_line(result, fail_on), hang=13)
 
 
 # ── diff ──────────────────────────────────────────────────────────────

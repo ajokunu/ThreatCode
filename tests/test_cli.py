@@ -228,8 +228,10 @@ class TestExitCodeMatrix:
         write(tmp_path, "main.tf", BAD_TF)
         result = invoke("scan", tmp_path)
         assert result.exit_code == 2
-        assert "Error: " in result.stderr
-        assert "input error" in result.stderr
+        assert (
+            "Error: scan incomplete (1 input error), exiting 2: Invalid HCL in main.tf"
+            in result.stderr
+        )
         assert "Traceback" not in result.output
 
     def test_a_parse_failure_still_prints_the_partial_report(self, tmp_path: Path) -> None:
@@ -358,8 +360,7 @@ class TestStrictAndGaps:
         write(tmp_path, "main.tf", BAD_TF)
         result = invoke("-q", "scan", tmp_path)
         assert result.exit_code == 2
-        assert "Error: " in result.stderr
-        assert "the scan is incomplete" in result.stderr
+        assert "Error: scan incomplete (1 input error), exiting 2" in result.stderr
 
     def test_text_report_lists_the_gap_too(self, gappy: None) -> None:
         result = invoke("scan", SIMPLE_TF, "-f", "text", "--fail-on", "none")
@@ -688,7 +689,7 @@ class TestSuppressionsAndBaselineFlags:
         data = report_of(again)
         assert data["threats"] == []
         assert data["coverage"]["baselined"] == 6
-        assert "6 baselined" in again.stderr
+        assert "6 findings baselined" in again.stderr
 
     def test_a_bad_baseline_is_exit_two(self, tmp_path: Path) -> None:
         result = invoke("scan", SIMPLE_TF, "--baseline", write(tmp_path, "b.json", "{}"))
@@ -734,7 +735,9 @@ class TestAttackPathsHonorSuppressionsAndBaselines:
 
     def test_the_summary_line_counts_what_the_baseline_set_aside(self, baseline: Path) -> None:
         again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
-        assert re.search(r"found 0 findings \(\d+ baselined\)", again.stderr)
+        assert re.search(
+            r"found 0 findings \(\d+ findings and 3 attack paths baselined\)", again.stderr
+        )
 
     def test_an_attack_path_the_baseline_does_not_list_still_fails_the_gate(
         self, baseline: Path
@@ -1315,7 +1318,7 @@ class TestErrorHandling:
     def test_threatcode_errors_print_the_bare_message(self, tmp_path: Path) -> None:
         result = invoke("scan", SHAPES / "terraform_state.json")
         assert "ParseError" not in result.output
-        assert "Error: terraform_state.json: This is Terraform state, not a plan" in result.stderr
+        assert "terraform_state.json: This is Terraform state, not a plan" in result.stderr
         assert "terraform plan -out tfplan && terraform show -json tfplan" in result.stderr
 
     def test_logging_is_configured_once_per_invocation(self) -> None:
@@ -1343,10 +1346,10 @@ class TestErrorHandling:
         assert len(rules) == 3
         write(tmp_path, ".threatcodeignore", "\n".join(rules[:2]) + "\n")
         one = invoke("scan", tmp_path, "--fail-on", "none").stderr
-        assert "found 1 finding (2 suppressed)." in one
+        assert "found 1 finding (2 findings suppressed)." in one
         write(tmp_path, ".threatcodeignore", "\n".join(rules) + "\n")
         none = invoke("scan", tmp_path, "--fail-on", "none").stderr
-        assert "found 0 findings (3 suppressed)." in none
+        assert "found 0 findings (3 findings suppressed)." in none
         assert "found 3 findings." in invoke("scan", tmp_path, "--no-ignore").stderr
 
 
@@ -1706,3 +1709,352 @@ class TestHostileNamesNeverReachTheTerminal:
         result = invoke("scan", tmp_path / f"no{self.EVIL}such")
         assert result.exit_code == 2
         assert not self.UNSAFE.search(result.output.replace("\n", " "))
+
+
+class TestTheHeaderNamesWhatWasScanned:
+    """`ThreatCode scan of .` told a reader nothing; every format names the path as typed."""
+
+    @pytest.fixture
+    def tree(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        write(tmp_path, "infra/main.tf", bucket("one"))
+        write(tmp_path, "app/deploy.tf", bucket("two"))
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
+
+    def header(self, result: Result) -> str:
+        return result.stdout.splitlines()[0]
+
+    def test_a_directory_is_named_as_it_was_typed(self, tree: Path) -> None:
+        result = invoke("scan", "infra", "-f", "text", "--fail-on", "none")
+        assert self.header(result).startswith("ThreatCode scan of infra: ")
+
+    def test_a_directory_with_a_dot_slash_and_a_trailing_slash_is_tidied(self, tree: Path) -> None:
+        result = invoke("scan", "./infra/", "-f", "text", "--fail-on", "none")
+        assert self.header(result).startswith("ThreatCode scan of infra: ")
+
+    def test_an_absolute_path_inside_the_current_directory_is_made_relative(
+        self, tree: Path
+    ) -> None:
+        result = invoke("scan", tree / "infra", "-f", "text", "--fail-on", "none")
+        assert self.header(result).startswith("ThreatCode scan of infra: ")
+
+    def test_the_current_directory_is_named_never_dot(self, tree: Path) -> None:
+        result = invoke("scan", ".", "-f", "text", "--fail-on", "none")
+        assert self.header(result).startswith(f"ThreatCode scan of {tree.name}: ")
+
+    def test_a_file_keeps_the_directory_it_sits_in(self, tree: Path) -> None:
+        result = invoke("scan", "infra/main.tf", "-f", "text", "--fail-on", "none")
+        assert self.header(result).startswith("ThreatCode scan of infra/main.tf: ")
+
+    def test_two_inputs_are_both_named_and_more_are_counted(self, tree: Path) -> None:
+        two = invoke("scan", "infra", "app", "-f", "text", "--fail-on", "none")
+        assert self.header(two).startswith("ThreatCode scan of app and infra: ")
+        write(tree, "extra/main.tf", bucket("three"))
+        three = invoke("scan", "infra", "app", "extra", "-f", "text", "--fail-on", "none")
+        assert self.header(three).startswith("ThreatCode scan of app and 2 more: ")
+
+    def test_standard_input_is_named_by_its_name(self, tree: Path) -> None:
+        result = invoke(
+            "scan", "-", "--stdin-name", "main.tf", "-f", "text", "--fail-on", "none",
+            input=bucket("piped"),
+        )  # fmt: skip
+        assert self.header(result).startswith("ThreatCode scan of main.tf: ")
+
+    def test_every_format_carries_the_same_name(self, tree: Path) -> None:
+        def run(fmt: str) -> str:
+            return invoke("scan", "infra", "-f", fmt, "--fail-on", "none").stdout
+
+        assert report_of(invoke("scan", "infra", "--fail-on", "none"))["input_file"] == "infra"
+        assert "- **Input:** `infra`" in run("markdown")
+        assert "ThreatCode threat model of infra</title>" in run("diagram")
+        description = json.loads(run("navigator"))["description"]
+        assert description.startswith("Auto-generated from ThreatCode scan of infra. ")
+        assert ".." not in description
+
+    def test_the_navigator_description_has_no_double_period_for_a_dotted_name(
+        self, tree: Path
+    ) -> None:
+        write(tree, "v1.2/main.tf", bucket("dotted"))
+        description = json.loads(
+            invoke("scan", "v1.2", "-f", "navigator", "--fail-on", "none").stdout
+        )["description"]
+        assert "scan of v1.2. " in description and ".." not in description
+
+    def test_an_empty_directory_is_named_in_its_error(self, tree: Path) -> None:
+        (tree / "empty").mkdir()
+        result = invoke("scan", "empty", "-f", "text")
+        assert "empty: no supported infrastructure files found" in result.stderr
+        assert ": .:" not in result.stderr
+
+
+class TestWhatGoesToStderrIsNotRepeated:
+    """The text report lists every error and gap, so stderr keeps one line for each kind."""
+
+    @pytest.fixture
+    def gappy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import threatcode.parsers as parsers
+        from threatcode.diagnostics import Diagnostic
+
+        real = parsers.detect_and_parse
+
+        def patched(path: str | Path) -> Any:
+            parsed = real(path)
+            for _ in range(2):
+                parsed.diagnostics.append(
+                    Diagnostic(
+                        "warning",
+                        "hcl.module_call_skipped",
+                        "module call 'vpc' was not analysed",
+                        file=str(path),
+                        line=7,
+                    )
+                )
+            return parsed
+
+        monkeypatch.setattr(parsers, "detect_and_parse", patched)
+
+    def lines(self, text: str) -> list[str]:
+        return [line for line in text.splitlines() if line.strip()]
+
+    def test_with_the_text_report_on_stdout_a_gap_is_one_line_on_stderr(self, gappy: None) -> None:
+        result = invoke("scan", SIMPLE_TF, "-f", "text", "--fail-on", "none")
+        assert "Gaps (1):" in result.stdout
+        assert self.lines(result.stderr) == [
+            "Warning: part of the input was not analysed: 1 gap (hcl.module_call_skipped x1); "
+            "the report lists them"
+        ]
+
+    def test_that_line_survives_quiet(self, gappy: None) -> None:
+        result = invoke("-q", "scan", SIMPLE_TF, "-f", "text", "--fail-on", "none")
+        assert "part of the input was not analysed" in result.stderr
+
+    def test_any_other_format_has_the_list_on_stderr_once(self, gappy: None) -> None:
+        result = invoke("scan", SIMPLE_TF, "--fail-on", "none")
+        gap_lines = [
+            line for line in result.stderr.splitlines() if "hcl.module_call_skipped" in line
+        ]
+        assert len(gap_lines) == 1
+        assert "Coverage gaps (1): part of the input was not analysed" in result.stderr
+
+    def test_a_gap_reported_twice_is_counted_and_written_once(self, gappy: None) -> None:
+        data = report_of(invoke("scan", SIMPLE_TF, "--fail-on", "none"))
+        assert len(data["coverage"]["gaps"]) == 1
+
+    def test_the_final_scanned_line_is_dropped_when_the_header_already_says_it(self) -> None:
+        text = invoke("scan", SIMPLE_TF, "-f", "text", "--fail-on", "none")
+        assert "Scanned" not in text.stderr and ": 3 resources, 6 findings" in text.stdout
+        assert "Scanned 3 resources" in invoke("scan", SIMPLE_TF, "--fail-on", "none").stderr
+
+    def test_a_text_report_written_to_a_file_still_gets_the_scanned_line(
+        self, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "report.txt"
+        result = invoke("scan", SIMPLE_TF, "-f", "text", "-o", out, "--fail-on", "none")
+        assert "Scanned 3 resources in 1 unit, found 6 findings." in result.stderr
+
+    def test_one_input_error_is_the_last_line_and_names_the_file(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", BAD_TF)
+        result = invoke("scan", tmp_path, "-f", "text")
+        assert result.exit_code == 2
+        assert "Errors (1):\n    Invalid HCL in main.tf, line 2" in result.stdout
+        (line,) = self.lines(result.stderr)
+        assert line.startswith(
+            "Error: scan incomplete (1 input error), exiting 2: Invalid HCL in main.tf, line 2"
+        )
+
+    def test_several_input_errors_are_listed_and_the_last_line_still_explains_the_exit(
+        self, tmp_path: Path
+    ) -> None:
+        for name in ("a", "b", "c"):
+            write(tmp_path, f"{name}/main.tf", BAD_TF)
+        result = invoke("scan", tmp_path, "-f", "json")
+        assert result.exit_code == 2
+        lines = self.lines(result.stderr)
+        assert sum(line.startswith("Error: ") for line in lines) == 4
+        assert lines[-1].startswith("Error: scan incomplete (3 input errors), exiting 2: a/main.tf")
+
+    def test_an_error_is_never_attributed_to_the_dot_directory(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", BAD_TF)
+        result = invoke("scan", tmp_path, "-f", "text")
+        assert "Errors (1):\n    Invalid HCL in main.tf" in result.stdout
+        assert "    .:" not in result.stdout and "Error: .:" not in result.stderr
+
+    def test_a_failed_scan_never_prints_a_clean_verdict(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", BAD_TF)
+        text = invoke("scan", tmp_path, "-f", "text").stdout
+        assert "Verdict: no result (1 input error; nothing was analysed)" in text
+        assert "no findings" not in text
+
+    def test_a_scan_that_read_only_part_of_its_input_says_incomplete(self, tmp_path: Path) -> None:
+        write(tmp_path, "good/main.tf", bucket("fine"))
+        write(tmp_path, "bad/main.tf", BAD_TF)
+        text = invoke("scan", tmp_path, "-f", "text").stdout
+        assert "Verdict: incomplete (1 input error); in the rest:" in text
+
+    def test_the_traceback_free_error_of_an_empty_directory_names_the_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "nothing").mkdir()
+        monkeypatch.chdir(tmp_path)
+        result = invoke("scan", "nothing", "-f", "text")
+        assert result.exit_code == 2
+        assert "Verdict: no result" in result.stdout
+        assert "Error: scan incomplete (1 input error), exiting 2: nothing: no supported" in (
+            result.stderr
+        )
+
+
+class TestTheExitCodeIsExplained:
+    def test_exit_one_says_what_the_gate_counted(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE, "-f", "text")
+        assert result.exit_code == 1
+        assert result.stderr.strip().splitlines()[-1] == (
+            "Gate failed: 5 findings and 3 attack paths at or above high (--fail-on high), "
+            "exiting 1"
+        )
+
+    def test_the_line_names_the_threshold_that_was_set(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "critical")
+        assert result.stderr.strip().splitlines()[-1] == (
+            "Gate failed: 1 attack path at or above critical (--fail-on critical), exiting 1"
+        )
+
+    def test_quiet_does_not_hide_why_the_scan_failed(self) -> None:
+        result = invoke("-q", "scan", WEBAPP_EXAMPLE)
+        assert "Gate failed: " in result.stderr
+
+    def test_a_clean_exit_has_no_gate_line(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "none")
+        assert result.exit_code == 0 and "Gate failed" not in result.stderr
+
+    def test_min_severity_does_not_change_what_the_gate_counted(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE, "--min-severity", "critical", "-f", "text")
+        assert result.exit_code == 1
+        assert "Gate failed: 5 findings and 3 attack paths at or above high" in result.stderr
+
+
+class TestWhatMinSeverityHides:
+    def counts(self) -> tuple[int, int]:
+        data = report_of(invoke("scan", WEBAPP_EXAMPLE, "--fail-on", "none"))
+        return len(data["threats"]), len(data["attack_paths"])
+
+    def test_the_text_report_says_how_many_it_hid_and_why(self) -> None:
+        findings, paths = self.counts()
+        result = invoke("scan", WEBAPP_EXAMPLE, "--min-severity", "critical", "-f", "text")
+        header = result.stdout.splitlines()[0]
+        assert header.startswith("ThreatCode scan of ")
+        assert header.endswith(f": 28 resources, 0 of {findings} findings shown")
+        shown = len(re.findall(r"^P\d+ ", result.stdout, re.MULTILINE))
+        assert (
+            f"  Hidden: {findings} findings and {paths - shown} attack paths below critical "
+            "(--min-severity)"
+        ) in result.stdout
+
+    def test_the_summary_line_says_it_too(self) -> None:
+        findings, paths = self.counts()
+        result = invoke("scan", WEBAPP_EXAMPLE, "--min-severity", "high", "--fail-on", "none")
+        data = report_of(result)
+        shown = len(data["threats"])
+        assert f"found {shown} of {findings} findings" in result.stderr
+        assert "below high hidden by --min-severity" in result.stderr
+        assert data["coverage"]["hidden"]["findings"] == findings - shown
+
+    def test_the_path_that_enabled_a_hidden_finding_says_so(self) -> None:
+        result = invoke("scan", WEBAPP_EXAMPLE, "--min-severity", "critical", "-f", "text")
+        assert "+1 not shown" in result.stdout
+
+
+class TestWhatABaselineSetAside:
+    def test_a_scan_the_baseline_accepted_says_no_new_findings_and_what_it_hid(
+        self, tmp_path: Path
+    ) -> None:
+        baseline = tmp_path / "baseline.json"
+        first = report_of(invoke("scan", WEBAPP_EXAMPLE, "--write-baseline", baseline))
+        findings, paths = len(first["threats"]), len(first["attack_paths"])
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline, "-f", "text")
+        assert again.exit_code == 0
+        assert (
+            f"Verdict: no new findings ({findings} findings and {paths} attack paths baselined)"
+        ) in again.stdout
+        assert f"Set aside: {findings} findings and {paths} attack paths baselined" in again.stdout
+
+    def test_the_summary_counts_findings_and_paths_separately(self, tmp_path: Path) -> None:
+        baseline = tmp_path / "baseline.json"
+        first = report_of(invoke("scan", WEBAPP_EXAMPLE, "--write-baseline", baseline))
+        again = invoke("scan", WEBAPP_EXAMPLE, "--baseline", baseline)
+        assert (
+            f"found 0 findings ({len(first['threats'])} findings and "
+            f"{len(first['attack_paths'])} attack paths baselined)."
+        ) in again.stderr
+
+
+class TestIncludeGraph:
+    def test_the_graph_is_added_to_the_json_report_on_request(self) -> None:
+        plain = report_of(invoke("scan", SIMPLE_TF, "--fail-on", "none"))
+        assert "graph" not in plain
+        with_graph = report_of(invoke("scan", SIMPLE_TF, "--include-graph", "--fail-on", "none"))
+        assert set(with_graph["graph"]) == {"nodes", "edges"}
+        assert with_graph["threats"] == plain["threats"]
+
+
+class TestStderrOnATerminal:
+    @pytest.fixture
+    def terminal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import threatcode.cli as cli_module
+
+        monkeypatch.setattr(cli_module, "_stderr_is_tty", lambda: True)
+        monkeypatch.setenv("COLUMNS", "60")
+
+    def test_a_long_message_wraps_with_a_hanging_indent(self, terminal: None) -> None:
+        from threatcode.cli import _wrap_for_terminal
+
+        lines = _wrap_for_terminal("Error: " + "word " * 30, 7).splitlines()
+        assert len(lines) > 2 and all(len(line) <= 60 for line in lines)
+        assert lines[0].startswith("Error: word") and lines[1].startswith(" " * 7 + "word")
+
+    def test_leading_spaces_of_a_line_are_kept(self, terminal: None) -> None:
+        from threatcode.cli import _wrap_for_terminal
+
+        lines = _wrap_for_terminal("  [code] " + "x " * 40, 4).splitlines()
+        assert lines[0].startswith("  [code] x") and lines[1].startswith(" " * 6 + "x")
+
+    def test_each_line_of_a_message_is_wrapped_on_its_own(self, terminal: None) -> None:
+        from threatcode.cli import _wrap_for_terminal
+
+        lines = _wrap_for_terminal("short\n" + "word " * 30, 2).splitlines()
+        assert lines[0] == "short" and len(lines) > 3
+
+    def test_the_width_is_the_width_of_the_terminal_stderr_is_on(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threatcode.cli as cli_module
+
+        monkeypatch.delenv("COLUMNS", raising=False)
+        monkeypatch.setattr(
+            cli_module.os, "get_terminal_size", lambda fd: os.terminal_size((123, 40))
+        )
+        assert cli_module._stderr_width() == 123
+        monkeypatch.setenv("COLUMNS", "77")
+        assert cli_module._stderr_width() == 77
+        monkeypatch.setenv("COLUMNS", "5")
+        assert cli_module._stderr_width() == 40
+
+    def test_without_a_terminal_the_width_is_the_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threatcode.cli as cli_module
+
+        monkeypatch.delenv("COLUMNS", raising=False)
+
+        def refuse(fd: int) -> os.terminal_size:
+            raise OSError("not a terminal")
+
+        monkeypatch.setattr(cli_module.os, "get_terminal_size", refuse)
+        assert cli_module._stderr_width() == 100
+
+    def test_into_a_pipe_a_message_stays_on_one_line(self, tmp_path: Path) -> None:
+        # A CI step that quotes the last line of stderr must get the whole message
+        write(tmp_path, "main.tf", BAD_TF)
+        result = invoke("scan", tmp_path)
+        assert result.stderr.count("\n") == 1
+        assert result.stderr.startswith("Error: scan incomplete (1 input error), exiting 2: ")

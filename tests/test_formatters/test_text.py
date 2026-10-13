@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,71 @@ from threatcode.models.report import Coverage, ThreatReport
 from threatcode.models.threat import Severity, Threat, ThreatSource
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
+ENTRY_START = re.compile(r"^(CRITICAL|HIGH|MEDIUM|LOW|INFO)([\^v]?)\s")
+WIDTHS = (40, 50, 60, 70, 80, 100, 120, 160, 200)
+
+
+@dataclass
+class Entry:
+    """One finding of the report: the identity line and the lines under it."""
+
+    severity: str
+    marker: str
+    cells: list[str]
+    body: list[str]
+
+    @property
+    def resource(self) -> str:
+        return self.cells[0]
+
+    @property
+    def rule(self) -> str:
+        return self.cells[1] if len(self.cells) > 1 else ""
+
+    @property
+    def paths(self) -> str:
+        return self.cells[2] if len(self.cells) > 2 else ""
+
+    @property
+    def text(self) -> str:
+        return " ".join(self.body)
+
+
+def entries(text: str) -> list[Entry]:
+    """The findings of a report: each starts with its severity at the left edge."""
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("SEVERITY"))
+    found: list[Entry] = []
+    for line in lines[start + 1 :]:
+        if not line.strip() or line.startswith("Key:"):
+            break
+        match = ENTRY_START.match(line)
+        if match:
+            cells = re.split(r"\s{2,}", line[len(match.group(0)) :].strip())
+            found.append(Entry(match.group(1), match.group(2), cells, []))
+        elif found:
+            found[-1].body.append(line.strip())
+    return found
+
+
+@cache
+def example(name: str, ingest: bool = False) -> AnalysisResult:
+    """The analysis of ``examples/<name>``, scanned the way ``threatcode scan`` scans it."""
+    from threatcode.pipeline import prepare_request, run_scan
+
+    extra = [EXAMPLES / "aws-webapp" / "scanner" / "trivy-app-image.json"] if ingest else []
+    prepared = prepare_request(
+        [EXAMPLES / name],
+        min_severity="info",
+        no_ignore=True,
+        no_timestamp=True,
+        ingest=extra,
+        env={},
+    )
+    result = run_scan(prepared.request)
+    assert not result.coverage.errors
+    return result.analysis
 
 
 @pytest.fixture(scope="module")
@@ -52,18 +119,6 @@ class TestPlural:
         assert plural(1, "active entry", "active entries") == "1 active entry"
 
 
-def table_rows(text: str) -> list[list[str]]:
-    """The findings table as rows of cells; cells are separated by two or more spaces."""
-    lines = text.splitlines()
-    start = next(i for i, line in enumerate(lines) if line.startswith("SEVERITY"))
-    rows = []
-    for line in lines[start + 1 :]:
-        if not line.strip():
-            break
-        rows.append(re.split(r"\s{2,}", line.strip()))
-    return rows
-
-
 def make_threat(index: int, severity: Severity = Severity.HIGH, **fields: Any) -> Threat:
     return Threat(
         id=f"t{index}",
@@ -71,7 +126,7 @@ def make_threat(index: int, severity: Severity = Severity.HIGH, **fields: Any) -
         description="d",
         stride_category=fields.pop("stride", "tampering"),
         severity=severity,
-        source=ThreatSource.RULE,
+        source=fields.pop("source", ThreatSource.RULE),
         resource_type="aws_s3_bucket",
         resource_address=fields.pop("address", f"aws_s3_bucket.b{index}"),
         rule_id=fields.pop("rule_id", f"R{index}"),
@@ -88,31 +143,33 @@ def analysis_of(*threats: Threat, **report_fields: Any) -> AnalysisResult:
 
 
 class TestTextReport:
-    def test_header_verdict_and_one_row_per_finding(self, analysis: AnalysisResult) -> None:
+    def test_header_verdict_and_one_entry_per_finding(self, analysis: AnalysisResult) -> None:
         text = format_text(analysis)
         lines = text.splitlines()
         assert lines[0] == "ThreatCode scan of simple.tf: 3 resources, 6 findings"
         assert lines[2] == "Verdict: 1 high, 3 medium, 2 low"
-        assert len(table_rows(text)) == 6
+        assert len(entries(text)) == 6
 
     def test_findings_are_sorted_most_severe_first_then_by_address(
         self, analysis: AnalysisResult
     ) -> None:
-        rows = table_rows(format_text(analysis))
-        severities = [row[0] for row in rows]
+        found = entries(format_text(analysis))
+        severities = [e.severity for e in found]
         assert severities == sorted(severities, key=["HIGH", "MEDIUM", "LOW"].index)
-        addresses = [row[1] for row in rows if row[0] == "MEDIUM"]
+        addresses = [e.resource for e in found if e.severity == "MEDIUM"]
         assert addresses == sorted(addresses)
 
-    def test_a_row_names_the_resource_the_title_and_the_location(
+    def test_an_entry_names_the_resource_the_rule_the_title_and_the_location(
         self, analysis: AnalysisResult
     ) -> None:
         text = format_text(analysis, RenderOptions(width=160))
-        row = next(r for r in table_rows(text) if r[1] == "aws_s3_bucket.test" and "KMS" in r[3])
-        assert row[2] == "S3_NO_ENCRYPTION"
-        assert row[3] == "S3 bucket not encrypted with a customer-managed KMS key"
-        assert row[-1] == "simple.tf:3"
-        assert "STRIDE" in text and "ATT&CK" in text
+        entry = next(
+            e for e in entries(text) if e.resource == "aws_s3_bucket.test" and "KMS" in e.text
+        )
+        assert entry.rule == "S3_NO_ENCRYPTION"
+        assert entry.body[0].startswith("S3 bucket not encrypted with a customer-managed KMS key")
+        assert "simple.tf:3" in entry.text
+        assert "STRIDE" in text and "ATT&CK" in text and "LOCATION" in text
 
     def test_plain_text_has_no_escape_codes_by_default(self, analysis: AnalysisResult) -> None:
         assert "\x1b[" not in format_text(analysis)
@@ -121,7 +178,7 @@ class TestTextReport:
     def test_color_adds_escape_codes(self, analysis: AnalysisResult) -> None:
         assert "\x1b[" in format_text(analysis, RenderOptions(color=True))
 
-    def test_color_only_wraps_severity_text_so_the_columns_stay_aligned(
+    def test_color_only_wraps_text_so_the_layout_stays_the_same(
         self, analysis: AnalysisResult
     ) -> None:
         plain = format_text(analysis, RenderOptions(color=False))
@@ -152,8 +209,9 @@ class TestTextReport:
         finally:
             analysis.report.attack_paths.clear()
         assert "Attack paths (1)" in text
-        assert "internet -> aws_s3_bucket.test  (1 hop, id abc123abc123)" in text
+        assert "P1  CRITICAL  internet -> aws_s3_bucket.test" in text
         assert "internet > aws_s3_bucket.test" in text
+        assert "ignore id: abc123abc123" in text
         assert text.index("Attack paths (1)") < text.index("Findings (6)")
         assert "Verdict: 1 high, 3 medium, 2 low, 1 attack path from the internet to data" in text
 
@@ -165,7 +223,7 @@ class TestTextReport:
         ]
         text = format_text(analysis_of(*threats))
         assert "Verdict: 1 critical, 2 high" in text
-        assert table_rows(text)[0][0] == "CRITICAL"
+        assert entries(text)[0].severity == "CRITICAL"
 
     def test_a_report_without_findings_says_so_and_still_has_coverage(self) -> None:
         result = scan_files([FIXTURES / "kubernetes" / "secure_deployment.yml"])
@@ -176,61 +234,32 @@ class TestTextReport:
         assert "Findings (" not in text
         assert "Coverage:" in text
 
-    def test_findings_with_one_root_cause_on_one_resource_share_a_row(self) -> None:
-        threats = [
-            make_threat(i, Severity.MEDIUM, address="k.web", root_cause="container-hardening")
-            for i in range(1, 5)
-        ]
-        threats.append(make_threat(9, Severity.LOW, address="k.web"))
-        text = format_text(analysis_of(*threats), RenderOptions(width=200))
-        rows = table_rows(text)
-        assert len(rows) == 2
-        assert "(+3 related: container hardening)" in rows[0][3]
-        assert "Findings (5)" in text
-
     def test_every_finding_names_its_rule_at_any_width(self, analysis: AnalysisResult) -> None:
         rule_ids = {t.rule_id for t in analysis.report.threats}
-        for width in (100, 160):
+        for width in (40, 60, 100, 160):
             text = format_text(analysis, RenderOptions(width=width))
             assert all(rule in text for rule in rule_ids), width
 
-    def test_the_stride_category_and_techniques_are_shown_when_there_is_room(self) -> None:
+    def test_the_stride_category_and_techniques_follow_the_title(self) -> None:
         threat = make_threat(
             1, stride="information_disclosure", mitre_techniques=["T1530", "T1078"]
         )
-        wide = format_text(analysis_of(threat), RenderOptions(width=200))
-        assert "InfoDisc" in wide and "T1530,T1078" in wide
+        text = format_text(analysis_of(threat), RenderOptions(width=200))
+        assert "Finding number 1  main.tf:2  T1530,T1078  Info disclosure" in text
 
-    def test_a_narrow_terminal_drops_the_least_useful_columns(self) -> None:
-        threat = make_threat(1, mitre_techniques=["T1530"])
-        narrow = format_text(analysis_of(threat), RenderOptions(width=60))
-        header = next(line for line in narrow.splitlines() if line.startswith("SEVERITY"))
-        assert "LOCATION" not in header and "ATT&CK" not in header and "STRIDE" not in header
-        assert "RESOURCE" in header and "FINDING" in header
+    def test_a_long_technique_list_ends_in_a_count_never_in_half_an_id(self) -> None:
+        techniques = ["T1548", "T1611", "T1105", "T1190", "T1078.004"]
+        text = format_text(
+            analysis_of(make_threat(1, mitre_techniques=techniques)), RenderOptions(width=200)
+        )
+        assert "T1548,T1611,T1105 +2" in text
 
-    @pytest.mark.parametrize("width", [60, 80, 100, 140])
-    def test_no_line_is_wider_than_the_terminal(self, width: int) -> None:
-        threats = [
-            make_threat(
-                i,
-                address="module.network.aws_security_group_rule.very_long_name_for_a_rule["
-                + "x" * 40,
-                title="A very long finding title that goes on and on " * 3,
-                file="deep/dir/" * 5 + "main.tf",
-            )
-            for i in range(1, 4)
-        ]
-        text = format_text(analysis_of(*threats), RenderOptions(width=width))
-        table = text.split("Findings (3)")[1].split("Coverage:")[0]
-        assert all(len(line) <= max(width, 60) for line in table.splitlines())
-        assert "..." in table
-
-    def test_a_long_address_is_cut_in_the_middle_so_its_name_survives(self) -> None:
-        threat = make_threat(1, address="module.network.aws_security_group.bastion_host_ssh")
-        text = format_text(analysis_of(threat), RenderOptions(width=70))
-        row = table_rows(text)[0]
-        assert "..." in row[1]
-        assert row[1].startswith("module.") and row[1].endswith("host_ssh")
+    def test_columns_with_nothing_in_them_are_not_printed(self) -> None:
+        threat = make_threat(1, file="", line=None)
+        text = format_text(analysis_of(threat), RenderOptions(width=200))
+        head = next(line for line in text.splitlines() if line.startswith("SEVERITY"))
+        assert "PATHS" not in head
+        assert "FINDING" in text and "LOCATION" not in text and "ATT&CK" not in text
 
     def test_a_finding_without_a_location_takes_its_nodes(self) -> None:
         scan = scan_files([FIXTURES / "terraform" / "simple.tf"])
@@ -244,11 +273,6 @@ class TestTextReport:
         )
         assert f"simple.tf:{node.start_line}" in text
 
-    def test_a_long_location_keeps_its_file_name(self) -> None:
-        threat = make_threat(1, file="very/deep/directory/structure/with/main.tf", line=12)
-        text = format_text(analysis_of(threat), RenderOptions(width=100))
-        assert "/main.tf:12" in text and "..." in text
-
     def test_the_width_comes_from_columns_then_the_default(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -257,7 +281,7 @@ class TestTextReport:
         monkeypatch.setenv("COLUMNS", "132")
         assert terminal_width() == 132
         monkeypatch.setenv("COLUMNS", "10")
-        assert terminal_width() == 60
+        assert terminal_width() == 40
         assert terminal_width(RenderOptions(width=90)) == 90
 
     def test_a_terminal_width_is_read_from_the_terminal(
@@ -279,11 +303,24 @@ class TestTextReport:
         assert "LLM: failed: timed out. Only rule-based findings are shown." in format_text(failed)
         assert "LLM:" not in format_text(analysis_of(make_threat(1), llm={"status": "skipped"}))
 
-    def test_suppressed_and_baselined_counts_are_always_visible(self) -> None:
-        text = format_text(
-            analysis_of(make_threat(1), coverage=Coverage(suppressed=3, baselined=5))
-        )
-        assert "Set aside: 3 suppressed, 5 baselined" in text
+    def test_model_findings_that_named_no_resource_are_said_to_be_set_aside(self) -> None:
+        llm = {"status": "ran", "provider": "p", "model": "m", "threat_count": 1}
+        wide = RenderOptions(width=200)
+        one = format_text(analysis_of(make_threat(1), llm={**llm, "unattributed_count": 1}), wide)
+        assert (
+            "LLM: 1 model finding named no resource in the scan and was set aside "
+            "(see llm.unattributed in the JSON report)"
+        ) in one
+        two = format_text(analysis_of(make_threat(1), llm={**llm, "unattributed_count": 2}), wide)
+        assert "LLM: 2 model findings named no resource in the scan and were set aside" in two
+        none = format_text(analysis_of(make_threat(1), llm={**llm, "unattributed_count": 0}))
+        assert "named no resource" not in none
+
+    def test_a_finding_with_an_empty_title_is_still_an_entry(self) -> None:
+        text = format_text(analysis_of(make_threat(1, title=""), make_threat(2)))
+        found = entries(text)
+        assert len(found) == 2
+        assert found[0].body[0].startswith("-")
 
 
 class TestTextFromTheInputIsInert:
@@ -307,6 +344,7 @@ class TestTextFromTheInputIsInert:
             2,
             address=f"mcp_server.{evil}",
             title="Another",
+            rule_id=f"OTHER_{evil}",
             root_cause=f"cause{self.ESC}",
         )
         coverage = Coverage(
@@ -314,6 +352,7 @@ class TestTextFromTheInputIsInert:
             units_parsed=1,
             not_iac_count=1,
             not_iac_paths=[f"data{self.ESC}.json"],
+            min_severity=f"sev{self.ESC}",
             errors=[
                 {"file": f"bad{self.ESC}.tf", "code": "parse.failed", "message": f"m{self.ESC}"}
             ],
@@ -339,7 +378,7 @@ class TestTextFromTheInputIsInert:
         assert not self.UNSAFE.search(text)
         assert "\\x1b[2J" in text and "\\x07" in text
 
-    def test_with_color_the_only_escapes_are_the_severity_styles(self) -> None:
+    def test_with_color_the_only_escapes_are_the_styles(self) -> None:
         text = format_text(self.hostile_analysis(), RenderOptions(color=True, width=200))
         assert not self.UNSAFE.search(re.sub(r"\x1b\[[0-9;]*m", "", text))
         # Nothing the input said could have introduced a sequence of its own
@@ -347,18 +386,26 @@ class TestTextFromTheInputIsInert:
 
     def test_an_attack_path_through_a_hostile_name_is_inert(self) -> None:
         evil = f"evil{self.ESC}name"
+        finding = make_threat(1, address=f"mcp_server.{evil}", rule_id=f"R_{evil}")
         path = AttackPath(
-            id="abc123abc123",
+            id=f"id{self.ESC}",
             entry="internet",
             target=f"mcp_server.{evil}",
             hops=[
-                AttackHop(node_id="internet", zone="internet"),
+                AttackHop(
+                    node_id="internet",
+                    zone="internet",
+                    edge_type_to_next="network_flow",
+                    via={"protocol": f"p{self.ESC}", "ports": [f"80{self.ESC}"]},
+                    enabled_by=[finding.id],
+                ),
                 AttackHop(node_id=f"mcp_server.{evil}", zone="private"),
             ],
             severity=Severity.HIGH,
             rationale=f"The internet reaches {evil}",
+            target_kind=f"kind{self.ESC}",
         )
-        text = format_text(analysis_of(make_threat(1), attack_paths=[path]))
+        text = format_text(analysis_of(finding, attack_paths=[path]))
         assert not self.UNSAFE.search(text)
         assert "internet > mcp_server.evil\\x1b[2J" in text
 
@@ -396,11 +443,11 @@ class TestTextFromTheInputIsInert:
 
 
 class TestCoverageSummary:
-    def _report(self, analysis: AnalysisResult, coverage: Coverage) -> str:
+    def _report(self, analysis: AnalysisResult, coverage: Coverage, width: int = 200) -> str:
         original = analysis.report.coverage
         analysis.report.coverage = coverage
         try:
-            return format_text(analysis)
+            return format_text(analysis, RenderOptions(width=width))
         finally:
             analysis.report.coverage = original
 
@@ -432,18 +479,96 @@ class TestCoverageSummary:
         text = self._report(analysis, coverage)
         assert "2 not infrastructure" in text
         assert "Skipped: 1 symlink, 1 special file (never opened)" in text
-        assert "Set aside: 4 suppressed, 2 baselined" in text
+        assert "Set aside: 4 findings suppressed, 2 findings baselined" in text
         assert "Errors (1):" in text and "bad.tf: unexpected token" in text
         assert "Gaps (1):" in text
         assert "[hcl.module_call_skipped] main.tf: module vpc not analysed" in text
         assert "Rule errors: 3 rule evaluations failed" in text
         assert "No input errors" not in text
 
+    def test_attack_paths_set_aside_are_counted_apart_from_findings(
+        self, analysis: AnalysisResult
+    ) -> None:
+        coverage = Coverage(
+            units_parsed=1, suppressed=3, suppressed_paths=1, baselined=8, baselined_paths=2
+        )
+        text = self._report(analysis, coverage)
+        assert (
+            "Set aside: 2 findings and 1 attack path suppressed, "
+            "6 findings and 2 attack paths baselined"
+        ) in text
+
+    def test_what_min_severity_hid_is_said_with_the_flag_that_hid_it(
+        self, analysis: AnalysisResult
+    ) -> None:
+        coverage = Coverage(
+            units_parsed=1, hidden_findings=7, hidden_paths=2, min_severity="medium"
+        )
+        text = self._report(analysis, coverage)
+        assert "Hidden: 7 findings and 2 attack paths below medium (--min-severity)" in text
+        assert "ThreatCode scan of simple.tf: 3 resources, 6 of 13 findings shown" in text
+        assert "Findings (6 of 13 shown)" in text
+
     def test_long_lists_are_summarised(self, analysis: AnalysisResult) -> None:
         errors = [{"file": f"f{i}", "code": "parse.failed", "message": "m"} for i in range(14)]
         text = self._report(analysis, Coverage(errors=errors))
-        assert "... and 4 more" in text
+        assert "... and 4 more (see coverage.errors in the JSON report)" in text
         assert text.count("    f") == 10
+
+    def test_a_gap_reported_twice_is_listed_once(self, analysis: AnalysisResult) -> None:
+        gap = {
+            "level": "warning",
+            "code": "parse.failed",
+            "message": "m",
+            "file": "a.tf",
+            "line": 3,
+        }
+        text = self._report(analysis, Coverage(units_parsed=1, gaps=[gap, dict(gap), dict(gap)]))
+        assert "Gaps (1, 2 repeats merged):" in text
+        assert text.count("[parse.failed] a.tf:3: m") == 1
+
+    def test_many_gaps_of_one_code_in_one_file_are_one_line_with_a_count(
+        self, analysis: AnalysisResult
+    ) -> None:
+        gaps = [
+            {
+                "level": "warning",
+                "code": "hcl.unresolved_reference",
+                "message": f"var.v{i} is not resolved",
+                "file": "modules/iam/iam.tf",
+                "line": 10 + i,
+            }
+            for i in range(252)
+        ]
+        text = self._report(analysis, Coverage(units_parsed=1, gaps=gaps))
+        assert "Gaps (252):" in text
+        assert (
+            "[hcl.unresolved_reference] modules/iam/iam.tf: 252 times, first at line 10: "
+            "var.v0 is not resolved"
+        ) in text
+        assert text.count("hcl.unresolved_reference") == 1
+
+    def test_a_few_gaps_of_one_code_are_each_listed_with_their_line(
+        self, analysis: AnalysisResult
+    ) -> None:
+        gaps = [
+            {"level": "warning", "code": "c", "message": f"m{i}", "file": "a.tf", "line": i + 1}
+            for i in range(3)
+        ]
+        text = self._report(analysis, Coverage(units_parsed=1, gaps=gaps))
+        assert all(f"[c] a.tf:{i + 1}: m{i}" in text for i in range(3))
+
+    def test_a_long_message_wraps_with_a_hanging_indent_at_the_terminal_width(
+        self, analysis: AnalysisResult
+    ) -> None:
+        gap = {"level": "warning", "code": "x.y", "message": "word " * 60, "file": "a.tf"}
+        analysis.report.coverage = Coverage(units_parsed=1, gaps=[gap])
+        text = format_text(analysis, RenderOptions(width=70))
+        gap_lines = text.split("Gaps (1):")[1].splitlines()[1:]
+        assert len(gap_lines) > 3
+        assert all(len(line) <= 70 for line in gap_lines)
+        assert gap_lines[0].startswith("    [x.y]")
+        assert all(line.startswith("      ") for line in gap_lines[1:] if line.strip())
 
 
 class TestRegistry:
