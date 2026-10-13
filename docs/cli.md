@@ -6,9 +6,10 @@ ThreatCode has two commands.
 
 The tables on this page are generated from the click commands, so an option that is listed here exists.
 
-## Options before the command
+## Options for every command
 
-These belong to the group and go before the command name: `threatcode -q scan infra/`, not `threatcode scan infra/ -q`.
+These belong to the group, and `threatcode -q scan infra/` and `threatcode scan infra/ -q` do the same thing.
+`-q`, `-v` and `--no-color` are accepted before and after the command name, so a CI line can append them wherever it likes.
 
 <!-- gen:group -->
 | Option | Values | What it does |
@@ -39,7 +40,9 @@ A directory is walked by a reader that is safe to point at a repository you did 
   A symlink you name on the command line is followed.
 - Named pipes, sockets and devices are skipped and counted, so a pipe called `main.tf` cannot hang a scan.
 - `.git`, `node_modules`, `.terraform`, `vendor`, virtualenvs, build output, tool caches and every dot-directory except `.cursor` and `.vscode` are not entered.
-- A JSON or YAML file over 50 MB is set aside as not infrastructure.
+- A JSON or YAML file over 50 MB is set aside as not infrastructure, with one exception: a file named like a Terraform plan (`plan.json`, `tfplan.json`, `prod.tfplan.json`, `plan-prod.json`) over the limit is an input error and exit 2, because a plan that was not read must never pass as a clean scan.
+- A file that cannot be parsed is an input error and exit 2 when its name says what it is (Terraform source, `Chart.yaml`, a Dockerfile, an MCP config, a plan-named JSON file) or when its first lines say it is a Terraform plan, a CloudFormation template or a Kubernetes manifest.
+  Any other JSON or YAML file that does not parse is counted as not infrastructure, because a broken `package.json` is not a broken stack.
 - A directory with `.tf`, `.tofu` or `.tf.json` files is one Terraform module.
   A Terraform plan JSON in the same directory replaces the module, because the plan holds the resolved values, and the scan records an info diagnostic saying so.
 - Every `Chart.yaml` is one Helm chart that owns its `templates/` and `charts/` folders and its values files, so templates are never scanned as raw manifests.
@@ -105,12 +108,20 @@ cat examples/aws-webapp/tfplan.json | threatcode scan - --stdin-name plan.json -
 | `mermaid` | .mmd | Mermaid flowchart by trust zone with attack paths |
 | `diagram` | .svg | SVG diagram of the infrastructure |
 | `text` | .txt | Human summary for a terminal |
-| `matrix` | .json | Deprecated alias of navigator |
 <!-- /gen:formats -->
 
+Without `-f`, the format comes from the `-o` file name when there is one: `-o results.sarif` writes SARIF, `report.md` Markdown, `flow.mmd` Mermaid, `map.svg` the diagram and `x.json` JSON.
+A name with no known extension falls back to JSON.
+With no `-f` and no `-o`, the format is text on a terminal and JSON otherwise.
+When `-f` is given and the file name says something else, such as `-f json -o results.sarif`, the report is still written in the format you asked for and a warning names the mismatch.
+
 `-o` writes the report to a file and prints `Report written to <absolute path>` on stderr, so standard output stays empty.
+`-o -` writes the report to standard output instead, which is how `-` already means standard input for a path, and `-o /dev/stdout` works too.
 A directory, or a path that cannot be written, is `Error: cannot write <absolute path>: <reason>` and exit 2.
-`matrix` is the old name of `navigator` and will be removed in a later release.
+The diagram and the Navigator layer are not written to a terminal: send them to a file with `-o` or to a pipe.
+
+The commands that 0.9 had and 1.0 removed are not listed in `--help`, but typing one prints a message that points at [migrating](migrating.md) and exits 2.
+That page also lists the format name that was renamed, which still works, is hidden from `--help` and the list of valid values, and prints a deprecation warning on stderr even with `-q`.
 
 Reports are reproducible.
 Findings are sorted by effective severity, then resource address, rule id and id.
@@ -122,7 +133,8 @@ Every path in a report is POSIX and relative to the scan root, the common parent
 Every report says what was not analysed.
 The `coverage` block of the JSON report lists the files discovered, the units parsed, the files that are not infrastructure (a count and the first 20 paths), symlinks and special files skipped, input errors with the file, a code and the message, coverage gaps, failed rule evaluations, and how many findings were suppressed or baselined.
 
-A gap is a warning that a parser or the graph recorded: an unanalysed module call, a Helm fallback render, values known only after apply, an unresolved CloudFormation intrinsic, a skipped document.
+A gap is a warning that a parser or the graph recorded: an unanalysed module call, a Helm fallback render, values known only after apply, an unresolved CloudFormation intrinsic, a skipped document, a resource switched off by a variable default (`hcl.default_disabled`), or a companion resource whose target cannot be resolved (`enrich.unresolved_companion`).
+The [support matrix](support-matrix.md#coverage-gaps) lists the codes and what to do about each.
 Gaps and errors always reach stderr, even with `-q`.
 `--strict` turns any gap into exit 2.
 
@@ -173,14 +185,28 @@ The fingerprint leaves out property values, so editing a resource does not chang
 
 ### Format details
 
-- **SARIF** results point at the file and line of the resource (`%SRCROOT%` relative, percent-encoded), carry `partialFingerprints` so editing a file does not close one alert and open another, and use stable rule ids with a `security-severity` from the effective severity.
-  A trust boundary crossing uses one rule per zone pair, a scanner finding uses `<tool>:<id>`, each attack path is one result with a code flow over its hops, and LLM results are tagged advisory.
-  `invocations[0].executionSuccessful` is false and notifications are written when an input could not be read, a rule failed or the LLM step failed.
-  Run the scan from the repository root so the locations are repository-relative.
+- **SARIF** results point at the file and line of the resource (`%SRCROOT%` relative, percent-encoded) and carry `partialFingerprints`, so editing a file does not close one alert and open another.
+  Paths are relative to the top level of the git checkout that holds the scan root, wherever the scan was started: the same scan from the repository root, from a subdirectory and from the scanned directory writes `examples/aws-webapp/tfplan.json`, which is what GitHub resolves.
+  The checkout is found by a `.git` directory or file above the scan root.
+  For a checkout with no `.git` (an exported tarball, a CI workspace that was copied), `--source-root DIR` names the repository root.
+  Two notifications say when GitHub cannot place the alerts: `sarif.paths.unanchored` (the scanned path is in no checkout and not below the current directory, so paths are relative to the scanned path) and `sarif.paths.outside_repository` (some files are outside the repository root and are named by file name only, never with `..`).
+- **SARIF rule ids** are stable.
+  A rule finding uses its rule id, a secret its `SECRET_*` id, a scanner finding `<tool>:<id>` (`trivy:CVE-2022-37434`), and a trust boundary crossing one rule per zone pair (`THREATCODE_BOUNDARY_DMZ_PRIVATE`), where the text and JSON reports name the kind of flow (`BOUNDARY_GENERIC_FLOW`, `BOUNDARY_UNENCRYPTED_FLOW`).
+  GitHub ranks an alert by the `security-severity` of its rule, so a rule has one severity.
+  A finding whose effective severity differs from the rule's belongs to a variant rule `<id>/<severity>`: `EC2_IMDSV1/high` is the instance-metadata finding that internet reachability raised, and the bare `EC2_IMDSV1` keeps the findings at the rule's highest base severity.
+  Attack paths follow the same rule: `THREATCODE_ATTACK_PATH` for a critical path and `THREATCODE_ATTACK_PATH/high`, `/medium` and so on for the others.
+  Each attack path is one result, anchored at the first resource of the path that has a file, with a code flow that has a step per hop, and LLM results are tagged advisory.
+- **SARIF notifications** keep a smaller report from reading as a safer one.
+  `invocations[0].executionSuccessful` is false when an input could not be read, a rule failed or the LLM step failed.
+  Every input error and coverage gap is a notification under its own code, and warnings say what is missing: `rules.failed` (some rule evaluations failed, so findings may be missing), `llm.failed` (only rule-based findings are reported), `sarif.truncated` (lower-severity results were left out to stay under the result limit) and `sarif.notifications_omitted`.
+  Note-level notifications count what the report leaves out or joins: `suppressions.applied` (removed by the ignore file), `baseline.applied` (removed by the baseline), `min_severity.hidden` (below `--min-severity`, which the gate still counted), `ingest.source` (one per scanner result, with how many findings attached to a resource) and `llm.ran` (the model phase finished; its findings are advisory).
+  The note-level ones never fail the invocation.
 - **Markdown** starts with the hidden marker `<!-- threatcode-report -->`, so a CI step can find its own comment and edit it, then a verdict line, the attack paths with a Mermaid flowchart, a table of the top risks, findings in STRIDE order and a coverage section.
-  It is capped at 60000 characters, under GitHub's comment limit, and a footer says how many findings were left out.
+  The flowchart in the Markdown report draws the hops of the attack paths only, so it stays readable in a pull request comment; `-f mermaid` draws every resource an attacker can act through.
+  The report is capped at 60000 characters, under GitHub's comment limit, and a footer says how many findings were left out.
   Text from the scanned files is escaped so it cannot inject Markdown, mentions or links.
 - **Bitbucket** annotations point at the file and line of a resource (or the input file and line 1), are sorted most severe first, capped at 1000, and `annotation_batches` splits them in lists of at most 100 for the bulk endpoint.
+  The report's `result` follows the gate: it is `FAILED` when a finding or attack path at or above `--fail-on` remains, so `--fail-on none` is never `FAILED`.
 - **Mermaid** draws the resources an attacker can act through, each trust zone as a subgraph and the attack paths in thick red edges; labels are quoted and capped.
 - **Navigator** layers are described in [MITRE ATT&CK](mitre-attack.md#attck-navigator-export).
 
@@ -241,9 +267,10 @@ threatcode diff base.json current.json -f markdown -o diff.md --fail-on-new crit
 | `NO_COLOR` | Plain text output (also `--no-color`). |
 | `CI` | Any non-empty value skips the home directory when looking for a config file. |
 
-## Not in the command line yet
+## Not in the command line
 
-These exist in the Python modules but are not wired to `threatcode scan`, so the CLI neither accepts nor honors them:
+These exist in the Python modules or as environment variables, but there is no option for them on `threatcode scan`, so the CLI neither accepts nor honors a flag of that name:
 
-- A report of what the ignore file applied.
-- `--include-graph`, `--source-root`, `--helm`, `--diagram-*` options, a `secrets:` config section, `--llm-gating` and `--require-llm`.
+- `--helm` (set `THREATCODE_HELM` instead), `--llm-gating` and `--require-llm`.
+- `--secret-config`, and a `secrets:` section in the config file.
+- A separate command that exports the graph (`--include-graph` adds it to the JSON report).

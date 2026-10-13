@@ -1,6 +1,6 @@
 # ThreatCode
 
-**Attack paths from the internet to your data, found in the infrastructure code you already have.**
+**STRIDE threat models and ATT&CK-mapped attack paths from the internet to your data, found in the infrastructure code you already have.**
 
 ThreatCode reads the infrastructure code and AI-agent configs a team already has: Terraform plans and HCL directories, CloudFormation and SAM templates, Kubernetes manifests, Helm charts, Dockerfiles and MCP client configs.
 It builds one graph of what is exposed to what, puts every resource in a trust zone, and walks that graph from the internet to the data stores, secret stores and admin identities behind it.
@@ -165,7 +165,8 @@ threatcode scan tfplan.json
 ```
 
 Pick the output with `-f` and the destination with `-o`.
-Without `-f` you get the text report on a terminal and JSON when the output is a file or a pipe.
+Without `-f`, the file name of `-o` decides (`-o threatcode.sarif` writes SARIF), and with neither you get the text report on a terminal and JSON on a pipe.
+`-o -` writes to standard output.
 
 <!-- runnable -->
 
@@ -186,7 +187,6 @@ threatcode scan examples/aws-webapp -f mermaid -o paths.mmd --fail-on none
 | `mermaid` | .mmd | Mermaid flowchart by trust zone with attack paths |
 | `diagram` | .svg | SVG diagram of the infrastructure |
 | `text` | .txt | Human summary for a terminal |
-| `matrix` | .json | Deprecated alias of navigator |
 <!-- /gen:formats -->
 
 ## Exit codes
@@ -201,7 +201,7 @@ When more than one applies, 2 wins over 1 and 1 wins over 0.
 `--min-severity` only hides findings from the report, so `--min-severity critical --fail-on high` shows critical findings and still exits 1 on a high one.
 
 A scan never reports a clean pass for input it did not analyse.
-A remote Terraform module, a Helm chart rendered without `helm`, values known only after apply, unresolved CloudFormation intrinsics and skipped documents are coverage gaps.
+A remote Terraform module, a resource a variable default switches off, a companion resource whose target cannot be resolved, a Helm chart rendered without `helm`, unresolved CloudFormation intrinsics and skipped documents are coverage gaps (the [support matrix](https://github.com/ajokunu/ThreatCode/blob/main/docs/support-matrix.md#coverage-gaps) lists them).
 They are printed on stderr even with `-q`, listed in the JSON, SARIF, Markdown and text reports, and `--strict` turns any of them into exit 2.
 
 ## What it reads
@@ -229,6 +229,7 @@ A Terraform scan of an Azure or GCP stack therefore reports findings and an empt
 A path is a chain of resources an attacker can follow over directed reachability edges (security group rules, load balancer targets, API Gateway integrations, IAM permissions, Kubernetes Services, Ingresses and RBAC bindings, MCP agent tool edges), from a synthetic `internet` node to a crown jewel: a data store, a secret store, an admin identity, a Kubernetes Secret or cluster-admin grant, or an MCP server that reads private data.
 Each hop lists the findings that enable it, the ATT&CK technique of that step, and the port and protocol it rests on.
 A path appears only when some finding enables it, so an architecture with nothing wrong on the way to the data has none.
+The Mermaid chart in the Markdown report draws the hops of the attack paths only, and `-f mermaid` draws every resource an attacker can act through.
 
 **Findings with context.**
 Each of the 256<!-- count:rules --> built-in rules declares a STRIDE category, ATT&CK techniques, a confidence and a mitigation, and keeps the base severity it assigns.
@@ -260,7 +261,7 @@ threatcode scan infra/ --ingest trivy.json
 ```
 
 ThreatCode's own secret detectors run only over the files it models, and attach each finding to the resource that holds the secret.
-There is no `repo`, `fs`, `image` or `secret` command: clone the repository and run `threatcode scan` on it.
+There is no `repo`, `fs`, `image` or `secret` command, and typing one of the removed commands prints where to look in [docs/migrating.md](https://github.com/ajokunu/ThreatCode/blob/main/docs/migrating.md): clone the repository and run `threatcode scan` on it.
 
 ## In CI
 
@@ -338,6 +339,7 @@ Every command and count in this README is executed or computed by `tests/test_do
 - [Claims and their proof](https://github.com/ajokunu/ThreatCode/blob/main/docs/claims.md) maps every public claim about ThreatCode to a command or a test.
 - [Changelog](https://github.com/ajokunu/ThreatCode/blob/main/CHANGELOG.md).
 
+To contribute, read [CONTRIBUTING.md](https://github.com/ajokunu/ThreatCode/blob/main/CONTRIBUTING.md).
 To report a vulnerability, follow [SECURITY.md](https://github.com/ajokunu/ThreatCode/blob/main/SECURITY.md).
 
 ## License

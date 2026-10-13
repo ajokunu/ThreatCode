@@ -1,4 +1,4 @@
-# The measured result of the build on the ten realistic fixtures, recorded by WP-5-1.
+# The measured result of the build on the ten realistic fixtures.
 # tests/test_quality/test_expected.py fails when a scan falls below it and when it is looser than
 # the measurement, so raise it when a change finds more. Never lower it to make a change pass.
 # 37 of the 39 planted issues are found; the other two carry a known_miss reason in their

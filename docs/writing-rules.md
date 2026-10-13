@@ -342,6 +342,34 @@ condition:
 
 Port numbers outside 0 to 65535 and malformed ranges are load errors.
 
+### Exposure: the `_exposure` pseudo-property
+
+A condition can ask whether the internet can reach the resource.
+`_exposure` is not a property of the resource: it reads the exposure that the graph worked out from the reachability edges, and it is one of `internet`, `internal` or unknown when the graph could not decide.
+It takes the same checks as any property.
+
+<!-- rules-file -->
+
+```yaml
+rules:
+  - id: EXAMPLE_INTERNET_FACING_LB
+    title: Load balancer reachable from the internet
+    description: >
+      The load balancer takes traffic from the internet, so everything
+      behind it is exposed to whatever the internet sends.
+    stride_category: tampering
+    severity: medium
+    confidence: heuristic
+    resource_type: aws_lb
+    condition:
+      _exposure: internet
+    mitigation: >
+      Put a web application firewall in front of the load balancer.
+```
+
+Because the value is unknown when the graph cannot tell, a rule that says `_exposure: internet` never fires on a resource that merely might be exposed, and `not: {_exposure: internet}` does not fire on it either.
+No built-in rule uses `_exposure` yet, because the engine already raises the effective severity of a finding on a resource the internet reaches (see [Severity](architecture.md#severity)); use it for a check that should exist only for exposed resources.
+
 ### Nested path access
 
 A property key is a path.
@@ -710,6 +738,10 @@ Kubernetes workloads carry one property shape whatever the kind, so a rule writt
 `privileged`, `host_network`, `host_pid` and `host_ipc` are workload-wide flags, and `container_findings` maps a property to the containers that make it unsafe (`{"privileged": ["log-shipper"]}`).
 `seccomp_profile_type`, `has_seccomp_profile`, `has_cpu_limit`, `has_memory_limit` and `has_ephemeral_storage_limit` give the effective settings (a container value wins over the pod value), `effective_automount_sa_token` settles token mounting across the pod and its ServiceAccount, and `ingress_policy_covered` and `egress_policy_covered` say whether a NetworkPolicy of the same scan input selects the workload.
 Roles carry `has_wildcard_api_groups`, `has_escalation_verbs`, `has_secrets_read` and `has_pod_exec`, bindings carry `binds_unauthenticated_group` and `binds_authenticated_group`, and an Ingress carries `has_tls`.
+
+An MCP config is read into one `mcp_server` per entry and one `mcp_agent` per config scope.
+The agent holds the union of what its enabled servers can do as three booleans, `reads_private_data`, `ingests_untrusted_content` and `can_exfiltrate_or_act`, and a rule written for `resource_type: mcp_agent` combines them (`MCP_LETHAL_TRIFECTA` requires all three).
+Each server gets its capability tags from one reviewed table of known packages and images and from facts its own entry proves, never by starting it; a server missing from the table adds nothing and is reported as `mcp.unknown_capability`.
 
 Provider defaults work the other way round.
 A Terraform file or CloudFormation template leaves out values that a plan prints, so a module may declare `DEFAULTS` that fill an absent attribute in place, for HCL and CloudFormation input only, never for a plan or a design.

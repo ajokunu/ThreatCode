@@ -574,6 +574,188 @@ def test_ruff_exempts_only_tests_and_scripts_from_the_widened_rules() -> None:
 
 
 # ---------------------------------------------------------------------------------------
+# Packaging and the commands that check it
+# ---------------------------------------------------------------------------------------
+
+
+def _requirement_names(requirements: list[str]) -> dict[str, str]:
+    """Map each requirement's package name to the whole requirement line."""
+    return {re.split(r"[<>=!~;\s\[]", line, maxsplit=1)[0].lower(): line for line in requirements}
+
+
+def test_tomli_is_a_development_dependency_only() -> None:
+    """src never reads TOML, so the runtime install must not pull a TOML parser in."""
+    project = _pyproject()["project"]
+    runtime = _requirement_names(project["dependencies"])
+    dev = _requirement_names(project["optional-dependencies"]["dev"])
+    assert "tomli" not in runtime, runtime["tomli"]
+    assert "tomli" in dev and "python_version<'3.11'" in dev["tomli"].replace(" ", "")
+    in_src = [
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in (REPO_ROOT / "src").rglob("*.py")
+        if re.search(r"^\s*(?:import|from) (?:tomli|tomllib)\b", path.read_text("utf-8"), re.M)
+    ]
+    assert not in_src, f"src reads TOML after all, so tomli is a runtime dependency: {in_src}"
+
+
+def test_hcl_stays_supported_from_the_oldest_release_to_the_newest_major() -> None:
+    requirements = _requirement_names(_pyproject()["project"]["dependencies"])
+    assert requirements["python-hcl2"].replace(" ", "") == "python-hcl2>=4.3,<9"
+
+
+def _make_target(makefile: str, name: str) -> str:
+    """The recipe lines of the make target ``name``."""
+    match = re.search(rf"^{re.escape(name)}:.*\n((?:\t.*\n?)*)", makefile, re.MULTILINE)
+    assert match, f"the Makefile has no {name} target"
+    return match.group(1)
+
+
+def test_lint_runs_over_the_whole_repository_in_make_and_in_ci() -> None:
+    """``scripts/`` has its own lint configuration, so a gate over src and tests skips it."""
+    wanted = ("ruff check .", "ruff format --check .")
+    recipe = _make_target((REPO_ROOT / "Makefile").read_text("utf-8"), "lint")
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
+    for command in wanted:
+        assert re.search(rf"^\s*{re.escape(command)}\s*$", recipe, re.M), command
+        assert re.search(rf"^\s*- run: {re.escape(command)}\s*$", ci, re.M), command
+    for text in (recipe, ci):
+        assert not re.search(r"ruff (?:check|format --check) src", text), text
+
+
+def test_the_format_target_covers_what_lint_checks() -> None:
+    recipe = _make_target((REPO_ROOT / "Makefile").read_text("utf-8"), "format")
+    assert "ruff format ." in recipe and "ruff check --fix ." in recipe
+
+
+def test_make_clean_removes_the_egg_info_under_src() -> None:
+    """``*.egg-info`` in the recipe only matches the top level, where a src layout has none."""
+    recipe = _make_target((REPO_ROOT / "Makefile").read_text("utf-8"), "clean")
+    assert "src/*.egg-info" in recipe
+
+
+def _manifest_files(manifest: str, root: Path) -> set[str]:
+    """The files under ``root`` that the MANIFEST.in directives select, as POSIX paths.
+
+    It reads the few directives this project uses (``include``, ``recursive-include``,
+    ``global-exclude``) with the matching rules of ``fnmatch``, which is what setuptools applies.
+    """
+    import fnmatch
+
+    every = [
+        p.relative_to(root).as_posix()
+        for top in sorted(root.iterdir())
+        if top.name not in {".git", ".venv", "build", "dist", "node_modules", ".mypy_cache"}
+        for p in ([top] if top.is_file() else top.rglob("*"))
+        if p.is_file() and top.name != "src"
+    ]
+    chosen: set[str] = set()
+    excluded: list[str] = []
+    for raw in manifest.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        directive, *args = line.split()
+        if directive == "include":
+            chosen.update(a for a in args if a in every)
+        elif directive == "recursive-include":
+            directory, *patterns = args
+            for path in every:
+                if path.startswith(directory + "/") and any(
+                    fnmatch.fnmatch(path.rsplit("/", 1)[-1], pattern) for pattern in patterns
+                ):
+                    chosen.add(path)
+        elif directive == "global-exclude":
+            excluded.extend(args)
+        else:
+            raise AssertionError(f"MANIFEST.in uses {directive!r}, which this gate does not read")
+    return {
+        path
+        for path in chosen
+        if not any(
+            fnmatch.fnmatch(part, pattern) for pattern in excluded for part in path.split("/")
+        )
+    }
+
+
+SDIST_MUST_CONTAIN = (
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "tests/conftest.py",
+    "tests/helpers/cli.py",
+    "tests/fixtures/terraform/simple.tf",
+    "docs/index.md",
+    "examples/aws-webapp/tfplan.json",
+    "scripts/gen_docs_counts.py",
+    ".github/actions/threatcode/action.yml",
+)
+
+
+def test_the_source_distribution_carries_what_its_tests_read() -> None:
+    """Tests that ship without their fixtures, docs and examples cannot run, so ship it all."""
+    files = _manifest_files((REPO_ROOT / "MANIFEST.in").read_text("utf-8"), REPO_ROOT)
+    missing = [name for name in SDIST_MUST_CONTAIN if name not in files]
+    assert not missing, f"MANIFEST.in leaves these out of the sdist: {missing}"
+    assert not [f for f in files if "__pycache__" in f or f.endswith((".pyc", ".pyo"))]
+    fixtures = [f for f in files if f.startswith("tests/fixtures/")]
+    assert len(fixtures) > 100, "the fixtures the tests read are in the sdist"
+
+
+def test_the_manifest_gate_notices_a_missing_directory_and_a_compiled_file(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "a.py").write_text("x", encoding="utf-8")
+    (tmp_path / "tests" / "a.pyc").write_text("x", encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "i.md").write_text("x", encoding="utf-8")
+    (tmp_path / "README.md").write_text("x", encoding="utf-8")
+    only_docs = _manifest_files("recursive-include docs *\ninclude README.md\n", tmp_path)
+    assert only_docs == {"docs/i.md", "README.md"}
+    with_tests = _manifest_files("recursive-include tests *\nglobal-exclude *.pyc\n", tmp_path)
+    assert with_tests == {"tests/a.py"}
+    with pytest.raises(AssertionError, match="prune"):
+        _manifest_files("prune tests\n", tmp_path)
+
+
+def test_the_package_job_checks_the_source_distribution() -> None:
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
+    package = ci[ci.index("\n  package:") :]
+    assert "tar tzf" in package and "tests/conftest.py" in package
+
+
+def test_the_docs_are_published_from_main_only_after_a_strict_build() -> None:
+    """The site goes out on a push to main, never for a pull request, and only after a build."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "docs.yml").read_text("utf-8"))
+    triggers = workflow[True] if True in workflow else workflow["on"]  # YAML reads `on` as True
+    assert set(triggers) == {"push", "workflow_dispatch"}
+    assert triggers["push"]["branches"] == ["main"]
+    build = [step.get("run", "") for step in workflow["jobs"]["build"]["steps"]]
+    assert "mkdocs build --strict" in build
+    assert workflow["jobs"]["deploy"]["needs"] == "build"
+    # Only the deploy job may write Pages; the workflow itself is read-only
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["jobs"]["deploy"]["permissions"] == {"pages": "write", "id-token": "write"}
+
+
+def test_the_dockerfile_tests_pass_from_another_working_directory(tmp_path: Path) -> None:
+    """Fixtures are found from the test file, so the directory pytest starts in does not matter."""
+    target = TESTS_DIR / "test_parsers" / "test_dockerfile.py"
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(target)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout[-600:] + done.stderr[-300:]
+
+
+# ---------------------------------------------------------------------------------------
 # The version names this release
 # ---------------------------------------------------------------------------------------
 
@@ -647,9 +829,7 @@ def test_the_released_versions_are_read_from_the_dated_headings_only() -> None:
 
 # Test files that still open a fixture as Path("tests/..."), which only works when pytest runs
 # from the repository root. Each entry is a bug to fix; the list only shrinks.
-CWD_RELATIVE_ALLOWED: dict[str, str] = {
-    "tests/test_parsers/test_dockerfile.py": "reads Path('tests/fixtures/docker/...')",
-}
+CWD_RELATIVE_ALLOWED: dict[str, str] = {}
 
 _FILE_OPENERS = {"Path", "PurePath", "open", "PosixPath"}
 

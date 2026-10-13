@@ -181,7 +181,7 @@ A key found in a config file produces a warning that names the variable to use i
 
 | Input | Limit |
 |-------|-------|
-| JSON or YAML file | 50 MB, larger files are set aside as not infrastructure |
+| JSON or YAML file | 50 MB, larger files are set aside as not infrastructure, except a plan-named file (`plan.json`, `tfplan.json`), which is an input error and exit 2 |
 | Standard input | 50 MB |
 | Graph nodes and edges | 10,000 and 50,000 by default, changed by `--max-nodes` and `--max-edges` |
 | Reachability edges per rule | 500, a cut is reported as a coverage gap |

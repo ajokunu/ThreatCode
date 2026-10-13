@@ -20,6 +20,9 @@ Against ``HEAD`` the comparison only sees changes you have not committed yet, so
 that commits as it goes should pass the commit its worktree started from.
 The base that was used is always printed.
 
+Quote every glob.
+An unquoted one is expanded by the shell before the script sees it, and only into the files that
+exist now, so a recording the change deleted is then reported as out of scope.
 Globs are matched against paths relative to the repository root:
 ``*`` matches within one path segment, ``?`` one character other than ``/``,
 ``**/`` any number of directories (including none) and a trailing or lone ``**`` anything.

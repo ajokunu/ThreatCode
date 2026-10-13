@@ -9,6 +9,9 @@ from threatcode.parsers.base import ParsedOutput, ParsedResource
 from threatcode.parsers.dockerfile import DockerfileParser
 from threatcode.values import is_unknown
 
+# Anchored to this file, so the tests pass whatever directory pytest is started from
+DOCKER_FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "docker"
+
 
 @pytest.fixture
 def parser() -> DockerfileParser:
@@ -17,12 +20,12 @@ def parser() -> DockerfileParser:
 
 @pytest.fixture
 def insecure_dockerfile() -> str:
-    return Path("tests/fixtures/docker/insecure.Dockerfile").read_text()
+    return (DOCKER_FIXTURES / "insecure.Dockerfile").read_text()
 
 
 @pytest.fixture
 def secure_dockerfile() -> str:
-    return Path("tests/fixtures/docker/secure.Dockerfile").read_text()
+    return (DOCKER_FIXTURES / "secure.Dockerfile").read_text()
 
 
 class TestDockerfileParser:
@@ -84,7 +87,7 @@ class TestDockerfileParser:
         assert runs[0].properties["has_sudo"] is True
 
     def test_multistage(self, parser: DockerfileParser) -> None:
-        content = Path("tests/fixtures/docker/multistage.Dockerfile").read_text()
+        content = (DOCKER_FIXTURES / "multistage.Dockerfile").read_text()
         result = parser.parse(content)
         froms = [r for r in result.resources if r.resource_type == "dockerfile_from"]
         assert len(froms) == 2
@@ -1302,14 +1305,14 @@ class TestSummaryProperties:
 
 class TestFixtures:
     def test_the_lowercase_fixture_fires_as_if_it_were_uppercase(self) -> None:
-        text = Path("tests/fixtures/docker/lowercase.Dockerfile").read_text()
+        text = (DOCKER_FIXTURES / "lowercase.Dockerfile").read_text()
         props = summary(text)
         assert props["is_root_user"] is True
         assert props["has_user"] is True
         assert first(text, "dockerfile_env")["secret_keys"] == ["db_password"]
 
     def test_the_multistage_platform_fixture_judges_the_final_stage(self) -> None:
-        text = Path("tests/fixtures/docker/multistage_platform.Dockerfile").read_text()
+        text = (DOCKER_FIXTURES / "multistage_platform.Dockerfile").read_text()
         props = summary(text)
         assert props["has_user"] is False
         assert props["has_healthcheck"] is False
@@ -1319,14 +1322,14 @@ class TestFixtures:
         assert props["stage_count"] == 3
 
     def test_the_user_forms_fixture(self) -> None:
-        text = Path("tests/fixtures/docker/user_forms.Dockerfile").read_text()
+        text = (DOCKER_FIXTURES / "user_forms.Dockerfile").read_text()
         users = [r.properties for r in of_type(text, "dockerfile_user")]
         assert [u["is_root"] for u in users][:2] == [True, True]
         assert is_unknown(users[2]["is_root"])
         assert summary(text)["is_root_user"] is True
 
     def test_the_heuristics_fixture(self) -> None:
-        text = Path("tests/fixtures/docker/heuristics.Dockerfile").read_text()
+        text = (DOCKER_FIXTURES / "heuristics.Dockerfile").read_text()
         runs = {r.start_line: r.properties for r in of_type(text, "dockerfile_run")}
         assert [p["has_curl_pipe"] for p in runs.values()] == [False, False, True, True]
         assert [p["has_sudo"] for p in runs.values()] == [False, False, True, False]

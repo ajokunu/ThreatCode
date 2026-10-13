@@ -34,8 +34,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
+      # The whole repository: scripts/ and the test helpers too, as `make lint` does.
+      - run: ruff check .
+      - run: ruff format --check .
       # actionlint reads workflow files only. It also runs shellcheck over their run: blocks.
       - name: actionlint
         run: |
@@ -369,5 +370,12 @@ jobs:
       # Builds the sdist, then the wheel from the sdist, so both artifacts are exercised.
       - run: python -m build
       - run: twine check --strict dist/*
+      # The sdist has to carry the tests together with what they read, or it cannot be tested.
+      - name: The source distribution carries the tests and their fixtures
+        run: |
+          contents="$(tar tzf dist/*.tar.gz)"
+          for path in tests/conftest.py tests/fixtures/terraform/simple.tf docs/index.md examples/aws-webapp/tfplan.json CHANGELOG.md scripts/gen_docs_counts.py; do
+            grep -q "/${path}\$" <<<"${contents}" || { echo "missing from the sdist: ${path}" >&2; exit 1; }
+          done
       - name: Install the wheel in a clean venv and scan a fixture
         run: scripts/smoke_test_wheel.sh dist/*.whl

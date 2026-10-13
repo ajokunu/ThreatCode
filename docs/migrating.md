@@ -17,8 +17,26 @@ The [changelog](https://github.com/ajokunu/ThreatCode/blob/main/CHANGELOG.md) ha
 | `threatcode sbom`, `threatcode license` | Removed. Use Syft or Trivy. |
 | `--scanners`, `--ignore-unfixed` | Removed with the scanners. |
 | `-f cyclonedx` | Removed with the SBOM output. |
-| `-f matrix` | Renamed `-f navigator`. `matrix` still works as a deprecated alias. |
+
+The removed commands (`fs`, `repo`, `image`, `vuln`, `db`, `secret`, `sbom` and `license`) are no longer listed in `--help`.
+Typing one prints a message that points at this page and exits 2, so an old script fails with a pointer instead of "No such command".
+
+## Renamed
+
+| Before | Now |
+|--------|-----|
+| `-f matrix` | `-f navigator`. `matrix` still works, is hidden from `--help` and from the list of valid values, and prints `Warning: -f matrix is deprecated, use -f navigator` on stderr (also with `-q`). It will be removed in a later release. |
 | `--ignorefile` | `--ignore-file`. |
+| `output_format` and `extra_rule_paths` in a config file | `format` and `rules`. The old spellings still load and print a notice. |
+
+Related changes in how output is chosen:
+
+- `-f` may be left out when `-o` names the format: `-o results.sarif` writes SARIF.
+  If you give both and they disagree, the format you asked for is written and a warning names the mismatch.
+- `-o -` and `-o /dev/stdout` write the report to standard output.
+- `-q`, `-v` and `--no-color` work after the command name as well as before it.
+- The SVG diagram and the Navigator layer are not written to a terminal; use `-o` or a pipe.
+- `--source-root DIR` names the repository root when SARIF and Bitbucket paths must be relative to a checkout that has no `.git` directory.
 
 The scanning layer was removed, not patched, because none of it fed the threat model and the image scanner extracted layers to disk where whiteouts and symlink chains could be steered into deleting files on the host.
 
@@ -65,7 +83,12 @@ The default model is `claude-sonnet-5-5`.
   A custom rule that relied on `resource_type: aws_s3_bucket` also matching `aws_s3_bucket_versioning` needs `resource_type: "aws_s3_bucket*"` or an explicit list.
 - Removed rule ids are listed in the [rule catalog](rules.md#removed-rules).
   A `.threatcodeignore` line that names one now warns.
-- SARIF results point at the file and line of the resource and carry a stable fingerprint, so existing code scanning alerts may close and reopen once.
+- SARIF results point at the file and line of the resource, relative to the top of the git checkout, and carry a stable fingerprint, so existing code scanning alerts may close and reopen once.
+- A SARIF finding whose effective severity differs from its rule's severity has the rule id `<id>/<severity>`, such as `EC2_IMDSV1/high`, so GitHub ranks it correctly.
+  Alerts that context raised or lowered move to the variant id once, and a scanner finding is `<tool>:<id>` (`trivy:CVE-2022-37434`).
+- The Bitbucket report's `result` follows `--fail-on`, so `--fail-on none` is never `FAILED`.
+- Attack paths can be suppressed by id in `.threatcodeignore` and recorded in a baseline.
+  A baseline written before this release lists no path, so write it again.
 
 ## Python API
 
