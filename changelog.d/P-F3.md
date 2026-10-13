@@ -43,4 +43,5 @@
 - The Kubernetes parser records `meta['lines']` for each object, a map from the properties a rule reads to the line of the manifest key they come from, and `_role_properties` shares its per-rule scan with the line lookup.
 - The golden recordings are unchanged: they record addresses, rule ids, severities, techniques, paths, nodes and edges, and none of those moved.
   The Kubernetes lines, the boundary titles and descriptions and the hop enablers are checked by the pipeline, boundary and path tests instead.
-- `tests/test_engine/test_docker_rules.py` and `tests/test_parsers/test_kubernetes.py` build their fixture paths from `Path(__file__)`, so they pass from any working directory (CH-04).
+- `tests/test_engine/test_docker_rules.py` and `tests/test_parsers/test_kubernetes.py` build their fixture paths from `Path(__file__)`, so they pass from any working directory.
+- The engine tests re-raise an exception from a built-in rule instead of recording it in `rule_errors`, and the graph and recording tests render Helm charts with the built-in renderer whether or not `helm` is installed, so the recordings hold on a machine that has it.

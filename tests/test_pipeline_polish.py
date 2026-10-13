@@ -393,7 +393,7 @@ class TestKubernetesFindingsPointAtTheirKey:
         # The rule that reads Secrets is the third rule of the second document
         assert lines[("K8S_RBAC_SECRETS_READ", "rbac.yaml")] == 13
 
-    def test_few_findings_of_the_demo_stack_still_say_line_1(self) -> None:
+    def test_no_finding_of_the_demo_stack_says_line_1(self) -> None:
         result = scan(REPO_ROOT / "examples/k8s-platform")
         threats = [t for t in result.report.threats if t.location_file.endswith(".yaml")]
         assert threats

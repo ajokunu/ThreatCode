@@ -293,8 +293,8 @@ rules:
       a wildcard resource, in the core API group.
       A ClusterRole grants that in every namespace; a Role in its own.
       list and watch return the contents of every Secret, not only their names.
-      A grant that names the Secrets it covers in resourceNames does not count, so the Secrets
-      are open to every subject of the role.
+      A grant that lists the Secrets it covers in resourceNames is not reported, so every Secret
+      in scope is readable by every subject of the role.
     stride_category: information_disclosure
     severity: high
     confidence: definitive
