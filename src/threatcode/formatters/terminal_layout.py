@@ -19,8 +19,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 __all__ = [
+    "TIE",
+    "Cell",
     "Item",
     "Run",
+    "columns",
     "flow",
     "hanging",
     "split_token",
@@ -32,6 +35,13 @@ Run = tuple[str, str]
 # A phrase of a flowing line and its style; the words of a phrase may wrap, the phrase is one unit
 # of meaning.
 Item = tuple[str, str]
+
+# A cell of a row of columns: its text, the width of its column and its style.
+Cell = tuple[str, int, str]
+
+# Joins two words that must not be separated by a line break (``HIGH`` and the rule id after it).
+# It is a word joiner, which is not a space to ``str.split``, and it prints as a plain space.
+TIE = "\u2060"
 
 # Where an identifier may be broken: after one of these.
 _SOFT_BREAK_AFTER = ".:/_-[,"
@@ -83,7 +93,7 @@ def wrap(text: str, width: int, *, first_width: int | None = None) -> list[str]:
                 lines.append(current)
             current = piece
     lines.append(current)
-    return lines
+    return [line.replace(TIE, " ") for line in lines]
 
 
 def hanging(text: str, width: int, *, first: str = "", rest: str | None = None) -> list[str]:
@@ -134,7 +144,7 @@ def flow(
             limit = max(room - len(tail), 1) if (last_word and ends_with_sep) else room
             pieces = split_token(word, limit)
             for piece_index, piece in enumerate(pieces):
-                runs: list[Run] = [(piece, style)]
+                runs: list[Run] = [(piece.replace(TIE, " "), style)]
                 if last_word and piece_index == len(pieces) - 1 and ends_with_sep:
                     runs.append((tail, ""))
                 if piece_index:
@@ -166,6 +176,33 @@ def flow(
         _merged(([(first if index == 0 else lead, "")] if (first or lead) else []) + line)
         for index, line in enumerate(lines)
     ]
+
+
+def columns(cells: Sequence[Cell], *, gap: int = 2, lead: str = "") -> list[list[Run]]:
+    """Cells side by side, each wrapped inside its own column: the lines of one table row.
+
+    A cell wider than its column wraps onto further lines of that column only, so the cells to
+    its right stay where they are, and a row is as tall as its tallest cell.
+    Cells are padded to their width, apart from the trailing empty ones, so a line never ends in
+    spaces; padding and ``gap`` are plain text and only the words carry the style of the cell.
+    ``lead`` starts every line, which is how a row is indented.
+    The pieces of a cell hold every character of it, as in ``wrap``.
+    """
+    pieces = [wrap(text, width) for text, width, _style in cells]
+    height = max((len(p) for p in pieces), default=1)
+    lines: list[list[Run]] = []
+    for index in range(height):
+        shown = [p[index] if index < len(p) else "" for p in pieces]
+        last = max((i for i, text in enumerate(shown) if text), default=-1)
+        line: list[Run] = [(lead, "")] if lead else []
+        for i, text in enumerate(shown[: last + 1]):
+            _text, width, style = cells[i]
+            line.append((text, style))
+            pad = width - len(text) + gap if i < last else 0
+            if pad:
+                line.append((" " * pad, ""))
+        lines.append(_merged(line))
+    return lines
 
 
 def _merged(line: list[Run]) -> list[Run]:

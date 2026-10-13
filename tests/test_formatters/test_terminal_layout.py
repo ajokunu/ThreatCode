@@ -7,7 +7,14 @@ import re
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from threatcode.formatters.terminal_layout import flow, hanging, split_token, wrap
+from threatcode.formatters.terminal_layout import (
+    TIE,
+    columns,
+    flow,
+    hanging,
+    split_token,
+    wrap,
+)
 
 ADDRESS = st.text(alphabet="abcxyz_.-:/[]0123456789", min_size=0, max_size=120)
 WORDS = st.lists(st.text(alphabet="abcdefg_.-", min_size=1, max_size=40), max_size=30)
@@ -133,3 +140,80 @@ class TestFlow:
         assert all(len(line) <= width for line in lines)
         flat = re.sub(r"[\s,]", "", "".join(lines))
         assert flat == "V:" + re.sub(r"[\s,]", "", "".join(words))
+
+
+class TestTie:
+    def test_two_words_joined_by_the_tie_are_never_separated_and_print_as_a_space(self) -> None:
+        text = f"aaaa HIGH{TIE}SOME_RULE bbbb"
+        assert wrap(text, 14) == ["aaaa", "HIGH SOME_RULE", "bbbb"]
+
+    def test_without_the_tie_the_same_words_split(self) -> None:
+        assert wrap("aaaa HIGH SOME_RULE bbbb", 14) == ["aaaa HIGH", "SOME_RULE bbbb"]
+
+    def test_a_tied_phrase_in_a_flow_moves_to_the_next_line_whole_and_keeps_its_style(self) -> None:
+        items = [("step:", ""), (f"HIGH{TIE}SOME_RULE", "high"), ("LOW", "low")]
+        lines = flow(items, 20, first="  ", rest="    ")
+        assert text_of(lines) == ["  step:", "    HIGH SOME_RULE,", "    LOW"]
+        assert ("HIGH SOME_RULE", "high") in lines[1]
+
+    def test_the_tie_never_reaches_the_output(self) -> None:
+        assert TIE not in "".join(wrap(f"a{TIE}b c{TIE}d", 3))
+        assert TIE not in "".join(text_of(flow([(f"a{TIE}b", "")], 3)))
+
+    def test_a_tied_word_longer_than_the_line_is_still_split_and_keeps_its_characters(self) -> None:
+        lines = wrap(f"{'x' * 12}{TIE}{'y' * 12}", 10)
+        assert "".join(lines).replace(" ", "") == "x" * 12 + "y" * 12
+        assert all(len(line) <= 10 for line in lines)
+
+
+class TestColumns:
+    def test_cells_are_padded_to_their_columns_and_separated_by_the_gap(self) -> None:
+        (line,) = columns([("ab", 4, ""), ("cd", 3, ""), ("ef", 2, "")])
+        assert "".join(text for text, _ in line) == "ab    cd   ef"
+
+    def test_the_last_cell_is_not_padded_and_trailing_empty_cells_leave_no_spaces(self) -> None:
+        (line,) = columns([("ab", 4, ""), ("", 3, ""), ("", 2, "")])
+        assert "".join(text for text, _ in line) == "ab"
+
+    def test_an_empty_cell_in_the_middle_keeps_the_cells_after_it_in_their_column(self) -> None:
+        (line,) = columns([("ab", 4, ""), ("", 3, ""), ("ef", 2, "")])
+        assert "".join(text for text, _ in line) == "ab         ef"
+
+    def test_a_cell_wider_than_its_column_wraps_in_it_and_the_others_stay_put(self) -> None:
+        lines = columns([("one two three", 7, ""), ("X", 1, "")])
+        assert text_of(lines) == ["one two  X", "three"]
+
+    def test_a_row_is_as_tall_as_its_tallest_cell(self) -> None:
+        lines = columns([("a", 3, ""), ("b c d", 1, "")])
+        assert len(lines) == 3
+
+    def test_the_lead_starts_every_line(self) -> None:
+        lines = columns([("one two", 3, "")], lead="> ")
+        assert text_of(lines) == ["> one", "> two"]
+
+    def test_only_the_words_carry_the_style_not_the_padding(self) -> None:
+        (line,) = columns([("ab", 5, "high"), ("cd", 2, "low")])
+        assert line == [("ab", "high"), ("     ", ""), ("cd", "low")]
+
+    @given(
+        st.lists(
+            st.tuples(
+                st.text(alphabet="abc_.", max_size=30), st.integers(min_value=1, max_value=12)
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    @settings(max_examples=150)
+    def test_no_line_is_wider_than_the_columns_and_every_cell_keeps_its_characters(
+        self, cells: list[tuple[str, int]]
+    ) -> None:
+        lines = text_of(columns([(text, width, "") for text, width in cells]))
+        limit = sum(width for _, width in cells) + 2 * (len(cells) - 1)
+        assert all(len(line) <= limit for line in lines)
+        assert not any(line != line.rstrip() for line in lines)
+        # Each cell, taken alone, is its pieces in order
+        for text, width in cells:
+            alone = text_of(columns([(text, width, "")]))
+            assert "".join(alone) == text
+            assert all(len(piece) <= width for piece in alone)
