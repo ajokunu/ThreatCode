@@ -151,6 +151,18 @@ class ThreatReport:
     def filter_by_severity(self, min_severity: Severity) -> list[Threat]:
         return [t for t in self.threats if threat_severity(t) >= min_severity]
 
+    def duplicate_ids(self) -> list[str]:
+        """Ids that more than one threat carries, sorted; empty when every id is unique.
+
+        A threat id names one finding in the diff, in ``enabled_by`` and in a suppression, so two
+        threats that share one would be merged or hidden together.
+        """
+        seen: set[str] = set()
+        repeated: set[str] = set()
+        for threat in self.threats:
+            (repeated if threat.id in seen else seen).add(threat.id)
+        return sorted(repeated)
+
     @property
     def summary(self) -> dict[str, int]:
         counts: dict[str, int] = {}

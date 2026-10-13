@@ -13,7 +13,6 @@ These belong to the group and go before the command name: `threatcode -q scan in
 <!-- gen:group -->
 | Option | Values | What it does |
 | --- | --- | --- |
-| `--version` |  | Print the version and exit. |
 | `--version` |  | Show the version and exit. |
 | `-v`, `--verbose` |  | More log detail on stderr (-vv for debug). |
 | `-q`, `--quiet` |  | Hide progress and notices; errors stay. |
@@ -151,15 +150,18 @@ grep -q "suppressed 2 findings" notes.txt
 grep -q 'S3_NO_LOGGING has no reason' notes.txt
 ```
 
-Suppression happens before the gate, so a scan whose every gating finding is suppressed exits 0, unless an attack path remains.
-Attack paths cannot be named in an ignore file yet.
+Suppression happens before the gate, so a scan whose every gating finding and attack path is suppressed exits 0.
+An attack path is named by its id (the `id` in the report's `attack_paths`, 12 hex digits) and is matched like a finding: `resource=` matches any resource on its route, and a `file=` scope never matches one, because a route has no single file.
+The `Using ignore file` line on stderr counts findings and attack paths apart, for example `suppressed 2 findings and 1 attack path`.
 When the `CI` variable is set and the ignore file lives inside the scanned tree, a notice says that a pull request can edit it and recommends `--ignore-file` with a path the pull request cannot change.
 
 ### Baselines
 
-`--write-baseline FILE` writes the fingerprint, rule id, resource and severity of every finding, sorted so the file diffs cleanly, under the schema name `threatcode-baseline/1`.
-`--baseline FILE` removes those findings from the gate and the listings and counts them in `coverage.baselined`.
-Commit the file, and a pull request fails only on findings it adds.
+`--write-baseline FILE` writes the fingerprint, rule id, resource and severity of every finding and the id, entry, target and severity of every attack path, sorted so the file diffs cleanly, under the schema name `threatcode-baseline/1`.
+`--baseline FILE` removes those findings and attack paths from the gate and the listings and counts them in `coverage.baselined`, which includes the paths (`coverage.baselined_paths` says how many of them are paths).
+Commit the file, and a pull request fails only on findings and attack paths it adds.
+A path id comes from the route, so a path that gains or loses a hop is a new path.
+A baseline written before attack paths were recorded has no path list and hides no path; write it again.
 The fingerprint leaves out property values, so editing a resource does not change which finding it is, and it includes the root-relative file, so the same address in two files is two findings.
 
 ### Format details
@@ -233,7 +235,5 @@ threatcode diff base.json current.json -f markdown -o diff.md --fail-on-new crit
 
 These exist in the Python modules but are not wired to `threatcode scan`, so the CLI neither accepts nor honors them:
 
-- Suppressing an attack path by id in `.threatcodeignore`, and recording attack paths in `--write-baseline`.
-  Findings are suppressed and baselined, attack paths are not, so a path at or above `--fail-on` still gates.
 - A report of what the ignore file applied.
 - `--include-graph`, `--source-root`, `--helm`, `--diagram-*` options, a `secrets:` config section, `--llm-gating` and `--require-llm`.

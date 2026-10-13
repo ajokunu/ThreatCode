@@ -28,7 +28,9 @@ The rest are actions that only the owner of the GitHub repository and the PyPI p
    make mitre-check
    ```
 
-4. Move the Unreleased section of `CHANGELOG.md` under the new version and date, and set `__version__` in `src/threatcode/__init__.py`.
+4. Move the Unreleased section of `CHANGELOG.md` under the new version and date, and check `__version__` in `src/threatcode/__init__.py`.
+   The source already says `1.0.0`, so that `threatcode --version` and the `version` field of a report tell the reworked line from 0.9 before the release exists; change it only if you release another number.
+   `tests/test_meta.py` checks the pair: while Unreleased has content the version must not be a released one, and once it is moved the version must be the new heading's number.
    The version has one source, and the wheel metadata, `threatcode.__version__` and `threatcode --version` must agree, which the smoke test checks.
 
 ## Publishing
@@ -48,7 +50,7 @@ The rest are actions that only the owner of the GitHub repository and the PyPI p
 
     It must print `200`.
 12. Run the `Action self-test` workflow with the released version.
-13. Move the floating tag so the action ref resolves: `git tag -f v0 v0.9.1 && git push -f origin v0`, with the version you released.
+13. Move the floating tag so the action ref resolves: `git tag -f v1 v1.0.0 && git push -f origin v1`, with the version you released.
 
 ## After PyPI returns 200
 
@@ -60,7 +62,7 @@ pip install "git+https://github.com/ajokunu/ThreatCode.git"
 
 When the package is live, change the install lines in `README.md`, `docs/index.md` and `docs/getting-started.md` to `pip install threatcode` and `pip install "threatcode[llm]"`, and delete the sentence that says the package is not published.
 `tests/test_docs.py` refuses a bare `pip install threatcode` in a shell block until then; change that test in the same commit.
-Replace `@main` in the Action and pre-commit examples with the release tag.
+Replace `@main` in the Action examples and `rev: main` in the pre-commit examples (`docs/cicd.md` and the header of `.pre-commit-hooks.yaml`) with the release tag.
 
 ## What the documentation tests protect
 

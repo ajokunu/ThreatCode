@@ -34,9 +34,10 @@ Until the package is live on PyPI (`curl -s -o /dev/null -w '%{http_code}' https
   Errors and gaps always reach stderr, even with `-q`, and `--strict` turns any gap into exit 2.
 - **Fingerprints, suppressions and baselines.**
   Every finding has a 16 character fingerprint built from the kind of finding, its rule, its resource address and its root-relative file, never from property values.
-  `.threatcodeignore` entries are `<ID> [resource=GLOB] [file=GLOB] [exp:YYYY-MM-DD] [reason="text"]`, where `ID` is a rule id, a finding id, a fingerprint or a CVE or GHSA alias.
+  `.threatcodeignore` entries are `<ID> [resource=GLOB] [file=GLOB] [exp:YYYY-MM-DD] [reason="text"]`, where `ID` is a rule id, a finding id, a fingerprint, an attack path id or a CVE or GHSA alias.
   An entry without a reason, a global entry without an end date, an entry that names a removed rule and an entry that expired are warned, and a notice in CI explains that a pull request can edit an ignore file inside the scanned tree.
-  `--write-baseline FILE` records every finding and `--baseline FILE` hides those findings from the gate and the listings; a baseline is not written when the scan had input errors.
+  `--write-baseline FILE` records every finding and attack path, and `--baseline FILE` hides those findings and attack paths from the gate and the listings, so a new path still fails the gate; a baseline is not written when the scan had input errors.
+  A baseline written by an older version lists no attack path and hides none.
 - **Reproducible output.**
   `SOURCE_DATE_EPOCH` fixes the timestamp and `--no-timestamp` leaves it out.
   Findings are sorted, and every path in a report is POSIX and relative to the scan root, so the same tree gives byte-identical output wherever it is checked out.
@@ -44,8 +45,8 @@ Until the package is live on PyPI (`curl -s -o /dev/null -w '%{http_code}' https
   A flag wins over `THREATCODE_FAIL_ON`, `THREATCODE_MIN_SEVERITY`, `THREATCODE_FORMAT` and `THREATCODE_LLM`, which win over the config file, which wins over the default.
   Config models reject unknown keys with a suggestion, and graph limits can be set with `--max-nodes`, `--max-edges`, `max_nodes`, `max_edges` and the `THREATCODE_MAX_*` variables.
 - **A config file inside the scanned repository cannot widen its own trust.**
-  An auto-discovered `.threatcode.yml` is announced on stderr and only `min_severity` and `output_format` are read from it.
-  `fail_on`, `extra_rule_paths`, `llm`, `redaction` and the graph limits come only from a file named with `--config`.
+  An auto-discovered `.threatcode.yml` is announced on stderr and only `min_severity` and `format` are read from it.
+  `fail_on`, `rules`, `llm`, `redaction` and the graph limits come only from a file named with `--config`.
 - **A text report for terminals** with a verdict line, the attack paths, a table that fits the terminal width, and the coverage block.
   Group options `-v`, `-q`, `--debug`, `--no-color` and `--version` go before the command, and every help text ends with examples and the exit codes.
 - **`diff` checks what it is given and lists attack paths first.**
@@ -168,6 +169,10 @@ Four Docker rules that could never fire were revived on the properties the new p
   `SECURITY.md` describes private vulnerability reporting.
 - **A planted-issue benchmark** (`tests/test_quality`) scores the ten realistic fixtures through the same pipeline as `scan`: 37 of 39 planted issues found, no finding on hardened resources, and a ratchet that keeps it so.
 - **Three demo stacks** (`examples/aws-webapp`, `examples/k8s-platform`, `examples/agent-workstation`) with READMEs, expected paths and tests.
+- **Final quality gates** in `tests/test_meta.py` fail the build when a test carries a pending marker, when a rule has no example case, when a rule or attack path uses a missing, revoked or deprecated ATT&CK technique, when a rule's resource type has no catalog category, when a test asserts nothing, or when a test accepts a range of exit codes.
+  Every parser and enrichment module exports `PRODUCED`, the properties it can write, and `tests/test_engine/test_rule_property_provenance.py` fails when a built-in rule reads a property that nothing produces.
+  `tests/test_properties.py` holds hypothesis properties for the Helm fallback tokenizer, the Dockerfile lexer, the secret preview, `base_address` and SARIF output.
+  `ruff` selects B, BLE, S, ARG, SIM, C4 and C901 (threshold 15) for `src`.
 - **Test infrastructure:** a per-rule bad and good example for every built-in rule, a format-parity test, a real-shape corpus of Terraform plans, templates, manifests, charts, Dockerfiles and MCP configs, a hardened corpus that must scan clean, schema conformance tests for SARIF and Navigator layers, hostile input generators and property tests, golden recordings per input, and a `pending(package, reason)` marker.
 
 ### Changed
@@ -230,6 +235,8 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **`-o` writes the report and says so on stderr,** so stdout stays empty, and a directory or an unwritable path is one `Error:` line and exit 2.
 - **`-f json` writes sorted threats.**
 - **`threatcode diff` compares ids as multisets,** reports a changed severity or title, and is sorted by severity.
+- **`coverage.suppressed` and `coverage.baselined` count findings and attack paths together.**
+  The `Using ignore file` line on stderr says how many of each were suppressed, for example `suppressed 2 findings and 1 attack path`, and `ScanResult` has two new integers, `suppressed_paths` and `baselined_paths`, for the paths among them.
 - **The core install is smaller,** the version is single-sourced from `threatcode.__version__`, the wheel ships `py.typed`, and Python 3.14 is a declared classifier.
 - **The wheel smoke test compares instead of counting:** the packaged rule files must equal the checkout's and the loaded rule ids must equal the ids in the source.
 - **Releases are gated on CI,** the release tag is checked against the version in the built wheel, and CI runs on every pull request with a matrix of Python 3.10 to 3.14 on Linux plus one macOS and one Windows job.
@@ -282,6 +289,23 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **Secret findings:** line numbers no longer shift on a form feed, UTF-16 files are decoded, and a keyword prefilter that was case-sensitive no longer skips `MasterUserPassword`.
 - **`mypy` passes on `engine/llm/client.py`** with the installed Anthropic SDK.
 - **Suppression notices:** line numbers no longer shift on a form feed, and CRLF files and files with a byte order mark read like plain ones.
+- **Attack paths honor `--baseline`, `--write-baseline` and `.threatcodeignore` in `threatcode scan`.**
+  Before, an attack path gated the exit code but nothing could set a known one aside: `threatcode scan infra/ --write-baseline base.json` followed by `threatcode scan infra/ --baseline base.json` removed every finding and still exited 1 on the same attack paths.
+  The baseline now records the id of every attack path beside the fingerprints, `--baseline` removes the paths it lists from the report and the gate, and a new path still fails the gate.
+  A `.threatcodeignore` entry that names an attack path id suppresses that path, with `resource=` narrowing it to a path that crosses a matching resource.
+  The suppression of paths and findings happens before the gate, so a fully suppressed scan exits 0.
+- **Scanner findings that ThreatCode already reports are dropped.**
+  With `--ingest`, a scanner secret at the file and line of a native secret finding, or a scanner misconfiguration at the file and line of a native rule finding, was reported twice.
+  The scanner finding is now dropped, the native finding lists the tool in `metadata.corroborated_by`, the dropped finding is counted in the `duplicates` of its entry in the report's `ingest` list, and an `ingest.duplicate` info diagnostic names it in the graph diagnostics.
+  Attack path hops and findings that referred to the dropped finding now refer to the native one, so no `enabled_by` entry names a finding the report no longer holds.
+  Vulnerabilities have no native counterpart and are never dropped.
+  The match is by file and line only, so a scanner misconfiguration on the first line of a resource is dropped whenever ThreatCode has a rule finding on that resource.
+- **A removed-rule warning for user rule files.**
+  An ignore entry that names a rule listed in the `deprecated_ids` of a rule file passed with `--rules` now gets the "removed or renamed" warning, as it already did for the built-in rule files.
+- **Rule findings carry their rule's confidence** (definitive 1.0, heuristic 0.7, absence 0.5) **and root cause.**
+  Before, every finding reported confidence 1.0 and no finding was grouped by root cause, so the SARIF precision of a heuristic or absence rule was always high.
+- **A Dockerfile word or a Helm string of several megabytes** no longer takes memory in proportion to 150 bytes per character.
+  One five megabyte word peaked at 1.5 GB and now peaks at 69 MB, and the findings are identical.
 
 ### Security
 
@@ -297,13 +321,11 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **Evaluation of Terraform, CloudFormation and Helm input is bounded** in string size, collection size, nesting, expansion and total work, and the Helm fallback is a linear evaluator that took quadratic time and 14 seconds on 80 KB of unterminated actions before.
 - **Output cannot inject:** Markdown, Mermaid labels, SVG ids and SARIF URIs are escaped for where they are shown.
 - **The GitHub Action** passes inputs through the environment, never through `${{ }}` in a script, shows stderr between `::stop-commands::` markers, and validates the `version` input.
-- **Known limitation:** attack paths cannot be suppressed or baselined from the command line yet, so a path keeps gating until it is fixed.
-  The module API for it exists in `threatcode.suppressions`.
 
 ### Known limitations
 
 - Azure and GCP resources have rule findings but no topology, exposure or attack paths.
-- A baseline hides findings, not attack paths, and `.threatcodeignore` cannot name an attack path yet.
+- The report does not yet list which ignore entries were applied; matched, unmatched and expired entries reach stderr as notices.
 - Terraform modules from a registry or Git are not downloaded; they are reported as coverage gaps.
 - CloudFormation nested stacks and transforms other than SAM are not expanded.
 - The package is not on PyPI; install from the Git URL until the release checklist in `docs/releasing.md` is done.

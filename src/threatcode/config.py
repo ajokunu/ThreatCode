@@ -13,12 +13,16 @@ Where a setting comes from, in order of precedence:
 
 Trust: a config file named with ``--config`` is trusted and every key is honored.
 An auto-discovered ``.threatcode.yml`` (in the scan root or the current directory) comes from the
-repository being scanned, so only ``min_severity`` and ``output_format`` are read from it.
-``fail_on``, ``extra_rule_paths``, ``llm``, ``redaction`` and the graph limits are ignored and
+repository being scanned, so only ``min_severity`` and ``format`` are read from it.
+``fail_on``, ``rules``, ``llm``, ``redaction`` and the graph limits are ignored and
 reported, because a scanned repository must not be able to disable its own gate, load its own
 rules, point the tool at its own model server, weaken what is redacted before a prompt leaves the
 machine or raise the resource limits.
 Every model rejects unknown keys, so a typo is an error that names the key.
+
+One name per setting: the config key ``format`` is the ``--format`` flag and ``rules`` is the
+``--rules`` flag.
+Their first spellings, ``output_format`` and ``extra_rule_paths``, still load, with a notice.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from typing import Any, Literal
 
 import yaml
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -58,7 +63,12 @@ ENV_FORMAT = "THREATCODE_FORMAT"
 ENV_LLM = "THREATCODE_LLM"
 
 # Keys read from an auto-discovered (untrusted) config file; everything else is ignored.
-_SAFE_AUTO_FIELDS = frozenset({"min_severity", "output_format"})
+# ``rules`` and its old spelling ``extra_rule_paths`` are deliberately not here.
+_SAFE_AUTO_FIELDS = frozenset({"min_severity", "format", "output_format"})
+
+# Config keys that were renamed so that a setting has one name in the flag and in the file.
+# Old spelling -> current spelling. The old spelling still loads, with a notice.
+_RENAMED_KEYS: dict[str, str] = {"output_format": "format", "extra_rule_paths": "rules"}
 
 # Keys that earlier versions accepted and that no longer do, with what to use instead.
 _REMOVED_KEYS: dict[str, str] = {
@@ -72,6 +82,8 @@ _LOCAL_PROVIDERS = frozenset({"ollama", "local"})
 # The Anthropic provider may opt in too, for a gateway or proxy on a private network that fronts
 # the API (set with base_url or ANTHROPIC_BASE_URL).
 _LOCAL_NETWORK_PROVIDERS = _LOCAL_PROVIDERS | {"anthropic"}
+# The order the self-hosted providers are named in: the one most people run first.
+_SELF_HOSTED_ORDER = ("ollama", "local")
 
 # The model a fresh config uses. The installed anthropic SDK lists it among its known model ids.
 DEFAULT_LLM_MODEL = "claude-sonnet-5-5"
@@ -87,6 +99,29 @@ DEFAULT_API_KEY_ENV: dict[str, str] = {"anthropic": "ANTHROPIC_API_KEY", "openai
 
 _TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
 _FALSE_WORDS = frozenset({"0", "false", "no", "off"})
+
+
+def _or_list(names: Sequence[str]) -> str:
+    """Quoted names for a sentence: ``'a'``, ``'a' or 'b'``, ``'a', 'b' or 'c'``."""
+    quoted = [f"'{n}'" for n in names]
+    if len(quoted) <= 1:
+        return "".join(quoted)
+    return f"{', '.join(quoted[:-1])} or {quoted[-1]}"
+
+
+def _allowed_local_providers() -> str:
+    """The providers that may set ``allow_local_network``, worded for the error message.
+
+    The self-hosted ones come first, then the ones that need a gateway; both lists come from the
+    sets above, so a provider added there is named here.
+    """
+    self_hosted = [p for p in _SELF_HOSTED_ORDER if p in _LOCAL_PROVIDERS]
+    self_hosted += sorted(_LOCAL_PROVIDERS - set(self_hosted))
+    gateway = sorted(_LOCAL_NETWORK_PROVIDERS - _LOCAL_PROVIDERS)
+    text = _or_list(self_hosted)
+    if gateway:
+        text += f" (or {_or_list(gateway)} behind a gateway)"
+    return text
 
 
 class LLMConfig(BaseModel):
@@ -128,7 +163,8 @@ class LLMConfig(BaseModel):
     def _check_allow_local_network(self) -> LLMConfig:
         if self.allow_local_network and self.provider not in _LOCAL_NETWORK_PROVIDERS:
             raise ValueError(
-                f"allow_local_network requires provider 'ollama' or 'local', not '{self.provider}'"
+                f"allow_local_network requires provider {_allowed_local_providers()}, "
+                f"not '{self.provider}'"
             )
         return self
 
@@ -151,10 +187,16 @@ class ThreatCodeConfig(BaseModel):
     redaction: RedactionConfig = Field(default_factory=RedactionConfig)
     # None means "not set in the file", so the resolver can tell it from a value.
     min_severity: Literal["critical", "high", "medium", "low", "info"] | None = None
-    output_format: str | None = None
+    # The config key is ``format`` (the --format flag); ``output_format`` is the old spelling.
+    output_format: str | None = Field(
+        default=None, validation_alias=AliasChoices("format", "output_format")
+    )
     # Honored only from a config named with --config.
     fail_on: Literal["critical", "high", "medium", "low", "info", "none"] | None = None
-    extra_rule_paths: list[str] = Field(default_factory=list)
+    # The config key is ``rules`` (the --rules flag); ``extra_rule_paths`` is the old spelling.
+    extra_rule_paths: list[str] = Field(
+        default_factory=list, validation_alias=AliasChoices("rules", "extra_rule_paths")
+    )
     # Graph limits; None keeps the graph's own default (or its environment variable).
     max_nodes: int | None = Field(default=None, gt=0)
     max_edges: int | None = Field(default=None, gt=0)
@@ -265,6 +307,12 @@ def _load_from_file(path: Path, *, trusted: bool) -> LoadedConfig:
         )
         notices.append(f"api_key found in config file {path}. {advice}")
 
+    for old, new in _RENAMED_KEYS.items():
+        if old in data and new in data:
+            raise ConfigError(
+                f"Invalid config {path}: {old} and {new} are the same setting, give only {new}"
+            )
+
     ignored: tuple[str, ...] = ()
     if not trusted:
         restricted = sorted(set(data) - _SAFE_AUTO_FIELDS)
@@ -279,6 +327,11 @@ def _load_from_file(path: Path, *, trusted: bool) -> LoadedConfig:
                 message += "turn off its own gate."
             notices.append(message)
             data = {k: v for k, v in data.items() if k in _SAFE_AUTO_FIELDS}
+
+    # Said only for a key that takes effect: a dropped key needs no advice about its spelling.
+    for old, new in _RENAMED_KEYS.items():
+        if old in data:
+            notices.append(f"{old} in config file {path} is now called {new}; use {new}.")
 
     try:
         config = ThreatCodeConfig(**data)
@@ -324,7 +377,11 @@ def _unknown_key_message(loc: tuple[int | str, ...]) -> str:
         model = LLMConfig
     elif len(loc) == 2 and loc[0] == "redaction":
         model = RedactionConfig
-    close = difflib.get_close_matches(key, list(model.model_fields), n=1)
+    known = list(model.model_fields)
+    if model is ThreatCodeConfig:
+        # Suggest the current spelling of a renamed key, never the old one.
+        known = [n for n in known if n not in _RENAMED_KEYS] + list(_RENAMED_KEYS.values())
+    close = difflib.get_close_matches(key, known, n=1)
     hint = f" (did you mean '{close[0]}'?)" if close else ""
     return f"unknown key{hint}"
 

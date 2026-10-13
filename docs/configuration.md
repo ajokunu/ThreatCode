@@ -8,13 +8,13 @@ Settings come from four places, and the first one that sets a value wins:
 3. a config file,
 4. the built-in default.
 
-A flag that is absent counts as not set, so a config file's `min_severity` and `output_format` take effect when you do not pass the flag.
+A flag that is absent counts as not set, so a config file's `min_severity` and `format` take effect when you do not pass the flag.
 
 ## Which config file is trusted
 
 **A `.threatcode.yml` that ThreatCode finds on its own is auto-discovered, and an auto-discovered file is not trusted.**
 It sits in the repository being scanned, so whoever opens a pull request controls it.
-Only two keys are read from it, `min_severity` and `output_format`, which change what you see and never what gates.
+Only two keys are read from it, `min_severity` and `format`, which change what you see and never what gates.
 Every other key is ignored with a warning, and a note on stderr names the file and the keys it used:
 
 ```text
@@ -38,9 +38,9 @@ A removed key (`no_llm`, `dry_run`) says what replaces it.
 | Key | Type | Default | Read from an auto-discovered file |
 | --- | --- | --- | --- |
 | `min_severity` | Optional[Literal['critical', 'high', 'medium', 'low', 'info']] | unset | yes |
-| `output_format` | str \| None | unset | yes |
+| `format` (was `output_format`) | str \| None | unset | yes |
 | `fail_on` | Optional[Literal['critical', 'high', 'medium', 'low', 'info', 'none']] | unset | no |
-| `extra_rule_paths` | list[str] | none | no |
+| `rules` (was `extra_rule_paths`) | list[str] | none | no |
 | `max_nodes` | int \| None | unset | no |
 | `max_edges` | int \| None | unset | no |
 | `strict_edges` | bool | true | no |
@@ -60,8 +60,28 @@ A removed key (`no_llm`, `dry_run`) says what replaces it.
 | `redaction.fields` | list[str] | ['arn', 'account_id', 'tags', 'ip_address'] | no |
 <!-- /gen:config-keys -->
 
-`extra_rule_paths` entries that are relative resolve against the directory of the config file.
+`rules` entries that are relative resolve against the directory of the config file.
+The two keys that were called `output_format` and `extra_rule_paths` in earlier versions still load, and each prints a notice that names the new spelling.
+Giving both spellings of one key is an error.
 `max_nodes` and `max_edges` also have flags and the `THREATCODE_MAX_NODES` and `THREATCODE_MAX_EDGES` environment variables.
+
+### One setting, its names
+
+A setting has the name of its flag everywhere it can be given, except where the rest of the platform fixes a different style.
+This table is the whole mapping.
+
+| Setting | Flag | Environment variable | Config key | Action input | `scan()` argument |
+| --- | --- | --- | --- | --- | --- |
+| Output format | `--format`, `-f` | `THREATCODE_FORMAT` | `format` | `format` | none: `scan()` returns a dict, and `threatcode.formatters.render()` renders a format |
+| Extra rule files | `--rules`, `-r` | none | `rules` | `extra-rules` | `extra_rule_paths` |
+| Config file | `--config`, `-c` | none | none | `config-file` | `config_path` |
+| Failure threshold | `--fail-on` | `THREATCODE_FAIL_ON` | `fail_on` | `fail-on` | `fail_on` |
+| Lowest severity shown | `--min-severity` | `THREATCODE_MIN_SEVERITY` | `min_severity` | `min-severity` | `min_severity` |
+| Model review | `--llm`, `--no-llm` | `THREATCODE_LLM` | `llm.enabled` | none | `llm` |
+| Suppressions file | `--ignore-file` | none | none | none | `ignore_file` |
+
+The Action keeps `extra-rules` and `config-file` because its input names are already in workflows.
+`output_format` and `extra_rule_paths` are the first spellings of the `format` and `rules` config keys; they still load, with a notice.
 
 An example, saved as `threatcode.yml` and used with `--config`:
 
@@ -71,7 +91,7 @@ An example, saved as `threatcode.yml` and used with `--config`:
 cat > threatcode.yml <<'EOF'
 fail_on: critical
 min_severity: low
-output_format: markdown
+format: markdown
 redaction:
   strategy: hash
 EOF

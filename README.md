@@ -12,6 +12,13 @@ You run them as you do today, and `--ingest` joins their results to the graph, s
 ## See it work
 
 The repository ships a demo stack in [`examples/aws-webapp`](https://github.com/ajokunu/ThreatCode/tree/main/examples/aws-webapp): a load balancer, two app instances that still allow IMDSv1, a database, a customer data bucket, and a Trivy report with one critical CVE in the app image.
+The demo stacks live in the repository and are not part of the pip package, so install ThreatCode from a clone and run the command from its top directory:
+
+```bash
+git clone https://github.com/ajokunu/ThreatCode.git
+cd ThreatCode
+pip install .
+```
 
 <!-- runnable exit=1 -->
 
@@ -116,6 +123,8 @@ Exit code 1 says the gate tripped: at least one finding or attack path is at or 
 Without `--ingest` the same scan shows the same three paths and no scanner finding, and the data bucket path is `critical` because the bucket is tagged as confidential.
 
 ## Install
+
+To use ThreatCode on your own code, install it straight from GitHub:
 
 ```bash
 pip install "git+https://github.com/ajokunu/ThreatCode.git"
@@ -262,15 +271,16 @@ A `.threatcodeignore` file in the scan root takes one entry per line:
 S3_NO_LOGGING resource=aws_s3_bucket.scratch reason="scratch bucket, no data" exp:2027-01-01
 ```
 
-An entry names a rule id, a finding id, a fingerprint or a CVE, and can be scoped with `resource=` and `file=` globs.
-`--write-baseline FILE` records every current finding and `--baseline FILE` hides those findings from the gate and the listings, so a team can adopt the gate on an existing codebase and fail only on new findings.
-A baseline hides findings, not attack paths: a path still gates, because attack paths cannot be suppressed or baselined from the command line yet.
+An entry names a rule id, a finding id, a fingerprint, a CVE or an attack path id, and can be scoped with `resource=` and `file=` globs.
+`--write-baseline FILE` records every current finding and attack path, and `--baseline FILE` hides those from the gate and the listings, so a team can adopt the gate on an existing codebase and fail only on new findings and new attack paths.
+A path is recorded by its id, which comes from its route, so a path that gains or loses a hop is a new path and gates again.
+A baseline written by an older version lists no paths and hides none, so write it again.
 
 ## Configuration
 
-A `.threatcode.yml` that the scan finds on its own, in the scan root or the current directory, belongs to the repository being scanned, so it is auto-discovered and untrusted: only `min_severity` and `output_format` are read from it, the rest is ignored with a warning, and a note on stderr says which file was used.
+A `.threatcode.yml` that the scan finds on its own, in the scan root or the current directory, belongs to the repository being scanned, so it is auto-discovered and untrusted: only `min_severity` and `format` are read from it, the rest is ignored with a warning, and a note on stderr says which file was used.
 That is deliberate: a pull request must not be able to turn off its own gate, load its own rules or point the tool at its own model server.
-Everything else, `fail_on`, `extra_rule_paths`, `llm`, `redaction` and the graph limits, is read only from a file you name with `--config`.
+Everything else, `fail_on`, `rules`, `llm`, `redaction` and the graph limits, is read only from a file you name with `--config`.
 Precedence is the flag, then the `THREATCODE_FAIL_ON`, `THREATCODE_MIN_SEVERITY`, `THREATCODE_FORMAT` and `THREATCODE_LLM` variables, then the config file, then the default.
 [docs/configuration.md](https://github.com/ajokunu/ThreatCode/blob/main/docs/configuration.md) lists every key.
 

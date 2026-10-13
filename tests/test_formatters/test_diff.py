@@ -178,17 +178,36 @@ class TestComputeDiff:
         (change,) = result["changed"]
         assert change["severity_after"] == "critical"
 
-    def test_added_removed_and_changed_are_sorted_by_severity_then_title(
-        self, tmp_path: Path
-    ) -> None:
+    def test_added_removed_and_changed_are_sorted_like_the_report(self, tmp_path: Path) -> None:
+        # Severity, then resource address, then rule id, then id: the order a scan lists them in.
         added = [
-            threat("a", "low", "Zed"),
-            threat("b", "critical", "Beta"),
-            threat("c", "critical", "Alpha"),
-            threat("d", "medium", "Mid"),
+            threat("a", "low", "Zed", "r.one"),
+            threat("b", "critical", "Beta", "r.two", rule_id="Z_RULE"),
+            threat("c", "critical", "Alpha", "r.two", rule_id="A_RULE"),
+            threat("e", "critical", "Beta", "r.one"),
+            threat("d", "medium", "Mid", "r.one"),
         ]
         result = diff_of(tmp_path, [], added)
-        assert [t["id"] for t in result["added"]] == ["c", "b", "d", "a"]
+        assert [t["id"] for t in result["added"]] == ["e", "c", "b", "d", "a"]
+
+    def test_instances_of_one_resource_come_in_address_order(self, tmp_path: Path) -> None:
+        # The same finding on app[1] and app[0] has the same title; before, the random-looking
+        # fingerprint decided which came first.
+        instances = [
+            threat("zz", "critical", "CVE-2022-37434", "aws_instance.app[1]"),
+            threat("aa", "critical", "CVE-2022-37434", "aws_instance.app[0]"),
+        ]
+        result = diff_of(tmp_path, [], instances)
+        addresses = [t["resource_address"] for t in result["added"]]
+        assert addresses == ["aws_instance.app[0]", "aws_instance.app[1]"]
+        gone = diff_of(tmp_path, instances, [])
+        assert [t["resource_address"] for t in gone["removed"]] == addresses
+        worse = diff_of(
+            tmp_path,
+            [{**t, "severity": "low"} for t in instances],
+            instances,
+        )
+        assert [c["resource_address"] for c in worse["changed"]] == addresses
 
     def test_the_file_names_are_the_two_files_that_were_compared(self, tmp_path: Path) -> None:
         # Two scans of the same directory both say `input_file: infra`; the diff has to tell the
@@ -268,6 +287,34 @@ class TestFormatDiff:
         assert any(line.startswith("+ high") and "Fresh" in line for line in lines)
         assert any(line.startswith("- low") and "Gone" in line for line in lines)
         assert any(line.startswith("~ low -> high") and "Moved" in line for line in lines)
+
+    def test_text_titles_start_in_one_column(self, tmp_path: Path) -> None:
+        result = diff_of(
+            tmp_path,
+            [threat("gone", "low", "Gone title", "aws_s3_bucket.x"), threat("m", "low", "Moved")],
+            [
+                threat("new1", "high", "Fresh one", "aws_instance.app[0]"),
+                threat("new2", "critical", "Fresh two", "aws_lb.front"),
+                threat("m", "critical", "Moved", "aws_vpc.main"),
+            ],
+        )
+        lines = [ln for ln in format_diff(result, "text").splitlines()[1:] if ln[:1] in "+-~"]
+        assert len(lines) == 4
+        titles = ("Gone title", "Fresh one", "Fresh two", "Moved")
+        columns = {next(ln.index(t) for t in titles if t in ln) for ln in lines}
+        assert len(columns) == 1, lines
+
+    def test_a_very_long_address_does_not_push_every_title_away(self, tmp_path: Path) -> None:
+        long_address = "module.network." + "a" * 200
+        result = diff_of(
+            tmp_path,
+            [],
+            [threat("x", "high", "Wide", long_address), threat("y", "high", "Narrow", "b.c")],
+        )
+        narrow = next(ln for ln in format_diff(result, "text").splitlines() if "Narrow" in ln)
+        assert narrow.index("Narrow") < 100
+        wide = next(ln for ln in format_diff(result, "text").splitlines() if "Wide" in ln)
+        assert long_address in wide
 
     def test_a_scan_report_diffs_against_itself_with_no_changes(self, tmp_path: Path) -> None:
         report: ThreatReport = scan_files([FIXTURES / "terraform" / "simple.tf"]).report

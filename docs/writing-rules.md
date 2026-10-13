@@ -789,18 +789,18 @@ grep -q EXAMPLE_INSTANCE_WITHOUT_OWNER_TAG report.json
 A custom rule file decides what is reported, so it comes only from you:
 
 - `--rules FILE` on the command line, repeatable.
-- `extra_rule_paths` in a config file that you name with `--config`.
+- `rules` in a config file that you name with `--config`.
   An auto-discovered `.threatcode.yml` cannot load rules, because it belongs to the repository being scanned.
 - `extra_rule_paths=[...]` in the Python API.
 
 ```yaml
 # rules.yml, used with: threatcode scan infra/ --config rules.yml
-extra_rule_paths:
+rules:
   - rules/my_org_rules.yml
   - rules/compliance.yml
 ```
 
-Relative paths in `extra_rule_paths` resolve against the directory of the config file.
+Relative paths in `rules` resolve against the directory of the config file.
 
 ```python
 from threatcode import scan
@@ -821,7 +821,7 @@ A finding from one of your rules is a normal finding: it can be suppressed, base
 | Max total rules | 1000 |
 | Max rule file size | 1 MB |
 | Rule ID uniqueness | Global (across all loaded files) |
-| Symlinks in extra_rule_paths | Blocked |
+| Symlinks in `--rules` and `rules` | Blocked |
 | Max condition nesting depth | 10 |
 | Max property path segments | 16 |
 

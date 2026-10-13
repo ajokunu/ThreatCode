@@ -2,9 +2,12 @@
 #
 #   repos:
 #     - repo: https://github.com/ajokunu/ThreatCode
-#       rev: v0.9.1
+#       rev: main
 #       hooks:
 #         - id: threatcode
+#
+# Use main until the first release of the 1.0 line is tagged, then pin that tag; the 0.9 tags
+# predate this hook and its command line.
 #
 # The hook builds one threat model across the whole repository, because an attack path can cross
 # files; pre-commit's changed-file list would hide half of it.
