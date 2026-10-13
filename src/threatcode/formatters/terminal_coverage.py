@@ -78,12 +78,28 @@ class GapLine:
     message: str
     count: int = 1
 
+    def names_its_file(self) -> bool:
+        """Whether the message itself begins with the file, as ``Chart.yaml was rendered ...``.
+
+        Such a line is not given the file twice (``Chart.yaml: Chart.yaml was rendered``).
+        A gap with a line keeps its ``file:line`` whatever the message says, because that is the
+        part an editor can jump to.
+        """
+        if not self.file or self.line or self.count > 1:
+            return False
+        return self.message.startswith(self.file) and self.message[len(self.file) :][:1] in (
+            " ",
+            ":",
+        )
+
     def text(self) -> str:
         """``[code] file:line: message``, or ``[code] file: 252 times, first at line 12: ...``."""
         place = f" {self.file}" if self.file else ""
         if self.count > 1:
             first = f", first at line {self.line}" if self.line else ""
             return f"[{self.code}]{place}: {self.count} times{first}: {self.message}"
+        if self.names_its_file():
+            return f"[{self.code}] {self.message}"
         where = f":{self.line}" if self.file and self.line else ""
         return f"[{self.code}]{place}{where}: {self.message}"
 

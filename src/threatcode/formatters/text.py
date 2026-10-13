@@ -36,7 +36,6 @@ import os
 import shutil
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -47,19 +46,17 @@ from threatcode.formatters._utils import (
     plural,
     rule_label,
     set_aside_phrase,
-    stride_label,
     terminal_safe,
-    threat_source,
-    verdict_items,
 )
 from threatcode.formatters.terminal_coverage import error_text, gap_lines, unique_gaps
-from threatcode.formatters.terminal_layout import Run, flow, hanging, wrap
+from threatcode.formatters.terminal_layout import TIE, Run, flow, hanging, wrap
+from threatcode.formatters.terminal_table import findings_lines
+from threatcode.formatters.terminal_verdict import verdict_items
 from threatcode.models.attack_path import AttackPath
 from threatcode.models.report import ThreatReport, threat_severity
-from threatcode.models.threat import Threat, ThreatSource
+from threatcode.models.threat import Threat
 
 if TYPE_CHECKING:
-    from threatcode.ir.graph import InfraGraph
     from threatcode.models.analysis import AnalysisResult
 
 __all__ = ["format_text", "plural", "terminal_width"]
@@ -78,25 +75,13 @@ _DEFAULT_WIDTH = 100
 _MIN_WIDTH = 40
 _GAP = 2
 _SEVERITY_WIDTH = 8
-# Where the second line of a finding starts: under its resource.
-_INDENT = _SEVERITY_WIDTH + _GAP
-# A resource column narrower than this wraps an ordinary address on every row.
-_MIN_RESOURCE = 20
 _MAX_PATHS = 10
+# Files no parser recognised are named in the coverage block up to this many.
+_NAMED_FILES = 5
 _MAX_ENABLERS = 3
-_MAX_TECHNIQUES = 3
 _PATH_INDENT = 4
 # The scanned inputs are named in at least this many characters in the header.
 _MIN_LABEL = 40
-# STRIDE categories as the terminal shows them: short enough to share a line with the finding.
-_STRIDE_SHORT = {
-    "spoofing": "Spoofing",
-    "tampering": "Tampering",
-    "repudiation": "Repudiation",
-    "information_disclosure": "Info disclosure",
-    "denial_of_service": "DoS",
-    "elevation_of_privilege": "EoP",
-}
 
 
 def terminal_width(options: RenderOptions | None = None) -> int:
@@ -153,7 +138,7 @@ def format_text(analysis: AnalysisResult, options: RenderOptions | None = None) 
 
     if report.threats:
         lines.append("")
-        lines.extend(_findings(report, enabling, paint, width, analysis.graph))
+        lines.extend(findings_lines(report, enabling, paint, width, analysis.graph))
 
     lines.append("")
     lines.extend(_coverage_lines(report, width))
@@ -259,7 +244,7 @@ def _why(path: AttackPath, by_id: Mapping[str, Threat]) -> str:
     hops = max(len(path.hops) - 1, 0)
     facts = [*([terminal_safe(path.target_kind)] if path.target_kind else []), plural(hops, "hop")]
     if path.score:
-        facts.append(f"score {path.score:g}")
+        facts.append(f"score {path.score:.1f}")
     text = ", ".join(facts)
     ids = list(dict.fromkeys(i for hop in path.hops for i in hop.enabled_by))
     if ids:
@@ -270,8 +255,9 @@ def _why(path: AttackPath, by_id: Mapping[str, Threat]) -> str:
         text += f"; {plural(len(ids), 'finding')} enable{'s' if len(ids) == 1 else ''} it"
         if known:
             worst = known[0]
+            # The severity and the rule it belongs to never end up on two lines
             text += (
-                f", the worst being {threat_severity(worst).value.upper()} "
+                f", the worst being {threat_severity(worst).value.upper()}{TIE}"
                 f"{terminal_safe(rule_label(worst))}"
             )
     if path.alternatives:
@@ -340,7 +326,7 @@ def _enabler_lines(
         items: list[tuple[str, str]] = [(f"{step}:", "")]
         for threat in known[:_MAX_ENABLERS]:
             severity = threat_severity(threat).value
-            items.append((f"{severity.upper()} {terminal_safe(rule_label(threat))}", severity))
+            items.append((f"{severity.upper()}{TIE}{terminal_safe(rule_label(threat))}", severity))
         more = max(len(known) - _MAX_ENABLERS, 0)
         if more:
             items.append((f"+{more} more", ""))
@@ -353,317 +339,21 @@ def _enabler_lines(
     return out
 
 
-# ── findings ──────────────────────────────────────────────────────────
-
-
-@dataclass
-class _Row:
-    """One entry of the findings table: a finding, or the findings of one root cause."""
-
-    severity: str
-    marker: str
-    resource: str
-    rules: list[str]
-    title: str
-    paths: list[int]
-    location: str
-    techniques: list[str]
-    stride: str
-    members: int = 1
-    cause: str = ""
-
-    def path_text(self) -> str:
-        """``P1``, ``P1,P2`` or ``P1,P2+3``: the attack paths this entry enables."""
-        shown = ",".join(f"P{n}" for n in self.paths[:2])
-        return shown + (f"+{len(self.paths) - 2}" if len(self.paths) > 2 else "")
-
-
-def _sort_key(
-    threat: Threat, enabling: Mapping[str, Sequence[int]]
-) -> tuple[int, int, str, str, str]:
-    on_a_path = 0 if enabling.get(threat.id) else 1
-    return (
-        -threat_severity(threat).rank,
-        on_a_path,
-        threat.resource_address,
-        rule_label(threat),
-        threat.id,
-    )
-
-
-def _location(threat: Threat, graph: InfraGraph | None = None) -> str:
-    file, line, _end = threat_source(threat, graph)
-    if not file:
-        return ""
-    file = terminal_safe(file)
-    return f"{file}:{line}" if line else file
-
-
-def _techniques(members: Sequence[Threat]) -> list[str]:
-    seen: dict[str, None] = {}
-    for member in members:
-        for technique in member.mitre_techniques:
-            seen.setdefault(terminal_safe(technique), None)
-    return list(seen)
-
-
-def _marker(threat: Threat) -> str:
-    """``^`` when context raised the severity above the rule's own, ``v`` when it lowered it."""
-    effective = threat.effective_severity
-    if effective is None or effective == threat.severity:
-        return ""
-    return "^" if effective.rank > threat.severity.rank else "v"
-
-
-def _flow_words(metadata: Mapping[str, Any]) -> str:
-    """``tcp/8080``, ``https/443`` or ``port 22``: the protocol and ports of a boundary flow."""
-    flow_data = metadata.get("flow")
-    if not isinstance(flow_data, Mapping):
-        return ""
-    protocols = [str(p) for p in flow_data.get("protocols") or []]
-    ports = ",".join(str(p) for p in flow_data.get("ports") or [])
-    if protocols and ports:
-        return f"{protocols[0]}/{ports}"
-    if ports:
-        return f"port {ports}"
-    return protocols[0] if protocols else ""
-
-
-def _boundary_title(threat: Threat) -> str:
-    """A trust boundary finding named by what distinguishes it: the zones and the other end.
-
-    The engine's title leads with the resource that the RESOURCE column already shows and puts
-    the other end of the flow last, so every crossing from one resource reads alike.
-    """
-    meta = threat.metadata
-    source, target = meta.get("source_address"), meta.get("target_address")
-    szone, tzone = meta.get("source_zone"), meta.get("target_zone")
-    if not (
-        isinstance(source, str)
-        and isinstance(target, str)
-        and isinstance(szone, str)
-        and isinstance(tzone, str)
-        and source
-        and target
-    ):
-        return terminal_safe(threat.title)
-    if threat.resource_address == target or source == "internet":
-        direction = f"from {'the internet' if source == 'internet' else source}"
-    else:
-        direction = f"to {target}"
-    text = f"Trust boundary crossing, {szone} > {tzone}: {direction}"
-    words = _flow_words(meta)
-    if words:
-        text += f" ({words})"
-    flow_data = meta.get("flow")
-    if isinstance(flow_data, Mapping):
-        if flow_data.get("encrypted") is False:
-            text += ", unencrypted"
-        if flow_data.get("authenticated") is False:
-            text += ", unauthenticated"
-    return terminal_safe(text)
-
-
-def _rows(
-    threats: Sequence[Threat],
-    enabling: Mapping[str, Sequence[int]],
-    graph: InfraGraph | None = None,
-) -> list[_Row]:
-    """One row per finding; findings with one root cause on one resource share a row."""
-    groups: dict[tuple[str, str], list[Threat]] = {}
-    ordered: list[list[Threat]] = []
-    for threat in sorted(threats, key=lambda t: _sort_key(t, enabling)):
-        if threat.root_cause:
-            key = (threat.resource_address, threat.root_cause)
-            if key in groups:
-                groups[key].append(threat)
-                continue
-            groups[key] = [threat]
-            ordered.append(groups[key])
-        else:
-            ordered.append([threat])
-    rows: list[_Row] = []
-    for members in ordered:
-        first = members[0]
-        title = (
-            _boundary_title(first)
-            if first.source is ThreatSource.BOUNDARY
-            else terminal_safe(first.title)
-        ) or "-"
-        cause = ""
-        if len(members) > 1:
-            cause = terminal_safe(first.root_cause.replace("_", " ").replace("-", " "))
-            title += f" (+{len(members) - 1} related: {cause})"
-        rules = list(dict.fromkeys(terminal_safe(rule_label(m)) for m in members))
-        paths = sorted({n for m in members for n in enabling.get(m.id, ())})
-        rows.append(
-            _Row(
-                severity=threat_severity(first).value,
-                marker=_marker(first),
-                resource=terminal_safe(first.resource_address) or "-",
-                rules=rules,
-                title=title,
-                paths=paths,
-                location=_location(first, graph),
-                techniques=_techniques(members),
-                stride=terminal_safe(
-                    _STRIDE_SHORT.get(first.stride_category) or stride_label(first.stride_category)
-                ),
-                members=len(members),
-                cause=cause,
-            )
-        )
-    return rows
-
-
-def _technique_text(techniques: Sequence[str]) -> str:
-    shown = ",".join(techniques[:_MAX_TECHNIQUES])
-    more = len(techniques) - _MAX_TECHNIQUES
-    return f"{shown} +{more}" if more > 0 else shown
-
-
-@dataclass(frozen=True)
-class _Layout:
-    resource: int
-    rule: int
-    path: int
-    inline_rule: bool
-
-
-def _layout(rows: Sequence[_Row], width: int) -> _Layout:
-    """How wide the resource and rule columns are.
-
-    The rule id is a key and gets the width of the longest one, so it never wraps; the resource is
-    the identity of the finding and gets the rest of the line, and what does not fit wraps.
-    When the longest rule id and a readable resource do not fit side by side the rule moves to
-    a line of its own, which is how a narrow terminal is served.
-    """
-    path = max([len(r.path_text()) for r in rows] + [0])
-    path = max(path, len("PATHS")) if path else 0
-    room = width - _INDENT - (_GAP + path if path else 0)
-    rule = max(len(r.rules[0]) for r in rows)
-    resource_natural = max(len(r.resource) for r in rows)
-    if room < _MIN_RESOURCE + _GAP + rule:
-        return _Layout(resource=max(width - _INDENT, 1), rule=0, path=path, inline_rule=False)
-    resource = min(resource_natural, room - _GAP - rule)
-    return _Layout(resource=resource, rule=rule, path=path, inline_rule=True)
-
-
-def _findings(
-    report: ThreatReport,
-    enabling: Mapping[str, Sequence[int]],
-    paint: _Painter,
-    width: int,
-    graph: InfraGraph | None,
-) -> list[str]:
-    rows = _rows(report.threats, enabling, graph)
-    layout = _layout(rows, width)
-    total = len(report.threats)
-    hidden = report.coverage.hidden_findings
-    counts = f"{total} of {total + hidden} shown" if hidden else str(total)
-    if len(rows) < total:
-        counts += f", {plural(len(rows), 'row')} after grouping"
-    out = [f"Findings ({counts})"]
-    out.extend(_table_head(rows, layout, width))
-    for row in rows:
-        out.extend(_render_row(row, layout, paint, width))
-    out.extend(_legend(rows, width))
-    return out
-
-
-def _detail_heads(rows: Sequence[_Row]) -> list[str]:
-    heads = ["FINDING"]
-    if any(r.location for r in rows):
-        heads.append("LOCATION")
-    if any(r.techniques for r in rows):
-        heads.append("ATT&CK")
-    if any(r.stride for r in rows):
-        heads.append("STRIDE")
-    return heads
-
-
-def _table_head(rows: Sequence[_Row], layout: _Layout, width: int) -> list[str]:
-    indent = " " * _INDENT
-    heads = [(head, "") for head in _detail_heads(rows)]
-    detail = [
-        "".join(text for text, _ in row) for row in flow(heads, width, sep="  ", first=indent)
-    ]
-    first = "SEVERITY".ljust(_SEVERITY_WIDTH) + " " * _GAP + "RESOURCE"
-    if layout.inline_rule:
-        first = first.ljust(_INDENT + layout.resource) + " " * _GAP + "RULE"
-        if layout.path:
-            first = first.ljust(_INDENT + layout.resource + _GAP + layout.rule) + " " * _GAP
-            first += "PATHS"
-        return [first.rstrip(), *detail]
-    tail = "RULE" + (" " * _GAP + "PATHS" if layout.path else "")
-    return [first, indent + tail, *detail]
-
-
-def _render_row(row: _Row, layout: _Layout, paint: _Painter, width: int) -> list[str]:
-    indent = " " * _INDENT
-    label = f"{row.severity.upper()}{row.marker}".ljust(_SEVERITY_WIDTH)
-    resource = wrap(row.resource, layout.resource)
-    out: list[str] = []
-    if layout.inline_rule:
-        rule = wrap(row.rules[0], layout.rule)
-        path = [row.path_text()]
-        for index in range(max(len(resource), len(rule))):
-            res = resource[index] if index < len(resource) else ""
-            rul = rule[index] if index < len(rule) else ""
-            cells = [
-                (paint(label, row.severity) if index == 0 else " " * _SEVERITY_WIDTH),
-                " " * _GAP,
-                res.ljust(layout.resource),
-                " " * _GAP,
-                rul.ljust(layout.rule),
-            ]
-            if layout.path:
-                cells.extend([" " * _GAP, path[0] if index == 0 else ""])
-            out.append("".join(cells).rstrip())
-    else:
-        for index, piece in enumerate(resource):
-            lead = paint(label, row.severity) if index == 0 else " " * _SEVERITY_WIDTH
-            out.append((lead + " " * _GAP + piece).rstrip())
-        tail = row.rules[0] + (f"  {row.path_text()}" if row.paths else "")
-        out.extend(hanging(tail, width, first=indent))
-
-    detail: list[tuple[str, str]] = [(row.title, "")]
-    for text in (row.location, _technique_text(row.techniques), row.stride):
-        if text:
-            detail.append((text, "info"))
-    out.extend(paint.runs(r).rstrip() for r in flow(detail, width, sep="  ", first=indent))
-    if len(row.rules) > 1:
-        out.extend(
-            hanging(f"also {', '.join(row.rules[1:])}", width, first=indent, rest=indent + "     ")
-        )
-    return out
-
-
-def _legend(rows: Sequence[_Row], width: int) -> list[str]:
-    notes: list[str] = []
-    if any(r.marker == "^" for r in rows):
-        notes.append("^ severity raised from the rule's own by context")
-    if any(r.marker == "v" for r in rows):
-        notes.append("v lowered by context")
-    if any(r.paths for r in rows):
-        notes.append("P1, P2: the attack paths above that the finding enables")
-    if not notes:
-        return []
-    return hanging("Key: " + "; ".join(notes), width, first="", rest="     ")
-
-
 # ── coverage ──────────────────────────────────────────────────────────
 
 
 def _coverage_lines(report: ThreatReport, width: int) -> list[str]:
     cov = report.coverage
+    named = [terminal_safe(path) for path in cov.not_iac_paths[:_NAMED_FILES]]
     head = (
         f"Coverage: {plural(cov.files_discovered, 'file')} discovered, "
         f"{plural(cov.units_parsed, 'unit')} parsed"
     )
-    if cov.not_iac_count:
+    # The names say how many there are when they are all named
+    if cov.not_iac_count and (len(named) < cov.not_iac_count or not named):
         head += f", {cov.not_iac_count} not infrastructure"
     lines = hanging(head, width, rest="  ")
+    lines.extend(_not_infrastructure_lines(cov.not_iac_count, named, width))
     skipped = []
     if cov.symlinks_skipped:
         skipped.append(plural(cov.symlinks_skipped, "symlink"))
@@ -707,6 +397,18 @@ def _coverage_lines(report: ThreatReport, width: int) -> list[str]:
             )
         )
     return lines
+
+
+def _not_infrastructure_lines(count: int, named: Sequence[str], width: int) -> list[str]:
+    """The files no parser recognised, by name: a count alone cannot be acted on.
+
+    The report holds the first twenty paths; the first few are named and the rest counted.
+    """
+    if not named:
+        return []
+    left = count - len(named)
+    tail = f" and {plural(left, 'more file')}" if left > 0 else ""
+    return hanging(f"Not infrastructure: {', '.join(named)}{tail}", width, first="  ", rest="    ")
 
 
 def _set_aside_lines(report: ThreatReport, width: int) -> list[str]:

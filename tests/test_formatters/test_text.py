@@ -245,7 +245,9 @@ class TestTextReport:
             1, stride="information_disclosure", mitre_techniques=["T1530", "T1078"]
         )
         text = format_text(analysis_of(threat), RenderOptions(width=200))
-        assert "Finding number 1  main.tf:2  T1530,T1078  Info disclosure" in text
+        (found,) = entries(text)
+        assert found.body[0] == "Finding number 1"
+        assert re.split(r"\s{2,}", found.body[1]) == ["main.tf:2", "T1530,T1078", "Info disclosure"]
 
     def test_a_long_technique_list_ends_in_a_count_never_in_half_an_id(self) -> None:
         techniques = ["T1548", "T1611", "T1105", "T1190", "T1078.004"]
@@ -485,6 +487,52 @@ class TestCoverageSummary:
         assert "[hcl.module_call_skipped] main.tf: module vpc not analysed" in text
         assert "Rule errors: 3 rule evaluations failed" in text
         assert "No input errors" not in text
+
+    def test_the_files_no_parser_recognised_are_named(self, analysis: AnalysisResult) -> None:
+        coverage = Coverage(
+            files_discovered=4,
+            units_parsed=2,
+            not_iac_count=2,
+            not_iac_paths=["expected.yml", "scanner/trivy.json"],
+        )
+        text = self._report(analysis, coverage)
+        assert "Coverage: 4 files discovered, 2 units parsed\n" in text
+        assert "  Not infrastructure: expected.yml, scanner/trivy.json\n" in text
+        assert "2 not infrastructure" not in text
+
+    def test_the_names_are_a_sample_and_the_rest_are_counted(
+        self, analysis: AnalysisResult
+    ) -> None:
+        paths = [f"docs/page{n}.yml" for n in range(20)]
+        coverage = Coverage(
+            files_discovered=40, units_parsed=1, not_iac_count=32, not_iac_paths=paths
+        )
+        text = self._report(analysis, coverage)
+        assert "1 unit parsed, 32 not infrastructure" in text
+        assert (
+            "Not infrastructure: docs/page0.yml, docs/page1.yml, docs/page2.yml, "
+            "docs/page3.yml, docs/page4.yml and 27 more files"
+        ) in " ".join(line.strip() for line in text.splitlines())
+        assert "docs/page5.yml" not in text
+
+    def test_one_unnamed_file_is_counted_when_the_report_holds_no_names(
+        self, analysis: AnalysisResult
+    ) -> None:
+        text = self._report(analysis, Coverage(units_parsed=1, not_iac_count=1))
+        assert "1 not infrastructure" in text and "Not infrastructure:" not in text
+
+    def test_nothing_is_said_when_every_file_was_infrastructure(
+        self, analysis: AnalysisResult
+    ) -> None:
+        text = self._report(analysis, Coverage(files_discovered=2, units_parsed=2))
+        assert "infrastructure" not in text
+
+    def test_a_file_name_with_a_control_sequence_is_made_safe(
+        self, analysis: AnalysisResult
+    ) -> None:
+        coverage = Coverage(units_parsed=1, not_iac_count=1, not_iac_paths=["evil\x1b[2J\x07.yml"])
+        text = self._report(analysis, coverage)
+        assert "\x1b" not in text.replace("\\x1b", "") and "\x07" not in text
 
     def test_attack_paths_set_aside_are_counted_apart_from_findings(
         self, analysis: AnalysisResult
