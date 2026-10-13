@@ -29,19 +29,19 @@ Verdict: 1 critical, 4 high, 1 medium, 2 attack paths from the internet to priva
 
 Attack paths (2)
 P1  HIGH      internet -> mcp_server.filesystem
-    private data, 3 hops, score 7.5; 4 findings enable it, the worst being CRITICAL
-    MCP_SECRET_IN_CONFIG.
+    private data, 3 hops, score 7.5; 4 findings enable it, the worst being
+    CRITICAL MCP_SECRET_IN_CONFIG.
     internet > mcp_server.team-tools > mcp_agent.config > mcp_server.filesystem
     enabled by:
-      mcp_server.team-tools -> mcp_agent.config over http: CRITICAL MCP_SECRET_IN_CONFIG, HIGH
-        MCP_PLAINTEXT_TRANSPORT
+      mcp_server.team-tools -> mcp_agent.config over http: CRITICAL MCP_SECRET_IN_CONFIG,
+        HIGH MCP_PLAINTEXT_TRANSPORT
       mcp_agent.config -> mcp_server.filesystem over stdio: HIGH MCP_LETHAL_TRIFECTA
       mcp_server.filesystem: HIGH MCP_BROAD_FILESYSTEM
     ignore id: 09e365839d4b
 
 P2  HIGH      internet -> mcp_server.filesystem
-    private data, 3 hops, score 7.5; 3 findings enable it, the worst being HIGH
-    MCP_BROAD_FILESYSTEM.
+    private data, 3 hops, score 7.5; 3 findings enable it, the worst being
+    HIGH MCP_BROAD_FILESYSTEM.
     internet > mcp_server.fetch > mcp_agent.config > mcp_server.filesystem
     enabled by:
       mcp_server.fetch -> mcp_agent.config over stdio: MEDIUM MCP_UNPINNED_PACKAGE
@@ -51,24 +51,31 @@ P2  HIGH      internet -> mcp_server.filesystem
 
 Findings (6)
 SEVERITY  RESOURCE               RULE                       PATHS
-          FINDING  LOCATION  ATT&CK  STRIDE
+          FINDING
+          LOCATION      ATT&CK       STRIDE
 CRITICAL  mcp_server.team-tools  MCP_SECRET_IN_CONFIG       P1
-          Literal credential in MCP server configuration  .mcp.json:11  T1552.001  Info disclosure
+          Literal credential in MCP server configuration
+          .mcp.json:11  T1552.001    Info disclosure
 HIGH      mcp_agent.config       MCP_LETHAL_TRIFECTA        P1,P2
-          Agent can read private data, ingest untrusted content and exfiltrate or act  .mcp.json:2
-          T1567  Info disclosure
+          Agent can read private data, ingest untrusted content and exfiltrate or act
+          .mcp.json:2   T1567        Info disclosure
 HIGH      mcp_server.filesystem  MCP_BROAD_FILESYSTEM       P1,P2
-          MCP server given the whole disk or a home directory  .mcp.json:7  T1005  EoP
+          MCP server given the whole disk or a home directory
+          .mcp.json:7   T1005        EoP
 HIGH      mcp_server.team-tools  MCP_PLAINTEXT_TRANSPORT    P1
-          Remote MCP server over unencrypted HTTP  .mcp.json:11  T1040,T1557  Info disclosure
+          Remote MCP server over unencrypted HTTP
+          .mcp.json:11  T1040,T1557  Info disclosure
 HIGH      mcp_server.team-tools  BOUNDARY_UNENCRYPTED_FLOW
           Trust boundary crossing, internet > private: to mcp_agent.config (http), unencrypted
-          .mcp.json:11  T1040  Info disclosure
+          .mcp.json:11  T1040        Info disclosure
 MEDIUM    mcp_server.fetch       MCP_UNPINNED_PACKAGE       P2
-          MCP server launched from an unpinned package or image  .mcp.json:3  T1195.002  Tampering
+          MCP server launched from an unpinned package or image
+          .mcp.json:3   T1195.002    Tampering
+
 Key: P1, P2: the attack paths above that the finding enables
 
-Coverage: 2 files discovered, 1 unit parsed, 1 not infrastructure
+Coverage: 2 files discovered, 1 unit parsed
+  Not infrastructure: expected.yml
   No input errors or coverage gaps were recorded.
 ```
 <!-- /gen:report -->

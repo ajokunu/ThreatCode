@@ -1418,7 +1418,6 @@ class TestTheHarnessCanFail:
             "threatcode scan infra/ --min-severity urgent",
             "threatcode scan infra/ --no-such-flag",
             "threatcode --no-color scan",
-            "threatcode scan infra/ --no-color",
             "threatcode fs .",
             "threatcode scan infra/ -f cyclonedx",
         ],
@@ -1432,6 +1431,7 @@ class TestTheHarnessCanFail:
         "line",
         [
             "threatcode scan infra/",
+            "threatcode scan infra/ --no-color",
             "threatcode -q --no-color scan infra/ -f sarif -o out.sarif --fail-on high",
             "terraform show -json tfplan | threatcode scan - --stdin-name plan.json",
             "threatcode diff base.json current.json --fail-on-new high",

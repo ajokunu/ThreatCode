@@ -38,61 +38,70 @@ Verdict: 2 critical, 5 high, 6 medium, 1 low, 3 attack paths from the internet t
 
 Attack paths (3)
 P1  CRITICAL  internet -> aws_s3_bucket.customer_data
-    data store, 5 hops, score 9.2; 3 findings enable it, the worst being CRITICAL
-    trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same resources.
+    data store, 5 hops, score 9.2; 3 findings enable it, the worst being
+    CRITICAL trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same
+    resources.
     internet > aws_lb.front > aws_instance.app[0] > aws_iam_instance_profile.app > aws_iam_role.app
     > aws_s3_bucket.customer_data
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434, HIGH
-        EC2_IMDSV1
+      aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434,
+        HIGH EC2_IMDSV1
     ignore id: 5453d439158d
 
 P2  CRITICAL  internet -> aws_secretsmanager_secret.db_credentials
-    secret store, 5 hops, score 9; 3 findings enable it, the worst being CRITICAL
-    trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same resources.
+    secret store, 5 hops, score 9.0; 3 findings enable it, the worst being
+    CRITICAL trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same
+    resources.
     internet > aws_lb.front > aws_instance.app[0] > aws_iam_instance_profile.app > aws_iam_role.app
     > aws_secretsmanager_secret.db_credentials
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434, HIGH
-        EC2_IMDSV1
+      aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434,
+        HIGH EC2_IMDSV1
     ignore id: 1e87639aaf0e
 
 P3  CRITICAL  internet -> aws_db_instance.orders
-    data store, 3 hops, score 9; 3 findings enable it, the worst being CRITICAL
-    trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same resources.
+    data store, 3 hops, score 9.0; 3 findings enable it, the worst being
+    CRITICAL trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same
+    resources.
     internet > aws_lb.front > aws_instance.app[0] > aws_db_instance.orders
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_instance.app[0] -> aws_db_instance.orders on tcp/5432: CRITICAL trivy:CVE-2022-37434, HIGH
-        EC2_IMDSV1
+      aws_instance.app[0] -> aws_db_instance.orders on tcp/5432: CRITICAL trivy:CVE-2022-37434,
+        HIGH EC2_IMDSV1
     ignore id: e716deafaabc
 
 Findings (14)
 SEVERITY  RESOURCE                                  RULE                       PATHS
-          FINDING  LOCATION  ATT&CK  STRIDE
+          FINDING
+          LOCATION         ATT&CK           STRIDE
 CRITICAL  aws_instance.app[0]                       trivy:CVE-2022-37434       P1,P2+1
           CVE-2022-37434: zlib: heap-based buffer over-read and overflow in inflate() in inflate.c
-          via a large gzip header extra field  tfplan.json:484  EoP
+            via a large gzip header extra field
+          tfplan.json:484                   EoP
 CRITICAL  aws_instance.app[1]                       trivy:CVE-2022-37434
           CVE-2022-37434: zlib: heap-based buffer over-read and overflow in inflate() in inflate.c
-          via a large gzip header extra field  tfplan.json:532  EoP
+            via a large gzip header extra field
+          tfplan.json:532                   EoP
 HIGH^     aws_instance.app[0]                       EC2_IMDSV1                 P1,P2+1
-          EC2 instance metadata service allows IMDSv1  tfplan.json:484  T1552.005  EoP
+          EC2 instance metadata service allows IMDSv1
+          tfplan.json:484  T1552.005        EoP
 HIGH^     aws_instance.app[1]                       EC2_IMDSV1
-          EC2 instance metadata service allows IMDSv1  tfplan.json:532  T1552.005  EoP
+          EC2 instance metadata service allows IMDSv1
+          tfplan.json:532  T1552.005        EoP
 HIGH      aws_lb.front                              BOUNDARY_GENERIC_FLOW
-          Trust boundary crossing, dmz > private: to aws_instance.app[0] (tcp/8080)  tfplan.json:351
-          T1565.002  Tampering
+          Trust boundary crossing, dmz > private: to aws_instance.app[0] (tcp/8080)
+          tfplan.json:351  T1565.002        Tampering
 HIGH      aws_lb.front                              BOUNDARY_GENERIC_FLOW
-          Trust boundary crossing, dmz > private: to aws_instance.app[1] (tcp/8080)  tfplan.json:351
-          T1565.002  Tampering
+          Trust boundary crossing, dmz > private: to aws_instance.app[1] (tcp/8080)
+          tfplan.json:351  T1565.002        Tampering
 HIGH^     aws_s3_bucket.customer_data               S3_NO_VERSIONING
-          S3 bucket without versioning  tfplan.json:660  T1485  DoS
+          S3 bucket without versioning
+          tfplan.json:660  T1485            DoS
 MEDIUM    aws_instance.app[0]                       BOUNDARY_GENERIC_FLOW
           Trust boundary crossing, private > data: to aws_db_instance.orders (tcp/5432)
           tfplan.json:484  T1530,T1565.002  Tampering
@@ -100,21 +109,26 @@ MEDIUM    aws_instance.app[1]                       BOUNDARY_GENERIC_FLOW
           Trust boundary crossing, private > data: to aws_db_instance.orders (tcp/5432)
           tfplan.json:532  T1530,T1565.002  Tampering
 MEDIUM    aws_lb.front                              BOUNDARY_GENERIC_FLOW
-          Trust boundary crossing, internet > dmz: from the internet (tcp/443)  tfplan.json:351
-          T1190,T1565.002  Tampering
+          Trust boundary crossing, internet > dmz: from the internet (tcp/443)
+          tfplan.json:351  T1190,T1565.002  Tampering
 MEDIUM^   aws_s3_bucket.customer_data               S3_NO_LOGGING
-          S3 bucket without access logging  tfplan.json:660  Repudiation
+          S3 bucket without access logging
+          tfplan.json:660                   Repudiation
 MEDIUM    aws_secretsmanager_secret.db_credentials  SM_NO_ROTATION
-          Secrets Manager secret without rotation  tfplan.json:721  T1555.006  Info disclosure
+          Secrets Manager secret without rotation
+          tfplan.json:721  T1555.006        Info disclosure
 MEDIUM    aws_vpc.main                              VPC_NO_FLOW_LOGS
-          VPC without flow logs  tfplan.json:12  Repudiation
+          VPC without flow logs
+          tfplan.json:12                    Repudiation
 LOW       aws_security_group.alb                    SG_WEB_PORT_OPEN_TO_WORLD  P1,P2+1
-          Security group allows the internet to reach a web port  tfplan.json:219  T1190  Info
-          disclosure
+          Security group allows the internet to reach a web port
+          tfplan.json:219  T1190            Info disclosure
+
 Key: ^ severity raised from the rule's own by context; P1, P2: the attack paths above that the
      finding enables
 
-Coverage: 3 files discovered, 1 unit parsed, 2 not infrastructure
+Coverage: 3 files discovered, 1 unit parsed
+  Not infrastructure: expected.yml, scanner/trivy-app-image.json
   No input errors or coverage gaps were recorded.
 ```
 <!-- /gen:example-report -->

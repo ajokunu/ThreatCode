@@ -75,19 +75,23 @@ P3  HIGH      internet -> aws_db_instance.orders
 
 Findings (12)
 SEVERITY  RESOURCE                                  RULE                       PATHS
-          FINDING  LOCATION  ATT&CK  STRIDE
+          FINDING
+          LOCATION         ATT&CK           STRIDE
 HIGH^     aws_instance.app[0]                       EC2_IMDSV1                 P1,P2+1
-          EC2 instance metadata service allows IMDSv1  tfplan.json:484  T1552.005  EoP
+          EC2 instance metadata service allows IMDSv1
+          tfplan.json:484  T1552.005        EoP
 HIGH^     aws_instance.app[1]                       EC2_IMDSV1
-          EC2 instance metadata service allows IMDSv1  tfplan.json:532  T1552.005  EoP
+          EC2 instance metadata service allows IMDSv1
+          tfplan.json:532  T1552.005        EoP
 HIGH      aws_lb.front                              BOUNDARY_GENERIC_FLOW
-          Trust boundary crossing, dmz > private: to aws_instance.app[0] (tcp/8080)  tfplan.json:351
-          T1565.002  Tampering
+          Trust boundary crossing, dmz > private: to aws_instance.app[0] (tcp/8080)
+          tfplan.json:351  T1565.002        Tampering
 HIGH      aws_lb.front                              BOUNDARY_GENERIC_FLOW
-          Trust boundary crossing, dmz > private: to aws_instance.app[1] (tcp/8080)  tfplan.json:351
-          T1565.002  Tampering
+          Trust boundary crossing, dmz > private: to aws_instance.app[1] (tcp/8080)
+          tfplan.json:351  T1565.002        Tampering
 HIGH^     aws_s3_bucket.customer_data               S3_NO_VERSIONING
-          S3 bucket without versioning  tfplan.json:660  T1485  DoS
+          S3 bucket without versioning
+          tfplan.json:660  T1485            DoS
 MEDIUM    aws_instance.app[0]                       BOUNDARY_GENERIC_FLOW
           Trust boundary crossing, private > data: to aws_db_instance.orders (tcp/5432)
           tfplan.json:484  T1530,T1565.002  Tampering
@@ -95,21 +99,26 @@ MEDIUM    aws_instance.app[1]                       BOUNDARY_GENERIC_FLOW
           Trust boundary crossing, private > data: to aws_db_instance.orders (tcp/5432)
           tfplan.json:532  T1530,T1565.002  Tampering
 MEDIUM    aws_lb.front                              BOUNDARY_GENERIC_FLOW
-          Trust boundary crossing, internet > dmz: from the internet (tcp/443)  tfplan.json:351
-          T1190,T1565.002  Tampering
+          Trust boundary crossing, internet > dmz: from the internet (tcp/443)
+          tfplan.json:351  T1190,T1565.002  Tampering
 MEDIUM^   aws_s3_bucket.customer_data               S3_NO_LOGGING
-          S3 bucket without access logging  tfplan.json:660  Repudiation
+          S3 bucket without access logging
+          tfplan.json:660                   Repudiation
 MEDIUM    aws_secretsmanager_secret.db_credentials  SM_NO_ROTATION
-          Secrets Manager secret without rotation  tfplan.json:721  T1555.006  Info disclosure
+          Secrets Manager secret without rotation
+          tfplan.json:721  T1555.006        Info disclosure
 MEDIUM    aws_vpc.main                              VPC_NO_FLOW_LOGS
-          VPC without flow logs  tfplan.json:12  Repudiation
+          VPC without flow logs
+          tfplan.json:12                    Repudiation
 LOW       aws_security_group.alb                    SG_WEB_PORT_OPEN_TO_WORLD  P1,P2+1
-          Security group allows the internet to reach a web port  tfplan.json:219  T1190  Info
-          disclosure
+          Security group allows the internet to reach a web port
+          tfplan.json:219  T1190            Info disclosure
+
 Key: ^ severity raised from the rule's own by context; P1, P2: the attack paths above that the
      finding enables
 
-Coverage: 3 files discovered, 1 unit parsed, 2 not infrastructure
+Coverage: 3 files discovered, 1 unit parsed
+  Not infrastructure: expected.yml, scanner/trivy-app-image.json
   No input errors or coverage gaps were recorded.
 ```
 <!-- /gen:example-report -->
