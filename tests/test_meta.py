@@ -725,6 +725,22 @@ def test_the_package_job_checks_the_source_distribution() -> None:
     assert "tar tzf" in package and "tests/conftest.py" in package
 
 
+def test_the_docs_are_published_from_main_only_after_a_strict_build() -> None:
+    """The site goes out on a push to main, never for a pull request, and only after a build."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "docs.yml").read_text("utf-8"))
+    triggers = workflow[True] if True in workflow else workflow["on"]  # YAML reads `on` as True
+    assert set(triggers) == {"push", "workflow_dispatch"}
+    assert triggers["push"]["branches"] == ["main"]
+    build = [step.get("run", "") for step in workflow["jobs"]["build"]["steps"]]
+    assert "mkdocs build --strict" in build
+    assert workflow["jobs"]["deploy"]["needs"] == "build"
+    # Only the deploy job may write Pages; the workflow itself is read-only
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["jobs"]["deploy"]["permissions"] == {"pages": "write", "id-token": "write"}
+
+
 def test_the_dockerfile_tests_pass_from_another_working_directory(tmp_path: Path) -> None:
     """Fixtures are found from the test file, so the directory pytest starts in does not matter."""
     target = TESTS_DIR / "test_parsers" / "test_dockerfile.py"
