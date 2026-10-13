@@ -59,6 +59,8 @@ These are the gaps to know:
 | `k8s.skipped_document` | A YAML document is not a Kubernetes object (no `kind`, or not a mapping). | Fix the document. |
 | `ingest.unattached` | A scanner finding named an image, file or directory that no resource has. | Check the scanner ran on the same tree. |
 
+Diagnostics at the info level (`plan.unknown_values`, `plan.data_source`, `hcl.dynamic_block`) are recorded in the report but are not gaps, and they do not trip `--strict`.
+
 `enrich.unresolved_companion` exists so that an unresolved link is never silent.
 When a companion cannot be tied to its target, the facts it would have set are marked unknown on every resource of the right kind in that input, and a rule never reports a verdict that rests on an unknown fact.
 So `S3_NO_VERSIONING` is not reported for a bucket whose versioning resource points at `var.bucket`, because that resource might be configuring it, and the gap tells you the finding was held back and why.

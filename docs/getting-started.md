@@ -126,7 +126,7 @@ Read it from the top.
   `plus 1 equivalent route` counts routes through other instances of the same resources, such as `aws_instance.app[1]`, which are folded into the path shown.
 - **The findings table** lists every finding, most severe first.
   The RULE column is the rule id.
-  A trust boundary crossing is a finding like any other and carries a `BOUNDARY_*` id (`BOUNDARY_GENERIC_FLOW`, `BOUNDARY_UNENCRYPTED_FLOW`), and a result ingested from another scanner is prefixed with the tool, such as `trivy:CVE-2022-37434`.
+  A trust boundary crossing is a finding like any other and carries a `BOUNDARY_*` id (`BOUNDARY_GENERIC_FLOW`, `BOUNDARY_UNENCRYPTED_FLOW`; the JSON report has it in `metadata.boundary_rule`), and a result ingested from another scanner is prefixed with the tool, such as `trivy:CVE-2022-37434`.
   The PATHS column names the attack paths that finding enables, so you can tell the findings that matter for an attack from the ones that do not.
 - **The severity mark** after a severity says that context moved it from the rule's own: `^` raised it, `v` lowered it.
   `HIGH^` on `EC2_IMDSV1` means the rule assigns medium and the instance is reachable from the internet.

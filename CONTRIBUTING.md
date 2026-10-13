@@ -75,4 +75,4 @@ Add a line for every change a user can see under `[Unreleased]` in `CHANGELOG.md
 
 ## Commits
 
-Use conventional messages (`fix(parsers): ...`, `docs: ...`), keep a commit to one change, and do not add co-author trailers.
+Use conventional messages (`fix(parsers): ...`, `docs: ...`) and keep a commit to one change.
