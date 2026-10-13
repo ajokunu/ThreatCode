@@ -20,6 +20,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from threatcode.formatters._utils import rule_label
 from threatcode.models.report import threat_severity
 
 if TYPE_CHECKING:
@@ -420,7 +421,7 @@ def _enabler(threat_id: str, by_id: Mapping[str, Threat]) -> Enabler:
         return Enabler(threat_id, threat_id, "", None, False)
     return Enabler(
         threat_id,
-        threat.rule_id or threat.source.value,
+        rule_label(threat),
         threat.title,
         threat_severity(threat),
         True,

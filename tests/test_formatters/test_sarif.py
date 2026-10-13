@@ -639,7 +639,8 @@ class TestTagsAndHelp:
         assert "\\<b>" in help_["markdown"]
         assert "<b>" not in help_["markdown"].replace("\\<b>", "")
         assert "[x](" not in help_["markdown"]
-        assert "@octocat" not in help_["markdown"]
+        assert "`@octocat`" in help_["markdown"]
+        assert "@octocat" not in help_["markdown"].replace("`@octocat`", "")
         assert help_["text"].startswith("Use *less*")
 
     def test_an_empty_mitigation_and_no_techniques_omit_help_markdown(self) -> None:
@@ -719,8 +720,10 @@ class TestMessages:
         assert "\\`curl" in markdown
         assert "`curl" not in markdown.replace("\\`curl", "")
         assert "\n## Heading" not in markdown
-        assert "@octocat" not in markdown
-        assert "http://evil" not in markdown
+        assert "`@octocat`" in markdown
+        assert "@octocat" not in markdown.replace("`@octocat`", "")
+        assert "`http://evil`" in markdown
+        assert "http://evil" not in markdown.replace("`http://evil`", "")
 
     def test_llm_results_are_tagged_advisory(self) -> None:
         result = run_of(llm_threat("l1", "a"))["results"][0]
@@ -971,7 +974,8 @@ class TestAttackPaths:
         result = next(r for r in run["results"] if r["ruleId"].startswith(ATTACK_PATH_RULE))
         steps = result["codeFlows"][0]["threadFlows"][0]["locations"]
         texts = [s["location"]["message"]["text"] for s in steps]
-        assert texts[1].startswith("Hop 2: aws_lb.web -> aws_instance.app (network_flow")
+        assert texts[1].startswith("Hop 2: aws_lb.web -> aws_instance.app (sends traffic on ")
+        assert all("network_flow" not in text for text in texts)
         assert "enabled by LB_OPEN" in texts[1]
         assert "enabled by" not in texts[2]
 
@@ -993,7 +997,9 @@ class TestAttackPaths:
 
     def test_a_hop_message_names_the_ports_of_a_flow(self) -> None:
         result = self.result_for(make_path(), path_graph())
-        assert "(network_flow" in result["relatedLocations"][0]["message"]["text"]
+        text = result["relatedLocations"][0]["message"]["text"]
+        assert "(sends traffic on HTTPS 443)" in text
+        assert "network_flow" not in text and "data_flow" not in text
 
     def test_every_hop_is_a_related_location(self) -> None:
         related = self.result_for(make_path(), path_graph())["relatedLocations"]

@@ -318,9 +318,11 @@ class TestEscaping:
 
     def test_mentions_are_defused(self) -> None:
         text = format_markdown(self.report())
-        assert f"@{ZWJ}octocat" in text
-        assert f"@{ZWJ}org/security-team" in text
-        assert "@octocat" not in text and "@org" not in text
+        assert "`@octocat`" in text
+        assert "`@org/security-team`" in text
+        outside_code = re.sub(r"(`+).+?\1", "", text)
+        assert "@octocat" not in outside_code and "@org" not in outside_code
+        assert ZWJ not in text
 
     def test_the_mitigation_cannot_leave_its_blockquote(self) -> None:
         lines = format_markdown(self.report()).splitlines()
@@ -1011,7 +1013,7 @@ class TestUrls:
         assert "://" not in outside_code
         assert "](http" not in outside_code
         assert not re.search(r"(?<!\\)<script>", outside_code)
-        assert f"@{ZWJ}octocat" in text
+        assert "`@octocat`" in text
 
     def test_private_use_characters_cannot_forge_a_url_slot(self) -> None:
         text = format_markdown(self.report("odd 0 text  end"))

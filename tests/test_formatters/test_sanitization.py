@@ -83,23 +83,40 @@ class TestMdInline:
         assert md_inline("_emphasis_ here") == "\\_emphasis\\_ here"
         assert md_inline("snake_ case") == "snake\\_ case"
 
-    def test_mentions_are_defused_with_a_zero_width_joiner(self) -> None:
+    def test_mentions_are_code_spans(self) -> None:
         out = md_inline("CC @octocat and @org/security-team, (@x) and a@b.com")
-        assert f"@{ZWJ}octocat" in out
-        assert f"@{ZWJ}org/security-team" in out
-        assert f"(@{ZWJ}x)" in out
-        assert "a@b.com" in out
-        assert "@octocat" not in out and "@org" not in out
+        assert out == "CC `@octocat` and `@org/security-team`, (`@x`) and a@b.com"
+        assert ZWJ not in out
 
-    def test_issue_references_are_defused(self) -> None:
-        out = md_inline("fixes #123 and org/repo#45")
-        assert f"#{ZWJ}123" in out and f"#{ZWJ}45" in out
-        assert "#123" not in out
+    def test_issue_references_are_code_spans(self) -> None:
+        out = md_inline("fixes #123 and org/repo#45, see #abc and C# and #")
+        assert out == "fixes `#123` and org/repo`#45`, see #abc and C# and #"
+        assert ZWJ not in out
 
-    def test_bare_urls_do_not_become_links(self) -> None:
+    def test_bare_urls_are_code_spans_that_copy_exactly(self) -> None:
         out = md_inline("see https://evil.example/x and HTTP://E.example and ftp://f")
-        assert "https://" not in out and "HTTP://" not in out and "ftp://" not in out
-        assert f"https:{ZWJ}//evil.example/x" in out
+        assert out == "see `https://evil.example/x` and `HTTP://E.example` and `ftp://f`"
+        assert ZWJ not in out
+
+    def test_trailing_punctuation_stays_outside_the_span(self) -> None:
+        out = md_inline("See http://a.example. Then (see http://a.example), or http://a.example!")
+        assert out == (
+            "See `http://a.example`. Then (see `http://a.example`), or `http://a.example`!"
+        )
+
+    def test_a_mention_inside_an_address_is_not_wrapped_twice(self) -> None:
+        out = md_inline("https://example.com/@octocat#12 ok")
+        assert out == "`https://example.com/@octocat#12` ok"
+
+    def test_a_bare_scheme_without_an_address_is_plain_text(self) -> None:
+        assert md_inline("http://") == "http://"
+
+    def test_hostile_markup_next_to_a_span_is_still_escaped(self) -> None:
+        out = md_inline("<script>@octocat</script> [x](http://e) *b* | ~")
+        assert out == "\\<script>`@octocat`\\</script> \\[x\\](`http://e`) \\*b\\* \\| \\~"
+
+    def test_private_use_characters_cannot_forge_a_span(self) -> None:
+        assert md_inline("odd \ue0000\ue001 x") == "odd 0 x"
 
     def test_arrows_and_parentheses_stay_readable(self) -> None:
         assert md_inline("internet -> private (cpu, memory)") == "internet -> private (cpu, memory)"
