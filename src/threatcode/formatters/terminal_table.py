@@ -4,12 +4,15 @@ Each finding is a small block of lines that always reads in the same order:
 
 .. code-block:: text
 
-    SEVERITY  RESOURCE              RULE              PATHS
+    SEVERITY  RESOURCE             RULE
               FINDING
-              LOCATION         ATT&CK      STRIDE
-    HIGH^     aws_instance.app[0]  EC2_IMDSV1        P1,P2+1
+              LOCATION         ATT&CK     STRIDE
+    HIGH^     aws_instance.app[0]  EC2_IMDSV1
               EC2 instance metadata service allows IMDSv1
-              tfplan.json:484  T1552.005   EoP
+              tfplan.json:484  T1552.005  EoP
+    MEDIUM    aws_vpc.main         VPC_NO_FLOW_LOGS
+              VPC without flow logs
+              tfplan.json:12              Repudiation
 
 The first line is the identity: the severity, the resource, the rule (the key a suppression is
 written with, always printed whole) and the attack paths the finding enables.

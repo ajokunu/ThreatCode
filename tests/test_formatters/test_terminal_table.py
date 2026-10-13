@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ from threatcode.models.attack_path import AttackHop, AttackPath
 from threatcode.models.threat import Severity, ThreatSource
 
 HEAD = ("LOCATION", "ATT&CK", "STRIDE")
+EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples"
 
 
 def section(text: str) -> list[str]:
@@ -307,28 +309,21 @@ class TestUnmatchedScannerFindings:
         text = format_text(analysis_of(matched), RenderOptions(width=120))
         assert "(unmatched)" not in text and "aws_instance.app[0]" in text
 
-    def test_the_bundled_example_with_an_unreachable_image_names_the_gap(self) -> None:
-        # Reads the real ingest: the image in the file is not the one the plan runs
-        import json
-        import tempfile
-        from pathlib import Path
-
+    def test_a_real_scan_whose_image_is_not_in_the_plan_prints_the_row_as_unmatched(
+        self, tmp_path: Path
+    ) -> None:
         from threatcode.pipeline import prepare_request, run_scan
 
-        source = Path(__file__).resolve().parents[2] / "examples" / "aws-webapp"
-        data = (source / "scanner" / "trivy-app-image.json").read_text()
-        data = data.replace(
-            "registry.example.com/shop/orders-api", "registry.example.com/other/zzz"
+        source = EXAMPLE_DIR / "aws-webapp"
+        report = (source / "scanner" / "trivy-app-image.json").read_text()
+        ingest = tmp_path / "trivy.json"
+        ingest.write_text(
+            report.replace("registry.example.com/shop/orders-api", "registry.example.com/other/zzz")
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            ingest = Path(tmp) / "trivy.json"
-            ingest.write_text(data)
-            json.loads(data)
-            prepared = prepare_request(
-                [source], min_severity="info", no_ignore=True, no_timestamp=True, ingest=[ingest]
-            )
-            result = run_scan(prepared.request)
-        text = format_text(result.analysis, RenderOptions(width=120))
+        prepared = prepare_request(
+            [source], min_severity="info", no_ignore=True, no_timestamp=True, ingest=[ingest]
+        )
+        text = format_text(run_scan(prepared.request).analysis, RenderOptions(width=120))
         orphans = [b for b in blocks(text) if "(unmatched)" in b[0]]
         assert len(orphans) == 1 and "trivy:CVE-2022-37434" in orphans[0][0]
 
@@ -455,3 +450,47 @@ class TestAnyTableAtAnyWidth:
             assert f"{threat.location_file}:{threat.location_start_line}" in flat
         assert len(blocks(text)) == len(threats)
         assert all(line.strip() for line in section(text))
+
+
+EXAMPLES = [
+    ("aws-webapp", False),
+    ("aws-webapp", True),
+    ("k8s-platform", False),
+    ("agent-workstation", False),
+]
+
+
+class TestTheBundledExamplesAreTidy:
+    @pytest.mark.parametrize(("name", "ingest"), EXAMPLES)
+    @pytest.mark.parametrize("width", [80, 100, 120, 160])
+    def test_no_line_ends_in_a_space_and_none_is_wider_than_the_terminal(
+        self, name: str, ingest: bool, width: int
+    ) -> None:
+        text = format_text(example(name, ingest), RenderOptions(width=width))
+        for line in text.splitlines():
+            assert line == line.rstrip(), line
+            assert len(line) <= width, line
+
+    @pytest.mark.parametrize(("name", "ingest"), EXAMPLES)
+    @pytest.mark.parametrize("width", [80, 120])
+    def test_color_changes_nothing_but_the_escape_codes(
+        self, name: str, ingest: bool, width: int
+    ) -> None:
+        plain = format_text(example(name, ingest), RenderOptions(width=width))
+        colored = format_text(example(name, ingest), RenderOptions(width=width, color=True))
+        assert re.sub(r"\x1b\[[0-9;]*m", "", colored) == plain
+        assert "\u2060" not in colored
+
+    @pytest.mark.parametrize(("name", "ingest"), EXAMPLES)
+    @pytest.mark.parametrize("width", [80, 100, 120, 160])
+    def test_every_finding_has_the_three_lines_and_the_header_names_them(
+        self, name: str, ingest: bool, width: int
+    ) -> None:
+        text = format_text(example(name, ingest), RenderOptions(width=width))
+        head = header(text)
+        assert head[-2].strip() == "FINDING" and head[-1].split() == list(HEAD)
+        for one in blocks(text):
+            also = next((i for i, line in enumerate(one) if line.lstrip().startswith("also")), None)
+            meta = one[also - 1] if also else one[-1]
+            assert re.search(r"\S+:\d+|T\d{4}|EoP|DoS|Tampering|Repudiation|Info|Spoofing", meta)
+            assert meta.startswith(" " * 10) and not meta.startswith(" " * 11)
