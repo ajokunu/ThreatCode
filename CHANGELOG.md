@@ -53,6 +53,22 @@ Until the package is live on PyPI (`curl -s -o /dev/null -w '%{http_code}' https
   Both files must be `threatcode scan -f json` reports, attack paths that appeared or closed are compared by id, `-f text` and `-o` are supported, and `--fail-on-new SEVERITY` also fails on a new attack path.
 - **A Python API through the same pipeline:** `scan(paths, **settings)` returns the report dict, `analyze(paths, **settings)` the graph with the report, and `run_scan(ScanRequest)` the exit code and the coverage.
   Names load on first use, so `import threatcode` stays cheap.
+- **`-q`, `-v` and `--no-color` work after the command.**
+  `threatcode scan infra/ -q` used to fail with `No such option: -q`.
+  Both `scan` and `diff` accept the three options, they add to the same options given before the command, and each command's help lists them.
+  `--debug` stays a group option.
+- **`-o -` and `-o /dev/stdout` write the report to standard output** and print no `Report written to` line, where `-o -` used to create a file named `-`.
+- **The format follows the `-o` extension when `-f` is absent.**
+  `-o results.sarif` writes SARIF, `-o report.md` Markdown, `-o flow.mmd` Mermaid, `-o map.svg` the diagram and `-o out.json` the JSON report; a name no format claims still writes JSON.
+  `-f json -o results.sarif` still writes JSON and says on stderr that the file name suggests SARIF (the warning survives `-q`).
+  A format set by `THREATCODE_FORMAT` or the config counts as given.
+- **`--source-root DIR`** sets the repository root that SARIF and Bitbucket paths are relative to, for a checkout with no `.git` directory.
+- **`--diagram-max-rows N`, `--diagram-expand-docker` and `--diagram-detail auto|full|collapsed`** reach the SVG diagram.
+  Giving one with another format is a usage error instead of being ignored.
+- **The removed 0.9 commands `fs`, `repo`, `image`, `vuln`, `db`, `secret`, `sbom` and `license` answer with what replaces them** and a pointer to `docs/migrating.md` (exit 2), instead of `No such command`.
+  They stay out of `--help`.
+- **`threatcode scan --include-graph`** adds the graph (nodes and edges, no properties) to the JSON report.
+- **Formatter helpers:** `threatcode.formatters.RepoPaths`, `find_repo_root`, `format_for_extension`, `extension_mismatch`, `deprecation_notice` and `visible_format_names`, and the `repo_root` and `fail_on` fields of `RenderOptions`, which `format_sarif` and `format_bitbucket` also take as arguments.
 
 #### Attack paths
 
@@ -246,6 +262,181 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **Provider defaults that a plan materialises** (for example an EKS cluster's public endpoint) are applied to Terraform HCL and CloudFormation input only, never to a plan or a design.
 - **Loaded rules are immutable** and the built-in rules are parsed once per process.
 
+#### The text report
+
+- **The terminal report never cuts a name.**
+  The RESOURCE, RULE and FINDING cells used to end in `...` or lose their middle (`aws_in...ce.app[0]`), so rows could not be told apart and a rule id could not be pasted into `.threatcodeignore`.
+  A cell wider than its column wraps after a dot or a slash, so every resource address, rule id, file and line is printed whole at any width from 40 columns up.
+  A technique list ends in a count (`T1548,T1611,T1105 +2`) instead of cutting an id in half, and a column that no finding fills is left out.
+- **Each finding is a block that reads the same way every time.**
+  The first line is the severity, the resource, the rule and the attack paths it enables.
+  The second is the finding, wrapped with a hanging indent.
+  The third, dim, holds the location, the ATT&CK techniques and the STRIDE category in columns that line up from one finding to the next: `tfplan.json:484  T1552.005  EoP`.
+  The header names the same columns, and on a terminal too narrow to line them up they flow in the same order.
+  A location wraps after its slashes only, and a line number is never left alone at the start of a line.
+- **The rule moves under the resource, for the whole table, when the two do not fit side by side.**
+  The layout is decided once from the widest cell of each column, so one table never mixes the two shapes.
+  A rule id keeps a line to itself before it is wrapped, and the severity stays with its rule id when a line wraps.
+- **The heading reconciles with the rows.**
+  `Findings (30, 23 rows after grouping)` says that findings with one root cause on one resource share an entry, and the entry lists the other rules in full on an `also` line.
+- **A severity changed by context is marked.**
+  `HIGH^` was raised from the rule's own severity and `v` was lowered, a key under the findings says so, and the key is set apart by a blank line.
+  A finding that enables an attack path carries the number of the path (`P1`, `P1,P2+1`) and sorts first inside its severity band.
+  The severity column is as wide as its widest mark, so `CRITICAL^` no longer pushes its row aside.
+- **Attack paths say why they exist.**
+  The report numbers the paths, gives the target kind, the length, the score (one decimal) and the worst enabling finding in one sentence, counts the equivalent routes through other instances, and lists for each step the findings that enable it by rule id and effective severity, with the port the step uses: `internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD`.
+  Up to three findings are named per step, then `+N more`, and findings that a filter or a baseline removed are counted as `+N not shown`.
+  The path id is labelled `ignore id`, because it is the key a `.threatcodeignore` entry or a baseline uses.
+- **The verdict names what a path ends at and how bad the worst one is.**
+  `2 attack paths from the internet to private` is now `2 attack paths from the internet to private data, worst high`.
+  The verdict is shared with the Markdown report.
+- **A scan that failed or fell short never reads as clean.**
+  With an input error the verdict says `no result (1 input error; nothing was analysed)` or `incomplete (1 input error); in the rest: ...`, never `no findings`.
+  A chart that lost templates reads `incomplete (2 templates not analysed); in the rest: 5 medium, 9 low`, and a chart with nothing else to report reads `incomplete (1 template not analysed); in the rest: nothing found`.
+  Gaps that only approximate (a chart rendered without helm) or that describe a module the scan was not asked to read do not change the verdict; the coverage block lists them.
+  When a baseline accepted everything it says `no new findings (6 findings and 2 attack paths baselined)`.
+  The closing `Scanned ...` line on stderr says `incomplete` when a Helm template was skipped or only approximated, or an error-level gap exists.
+- **`--min-severity` says what it hid.**
+  The header reads `0 of 12 findings shown`, the coverage block has a `Hidden: 12 findings and 2 attack paths below critical (--min-severity)` line, and the `Scanned` line on stderr repeats it.
+  `Set aside` counts findings and attack paths apart.
+- **The coverage block names the files no parser recognised:** `Not infrastructure: expected.yml, scanner/trivy-app-image.json`, the first five by name and the rest counted.
+  A scanner finding that matched no resource reads `(unmatched)` in the RESOURCE column, where it read `-`.
+- **Coverage gaps and input errors are said once.**
+  With the text report on standard output stderr keeps one line for the gaps and the last line for the exit code, because the report already lists them; every other format, and `-o`, keeps the full list on stderr.
+  A gap that repeats with the same code, file, line and message is listed once (in `coverage.gaps` too), a file's many gaps of one code are one line with a count, and a repeated error is dropped from `coverage.errors`.
+  A gap whose message already starts with its file name is not given the file twice.
+  The `Scanned ... found ...` line is left out when the text report went to standard output, because the header says the same.
+- **Every nonzero exit says why, on the last line of stderr.**
+  Exit 2 ends with `Error: scan incomplete (1 input error), exiting 2: <the first error>`.
+  Exit 1 ends with `Gate failed: 5 findings and 3 attack paths at or above high (--fail-on high), exiting 1`, counted before `--min-severity` hid anything.
+- **Long lines wrap with a hanging indent.**
+  On a terminal the width is the terminal's; into a pipe or a log stderr messages stay on one line, so a tool that reads the last line gets all of it.
+
+#### Other reports and the diagram
+
+- **A boundary title leads with what tells crossings apart.**
+  `Trust boundary crossing: aws_lb.front (dmz) -> aws_instance.app[0] (private)` is now `dmz > private: to aws_instance.app[0] (tcp/8080)`, with `, unencrypted` or `, unauthenticated` when the input says so.
+  A crossing prints its kind in the RULE column (`BOUNDARY_GENERIC_FLOW`, `BOUNDARY_UNENCRYPTED_FLOW`, ...), which is also the id a suppression accepts, and the descriptions say `data flow` and `network flow` where they said `(network_flow)`.
+  The title in the JSON report is the new one.
+- **Edges and hops are described in words in every report.**
+  `network_flow 443`, `iam_binding invokes` and `data_flow returns_content` read `HTTPS 443`, `invokes` and `returns content` in the diagram, the Mermaid charts, the Markdown report and the SARIF code flows (`sends traffic on tcp 8080`, `assumes the role`).
+  Markdown "enabled by" lines and the diagram's enabler captions name a boundary finding by its rule (`BOUNDARY_GENERIC_FLOW`) instead of `boundary`.
+- **Attack paths are the one emphasised thing on the diagram.**
+  The hops of an attack path are thick, glow, and take the color of the worst path over them.
+  A flow that crosses a trust boundary keeps the look of its type (blue dashed for traffic, green for data) and carries a zone label, and a reference or an IAM binding that only spans two zones is a thin grey line.
+  A hop the graph has no connector for is drawn too.
+- **Path numbers are the same everywhere.**
+  A path number is an outlined square (`P1`, `P1 P3`, or `P1-P3` for a run) kept off nodes, badges, labels and zone lines, and the legend has an entry for it.
+  The diagram, the Markdown report, the terminal report and SARIF number the paths by worst severity, then score, then path id, so two paths that tie no longer swap places between reports.
+  The strips shown are the first five of the Markdown list.
+- **The diagram labels are readable and unique.**
+  One zone label per transition (`DMZ -> PRIVATE x7`, with the connectors in the tooltip), both ends named in every connector tooltip, and two edges between the same nodes drawn as one connector.
+  Nodes that share a name take the short type in front (`role.app`, `sg.app`, `ingress/storefront`), a VPC with members in three zones says `aws_vpc.main (internet)`, `(dmz)` and `(private)`, and type captions are 9px in a 176 pixel box and cut in the middle only past 31 characters.
+  The ids of one diagram differ from the ids of another: the prefix is a hash of the input name, the resources, the findings and the paths, so two reports in one HTML page no longer collide.
+- **A data store's settings are folded into it on the diagram.**
+  `aws_s3_bucket_public_access_block` and the encryption configuration were two more cylinders labelled like the bucket.
+  Their findings count on the bucket's badge and its tooltip lists them.
+- **The legend matches the shapes,** and has four columns with entries for attack path hops, path numbers and boundary crossings.
+  Network and delivery components are boxes with a dashed outline, and the internet is an external entity.
+- **Attack path strips say everything the path says.**
+  The rationale wraps to three lines, each box holds the full address, each hop lists every finding that enables it (up to three, then a count), ATT&CK ids sit under their hop, and arrows say `HTTPS 443`, `assumes`, `invokes` and `can read`.
+- **The findings table groups, cuts at a sentence and says where.**
+  Findings with a root cause on one resource are one row, the description is the first sentence of the rule's text, and a new Location column gives `file:line`.
+  The rows are in the text report's order: worst first, then the findings that enable an attack path, then resource and rule.
+  The diagram is at least 968 pixels wide.
+- **Frame labels are readable.**
+  Labels are drawn above the connectors on a backing and slide along the top of their frame to the first spot no connector crosses.
+  The router also moves the port of a framed node, and the vertical run through a column gap, out from under labels and badges.
+  A frame with no free spot drops the zone part of its label (`aws_subnet.public_a`) and then characters from the middle, and the full name stays in its tooltip.
+  Zone titles are a dark variant of the hue, and a test measures the contrast of every text of the three examples against its background (4.5 to 1).
+- **Wide attack paths widen the lanes,** using up to eight columns of the canvas.
+- **Mermaid charts run top to bottom** (`flowchart TB`; the aws example is 919 pixels wide where `LR` drew 3213).
+  Edges between the same two resources share one arrow with their labels joined, opposite directions share one arrow with a head at each end, and another instance of a counted resource that a path runs through has a dashed red outline.
+  A path segment that every address shares is replaced by `...` so long addresses keep their resource name.
+  The chart in the Markdown report draws the hops of the attack paths only, and a comment line and a line above it say so.
+- **Markdown report details.**
+  Shared hops are listed once (`Hops 1 to 4 are the same as in path 1`), sections are ordered by their worst effective severity, headings drop the resource when the title already names it, and group titles start with a capital.
+  The severity explanation is one clause (`Medium (base low, raised one level because the data store is tagged ...)`).
+- **A web address in Markdown is a code span, not text with an invisible character.**
+  The report used to put a zero-width joiner inside `://` to keep GitHub from linking an address, which broke a copied address.
+  An address in a code span copies exactly, with trailing punctuation left outside it, in the Markdown report, the diff report and the Markdown in SARIF rule help.
+  Mentions and issue references still get the joiner.
+- **SARIF and Bitbucket name files from the repository root, wherever the scan was started.**
+  The repository root is the git top level above the scan root (`.git` as a directory or a file), so `cd examples && threatcode scan aws-webapp -f sarif` writes `examples/aws-webapp/tfplan.json`, which GitHub can place.
+  A scan root in no checkout is a `sarif.paths.unanchored` notification and a file outside the repository is `sarif.paths.outside_repository`; such a file is named by its file name alone, and no absolute path of the machine reaches the report.
+  The Bitbucket report mentions files it could not place in `report.details`.
+- **A SARIF rule has one severity.**
+  A finding whose effective severity differs from its rule's belongs to a variant rule `<id>/<severity>` (`EC2_IMDSV1/high` beside `EC2_IMDSV1`) with the level and `security-severity` of that severity, and the bare id keeps the rule's highest base severity.
+  Alerts that context raised or lowered move to the variant id once, and GitHub shows them as new alerts.
+  Attack paths follow the same rule (`THREATCODE_ATTACK_PATH` and `THREATCODE_ATTACK_PATH/high`).
+- **A SARIF result message is one sentence about the instance** (`EC2 instance metadata service allows IMDSv1 on aws_instance.app[0]`), with the first sentence of the description added for crossings, scanner findings, secrets and model findings; the rest stays in the rule's `fullDescription` and `help`.
+  Rule names are made from the id (`CVE-2022-37434`, `K8SNoSeccompProfile`) and the rule id `trivy:trivy:CVE-2022-37434` is `trivy:CVE-2022-37434`.
+- **SARIF attack paths are anchored where the fix goes.**
+  The result is anchored at the first resource of the path that has a file, a hop with no file (the internet) is shown at the resource it enters, and hop messages name the ports and the enabling rule ids.
+- **A SARIF run says what it left out and what it was joined to,** in note-level notifications: `suppressions.applied`, `baseline.applied`, `min_severity.hidden`, one `ingest.source` per scanner result and `llm.ran`.
+- **The Navigator layer draws a technique once per path step.**
+  The entry step is initial access and a later step takes the tactic that brings the attacker closest to the target; a finding that names its tactic keeps it.
+  The gradient has five stops at the five legend colors, and the description counts only the threats that name a technique.
+- **Bitbucket: `report.result` follows the gate and annotations are short.**
+  The result is `FAILED` when a finding or attack path at or above `--fail-on` remains (model findings never count), so `--fail-on none` is `PASSED`, and an annotation is the resource, the reason for the severity and a mitigation cut at 300 characters.
+- **The GitHub Action** lists the formats the CLI advertises in its `format` input (a test keeps the list equal to the registry), names the report file from the format registry (`threatcode-results.mmd` for Mermaid), finds its sticky comment by the marker anywhere in the body, and has a `code-scanning` job that uploads the SARIF of `examples/aws-webapp` on pushes to `main`.
+  CI checks that the SARIF the action writes names files from the repository root.
+
+#### Findings, attack paths and paths in reports
+
+- **`K8S_RBAC_SECRETS_READ` is a definitive finding** (confidence 1.0).
+  A rule that names its objects with `resourceNames` is a narrow grant and sets neither `has_secrets_read` nor `has_pod_exec`, so the description no longer says the rule cannot tell.
+- **An MCP server with no credential in its configuration is not called unauthenticated.**
+  The edges carry `authenticated: true` when a header, an `oauth` block or credentials in the URL show a credential, and no flag otherwise, because a client that follows the MCP authorization spec discovers OAuth when it connects.
+  A flow whose only open question is that sign-in keeps the confidence of an absence (0.5) and at most the severity of `MCP_REMOTE_NO_AUTH` (low), so a lone `.mcp.json` over https exits 0.
+  A server over plain http stays a definite high finding, now classed as information disclosure like `MCP_PLAINTEXT_TRANSPORT`.
+  A design input that declares such a flow unauthenticated is believed.
+- **An attack path attaches a finding to the one hop it opens.**
+  `hops[].enabled_by` lists the security group that admits the internet once, on the first hop; the path's severity, rationale and the findings' `path_ids` are unchanged.
+- **Kubernetes findings point at the key they are about.**
+  `K8S_PRIVILEGED_CONTAINER` on `examples/k8s-platform/daemonset.yaml` is at line 23, the `privileged: true` of the container that sets it, where nearly every Kubernetes finding was at line 1.
+  A finding about something missing points at the object that should hold it, a finding about the whole object points at its `kind:` line, a secret keeps its line, and a manifest with no text keeps the line of its document.
+- **A finding names its resource type,** including a secret finding, whose `resource_type` was empty.
+- **Paths in a report are relative to the scan root, whatever they point at.**
+  A Terraform module in a parent directory (`source = "../modules/net"`) reported its findings with the absolute path of the machine; it is now `../modules/net/main.tf`, so fingerprints and baselines survive a clone elsewhere.
+- **A local module directory is in the report once.**
+  `modules/vpc` and `module "vpc" { source = "./modules/vpc" }` in its parent read the same files, so scanning the repository listed every resource twice.
+  A directory whose every resource another module reads is no longer put in the graph on its own, a `graph.unit_superseded` note says so, and its files are still scanned for secrets.
+- **A rule file that names a revoked ATT&CK technique is warned about,** with the technique that replaced it (or the note that a deprecated one has no replacement); the rule still loads.
+- **Rule texts name no internal property.**
+  `K8S_PRIVILEGED_CONTAINER` no longer sends the reader to `container_findings` and `MCP_UNPINNED_PACKAGE` no longer sends them to `unpinned_reasons`, and a test fails when a built-in rule's title, description or mitigation names a property a parser writes or an edge type.
+
+#### Command line and configuration
+
+- **The version is 1.0.0.**
+  `threatcode --version` and the `version` field of a report tell the reworked line from 0.9.1, which stays the release on PyPI until the first release of this line is published.
+  `CHANGELOG.md` keeps its Unreleased heading until then, and `docs/releasing.md` says what to move at release time.
+- **The config keys are `format` and `rules`,** the names of the `--format` and `--rules` flags.
+  `output_format` and `extra_rule_paths` still load and print a notice that names the new spelling, giving both spellings of one key is an error, and an auto-discovered `.threatcode.yml` may set `format` and still cannot set `rules`.
+  `docs/configuration.md` has one table of the name each setting has as a flag, an environment variable, a config key, an Action input and a `scan()` argument.
+- **`-f matrix` is hidden from `--help` and from the invalid-value error but still accepted.**
+  Every use prints `Warning: -f matrix is deprecated, use -f navigator` on stderr, once, even with `-q`; rendering it through the API logs the same on the `threatcode` logger.
+  The alias renders the layer of `navigator`, and only the migration page names it.
+- **`--format` shows a short `FORMAT` metavar** with the formats and the default in its description, `--max-nodes` and `--max-edges` state their defaults (10,000 and 50,000), and `diff --fail-on-new` takes the same choices as `scan --fail-on`, including `none`.
+- **`-f diagram` and `-f navigator` are refused when standard output is a terminal,** before the scan runs, with the `-o file` form to use instead.
+- **`--llm` checks for the anthropic SDK before it says anything about sending.**
+  Without the SDK it is one exit-2 line that names `pip install 'threatcode[llm]'`, with or without a key; without a key the scan continues with rules only, and the `LLM enrichment enabled: sending ...` line is printed only when a request can be sent.
+  `--dry-run` needs neither.
+- **The Environment block is one list** shared by the main help and the help of `scan` and `diff`, so `scan --help` lists `THREATCODE_MAX_NODES`, `THREATCODE_MAX_EDGES` and `THREATCODE_DEBUG` too.
+- **`threatcode diff` lists findings in the order of the report:** severity, resource address, rule id and id.
+  The text format pads the severity and resource columns so every title starts in one column.
+- **Rules keep their reading of the input.**
+  The `_exposure` pseudo-property in a rule condition reads the exposure the graph decided for the node, `metadata.cwe` and `metadata.cis` are validated at load time, and a Secrets Manager ARN written as `name-*` or `name-??????` names the secret.
+
+#### Documentation
+
+- **The documentation describes the build it ships with.**
+  The getting-started walkthrough explains the text report as printed, and the CLI reference, the CI page and the migration page state what the SARIF writer, the Bitbucket report, `-o`, the options after the command and the removed commands do.
+  The ATT&CK page explains the Navigator layer as drawn and lists the four `BOUNDARY_*` kinds, and the rule-writing page documents `_exposure` and the MCP agent node.
+- **The support matrix has a Coverage gaps section** that lists the gaps a scan can report with what raises each and what to do, including `hcl.default_disabled` and `enrich.unresolved_companion`.
+  It also says that an unparseable file that looks like a plan, template or manifest is an input error, and how the multiline secret rule and the templated-file argument behave.
+- **A new `CONTRIBUTING.md`** covers setup, the checks, tests, the generated documentation, golden recordings and the changelog.
+
 ### Removed
 
 - **The scanning layer that duplicated Trivy, Grype, Syft and OSV-Scanner.**
@@ -307,6 +498,96 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **A Dockerfile word or a Helm string of several megabytes** no longer takes memory in proportion to 150 bytes per character.
   One five megabyte word peaked at 1.5 GB and now peaks at 69 MB, and the findings are identical.
 
+#### Input errors and parsing
+
+- **A file that fails to parse is an input error wherever it sits.**
+  A Terraform file that could not be parsed exited 2 when named on the command line and 0 when it sat in a directory next to a file that parsed, so `threatcode scan infra/` could report 227 failed files and still pass.
+  Both cases list the failure under the coverage errors once, add "incomplete: N input errors" to the closing line, and exit 2.
+- **A truncated plan fails the scan.**
+  A `plan.json`, `tfplan.json`, `*.tfplan.json` or `plan-*.json` that is not valid JSON, and any JSON or YAML file whose first lines read as a Terraform plan, a CloudFormation template or a Kubernetes manifest, is a parse failure, so a half-written `terraform show -json` in CI exits 2.
+  Template delimiters (`{{ .Values.x }}`) and files that say nothing about infrastructure still count as not infrastructure.
+- A directory whose only resource file fails to parse reports that failure, and "1 input was parsed" appears only when a scan finds no resources and nothing failed.
+- **A Rain module says what it is.**
+  A CloudFormation resource of type `!Rain::Module <path>` reads "Rain module not expanded (run rain pkg to expand it)" and marks the template incomplete, where it was skipped with "Type must be a string, not a dict".
+- **Valid Terraform that python-hcl2 rejected now parses.**
+  python-hcl2 4.x rejected an object element whose value is an operator expression, a conditional that breaks its line before `?` inside nested parentheses, and a `\r\n` inside a block comment; 8.x rejected a traversal that continues on the next line.
+  A file that fails is retried with its layout normalized, and if the retry fails too the error names the line of the original text and, under 4.x, the command that upgrades python-hcl2.
+  On cloud-foundation-fabric under 4.3.5, 90 failing files now parse, and 3026 resources with 29 findings became 5088 resources with 41 findings.
+- **python-hcl2 4.x keeps the parentheses of a grouped expression.**
+  4.x returns `a && (b || c)` as `a && b || c`, which changes what a `count` or a condition evaluates to; terraform-aws-vpc modelled 1758 resources under 4.x and 1686 under 8.x.
+  Grouping parentheses now travel through 4.x as a marker call, and 4.x and 8.x agree on the nodes, properties, findings and gaps of cloud-foundation-fabric, terraform-aws-eks, terraform-aws-vpc and terraform-aws-eks-blueprints.
+  The dependency range stays `>=4.3,<9`.
+- Terraform text is parsed once per run.
+  The parser keeps the data of recent texts (8 million characters, oldest dropped first), so cloud-foundation-fabric takes 11 seconds where it took 27 and terraform-aws-vpc takes 1.7 where it took 5.8, with the same findings.
+- A Terraform plan, a CloudFormation template and a Kubernetes manifest are read from disk once, so a file that changes between two reads can no longer misalign line numbers.
+- **A variable default that switches a resource off no longer hides a missing companion.**
+  `aws_flow_log` with `count = var.enable ? 1 : 0` and `default = false` was kept as present, so `VPC_NO_FLOW_LOGS` never fired; terraform-aws-vpc now reports it for 10 VPCs.
+  A count of 0 or an empty `for_each` drops the resource wherever the value comes from.
+  In a followed module the default is the value and the drop gets an info note.
+  In the module you scan itself, a value from `-var`, `-var-file` or `TF_VAR_*` could replace the default, so the drop also produces one `hcl.default_disabled` warning per module and `--strict` fails on it; a value in `terraform.tfvars` or `*.auto.tfvars` settles the question.
+  A default that enables the resource keeps it and flags `count_from_default` in its meta.
+- **A Helm chart with an unvendored library dependency says why its workloads are missing.**
+  A Bitnami chart lists the `common` library chart as a dependency and a fresh checkout has no `charts/common`, so every `include "common.names.fullname"` rendered invalid YAML and the scan ended with "Verdict: no findings".
+  The gap now names the includes that no chart defines and says "dependency common is not vendored in charts/", with `helm dependency build` or installing helm as the fix, and the parse is marked `incomplete`.
+  A dependency present in `charts/` or turned off by its `condition` is not reported.
+- **Unresolved Helm names read as words:** `kubernetes_service.unresolved-namespace.unresolved-svc`, and `unresolved-svc-1` for a second unresolved document of the template.
+- A CloudFormation `AWS::WAFv2::RuleGroup` reads like the web ACL: `Rules` becomes `rule` and `VisibilityConfig` becomes the `visibility_config` block.
+
+#### Findings and attack paths
+
+- **One companion resource with a target the scan cannot resolve no longer silences findings across the whole scan.**
+  A `SecurityGroupIngress` with `GroupId: !Ref Param`, an `aws_security_group_rule` with `security_group_id = var.x` or an encryption configuration with `bucket = var.x` turned the facts of every possible parent Unknown, so `SG_UNRESTRICTED_INGRESS` and `S3_NO_ENCRYPTION` disappeared from every resource with no gap to say so.
+  On `aws-cloudformation-templates` that removed every `SG_*` finding; it now reports 76 `SG_UNRESTRICTED_INGRESS` and 29 `SG_WEB_PORT_OPEN_TO_WORLD`.
+  A world-open rule the scan can read still fires next to an unresolved rule resource, an unresolved companion makes facts Unknown only for the parents of its own input, and a `Ref` or `Fn::GetAtt` that names a parameter or an `Fn::ImportValue` can only name something outside its template, so it records no gap.
+  Each remaining case is a warning-level coverage gap, `enrich.unresolved_companion`, printed on stderr even with `--quiet`, listed in the report and counted by `--strict`.
+- **A CloudFormation `Ref` to a logical id of the same template now joins its resource.**
+  A standalone `AWS::EC2::SecurityGroupIngress` that pointed at a security group of its own template never joined it.
+  References resolve inside their own input, and the same unresolved expression on a parent and a companion links them in one input and one module.
+- **`SECRET_PRIVATE_KEY` needs a whole key.**
+  The rule matched the header alone, so a comment that names it was a critical finding: 111 of the secret findings across the Bitnami charts, and `threatcode scan bitnami/nginx` exited 1.
+  It now matches a header, a base64 body of at least 43 characters and a footer, in YAML literals, JSON strings, heredocs, one-line forms and encrypted or PGP blocks, and reports the line of the header.
+  A commented-out complete key is still a key.
+- **A shell variable or template code is no longer a hardcoded secret.**
+  A generic value made of shell expansions (`"$MONGODB_ROOT_PASSWORD"`) is where a secret is read from, and a generic match inside a Helm `{{ }}` action is template code.
+  A bcrypt hash, a literal next to an expansion and a literal outside any action are still reported.
+- **Kubernetes objects are no longer linked across alternate copies of an application.**
+  A repository with raw manifests, a Kustomize base, a rendered release and a Helm chart defines the same Service and Deployment four times, and `microservices-demo` showed 16 `frontend-external` boundary findings where 4 exist.
+  Two inputs that define the same kind, namespace and name are alternates and nothing links across them; a name resolves to the copy in its own input, else to a single copy in a non-alternate input.
+- **An attack path through CloudFront to a bucket read with an access control is no longer raised.**
+  A bucket read through `origin_access_control_id` or an origin access identity is reached only by the distribution, so the edge, the high boundary finding on it and the severity raise it caused are gone.
+  A bucket that is also public keeps its own `internet -> bucket` edge, and an origin with no access control is still an edge.
+- **A `*` resource in an IAM statement reaches the nodes of the role's own input only,** where it reached every bucket of the other 400 templates of a repository.
+  An ARN with a literal part (`arn:aws:s3:::acme-logs-*`) still names its targets in any input.
+- **The last hop of an attack path is enabled only by a finding that gives access to the store.**
+  `S3_NO_ENCRYPTION` (low) was named as what made a route to a bucket an attack path and `RDS_NO_ENCRYPTION` raised a path to a database by two levels.
+  An exposure, a credential in the code, a scanner finding and a weakness of authentication or privilege still enable it, and the hops before the target are unchanged.
+- **The attack path rationale shows the severity the report lists:** `(low, raised to medium)` when context changed it, where it said `(medium)` for a finding the report lists as low.
+- **A companion's value is no longer erased by the computed marker of the inline setting.**
+  A real plan prints the deprecated inline settings of an `aws_s3_bucket` as unknown, which beat the companion in the merge, so a bucket with an AES256, suspended-versioning or public-read-ACL resource never reported `S3_NO_ENCRYPTION`, `S3_NO_VERSIONING` or `S3_PUBLIC_ACCESS`.
+  The companion's value stands, queue, topic and key policies follow the same rule, and an empty `logging` list is no longer read as logging enabled.
+
+#### Reports and the command line
+
+- **The header names what was scanned in every format:** `ThreatCode scan of examples/aws-webapp` rather than `.`, in the JSON `input_file`, the Markdown `Input` line, the SVG title, the Navigator description and the error of an empty directory.
+- **The README and the getting-started page ran the first command only from a clone.**
+  `examples/` is not in the pip package, so `threatcode scan examples/aws-webapp` failed after the documented install; both pages now clone the repository first, and a test fails when the first demo scan comes before the clone.
+- **Six pages described attack paths as outside suppressions and baselines,** which stopped being true; they now describe what `--write-baseline`, `--baseline` and `.threatcodeignore` do with paths, and a test baselines the demo stack and checks the exit code both ways.
+- **The generated options table listed `--version` twice,** and a test fails when any option table repeats an option.
+- **The `allow_local_network` error names all three allowed providers.**
+- **The pre-commit example pinned `v0.9.1`, a release that predates the hook;** it and the CI page say `main` until the first release of this line is tagged.
+- **`--fail-on none -f bitbucket` is reported PASSED,** and the duplicate-id warning of `threatcode.scan()` also runs on the command line.
+
+#### Build, packaging and tests
+
+- **`make lint` and CI checked only `src/` and `tests/`;** both run `ruff check .` and `ruff format --check .` now.
+- **`make clean` left `src/threatcode.egg-info` behind.**
+- **The source distribution could not run its tests.**
+  A new `MANIFEST.in` ships the tests with their fixtures and the documentation, examples and scripts they read, and the CI package job checks the archive; the suite expects a git checkout, so run `git init` in an unpacked sdist first.
+- **`tomli` is a development dependency;** the package never reads TOML, but it was installed for every Python 3.10 user.
+- **`scripts/check_golden_scope.py` called a deleted recording out of scope** when its globs were given unquoted, because the shell expanded them; its help and `CONTRIBUTING.md` say to quote them.
+- **Fixture paths in tests no longer depend on the working directory** (the Dockerfile parser and rule tests, and the Kubernetes parser tests).
+- **A permanently skipped test is gone,** and a test fails if an `expected.yml` entry is marked pending.
+
 ### Security
 
 - **The image scanner was removed,** which closes a host file deletion through layer whiteouts and symlink chains.
@@ -321,6 +602,33 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **Evaluation of Terraform, CloudFormation and Helm input is bounded** in string size, collection size, nesting, expansion and total work, and the Helm fallback is a linear evaluator that took quadratic time and 14 seconds on 80 KB of unterminated actions before.
 - **Output cannot inject:** Markdown, Mermaid labels, SVG ids and SARIF URIs are escaped for where they are shown.
 - **The GitHub Action** passes inputs through the environment, never through `${{ }}` in a script, shows stderr between `::stop-commands::` markers, and validates the `version` input.
+- **The dry-run payload contains no AWS account id or region.**
+  The secret rules ran before the ARN pattern and matched the resource part of a Secrets Manager or SSM ARN, which left `arn:aws:secretsmanager:us-east-1:111122223333:secret:REDACTED_secret_2` in the request.
+  An ARN is now replaced whole before the secret rules run, and a test scans the payload for any 12 digit account id.
+- **Names from the scanned input are printed as visible escapes (`\x1b`), never as terminal control sequences,** in the path, verdict and coverage lines as in the table, and a test drives the whole report and stderr with an escape and a bell in a server key, a file name and an attack path.
+
+### Internal
+
+- **Golden recordings that changed, and why.**
+  `real_shapes/helm/platform` loses `K8S_RBAC_SECRETS_READ` on a Role whose only rule lists its Secrets in `resourceNames`.
+  The four http MCP recordings (`mcp/clients/mcp_config.json`, `mcp/gemini/settings.json`, `mcp/vulnerable/.mcp.json` and `real_shapes/mcp/desktop/claude_desktop_config.json`) move one boundary threat from spoofing to information disclosure, because the finding is about cleartext transport and not a missing credential; severity stays high.
+  `realistic/10_aws_gaming_backend.json` loses the edge from the CDN to the `game_assets` bucket, the critical attack path through it and the boundary finding on the edge, because the distribution reads the bucket through an origin access identity.
+  In `realistic/01_aws_ecommerce_platform.json` the two attack paths to the `sessions` database go from critical to high, because `RDS_NO_ENCRYPTION` no longer enables the last hop and the worst enabler is `EC2_IMDSV1` (medium, raised to high).
+  No other recording moved: formatter, command line, line number, title and enabler changes are checked by their own tests.
+- `enrich.unresolved_companion` is a new diagnostic code at warning level.
+  `InfraGraph.node_units` maps each node id to the label of the input it came from, `CompanionSpec.additive` marks a companion whose keys are lists it can only add to, and `EnrichContext` gains `peers`, `supplied` and `expression_hits`.
+- `SecretRule` has `multiline` and `verify`, `SecretScanner.scan_text` takes `templated`, and `BOUNDARY_TECHNIQUES` and `BOUNDARY_TACTICS` are removed from `threatcode.engine.mitre`.
+- `Rule.properties_read` and `loader.condition_properties` return the top-level properties a rule condition reads, and the Kubernetes parser records `meta['lines']` for each object, a map from those properties to the line of the manifest key they come from.
+- `ThreatReport.duplicate_ids()` returns the ids that more than one threat carries, and `threatcode.scan()` and `analyze()` log a warning when it is not empty.
+- `formatters/terminal_layout.py` (wrapping primitives, `columns()`, `wrap_path()` and the `TIE` that joins two words across a wrap), `formatters/terminal_coverage.py` (what to list of gaps and errors), `formatters/terminal_table.py` (the findings table) and `formatters/terminal_verdict.py` (the Helm-aware verdict) are pure and tested with hypothesis properties: no line is wider than the width and no character is lost.
+  `formatters/_utils.py` gains `verdict_items`, `rule_label`, `set_aside_phrase` and `join_words`, and a verdict is built from fixed words, so a target kind or a zone the tables do not know is never echoed.
+- `formatters/diagram_labels.py` is the one place that says an edge in words, shortens an address and lists the findings that enable each hop, for the diagram, the Mermaid charts and the Markdown report.
+  `ordered_attack_paths` there is the one order that numbers attack paths, and the terminal report and SARIF sort with the same key.
+  The diagram's `NODE_W` is 176 (it was 160).
+- `tests/test_meta.py` fails the build when `__version__` is a number that `CHANGELOG.md` already released while it still has unreleased changes, when a test opens `Path("tests/...")` relative to the working directory, and when a function, method or class in `src` is never referenced; the last two keep a list of known offenders, so a new one fails and a fixed one has to leave the list.
+- The engine tests re-raise an exception from a built-in rule instead of recording it in `rule_errors`, and the graph and recording tests render Helm charts with the built-in renderer whether or not `helm` is installed.
+- The generated blocks in `README.md`, `docs/getting-started.md` and the example READMEs embed the text report, the Navigator sample in `docs/mitre-attack.md` and the format list in `docs/cicd.md` come from the code, and `python scripts/gen_docs_counts.py --write` regenerates them.
+- `python-hcl2` stays `>=4.3,<9`: the 4.x reading is compensated in the adapter and CI tests both ends.
 
 ### Known limitations
 
