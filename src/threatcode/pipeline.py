@@ -79,8 +79,9 @@ from threatcode.models.threat import Severity, Threat, ThreatSource
 if TYPE_CHECKING:
     from threatcode.engine.llm.client import BaseLLMClient
     from threatcode.ir.graph import InfraGraph
+    from threatcode.ir.nodes import InfraNode
     from threatcode.models.attack_path import AttackPath
-    from threatcode.parsers.base import ParsedOutput
+    from threatcode.parsers.base import ParsedOutput, ParsedResource
 
 logger = logging.getLogger(__name__)
 
@@ -353,8 +354,14 @@ def run_scan(request: ScanRequest) -> ScanResult:
             coverage.note_not_iac(relpath)
 
         label = _input_label(request, stdin_name, root)
-        _parse_units(discovery, root, coverage, errors, label)
-        outputs = [unit.parsed for unit in discovery.units if unit.parsed is not None]
+        covered = _parse_units(discovery, root, coverage, errors, label)
+        # A module directory read through the call that uses it is in the graph once, as that
+        # call; its files are still scanned for secrets, so its parse output is kept on the unit
+        outputs = [
+            unit.parsed
+            for unit in discovery.units
+            if unit.parsed is not None and unit.relpath not in covered
+        ]
         coverage.units_parsed = len(outputs)
         if not outputs and not errors:
             errors.append(_nothing_to_model(coverage, label))
@@ -482,11 +489,13 @@ def _parse_units(
     coverage: Coverage,
     errors: list[dict[str, str]],
     label: str = "",
-) -> None:
+) -> set[str]:
     """Parse every unit, setting ``unit.parsed``. A bad file is recorded and skipped.
 
     A Terraform plan in the same directory as a module replaces the module: the plan is the
     resolved truth and the ``.tf`` files would model the same resources twice.
+    Returns the relative paths of the module directories that another module read through the
+    call that uses them; those units keep their parse output, but the graph takes the call.
     """
     units = discovery.units
     for unit in units:
@@ -513,6 +522,90 @@ def _parse_units(
             )
             continue
         unit.parsed = _parse_unit(unit, root, coverage, errors, label)
+    return _covered_modules(units)
+
+
+_BlockKey = tuple[str, int | None, str]
+
+
+def _block(resource: ParsedResource) -> _BlockKey:
+    """Which block of which file a resource comes from, whatever module path it was reached by."""
+    return (
+        split_location(resource.source_location)[0],
+        resource.start_line,
+        resource.resource_type,
+    )
+
+
+def _module_resources(unit: ScanUnit) -> dict[_BlockKey, set[str]]:
+    """The addresses of the resources ``unit`` reached through its module calls, by block."""
+    found: dict[_BlockKey, set[str]] = {}
+    if unit.parsed is not None:
+        for resource in unit.parsed.resources:
+            if resource.module:
+                found.setdefault(_block(resource), set()).add(resource.address)
+    return found
+
+
+def _is_read_through(resource: ParsedResource, reached: Mapping[_BlockKey, set[str]]) -> bool:
+    """Whether the block of ``resource`` was also read through a module call, one level deeper.
+
+    ``aws_s3_bucket.m`` is read through ``module.vpc.aws_s3_bucket.m``, and
+    ``module.inner.aws_s3_bucket.m`` through ``module.outer.module.inner.aws_s3_bucket.m``.
+    """
+    if resource.start_line is None:
+        return False
+    return any(
+        address != resource.address and address.endswith(f".{resource.address}")
+        for address in reached.get(_block(resource), ())
+    )
+
+
+def _covered_modules(units: list[ScanUnit]) -> set[str]:
+    """The module directories whose every resource another module reads through a call.
+
+    The directory ``modules/vpc`` is a Terraform module of its own, and ``module "vpc"`` in a
+    parent reads the same files with the arguments of the call.
+    Putting both in the graph gives every resource twice (``aws_s3_bucket.m`` and
+    ``module.vpc.aws_s3_bucket.m``) and so every finding.
+    The call is the better reading, because it knows what the caller passes in, so a directory
+    that the calls of the other modules reach in full is not analysed on its own.
+    A directory with a resource no call reaches (a call with ``count = 0``, a call that could
+    not be followed) stays, and so does one whose only caller was itself set aside for the same
+    reason.
+    """
+    modules = {u.relpath: u for u in units if u.kind == HCL_MODULE and u.parsed is not None}
+    reached = {path: _module_resources(unit) for path, unit in modules.items()}
+    kept = set(modules)
+    covered: set[str] = set()
+    for path in sorted(modules):
+        parsed = modules[path].parsed
+        if parsed is None or not parsed.resources:
+            continue
+        others = sorted(c for c in kept if c != path)
+        merged: dict[_BlockKey, set[str]] = {}
+        for other in others:
+            for block, addresses in reached[other].items():
+                merged.setdefault(block, set()).update(addresses)
+        if not all(_is_read_through(r, merged) for r in parsed.resources):
+            continue
+        callers = [
+            c for c in others if any(_is_read_through(r, reached[c]) for r in parsed.resources)
+        ]
+        owner = modules[callers[0]].parsed
+        if owner is not None:
+            owner.diagnostics.append(
+                Diagnostic(
+                    "info",
+                    "graph.unit_superseded",
+                    f"Terraform module {path} is read through the module call that uses it in "
+                    f"{callers[0]}, so its directory is not analysed on its own",
+                    file=path,
+                )
+            )
+        covered.add(path)
+        kept.discard(path)
+    return covered
 
 
 def _parse_unit(
@@ -648,20 +741,40 @@ def _parse_error(
 
 
 def _map_path(value: str, unit: ScanUnit, root: Path) -> str:
-    """Rewrite one absolute path a parser reported to a root-relative POSIX path."""
+    """Rewrite one absolute path a parser reported to a root-relative POSIX path.
+
+    A path outside the scan root (a local module in a parent directory) keeps its place as a
+    relative path with ``..`` segments, so no report carries a path from the machine it ran on.
+    """
     if not value or not os.path.isabs(value):
         return value
     path = Path(value)
     try:
         sub = path.relative_to(unit.base_dir)
     except ValueError:
-        try:
-            return Path(os.path.relpath(value, root)).as_posix() if _under(path, root) else value
-        except ValueError:
-            return value
+        return _posix_relative(value, root)
     if str(sub) == ".":
         return unit.base_rel.as_posix()
     return (unit.base_rel / PurePosixPath(sub.as_posix())).as_posix()
+
+
+def _posix_relative(value: str, root: Path) -> str:
+    """The absolute path ``value`` relative to ``root`` as a POSIX path, ``..`` segments allowed.
+
+    A path that sits under the root only by its real location (the root names a symlink) is
+    relative to the real root.
+    A path on another drive than the root has no relative form and stays as it is.
+    """
+    path = Path(value)
+    if not _under(path, root):
+        real_root = Path(os.path.realpath(root))
+        real_path = Path(os.path.realpath(value))
+        if _under(real_path, real_root):
+            return Path(os.path.relpath(real_path, real_root)).as_posix()
+    try:
+        return Path(os.path.relpath(value, root)).as_posix()
+    except ValueError:
+        return value.replace("\\", "/")
 
 
 def _under(path: Path, root: Path) -> bool:
@@ -740,7 +853,14 @@ def _finish(
     settings = request.settings
     root = discovery.root
 
-    _localize_threats(report.threats, graph, root, stdin_dir, stdin_name)
+    _localize_threats(
+        report.threats,
+        graph,
+        root,
+        stdin_dir,
+        stdin_name,
+        _manifest_lines(discovery, list(settings.extra_rule_paths)),
+    )
     _reconcile_ingested(report, graph, external, sources)
     assign_fingerprints(report.threats, graph)
     report.threats.sort(key=_threat_order)
@@ -776,8 +896,9 @@ def _finish(
     coverage.baselined = len(baselined) + len(baselined_paths)
     coverage.baselined_paths = len(baselined_paths)
 
+    errors = _unique_errors(errors)
     coverage.errors = [dict(e) for e in errors]
-    coverage.gaps = [d.to_dict() for d in graph.diagnostics if d.level in ("warning", "error")]
+    coverage.gaps = _coverage_gaps(graph.diagnostics)
     coverage.rule_errors = len(report.rule_errors)
 
     exit_code = compute_exit_code(
@@ -821,6 +942,48 @@ def _finish(
         gate_paths=gate_paths,
         ingest_sources=sources,
     )
+
+
+def _unique_errors(errors: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
+    """The input errors with a repeat of the same file, code and message left out.
+
+    A file that is read twice (a module directory scanned on its own and through the call that
+    uses it) fails twice with the same words, and one cause is one error.
+    """
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[dict[str, str]] = []
+    for error in errors:
+        key = (error.get("file", ""), error.get("code", ""), error.get("message", ""))
+        if key not in seen:
+            seen.add(key)
+            unique.append(dict(error))
+    return unique
+
+
+def _coverage_gaps(diagnostics: Iterable[Diagnostic]) -> list[dict[str, Any]]:
+    """What the scan did not analyse: the warnings and errors, each cause listed once.
+
+    A diagnostic repeated with the same code, file, line and message is one gap (a module read
+    through several calls reports its unresolved references each time).
+    A template that skips resources and then finds none left to model says why in the skip, so
+    the second gap, which says only that nothing could be modelled, is the same cause (RW-10).
+    """
+    seen: set[tuple[str, str, int | None, str]] = set()
+    gaps: list[dict[str, Any]] = []
+    for diagnostic in diagnostics:
+        if diagnostic.level not in ("warning", "error"):
+            continue
+        key = (diagnostic.code, diagnostic.file, diagnostic.line, diagnostic.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        gaps.append(diagnostic.to_dict())
+    explained = {g["file"] for g in gaps if g["code"] == "cfn.skipped_resource" and "file" in g}
+    return [
+        g
+        for g in gaps
+        if not (g["code"] == "parse.zero_resources" and g.get("file", "") in explained)
+    ]
 
 
 def _reconcile_ingested(
@@ -878,30 +1041,103 @@ def _localize_threats(
     root: Path,
     stdin_dir: Path | None,
     stdin_name: str,
+    lines: _ManifestLines | None = None,
 ) -> None:
-    """Give every finding a root-relative POSIX location, from the node it sits on when unset."""
+    """Give every finding a root-relative POSIX location and a resource type.
+
+    The location comes from the node the finding sits on when the finding has none of its own.
+    A finding that names a resource but not its type (a secret) takes the type of the node.
+    A finding that sits on the whole of a Kubernetes object points at the line of the key it is
+    about, when the manifest says which (``lines``).
+    """
     for threat in threats:
+        node = graph.get_node(threat.resource_address)
+        if node is not None and not threat.resource_type:
+            threat.resource_type = node.resource_type
         if threat.location_file:
             threat.location_file = _relative_to_root(
                 threat.location_file, root, stdin_dir, stdin_name
             )
-            continue
-        node = graph.get_node(threat.resource_address)
-        if node is not None and node.source_file:
+        elif node is not None and node.source_file:
             threat.location_file = node.source_file
             threat.location_start_line = node.start_line
             threat.location_end_line = node.end_line
+        if lines is not None and node is not None:
+            line = lines.line_for(threat, node)
+            if line is not None:
+                threat.location_start_line = line
+
+
+@dataclass
+class _ManifestLines:
+    """Where in its manifest each property of a Kubernetes object comes from.
+
+    A node carries one line, the start of its document, which for a manifest that opens with
+    ``apiVersion`` is line 1 for every finding on it.
+    The Kubernetes parser records for each object the line of the key behind every property a
+    rule reads (``ParsedResource.meta['lines']``), and this index joins those lines to the nodes
+    by file, line, type and name.
+    A finding on a property points at that key; a finding on the whole object points at its
+    ``kind:`` line.
+    """
+
+    by_object: dict[tuple[str, int | None, str, str], Mapping[str, int] | None]
+    reads: Mapping[str, tuple[str, ...]]
+
+    def line_for(self, threat: Threat, node: InfraNode) -> int | None:
+        if threat.source not in (ThreatSource.RULE, ThreatSource.BOUNDARY):
+            return None
+        # Only a line that is the node's own default is refined; a producer's line stands
+        if (
+            threat.location_file != node.source_file
+            or threat.location_start_line != node.start_line
+        ):
+            return None
+        lines = self.by_object.get(
+            (node.source_file, node.start_line, node.resource_type, node.name)
+        )
+        if not lines:
+            return None
+        named = [lines[p] for p in self.reads.get(threat.rule_id, ()) if p in lines]
+        return min(named) if named else lines.get("kind")
+
+
+def _manifest_lines(discovery: Discovery, rule_paths: Sequence[Path]) -> _ManifestLines | None:
+    """The line index of the Kubernetes objects of a scan, or None when no parser recorded one."""
+    by_object: dict[tuple[str, int | None, str, str], Mapping[str, int] | None] = {}
+    for unit in discovery.units:
+        if unit.parsed is None:
+            continue
+        for resource in unit.parsed.resources:
+            lines = resource.meta.get("lines")
+            if not resource.resource_type.startswith("kubernetes_") or not isinstance(
+                lines, Mapping
+            ):
+                continue
+            key = (
+                split_location(resource.source_location)[0],
+                resource.start_line,
+                resource.resource_type,
+                resource.name,
+            )
+            # Two objects that look alike to the index are not told apart: neither is refined
+            by_object[key] = None if key in by_object else lines
+    if not any(by_object.values()):
+        return None
+    from threatcode.engine.rules.loader import load_all_rules
+
+    reads = {rule.id: rule.properties_read for rule in load_all_rules(list(rule_paths))}
+    return _ManifestLines(by_object, reads)
 
 
 def _relative_to_root(value: str, root: Path, stdin_dir: Path | None, stdin_name: str) -> str:
+    """A finding's file as a POSIX path relative to the scan root, ``..`` segments allowed."""
     if not os.path.isabs(value):
         return value.replace("\\", "/")
     path = Path(value)
     if stdin_dir is not None and _under(path, stdin_dir):
         return stdin_name
-    if _under(path, root):
-        return Path(os.path.relpath(value, root)).as_posix()
-    return value
+    return _posix_relative(value, root)
 
 
 def _apply_display_filter(report: ThreatReport, min_severity: str, coverage: Coverage) -> None:
