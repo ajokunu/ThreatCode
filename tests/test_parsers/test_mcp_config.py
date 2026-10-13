@@ -1420,6 +1420,44 @@ class TestAgentNode:
         assert by_server["mcp_server.inventory"].metadata["authenticated"] is True
         assert by_server["mcp_server.weather"].metadata["protocol"] == "stdio"
 
+    def test_a_server_without_a_credential_leaves_the_authenticated_flag_off(self) -> None:
+        # RW-06: the lack of a credential shows nothing, because a client that follows the MCP
+        # authorization spec discovers OAuth when it connects; so the edge says nothing, it does
+        # not say False
+        parsed = _parse({"type": "http", "url": "https://docs.example.org/mcp"})
+        edges = [
+            e for e in parsed.edges if e.source.startswith("mcp_") or e.target.startswith("mcp_")
+        ]
+        assert len(edges) == 2
+        for edge in edges:
+            assert "authenticated" not in edge.metadata
+            assert edge.metadata["protocol"] == "https"
+
+    def test_a_stdio_server_leaves_the_authenticated_flag_off(self) -> None:
+        parsed = _parse({"command": "node", "args": ["server.js"]})
+        assert all("authenticated" not in e.metadata for e in parsed.edges)
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {
+                "type": "http",
+                "url": "https://docs.example.org/mcp",
+                "headers": {"Authorization": "Bearer ${T}"},
+            },
+            {"type": "http", "url": "https://docs.example.org/mcp", "oauth": {"clientId": "x"}},
+            {"type": "http", "url": "https://user:pw@docs.example.org/mcp"},
+        ],
+        ids=["authorization-header", "oauth-block", "userinfo-in-url"],
+    )
+    def test_a_configured_credential_sets_the_flag_to_true_on_both_edges(
+        self, entry: dict[str, Any]
+    ) -> None:
+        parsed = _parse(entry)
+        flags = [e.metadata.get("authenticated") for e in parsed.edges]
+        assert flags == [True, True]
+        assert False not in flags
+
     def test_the_agent_is_wired_to_enabled_servers_only(self) -> None:
         parsed = detect_and_parse(MCP_FIXTURES / "disabled" / ".mcp.json")
         targets = {e.target for e in parsed.edges if e.edge_type == "iam_binding"}

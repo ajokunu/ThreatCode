@@ -35,22 +35,30 @@ What the threat says follows what the flow is known to be:
 - The severity comes from the zone pair, higher when the source faces the internet, and lower by
   one level when every merged edge declares the flow both encrypted and authenticated.
 - A flow about which nothing is known says so, and its confidence is lower.
-- The connection of an agent to an MCP server is the exception to "declared means declared".
-  The parser sets ``authenticated`` false for a server with no credential in its configuration,
-  but a client that follows the MCP authorization spec discovers OAuth when it connects, so the
-  configuration cannot show that the server accepts anonymous calls.
-  That reading is the absence of a credential, not a fact about the flow: it is treated as
-  unknown, the finding carries the low confidence of an absence, and when authentication is the
-  only open question the severity is at most that of ``MCP_REMOTE_NO_AUTH``, which reports the
-  same missing credential.
-  A server over plain http is still a definite finding, as ``MCP_PLAINTEXT_TRANSPORT`` is.
+- The connection of an agent to an MCP server is the one flow whose authentication the input
+  usually cannot show.
+  The MCP parser sets `authenticated` on its edges only when the configuration carries a
+  credential, because a client that follows the MCP authorization spec discovers OAuth when it
+  connects, so a configuration without a credential does not say the server accepts anonymous
+  calls.
+  This module reads the flag as the edge states it: absent is unknown, never false.
+  When authentication is the only open question about a flow that ends at an MCP server, the
+  finding carries the low confidence of an absence and its severity is at most that of
+  `MCP_REMOTE_NO_AUTH`, which reports the same missing credential.
+  A server over plain http is still a definite finding, as `MCP_PLAINTEXT_TRANSPORT` is.
 
-`metadata['boundary_rule']` says which of these a threat is, so a report can group them:
+A threat leads its title with what tells it from the others of the same resource: the zones and
+the other end of the flow (`dmz > private: to aws_instance.app[0] (tcp/8080)`).
+The RESOURCE column of a report already shows the resource the threat sits on.
+
+`metadata['boundary_rule']` says which kind of crossing a threat is, so a report can group them:
 `BOUNDARY_UNAUTHENTICATED_FLOW` (spoofing), `BOUNDARY_UNENCRYPTED_FLOW` (information disclosure),
 `BOUNDARY_UNVALIDATED_FLOW` (a flow declared `validated: false`) and `BOUNDARY_GENERIC_FLOW`
 (tampering with a flow in transit).
 It is not `Threat.rule_id`: that field names the rules of the rule engine, and the tests and
-tools that list the rules which fired would count a boundary threat as one.
+tools that list the rules which fired would count a boundary threat as one; the planted-issue
+benchmark does, and would report a crossing on a hardened resource as a rule that fired there.
+The text report prints the kind in its RULE column and an ignore file accepts it.
 The fingerprint names both ends of the flow, so a baseline that accepts the flow from a load
 balancer to one instance does not accept its flow to another.
 """
@@ -92,8 +100,8 @@ class _Flow:
     """Everything the edges between one (source, target) pair say about the flow."""
 
     edges: list[InfraEdge] = field(default_factory=list)
-    # True when the flow ends at an MCP server: a missing credential there is not evidence
-    credential_is_inferred: bool = False
+    # True when the flow ends at an MCP server, whose sign-in the input usually cannot show
+    ends_at_mcp_server: bool = False
 
     @property
     def edge_types(self) -> list[str]:
@@ -121,18 +129,17 @@ class _Flow:
 
     @property
     def authenticated(self) -> bool | None:
-        found = self._all("authenticated")
-        if found is False and self.credential_is_inferred:
-            return None
-        return found
+        return self._all("authenticated")
 
     @property
     def only_authentication_is_open(self) -> bool:
-        """Whether the one thing the input does not show is who the other end is."""
+        """Whether the one thing the input does not show is who the other end is.
+
+        True for a flow that ends at an MCP server and neither states its authentication nor
+        shows a plaintext transport.
+        """
         return (
-            self.credential_is_inferred
-            and self.authenticated is None
-            and self.encrypted is not False
+            self.ends_at_mcp_server and self.authenticated is None and self.encrypted is not False
         )
 
     @property
@@ -213,7 +220,7 @@ def analyze(graph: InfraGraph) -> list[Threat]:
             continue
         flow = flows.setdefault((edge.source, edge.target), _Flow())
         flow.edges.append(edge)
-        flow.credential_is_inferred = "mcp_server" in (src.resource_type, tgt.resource_type)
+        flow.ends_at_mcp_server = "mcp_server" in (src.resource_type, tgt.resource_type)
     threats: list[Threat] = []
     for (source_id, target_id), flow in flows.items():
         src = graph.get_node(source_id)
@@ -248,13 +255,14 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
     known = (flow.encrypted is not None or flow.authenticated is not None) and not (
         flow.only_authentication_is_open
     )
+    rule = _rule_id(stride, flow)
     # The separator keeps ("a_b", "c") apart from ("a", "b_c")
     seed = f"BOUNDARY|{src.id}|{tgt.id}|{'+'.join(flow.edge_types)}"
     # The internet has no file and no line: the finding sits on the resource it enters
     anchor, other = (tgt, "") if src.is_internet else (src, tgt.id)
     return Threat(
         id=hash_id(seed),
-        title=f"Trust boundary crossing: {src.id} ({src_zone}) -> {tgt.id} ({tgt_zone})",
+        title=_title(src_zone, tgt_zone, tgt, flow),
         description=_description(src, tgt, flow),
         stride_category=stride,
         severity=severity,
@@ -265,7 +273,7 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
         confidence=1.0 if known else _LOW_CONFIDENCE,
         metadata={
             "boundary_key": f"BOUNDARY_{src_zone}_{tgt_zone}",
-            "boundary_rule": _rule_id(stride, flow),
+            "boundary_rule": rule,
             # Both ends of the flow, so two flows from one resource are two findings
             "fingerprint_hint": f"{src.id} -> {tgt.id}",
             "source_address": src.id,
@@ -297,6 +305,31 @@ def _rule_id(stride: str, flow: _Flow) -> str:
     return "BOUNDARY_UNVALIDATED_FLOW" if flow.validated is False else "BOUNDARY_GENERIC_FLOW"
 
 
+def _title(src_zone: str, tgt_zone: str, tgt: InfraNode, flow: _Flow) -> str:
+    """``dmz > private: to aws_instance.app[0] (tcp/8080)``: the part that tells crossings apart."""
+    text = f"{src_zone} > {tgt_zone}: to {tgt.id}"
+    words = _flow_words(flow)
+    if words:
+        text += f" ({words})"
+    if flow.encrypted is False:
+        text += ", unencrypted"
+    if flow.authenticated is False:
+        text += ", unauthenticated"
+    return text
+
+
+def _flow_words(flow: _Flow) -> str:
+    """``tcp/8080``, ``https/443``, ``port 22`` or ``all protocols``: how the traffic travels."""
+    protocols, ports = flow.protocols, ",".join(flow.ports)
+    if protocols == ["all"]:
+        return "all protocols"
+    if protocols and ports:
+        return f"{'/'.join(protocols)}/{ports}"
+    if ports:
+        return f"port {ports}"
+    return "/".join(protocols)
+
+
 def _stride(flow: _Flow) -> str:
     if flow.authenticated is False:
         return StrideCategory.SPOOFING.value
@@ -325,18 +358,15 @@ def _techniques(src_zone: str, tgt_zone: str, stride: str) -> list[str]:
 def _description(src: InfraNode, tgt: InfraNode, flow: _Flow) -> str:
     src_part = f"{src.id} ({_zone(src)} zone)"
     tgt_part = f"{tgt.id} ({_zone(tgt)} zone)"
-    kinds = " and ".join(flow.edge_types)
+    kinds = " and a ".join(kind.replace("_", " ") for kind in flow.edge_types)
     where = _where(flow)
     if flow.declared:
         lead = f"The input declares a {kinds} from {src_part} to {tgt_part}{where}"
+        lead += ", crossing a trust boundary" if where else ", which crosses a trust boundary"
     elif where:
-        lead = f"Traffic from {src_part} to {tgt_part}{where} crosses a trust boundary ({kinds})"
+        lead = f"Traffic from {src_part} to {tgt_part}{where} crosses a trust boundary"
     else:
-        lead = f"{src_part} can reach {tgt_part}, crossing a trust boundary ({kinds})"
-    if flow.declared and where:
-        lead += ", crossing a trust boundary"
-    elif flow.declared:
-        lead += ", which crosses a trust boundary"
+        lead = f"{src_part} can reach {tgt_part}, crossing a trust boundary"
     return f"{lead}. {_knowledge(flow)}"
 
 

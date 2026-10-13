@@ -478,6 +478,39 @@ class TestEnablingFindings:
         path = by_target(paths.find(web_stack(), [threat]))[DB]
         assert [hop.enabled_by for hop in path.hops] == [[threat.id], [], [], []]
 
+    def test_a_group_that_two_consecutive_edges_name_enables_only_the_first_hop(self) -> None:
+        # FV-18: the group that admits the internet is named again by the edge from the balancer
+        # to its targets (as the source side of their rule), but it opens only the first hop
+        graph = graph_of(
+            res("aws_lb", "front"), res("aws_instance", "app"), res("aws_db_instance", "db")
+        )
+        flow(graph, INTERNET_ID, LB, world_open=True, via=["aws_security_group.alb"])
+        flow(
+            graph, LB, APP, ports=["8080"], via=["aws_security_group.app", "aws_security_group.alb"]
+        )
+        flow(graph, APP, DB, ports=["5432"])
+        alb = finding("aws_security_group.alb", Severity.LOW)
+        app_group = finding("aws_security_group.app", Severity.MEDIUM)
+        path = by_target(paths.find(graph, [alb, app_group]))[DB]
+        assert [hop.enabled_by for hop in path.hops] == [[alb.id], [app_group.id], [], []]
+        # Attaching it once changes neither the severity nor the findings that learn the path
+        assert path.severity == Severity.MEDIUM
+        assert alb.path_ids == [path.id]
+        assert app_group.path_ids == [path.id]
+
+    def test_a_finding_that_only_a_later_edge_names_still_enables_that_hop(self) -> None:
+        graph = graph_of(
+            res("aws_lb", "front"), res("aws_instance", "app"), res("aws_db_instance", "db")
+        )
+        flow(graph, INTERNET_ID, LB, world_open=True, via=["aws_security_group.alb"])
+        flow(
+            graph, LB, APP, ports=["8080"], via=["aws_security_group.alb", "aws_security_group.app"]
+        )
+        flow(graph, APP, DB, ports=["5432"])
+        app_group = finding("aws_security_group.app", Severity.MEDIUM)
+        path = by_target(paths.find(graph, [app_group]))[DB]
+        assert [hop.enabled_by for hop in path.hops] == [[], [app_group.id], [], []]
+
     def test_a_finding_on_the_edge_source_enables_the_edge(self) -> None:
         threat = finding(LB)
         path = by_target(paths.find(web_stack(), [threat]))[DB]
