@@ -648,9 +648,7 @@ def test_the_released_versions_are_read_from_the_dated_headings_only() -> None:
 # Test files that still open a fixture as Path("tests/..."), which only works when pytest runs
 # from the repository root. Each entry is a bug to fix; the list only shrinks.
 CWD_RELATIVE_ALLOWED: dict[str, str] = {
-    "tests/test_engine/test_docker_rules.py": "globs Path('tests/fixtures/docker')",
     "tests/test_parsers/test_dockerfile.py": "reads Path('tests/fixtures/docker/...')",
-    "tests/test_parsers/test_kubernetes.py": "reads Path('tests/fixtures/kubernetes/...')",
 }
 
 _FILE_OPENERS = {"Path", "PurePath", "open", "PosixPath"}
