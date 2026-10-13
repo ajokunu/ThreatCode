@@ -10,17 +10,20 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
 __all__ = [
+    "MIN_PEM_BODY",
     "SecretRule",
     "char_classes",
     "has_template_marker",
     "is_env_var_name",
     "is_placeholder",
     "is_reference",
+    "is_shell_reference",
+    "pem_body_is_plausible",
     "shannon_entropy",
 ]
 
@@ -61,9 +64,28 @@ _PATH_OR_URL: Final = re.compile(
 )
 
 
+# A shell variable expansion: $NAME, ${NAME}, ${NAME:-default}
+_SHELL_VARIABLE: Final = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^{}\s]{1,128}\})")
+_ALPHANUMERIC: Final = re.compile(r"[A-Za-z0-9]")
+
+
 def has_template_marker(value: str) -> bool:
     """True when the value holds a template or substitution marker such as ``{{ }}`` or ``${X}``."""
     return any(marker in value for marker in TEMPLATE_MARKERS)
+
+
+def is_shell_reference(value: str) -> bool:
+    """True when the value is made of shell variable expansions and punctuation only.
+
+    ``$MONGODB_ROOT_PASSWORD`` and ``$USER:$PASS`` are read from the environment when the script
+    runs, so they are where the secret is kept, not the secret.
+    A literal next to an expansion (``pass-$ID``) is not a reference, and neither is a bcrypt
+    hash such as ``$2y$10$...``, because a variable name does not start with a digit.
+    """
+    if "$" not in value:
+        return False
+    remainder, count = _SHELL_VARIABLE.subn("", value)
+    return count > 0 and not _ALPHANUMERIC.search(remainder)
 
 
 def is_placeholder(value: str) -> bool:
@@ -146,6 +168,10 @@ class SecretRule:
     min_entropy: float = 0.0
     # Whether the text before the secret names a key worth reporting as the attribute
     keyed: bool = True
+    # True for a secret that spans lines (a PEM block): the regex runs over the whole text
+    # instead of one line at a time, and ``verify`` may reject a match after the fact
+    multiline: bool = False
+    verify: Callable[[re.Match[str]], bool] | None = field(default=None, compare=False, repr=False)
     description: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
@@ -164,7 +190,7 @@ class SecretRule:
 
     def is_allowed(self, value: str) -> bool:
         """True when the captured value is excluded: a placeholder, a template or allow-listed."""
-        if is_placeholder(value) or has_template_marker(value):
+        if is_placeholder(value) or has_template_marker(value) or is_shell_reference(value):
             return True
         return any(allow.search(value) for allow in self.allow_values)
 
@@ -186,3 +212,38 @@ class SecretRule:
         if self.needs_non_alpha and not _has_digit_or_symbol(value):
             return False
         return not (self.min_entropy and shannon_entropy(value) < self.min_entropy)
+
+
+# -- PEM blocks --------------------------------------------------------------------------------
+
+MIN_PEM_BODY: Final = 43
+"""The least base64 a private key can hold: a 256-bit secret is 43 characters before padding."""
+
+# A line break written as an escape, as in a JSON or HCL string
+_ESCAPED_BREAK: Final = re.compile(r"\\[nrt]")
+# The comment or quoting characters that can stand before and after a line of a block
+_LINE_FRAME: Final = re.compile(r"""^[\s#/*;>|'"`-]+|[\s'"`,;]+$""")
+_BASE64_LINE: Final = re.compile(r"[A-Za-z0-9+/=_-]+")
+# Armor headers of an encrypted or PGP key: Proc-Type, DEK-Info, Version, Comment
+_ARMOR_HEADER: Final = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,40}:(?:\s.*)?$")
+
+
+def pem_body_is_plausible(body: str) -> bool:
+    """Whether the text between a PEM header and footer is the base64 of a key.
+
+    Every line is base64 (after the comment markers, quotes and escaped line breaks that
+    configuration files put around a block, and the armor headers of an encrypted key), and
+    together they hold at least ``MIN_PEM_BODY`` characters.
+    A line of prose, an ellipsis, a template action or a placeholder rejects the block, so a
+    comment that only names the header, or a documentation example with the body elided, is
+    not reported as a key.
+    """
+    encoded = 0
+    for raw in _ESCAPED_BREAK.sub("\n", body).split("\n"):
+        line = _LINE_FRAME.sub("", raw)
+        if not line or _ARMOR_HEADER.match(line):
+            continue
+        if not _BASE64_LINE.fullmatch(line):
+            return False
+        encoded += len(line)
+    return encoded >= MIN_PEM_BODY

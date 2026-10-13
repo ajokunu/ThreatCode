@@ -30,7 +30,7 @@
         "aws_instance.web_a",
         "aws_db_instance.sessions"
       ],
-      "severity": "critical",
+      "severity": "high",
       "target": "aws_db_instance.sessions"
     },
     {
@@ -41,7 +41,7 @@
         "aws_instance.web_b",
         "aws_db_instance.sessions"
       ],
-      "severity": "critical",
+      "severity": "high",
       "target": "aws_db_instance.sessions"
     },
     {

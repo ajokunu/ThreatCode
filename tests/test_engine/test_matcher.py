@@ -1164,3 +1164,50 @@ class TestMatchesRule:
     def test_the_type_check_runs_before_the_condition(self) -> None:
         rule = _make_rule("aws_s3_bucket", {"a": {"equals": 1}})
         assert match_state(rule, _make_node("aws_instance", a=UNKNOWN)) is F
+
+
+class TestTheExposurePseudoProperty:
+    """``_exposure`` reads the exposure the graph decided for the node, not a property."""
+
+    @staticmethod
+    def _node(exposure: str, **props: object) -> InfraNode:
+        node = _make_node(**props)
+        node.exposure = exposure  # type: ignore[assignment]
+        return node
+
+    @pytest.mark.parametrize(
+        ("exposure", "expected"), [("internet", T), ("internal", F), ("unknown", U)]
+    )
+    def test_equals_internet(self, exposure: str, expected: Tri) -> None:
+        node = self._node(exposure)
+        assert evaluate_condition_tri({"_exposure": {"equals": "internet"}}, node) is expected
+
+    def test_a_rule_can_combine_it_with_a_property(self) -> None:
+        condition = {
+            "all_of": [
+                {"_exposure": {"equals": "internet"}},
+                {"server_side_encryption_configuration": {"exists": False}},
+            ]
+        }
+        assert evaluate_condition(condition, self._node("internet")) is True
+        assert evaluate_condition(condition, self._node("internal")) is False
+        assert (
+            evaluate_condition(
+                condition, self._node("internet", server_side_encryption_configuration={"x": 1})
+            )
+            is False
+        )
+
+    def test_an_unknown_exposure_is_never_a_hit_even_when_negated(self) -> None:
+        node = self._node("unknown")
+        assert evaluate_condition_tri({"_exposure": {"equals": "internet"}}, node) is U
+        assert evaluate_condition_tri({"not": {"_exposure": {"equals": "internet"}}}, node) is U
+
+    def test_it_shadows_a_property_of_the_same_name(self) -> None:
+        node = self._node("internal", _exposure="internet")
+        assert evaluate_condition({"_exposure": {"equals": "internet"}}, node) is False
+
+    def test_a_list_element_has_no_exposure_of_its_own(self) -> None:
+        node = self._node("internet", rules=[{"port": 22}])
+        condition = {"rules": {"any_item": {"_exposure": {"exists": True}}}}
+        assert evaluate_condition_tri(condition, node) is F

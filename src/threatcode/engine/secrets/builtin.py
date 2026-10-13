@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Final
 
-from threatcode.engine.secrets.rules import SecretRule
+from threatcode.engine.secrets.rules import SecretRule, pem_body_is_plausible
 
 # A value that merely excuses itself as a sample inside a random provider token. Generic rules do
 # not use this list: a substring such as "test" or "sample" inside a real-looking password must
@@ -68,6 +68,24 @@ def _assignment(
 
 
 _TOKEN_CHARS: Final = r"[A-Za-z0-9_\-/+=.~]"  # noqa: S105 - a regex character class
+
+# The label of a PEM private key: PKCS#1, PKCS#8, SEC1, OpenSSH, PGP and encrypted PKCS#8
+_PEM_LABEL: Final = (
+    r"(?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED)[ \t]+)?PRIVATE[ \t]+KEY(?:[ \t]+BLOCK)?"
+)
+# A whole block, header to footer, with nothing like another dash line inside it. The body is
+# bounded at 16 KB (an 8192-bit RSA key is about 6.5 KB with its line breaks), so a header with
+# no footer costs a bounded amount of work however large the file is.
+_PEM_BLOCK: Final = re.compile(
+    rf"(?P<secret>-----BEGIN[ \t]+{_PEM_LABEL}-----(?P<body>(?:(?!-----).){{1,16384}})"
+    rf"-----END[ \t]+{_PEM_LABEL}-----)",
+    re.DOTALL,
+)
+
+
+def _pem_block_is_a_key(match: re.Match[str]) -> bool:
+    return pem_body_is_plausible(match.group("body"))
+
 
 _RULES: Final[tuple[SecretRule, ...]] = (
     # AWS
@@ -151,17 +169,18 @@ _RULES: Final[tuple[SecretRule, ...]] = (
         keywords=["hooks.slack.com"],
         allow_values=_PROVIDER_ALLOW,
     ),
-    # Private keys: PKCS#1, PKCS#8, SEC1, OpenSSH, PGP and encrypted PKCS#8
+    # Private keys. A header alone is not a key: documentation names the header all the time
+    # (a comment saying a certificate should start with one), so only a block that holds a
+    # base64 body between a header and a footer is reported.
     SecretRule(
         id="SECRET_PRIVATE_KEY",
         category="crypto",
         title="Private Key",
         severity="critical",
-        regex=re.compile(
-            r"(?P<secret>-----BEGIN[ \t]+(?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED)[ \t]+)?"
-            r"PRIVATE[ \t]+KEY(?:[ \t]+BLOCK)?-----)"
-        ),
+        regex=_PEM_BLOCK,
         keywords=["private key"],
+        multiline=True,
+        verify=_pem_block_is_a_key,
     ),
     # JWT
     SecretRule(

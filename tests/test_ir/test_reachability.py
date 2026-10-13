@@ -593,6 +593,145 @@ resource "aws_cloudfront_distribution" "cdn" {
         assert edge.source_kind == "cdn_origin"
         assert_path(graph, INTERNET_ID, "aws_s3_bucket.assets", ["network_flow"])
 
+    ORIGIN = """
+resource "aws_s3_bucket" "assets" { bucket = "acme-assets" }
+resource "aws_cloudfront_distribution" "cdn" {
+  enabled = true
+  origin {
+    domain_name = aws_s3_bucket.assets.bucket_regional_domain_name
+    origin_id   = "assets"
+    %s
+  }
+}
+"""
+
+    @pytest.mark.parametrize(
+        "access",
+        [
+            'origin_access_control_id = "E2OAC123456789"',
+            "origin_access_control_id = aws_cloudfront_origin_access_control.assets.id",
+            's3_origin_config { origin_access_identity = "origin-access-identity/cloudfront/E1" }',
+        ],
+        ids=["oac", "oac-reference", "oai"],
+    )
+    def test_a_bucket_read_through_an_access_control_is_not_reached_from_the_internet(
+        self, access: str
+    ) -> None:
+        graph = scan_text(self.ORIGIN % access, "main.tf").graph
+        assert_edge(graph, INTERNET_ID, "aws_cloudfront_distribution.cdn")
+        assert_no_edge(
+            graph, "aws_cloudfront_distribution.cdn", "aws_s3_bucket.assets", type="network_flow"
+        )
+        assert_no_path(graph, INTERNET_ID, "aws_s3_bucket.assets", ["network_flow"])
+
+    @pytest.mark.parametrize(
+        "access",
+        [
+            "",
+            'origin_access_control_id = ""',
+            's3_origin_config { origin_access_identity = "" }',
+        ],
+        ids=["none", "empty-oac", "empty-oai"],
+    )
+    def test_an_origin_with_no_access_control_is_still_reached(self, access: str) -> None:
+        graph = scan_text(self.ORIGIN % access, "main.tf").graph
+        assert_edge(graph, "aws_cloudfront_distribution.cdn", "aws_s3_bucket.assets")
+
+    def test_a_bucket_named_by_its_s3_domain_and_read_through_an_oac_is_not_reached(self) -> None:
+        text = """
+resource "aws_s3_bucket" "assets" { bucket = "acme-assets" }
+resource "aws_cloudfront_distribution" "cdn" {
+  enabled = true
+  origin {
+    domain_name              = "acme-assets.s3.us-east-1.amazonaws.com"
+    origin_id                = "assets"
+    origin_access_control_id = "E2OAC123456789"
+  }
+}
+"""
+        graph = scan_text(text, "main.tf").graph
+        assert_no_edge(
+            graph, "aws_cloudfront_distribution.cdn", "aws_s3_bucket.assets", type="network_flow"
+        )
+
+    def test_a_public_bucket_behind_an_access_control_keeps_its_own_edge(self) -> None:
+        text = self.ORIGIN % 'origin_access_control_id = "E2OAC123456789"'
+        text += """
+resource "aws_s3_bucket_acl" "assets" {
+  bucket = aws_s3_bucket.assets.id
+  acl    = "public-read"
+}
+"""
+        graph = scan_text(text, "main.tf").graph
+        assert_edge(graph, INTERNET_ID, "aws_s3_bucket.assets")
+        assert_no_edge(
+            graph, "aws_cloudfront_distribution.cdn", "aws_s3_bucket.assets", type="network_flow"
+        )
+
+    def test_an_access_control_on_one_origin_does_not_hide_another(self) -> None:
+        text = """
+resource "aws_s3_bucket" "private" { bucket = "acme-private" }
+resource "aws_s3_bucket" "open" { bucket = "acme-open" }
+resource "aws_cloudfront_distribution" "cdn" {
+  enabled = true
+  origin {
+    domain_name              = aws_s3_bucket.private.bucket_regional_domain_name
+    origin_id                = "private"
+    origin_access_control_id = "E2OAC123456789"
+  }
+  origin {
+    domain_name = aws_s3_bucket.open.bucket_regional_domain_name
+    origin_id   = "open"
+  }
+}
+"""
+        graph = scan_text(text, "main.tf").graph
+        assert_no_edge(
+            graph, "aws_cloudfront_distribution.cdn", "aws_s3_bucket.private", type="network_flow"
+        )
+        assert_edge(graph, "aws_cloudfront_distribution.cdn", "aws_s3_bucket.open")
+
+    CFN = """\
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Content:
+    Type: AWS::S3::Bucket
+  Oac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: content
+          ViewerProtocolPolicy: redirect-to-https
+        Origins:
+          - Id: content
+            DomainName: !GetAtt Content.RegionalDomainName
+            %s
+"""
+
+    def test_a_template_origin_with_an_access_control_is_not_reached(self) -> None:
+        text = self.CFN % (
+            "OriginAccessControlId: !GetAtt Oac.Id\n"
+            '            S3OriginConfig:\n              OriginAccessIdentity: ""'
+        )
+        graph = scan_text(text, "stack.yaml").graph
+        assert_edge(graph, INTERNET_ID, "Distribution")
+        assert_no_edge(graph, "Distribution", "Content", type="network_flow")
+
+    def test_a_template_origin_with_only_an_empty_identity_is_reached(self) -> None:
+        text = self.CFN % 'S3OriginConfig:\n              OriginAccessIdentity: ""'
+        graph = scan_text(text, "stack.yaml").graph
+        assert_edge(graph, "Distribution", "Content")
+
     def test_an_origin_named_by_its_s3_domain_is_found(self) -> None:
         text = """
 resource "aws_s3_bucket" "assets" { bucket = "acme-assets" }

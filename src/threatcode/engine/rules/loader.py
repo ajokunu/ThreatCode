@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 _TECHNIQUE_ID_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
 # Regex for valid MITRE ATT&CK tactic IDs (TA####)
 _TACTIC_ID_RE = re.compile(r"^TA\d{4}$")
+# The forms the reports accept for a CWE id: CWE-312 or 312
+_CWE_ID_RE = re.compile(r"^(?:CWE-)?\d{1,5}$", re.IGNORECASE)
 
 # Security limits
 MAX_RULES_PER_FILE = 100
@@ -475,10 +477,32 @@ def _resolve_resource_types(raw: Mapping[str, Any], rule_id: str, path: Path) ->
     return tuple(dict.fromkeys(resolved))
 
 
+def _reference_list(metadata: Mapping[str, Any], name: str, prefix: str) -> list[Any]:
+    """The values of a metadata field that names external references, one or a list."""
+    value = metadata.get(name)
+    if value is None:
+        return []
+    items = list(value) if isinstance(value, list) else [value]
+    if not all(isinstance(item, str | int) and not isinstance(item, bool) for item in items):
+        raise RuleLoadError(f"{prefix}: metadata.{name} must be an id or a list of ids")
+    return items
+
+
+def _validate_references(metadata: Mapping[str, Any], rule_id: str, prefix: str) -> None:
+    """Check the ``cwe`` and ``cis`` fields reports show beside a finding (SARIF tags)."""
+    for item in _reference_list(metadata, "cwe", prefix):
+        if not _CWE_ID_RE.match(str(item).strip()):
+            logger.warning("Rule %s: invalid CWE id '%s' - expected CWE-<number>", rule_id, item)
+    for item in _reference_list(metadata, "cis", prefix):
+        if not str(item).strip():
+            raise RuleLoadError(f"{prefix}: metadata.cis must not hold an empty control id")
+
+
 def _validate_metadata(metadata: Any, rule_id: str, path: Path) -> None:
     prefix = f"Rule {rule_id} in {path}"
     if not isinstance(metadata, Mapping):
         raise RuleLoadError(f"{prefix}: metadata must be a mapping")
+    _validate_references(metadata, rule_id, prefix)
     mitre = metadata.get("mitre", {})
     if mitre in ({}, None):
         return

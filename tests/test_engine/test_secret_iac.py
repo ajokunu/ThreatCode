@@ -196,6 +196,96 @@ class TestPlacedOnTheResource:
         assert threats[0].resource_type == ""
 
 
+class TestARealChartShape:
+    """RW-03: the lines of 14 Bitnami charts that were reported as critical secrets."""
+
+    VALUES = """\
+ingress:
+  ## @param ingress.secrets If you're providing your own certificates, please use this to add
+  ## key and certificate should start with -----BEGIN CERTIFICATE----- or
+  ## -----BEGIN RSA PRIVATE KEY-----
+  ##
+  ## e.g:
+  ## secrets:
+  ##   - name: nginx.local-tls
+  ##     key: |
+  ##       -----BEGIN RSA PRIVATE KEY-----
+  ##       ...
+  ##       -----END RSA PRIVATE KEY-----
+  secrets: []
+"""
+    SCRIPT = """\
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart.fullname" . }}-scripts
+data:
+  update.sh: |
+    #!/bin/bash
+    export MONGODB_INITIAL_PRIMARY_ROOT_PASSWORD="$MONGODB_ROOT_PASSWORD"
+    echo "CHANGE MASTER TO MASTER_PASSWORD='$MARIADB_NEW_REPLICATION_PASSWORD';"
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -w -U app
+"""
+    STATEFULSET = """\
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "chart.fullname" . }}
+spec:
+  template:
+    spec:
+      volumes:
+        {{- range $index, $secret := .Values.tls.hidden.existingSecrets }}
+        - name: certs-{{ $index }}
+          secret:
+            secretName: {{ $secret }}
+        {{- end }}
+"""
+
+    def _chart(self, tmp_path: Path, values: str) -> Path:
+        chart = tmp_path / "chart"
+        (chart / "templates").mkdir(parents=True)
+        (chart / "Chart.yaml").write_text("apiVersion: v2\nname: demo\nversion: 1.0.0\n")
+        (chart / "values.yaml").write_text(values, encoding="utf-8")
+        (chart / "templates" / "scripts.yaml").write_text(self.SCRIPT, encoding="utf-8")
+        (chart / "templates" / "statefulset.yaml").write_text(self.STATEFULSET, encoding="utf-8")
+        return chart
+
+    def test_a_chart_of_comments_scripts_and_template_code_has_no_secret_findings(
+        self, tmp_path: Path
+    ) -> None:
+        threats, _ = _scan_tree(self._chart(tmp_path, self.VALUES))
+        assert _where(threats) == []
+
+    def test_a_real_key_in_the_values_is_still_critical_on_its_header_line(
+        self, tmp_path: Path
+    ) -> None:
+        key = "\n".join(
+            [
+                "-----BEGIN RSA PRIVATE KEY-----",
+                "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgq7Zk",
+                "2n0xJ1pY4wNcTm1hAbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+                "-----END RSA PRIVATE KEY-----",
+            ]
+        )
+        values = self.VALUES + "tls:\n  key: |\n" + "".join(f"    {x}\n" for x in key.split("\n"))
+        threats, _ = _scan_tree(self._chart(tmp_path, values))
+        (found,) = threats
+        assert found.rule_id == "SECRET_PRIVATE_KEY"
+        assert found.severity is Severity.CRITICAL
+        assert (found.location_file, found.location_start_line) == ("values.yaml", 16)
+        assert "MIGHAgEAMBMG" not in json.dumps(found.to_dict())
+
+    def test_a_literal_password_in_a_template_is_still_found(self, tmp_path: Path) -> None:
+        chart = self._chart(tmp_path, self.VALUES)
+        with (chart / "templates" / "scripts.yaml").open("a", encoding="utf-8") as handle:
+            handle.write(f'    export DB_PASSWORD="{PASSWORD}"\n')
+        threats, _ = _scan_tree(chart)
+        assert [(t.rule_id, t.location_file) for t in threats] == [
+            ("SECRET_GENERIC_PASSWORD", "templates/scripts.yaml")
+        ]
+
+
 def _plan_with_password(password: str, names: tuple[str, ...] = ("main",)) -> dict[str, Any]:
     values = {
         "engine": "postgres",

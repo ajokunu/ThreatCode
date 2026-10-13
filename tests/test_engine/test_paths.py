@@ -108,6 +108,16 @@ def finding(
     )
 
 
+def exposure(address: str, severity: Severity = Severity.MEDIUM, **kwargs: Any) -> Threat:
+    """A finding that states an exposure (``OPEN`` in the rule id), which opens the way to a target.
+
+    Only a finding of this kind, a credential or a weakness of authentication or privilege enables
+    the last hop of a path; a finding about how a store protects its data does not.
+    """
+    kwargs.setdefault("rule_id", "R_OPEN")
+    return finding(address, severity, **kwargs)
+
+
 LB = "aws_lb.front"
 APP = "aws_instance.app"
 DB = "aws_db_instance.db"
@@ -185,9 +195,9 @@ class TestPathsFollowDirectedReachability:
         flow(graph, INTERNET_ID, LB)
         flow(graph, LB, APP)
         flow(graph, DB, APP)  # the database calls the app, nothing calls the database
-        assert paths.find(graph, [finding(DB, Severity.HIGH), finding(APP)]) == []
+        assert paths.find(graph, [exposure(DB, Severity.HIGH), finding(APP)]) == []
         flow(graph, APP, DB)
-        (path,) = paths.find(graph, [finding(DB, Severity.HIGH)])
+        (path,) = paths.find(graph, [exposure(DB, Severity.HIGH)])
         assert node_ids(path) == [INTERNET_ID, LB, APP, DB]
 
     def test_a_path_is_not_found_through_an_edge_that_only_looks_like_one(self) -> None:
@@ -216,7 +226,7 @@ class TestPathsFollowDirectedReachability:
         graph.nodes[LB].exposure = "internet"  # type: ignore[index]
         flow(graph, LB, APP)
         flow(graph, APP, DB)
-        (path,) = paths.find(graph, [finding(DB, Severity.HIGH)])
+        (path,) = paths.find(graph, [exposure(DB, Severity.HIGH)])
         assert (path.entry, node_ids(path)) == (LB, [LB, APP, DB])
 
     def test_a_graph_with_nothing_exposed_has_no_path(self) -> None:
@@ -230,7 +240,7 @@ class TestPathsFollowDirectedReachability:
         flow(graph, INTERNET_ID, LB)
         flow(graph, LB, DB)
         flow(graph, DB, BUCKET)
-        found = paths.find(graph, [finding(DB), finding(BUCKET)])
+        found = paths.find(graph, [exposure(DB), exposure(BUCKET)])
         assert [node_ids(p) for p in found] == [[INTERNET_ID, LB, DB]]
 
 
@@ -412,9 +422,51 @@ class TestEnablingFindings:
     def test_an_architecture_with_nothing_wrong_on_the_way_has_no_path(self) -> None:
         assert paths.find(web_stack(), []) == []
 
-    def test_a_finding_on_the_target_alone_keeps_the_path(self) -> None:
-        found = paths.find(web_stack(), [finding(DB, Severity.LOW)])
+    def test_an_exposure_on_the_target_alone_keeps_the_path(self) -> None:
+        found = paths.find(web_stack(), [exposure(DB, Severity.LOW)])
         assert node_ids(by_target(found)[DB]) == [INTERNET_ID, LB, APP, DB]
+
+    @pytest.mark.parametrize(
+        "stride", ["spoofing", "elevation_of_privilege"], ids=["spoofing", "privilege"]
+    )
+    def test_a_weakness_of_authentication_or_privilege_on_the_target_keeps_the_path(
+        self, stride: str
+    ) -> None:
+        found = paths.find(web_stack(), [finding(DB, stride=stride, rule_id="DB_WEAK")])
+        assert node_ids(by_target(found)[DB]) == [INTERNET_ID, LB, APP, DB]
+
+    @pytest.mark.parametrize("source", [ThreatSource.SECRET, ThreatSource.SCANNER])
+    def test_a_credential_or_a_scanner_finding_on_the_target_keeps_the_path(
+        self, source: ThreatSource
+    ) -> None:
+        found = paths.find(web_stack(), [finding(DB, source=source, rule_id="SECRET_X")])
+        assert DB in by_target(found)
+
+    def test_a_missing_customer_managed_key_on_the_target_does_not_open_the_way(self) -> None:
+        # RW-07: a route that is open anyway is not made an attack path by a finding that says
+        # how the store protects its data once someone is there
+        threat = finding(DB, Severity.LOW, rule_id="S3_NO_ENCRYPTION")
+        assert paths.find(web_stack(), [threat]) == []
+
+    def test_the_same_finding_on_a_hop_before_the_target_still_enables_that_hop(self) -> None:
+        threat = finding(APP, Severity.LOW, rule_id="S3_NO_ENCRYPTION")
+        path = by_target(paths.find(web_stack(), [threat]))[DB]
+        assert [hop.enabled_by for hop in path.hops] == [[], [], [threat.id], []]
+
+    def test_a_literal_credential_reported_by_a_rule_on_the_target_keeps_the_path(self) -> None:
+        threat = finding(DB, rule_id="DB_LITERAL_PASSWORD")
+        threat.root_cause = "mcp-literal-credential"
+        assert DB in by_target(paths.find(web_stack(), [threat]))
+
+    def test_an_enabling_finding_elsewhere_on_the_route_keeps_the_path_to_a_protected_target(
+        self,
+    ) -> None:
+        enabler = finding("aws_security_group.alb", Severity.LOW)
+        protection = finding(DB, Severity.MEDIUM, rule_id="RDS_NO_ENCRYPTION")
+        path = by_target(paths.find(web_stack(), [enabler, protection]))[DB]
+        assert [hop.enabled_by for hop in path.hops] == [[enabler.id], [], [], []]
+        # The unencrypted store is not what makes the route an attack path or how bad it is
+        assert path.severity == Severity.LOW
 
     def test_a_finding_on_a_hop_enables_that_hop(self) -> None:
         threat = finding(APP)
@@ -519,7 +571,7 @@ class TestSeverityAndScore:
 
     def test_a_worse_finding_outranks_a_better_connected_path(self) -> None:
         graph = web_stack()
-        threats = [finding(APP, Severity.LOW), finding(BUCKET, Severity.CRITICAL)]
+        threats = [finding(APP, Severity.LOW), exposure(BUCKET, Severity.CRITICAL)]
         order = [p.target for p in paths.find(graph, threats)]
         assert order == [BUCKET, DB]
 
@@ -539,6 +591,25 @@ class TestSeverityAndScore:
         assert "ends at aws_db_instance.db (data store)" in text
         assert "1 finding enables it, the worst being App is weak (high)" in text
         assert text.count(". ") == 0 and text.endswith(".")
+
+    @pytest.mark.parametrize(
+        ("base", "effective", "shown"),
+        [
+            (Severity.LOW, Severity.MEDIUM, "low, raised to medium"),
+            (Severity.HIGH, Severity.MEDIUM, "high, lowered to medium"),
+            (Severity.MEDIUM, None, "medium"),
+            (Severity.MEDIUM, Severity.MEDIUM, "medium"),
+        ],
+    )
+    def test_the_rationale_shows_the_severity_the_finding_lists_and_what_context_made_of_it(
+        self, base: Severity, effective: Severity | None, shown: str
+    ) -> None:
+        # The report lists the base severity, so a rationale that said only "medium" for a finding
+        # listed as low contradicted it (RW-07)
+        threat = finding(APP, base, effective=effective)
+        threat.title = "App is weak"
+        text = by_target(paths.find(web_stack(), [threat]))[DB].rationale
+        assert f"the worst being App is weak ({shown})." in text
 
 
 class TestOrderAndIds:
@@ -602,7 +673,7 @@ def chain(length: int) -> tuple[InfraGraph, list[Threat]]:
         flow(graph, previous, f"aws_instance.n{i}")
         previous = f"aws_instance.n{i}"
     flow(graph, previous, DB)
-    return graph, [finding(DB, Severity.HIGH)]
+    return graph, [exposure(DB, Severity.HIGH)]
 
 
 class TestSearchLimits:
@@ -632,7 +703,7 @@ class TestSearchLimits:
             name = f"aws_instance.app{chr(97 + i)}"
             flow(graph, LB, name)
             flow(graph, name, DB)
-        return graph, [finding(DB, Severity.HIGH)]
+        return graph, [exposure(DB, Severity.HIGH)]
 
     def test_the_routes_to_one_target_are_capped_to_the_best(
         self, monkeypatch: pytest.MonkeyPatch
@@ -685,7 +756,7 @@ class TestSearchLimits:
         flow(graph, "aws_instance.edge", LB)
         flow(graph, LB, APP)
         flow(graph, APP, DB)
-        found = paths.find(graph, [finding(DB, Severity.HIGH)])
+        found = paths.find(graph, [exposure(DB, Severity.HIGH)])
         assert [node_ids(p) for p in found] == [["aws_instance.edge", LB, APP, DB]]
 
 
@@ -702,7 +773,7 @@ class TestCountedResources:
         for index in (0, 1, 10):
             flow(graph, LB, f"aws_instance.app[{index}]")
             flow(graph, f"aws_instance.app[{index}]", DB)
-        (path,) = paths.find(graph, [finding(DB, Severity.HIGH)])
+        (path,) = paths.find(graph, [exposure(DB, Severity.HIGH)])
         assert node_ids(path) == [INTERNET_ID, LB, "aws_instance.app[0]", DB]
         assert path.alternatives == 2
         assert path.rationale.endswith(
@@ -711,14 +782,14 @@ class TestCountedResources:
         assert path.to_dict()["alternatives"] == 2
 
     def test_a_path_says_what_makes_its_target_worth_reaching(self) -> None:
-        (path,) = paths.find(web_stack(), [finding(DB, Severity.HIGH)])
+        (path,) = paths.find(web_stack(), [exposure(DB, Severity.HIGH)])
         assert path.target_kind == "data store"
         assert path.to_dict()["target_kind"] == "data store"
         assert "ends at aws_db_instance.db (data store)" in path.rationale
         assert "target_kind" not in AttackPath(id="p", entry="a", target="b").to_dict()
 
     def test_a_path_with_no_equivalent_route_says_nothing_about_alternatives(self) -> None:
-        (path,) = paths.find(web_stack(), [finding(DB, Severity.HIGH)])
+        (path,) = paths.find(web_stack(), [exposure(DB, Severity.HIGH)])
         assert path.alternatives == 0
         assert "alternatives" not in path.to_dict()
 
@@ -733,7 +804,7 @@ class TestCountedResources:
         for name in ("aws_instance.blue", "aws_instance.green"):
             flow(graph, LB, name)
             flow(graph, name, DB)
-        assert len(paths.find(graph, [finding(DB, Severity.HIGH)])) == 2
+        assert len(paths.find(graph, [exposure(DB, Severity.HIGH)])) == 2
 
 
 # ---------------------------------------------------------------------------------------
@@ -829,7 +900,7 @@ class TestTechniques:
             ports=[],
         )
         bind(graph, "mcp_agent.config", "mcp_server.files", "invokes")
-        (path,) = paths.find(graph, [finding("mcp_server.files", Severity.HIGH)])
+        (path,) = paths.find(graph, [exposure("mcp_server.files", Severity.HIGH)])
         by_hop = {hop.node_id: hop.techniques for hop in path.hops}
         assert by_hop["mcp_server.web"] == [PATH_TECHNIQUES["content_injection"]]
         assert by_hop["mcp_server.files"] == [
@@ -871,14 +942,14 @@ class TestWholeInputs:
         }
         assert all(p.entry == INTERNET_ID for p in found)
 
-    def test_a_cdn_in_front_of_a_public_bucket_is_a_path_of_its_own(self) -> None:
+    def test_a_public_bucket_behind_an_origin_identity_is_reached_directly_not_by_the_cdn(
+        self,
+    ) -> None:
+        # The bucket is open to everyone, so the internet reaches it itself; the distribution reads
+        # it through an origin access identity, which is not another way in (RW-07)
         found = {tuple(node_ids(p)) for p in paths_of("realistic/10_aws_gaming_backend.json")}
-        assert (
-            INTERNET_ID,
-            "aws_cloudfront_distribution.game_cdn",
-            "aws_s3_bucket.game_assets",
-        ) in found
         assert (INTERNET_ID, "aws_s3_bucket.game_assets") in found
+        assert not [path for path in found if "aws_cloudfront_distribution.game_cdn" in path]
 
     @pytest.mark.parametrize(
         "relative",
@@ -919,3 +990,88 @@ class TestWholeInputs:
     def test_the_gate_sees_the_path_severity(self) -> None:
         report = scan_files([REALISTIC / "01_aws_ecommerce_platform.json"]).report
         assert max(p.severity for p in report.attack_paths) >= Severity.HIGH
+
+
+STATIC_SITE = """\
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Content:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+%(access_block)s
+  Oac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: site
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: content
+          ViewerProtocolPolicy: redirect-to-https
+        Origins:
+          - Id: content
+            DomainName: !GetAtt Content.RegionalDomainName
+            OriginAccessControlId: !GetAtt Oac.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+  Policy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Content
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: %(principal)s
+            Action: s3:GetObject
+            Resource: !Sub "${Content.Arn}/*"
+"""
+
+BLOCK_PUBLIC_ACCESS = """\
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true"""
+
+CLOUDFRONT_ONLY = "{Service: cloudfront.amazonaws.com}"
+
+
+class TestAStaticSiteBehindACdn:
+    """RW-07: a hardened, access-controlled bucket behind CloudFront is not an attack path."""
+
+    def _paths(self, tmp_path: Any, principal: str, access_block: str) -> list[AttackPath]:
+        template = tmp_path / "site.yaml"
+        template.write_text(
+            STATIC_SITE % {"principal": principal, "access_block": access_block},
+            encoding="utf-8",
+        )
+        return list(scan_files([template]).report.attack_paths)
+
+    def test_a_bucket_only_cloudfront_can_read_has_no_path(self, tmp_path: Any) -> None:
+        assert self._paths(tmp_path, CLOUDFRONT_ONLY, BLOCK_PUBLIC_ACCESS) == []
+
+    def test_the_same_bucket_with_a_wildcard_principal_and_no_block_is_reached_directly(
+        self, tmp_path: Any
+    ) -> None:
+        (path,) = self._paths(tmp_path, '"*"', "")
+        assert node_ids(path) == [INTERNET_ID, "Content"]
+        assert not any("Distribution" in node for node in node_ids(path))
+
+    def test_a_missing_customer_managed_key_is_not_what_enables_it(self, tmp_path: Any) -> None:
+        (path,) = self._paths(tmp_path, '"*"', "")
+        report = scan_files([tmp_path / "site.yaml"]).report
+        enabling = {t.id: t for t in report.threats if t.id in path.hops[-1].enabled_by}
+        assert enabling
+        assert all(t.rule_id != "S3_NO_ENCRYPTION" for t in enabling.values())

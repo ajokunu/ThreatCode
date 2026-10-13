@@ -429,7 +429,7 @@ def _bucket_policies_by_edge(
     """
     documents: list[Statements | Unknown | None] = []
     complete = True
-    for policy_node in ctx.peers(bucket, type_matcher("aws_s3_bucket_policy"), any_input=True):
+    for policy_node in ctx.peers(bucket, type_matcher("aws_s3_bucket_policy")):
         targets = {
             edge.target
             for edge in ctx.graph.edges_from(policy_node.id)
@@ -443,7 +443,7 @@ def _bucket_policies_by_edge(
 
 
 def _resource_policy_facts(node: InfraNode, ctx: EnrichContext) -> Facts:
-    documents: list[Statements | Unknown | None] = [own_policy_statements(node)]
+    documents: list[Statements | Unknown | None] = [own_policy_statements(node, ctx)]
     if node.resource_type == "aws_s3_bucket":
         # Bucket policy resources are folded in by the companion phase, which has already run
         companion = ctx.derived(node).get("policy_statements")
@@ -620,7 +620,8 @@ def _companion_logging(node: InfraNode, ctx: EnrichContext) -> Tri:
         )
         if any(target.id == node.id for target in link.resolved):
             verdicts.append(True)
-        elif link.unresolved:
+        elif link.unresolved and ctx.same_input(node, companion):
+            # A reference never names a cluster of another input
             verdicts.append(None)
     return _or(verdicts)
 

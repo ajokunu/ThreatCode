@@ -35,6 +35,15 @@ What the threat says follows what the flow is known to be:
 - The severity comes from the zone pair, higher when the source faces the internet, and lower by
   one level when every merged edge declares the flow both encrypted and authenticated.
 - A flow about which nothing is known says so, and its confidence is lower.
+- The connection of an agent to an MCP server is the exception to "declared means declared".
+  The parser sets ``authenticated`` false for a server with no credential in its configuration,
+  but a client that follows the MCP authorization spec discovers OAuth when it connects, so the
+  configuration cannot show that the server accepts anonymous calls.
+  That reading is the absence of a credential, not a fact about the flow: it is treated as
+  unknown, the finding carries the low confidence of an absence, and when authentication is the
+  only open question the severity is at most that of ``MCP_REMOTE_NO_AUTH``, which reports the
+  same missing credential.
+  A server over plain http is still a definite finding, as ``MCP_PLAINTEXT_TRANSPORT`` is.
 
 `metadata['boundary_rule']` says which of these a threat is, so a report can group them:
 `BOUNDARY_UNAUTHENTICATED_FLOW` (spoofing), `BOUNDARY_UNENCRYPTED_FLOW` (information disclosure),
@@ -74,6 +83,8 @@ _HIGH_RISK_PAIRS = {
 }
 _LOWER = {Severity.HIGH: Severity.MEDIUM, Severity.MEDIUM: Severity.LOW}
 _LOW_CONFIDENCE = 0.5
+# The severity of MCP_REMOTE_NO_AUTH, the rule that reports a remote server with no credential
+_UNKNOWN_AUTH_SEVERITY = Severity.LOW
 
 
 @dataclass
@@ -81,6 +92,8 @@ class _Flow:
     """Everything the edges between one (source, target) pair say about the flow."""
 
     edges: list[InfraEdge] = field(default_factory=list)
+    # True when the flow ends at an MCP server: a missing credential there is not evidence
+    credential_is_inferred: bool = False
 
     @property
     def edge_types(self) -> list[str]:
@@ -108,7 +121,19 @@ class _Flow:
 
     @property
     def authenticated(self) -> bool | None:
-        return self._all("authenticated")
+        found = self._all("authenticated")
+        if found is False and self.credential_is_inferred:
+            return None
+        return found
+
+    @property
+    def only_authentication_is_open(self) -> bool:
+        """Whether the one thing the input does not show is who the other end is."""
+        return (
+            self.credential_is_inferred
+            and self.authenticated is None
+            and self.encrypted is not False
+        )
 
     @property
     def validated(self) -> bool | None:
@@ -186,7 +211,9 @@ def analyze(graph: InfraGraph) -> list[Threat]:
             continue
         if not (src.can_exchange_traffic and tgt.can_exchange_traffic):
             continue
-        flows.setdefault((edge.source, edge.target), _Flow()).edges.append(edge)
+        flow = flows.setdefault((edge.source, edge.target), _Flow())
+        flow.edges.append(edge)
+        flow.credential_is_inferred = "mcp_server" in (src.resource_type, tgt.resource_type)
     threats: list[Threat] = []
     for (source_id, target_id), flow in flows.items():
         src = graph.get_node(source_id)
@@ -216,7 +243,11 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
     severity = _boundary_severity("internet" if src.exposure == "internet" else src_zone, tgt_zone)
     if flow.encrypted is True and flow.authenticated is True:
         severity = _LOWER.get(severity, severity)
-    known = flow.encrypted is not None or flow.authenticated is not None
+    if flow.only_authentication_is_open:
+        severity = min(severity, _UNKNOWN_AUTH_SEVERITY)
+    known = (flow.encrypted is not None or flow.authenticated is not None) and not (
+        flow.only_authentication_is_open
+    )
     # The separator keeps ("a_b", "c") apart from ("a", "b_c")
     seed = f"BOUNDARY|{src.id}|{tgt.id}|{'+'.join(flow.edge_types)}"
     # The internet has no file and no line: the finding sits on the resource it enters
@@ -230,7 +261,7 @@ def _threat(src: InfraNode, tgt: InfraNode, flow: _Flow) -> Threat:
         source=ThreatSource.BOUNDARY,
         resource_type=anchor.resource_type,
         resource_address=anchor.id,
-        mitigation=_mitigation(stride),
+        mitigation=_mitigation(stride, flow),
         confidence=1.0 if known else _LOW_CONFIDENCE,
         metadata={
             "boundary_key": f"BOUNDARY_{src_zone}_{tgt_zone}",
@@ -340,7 +371,9 @@ def _knowledge(flow: _Flow) -> str:
     return "Nothing in the input says whether the flow is authenticated or encrypted."
 
 
-def _mitigation(stride: str) -> str:
+def _mitigation(stride: str, flow: _Flow) -> str:
+    if "returns_content" in flow.relations:
+        return _returned_content_mitigation(stride)
     if stride == StrideCategory.SPOOFING.value:
         return (
             "Authenticate the caller at the receiving end of this flow (mutual TLS, signed "
@@ -351,6 +384,25 @@ def _mitigation(stride: str) -> str:
     return (
         "Ensure all data crossing trust boundaries is encrypted in transit "
         "(TLS/mTLS), authenticated, and validated at the receiving end."
+    )
+
+
+def _returned_content_mitigation(stride: str) -> str:
+    """The advice for what a server sends back to an agent, which is the agent's input.
+
+    The agent starts the call, so "authenticate the caller at the receiving end" would point at
+    the wrong side: what needs a check is the server the agent trusts, and what it returns.
+    """
+    if stride == StrideCategory.INFORMATION_DISCLOSURE.value:
+        return (
+            "Connect to the server over https or wss, so the requests and the content it returns "
+            "cannot be read or changed on the path."
+        )
+    return (
+        "Connect only to servers you trust and confirm the server requires authentication (a "
+        "server that follows the MCP authorization spec asks the client to sign in). Treat what "
+        "it returns as untrusted input to the agent, and do not give the agent a tool that "
+        "can send data out or act on it without confirmation."
     )
 
 

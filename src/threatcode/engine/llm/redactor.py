@@ -317,6 +317,10 @@ class Redactor:
         # Credential URLs go whole (userinfo and host) before the secret rules, which would
         # otherwise redact only the password and leave the user name and host behind
         result = _URL_USERINFO.sub(self._userinfo_replacer, result)
+        # An ARN goes whole, account id and region included, and before the secret rules: those
+        # match the resource part of a Secrets Manager or SSM ARN and would leave the account id
+        # and region in place around their placeholder
+        result = _AWS_ARN.sub(self._replacer("aws_arn"), result)
         lowered = result.lower()
         for rule_regex, keywords in self._secret_rules:
             if keywords and not any(k in lowered for k in keywords):
@@ -324,7 +328,6 @@ class Redactor:
             result = rule_regex.sub(self._group_replacer("secret"), result)
         for pattern in _SECRET_PATTERNS:
             result = pattern.sub(self._replacer("secret"), result)
-        result = _AWS_ARN.sub(self._replacer("aws_arn"), result)
         result = _ACCOUNT_CONTEXT.sub(self._group_replacer("aws_account_id"), result)
         result = _EMAIL.sub(self._replacer("email"), result)
         result = _IPV4.sub(self._ipv4_replacer, result)

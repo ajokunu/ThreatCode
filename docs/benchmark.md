@@ -33,8 +33,8 @@ On this build ThreatCode finds **37 of the 39** planted issues (95%) and reports
 | `07_azure_webapp_java.tf` | 2/2 | 100% | 0 | 9 |
 | `08_aws_ml_training_platform.json` | 6/6 | 100% | 0 | 20 |
 | `09_aws_healthcare_hipaa.yaml` | 3/3 | 100% | 0 | 9 |
-| `10_aws_gaming_backend.json` | 5/5 | 100% | 0 | 34 |
-| **Total** | **37/39** | **95%** | **0** | 186 |
+| `10_aws_gaming_backend.json` | 5/5 | 100% | 0 | 33 |
+| **Total** | **37/39** | **95%** | **0** | 185 |
 
 ### Issues the build does not find
 

@@ -13,6 +13,10 @@ Properties worth knowing:
 * The keyword prefilter compares lower-cased text with keywords lower-cased at rule construction.
 * A match is the ``secret`` group of the rule's regex.
   Allow-lists, placeholders and templates are judged on that value alone.
+* A rule marked ``multiline`` (a PEM block) runs over the whole text instead of line by line, and
+  its finding sits on the line where the block starts.
+* In a templated file (a Helm template) a generic ``key = value`` match inside a ``{{ }}``
+  action is template code, not a literal, and is dropped.
 * When two rules match overlapping text on one line, the more specific rule wins: a provider
   token over a credential in a URL or header over a generic ``key = value``.
 * The preview of a match is ``[REDACTED <rule id> len=<n>]``: it holds no character of the secret.
@@ -21,6 +25,7 @@ Properties worth knowing:
 
 from __future__ import annotations
 
+import bisect
 import logging
 import re
 from collections.abc import Iterable, Sequence
@@ -51,6 +56,9 @@ _BOMS: tuple[tuple[bytes, str], ...] = (
     (b"\xff\xfe", "utf-16"),
     (b"\xfe\xff", "utf-16"),
 )
+
+# A template action, which can span lines: {{ ... }} with the trim markers of Go templates
+_TEMPLATE_ACTION = re.compile(r"\{\{.{0,4096}?\}\}", re.DOTALL)
 
 _KEY_BEFORE = re.compile(
     r"""([A-Za-z0-9_.\-\[\]]{1,128})["']?[ \t]{0,32}(?::=|=>|[=:])[ \t]{0,32}["']?\Z"""
@@ -154,8 +162,13 @@ class SecretScanner:
             except re.error:
                 logger.warning("Invalid allow pattern: %s", pattern)
 
-    def scan_text(self, text: str, *, path: str = "") -> ScanOutcome:
-        """Scan the text of one file; ``path`` is used only for the rules' path filters."""
+    def scan_text(self, text: str, *, path: str = "", templated: bool = False) -> ScanOutcome:
+        """Scan the text of one file.
+
+        ``path`` is used only for the rules' path filters.
+        ``templated`` says the file is a template whose ``{{ }}`` actions are code: a generic
+        match inside one is dropped, because ``$secret := .Values.x`` is not a secret.
+        """
         lowered = text.lower()
         active = [
             rule
@@ -171,6 +184,8 @@ class SecretScanner:
         lower_lines = lowered.split("\n")
         if len(lower_lines) != len(lines):  # lower() never changes the line count; stay safe
             lower_lines = [line.lower() for line in lines]
+        actions = _template_actions(text) if templated else []
+        starts = _line_starts(lines) if actions else []
         candidates: list[_Candidate] = []
         # Stop collecting once a rule has far more candidates than can be reported, so a file of
         # repeated matches costs a bounded amount of work instead of a quadratic one.
@@ -178,6 +193,12 @@ class SecretScanner:
         flooded = False
         for rule in active:
             collected = 0
+            if rule.multiline:
+                found = self._multiline_candidates(rule, text, lines, limit)
+                collected = len(found)
+                candidates.extend(found)
+                flooded = flooded or collected >= limit
+                continue
             for index, raw in enumerate(lines):
                 if collected >= limit:
                     flooded = True
@@ -193,6 +214,12 @@ class SecretScanner:
                         continue
                     if any(allow.search(value) for allow in self._global_allow):
                         continue
+                    if (
+                        actions
+                        and rule.kind == "generic"
+                        and _in_action(actions, starts[index] + start)
+                    ):
+                        continue
                     candidates.append(_Candidate(rule, index + 1, start, end, value, line))
                     collected += 1
                     if collected >= limit:
@@ -203,6 +230,31 @@ class SecretScanner:
             outcome.truncated = True
             outcome.dropped = max(outcome.dropped, 1)
         return outcome
+
+    def _multiline_candidates(
+        self, rule: SecretRule, text: str, lines: Sequence[str], limit: int
+    ) -> list[_Candidate]:
+        """The matches of a rule that spans lines, each placed on the line where it starts."""
+        found: list[_Candidate] = []
+        starts: list[int] | None = None
+        for match in rule.regex.finditer(text):
+            if rule.verify is not None and not rule.verify(match):
+                continue
+            value, begin, _end = rule.secret_of(match)
+            if not rule.accepts(value, quoted=True):
+                continue
+            if any(allow.search(value) for allow in self._global_allow):
+                continue
+            if starts is None:
+                starts = _line_starts(lines)
+            index = bisect.bisect_right(starts, begin) - 1
+            raw = lines[index]
+            line = raw[:-1] if raw.endswith("\r") else raw
+            column = begin - starts[index]
+            found.append(_Candidate(rule, index + 1, column, len(line), value, line))
+            if len(found) >= limit:
+                break
+        return found
 
     # -- selection -----------------------------------------------------------------------------
 
@@ -236,6 +288,27 @@ class SecretScanner:
             per_rule[cand.rule.id] = seen + 1
             outcome.matches.append(_to_match(cand))
         return outcome
+
+
+def _line_starts(lines: Sequence[str]) -> list[int]:
+    """The offset of the first character of each line of a text split on newlines."""
+    starts: list[int] = []
+    offset = 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
+    return starts
+
+
+def _template_actions(text: str) -> list[tuple[int, int]]:
+    """The spans of the ``{{ }}`` actions of a template, in order."""
+    return [match.span() for match in _TEMPLATE_ACTION.finditer(text)]
+
+
+def _in_action(actions: Sequence[tuple[int, int]], offset: int) -> bool:
+    """Whether a character offset sits inside one of the (sorted, disjoint) action spans."""
+    where = bisect.bisect_right(actions, (offset, offset)) - 1
+    return where >= 0 and actions[where][0] <= offset < actions[where][1]
 
 
 def _to_match(cand: _Candidate) -> SecretMatch:

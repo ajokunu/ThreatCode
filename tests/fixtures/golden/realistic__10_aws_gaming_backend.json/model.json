@@ -14,16 +14,6 @@
       "entry": "internet",
       "nodes": [
         "internet",
-        "aws_cloudfront_distribution.game_cdn",
-        "aws_s3_bucket.game_assets"
-      ],
-      "severity": "critical",
-      "target": "aws_s3_bucket.game_assets"
-    },
-    {
-      "entry": "internet",
-      "nodes": [
-        "internet",
         "aws_s3_bucket.game_assets"
       ],
       "severity": "critical",
@@ -40,12 +30,6 @@
       "severity": "medium",
       "source": "aws_cloudfront_distribution.game_cdn",
       "stride": "tampering"
-    },
-    {
-      "severity": "high",
-      "source": "aws_cloudfront_distribution.game_cdn",
-      "stride": "tampering",
-      "target": "aws_s3_bucket.game_assets"
     },
     {
       "severity": "medium",
