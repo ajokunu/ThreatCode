@@ -20,7 +20,7 @@ from threatcode import __version__
 from threatcode.cli import cli
 from threatcode.engine.rules.loader import load_builtin_rules
 from threatcode.exceptions import LLMError
-from threatcode.formatters import format_names
+from threatcode.formatters import format_names, visible_format_names
 
 if TYPE_CHECKING:
     from tests.conftest import FakeLLMServer
@@ -182,7 +182,10 @@ class TestScanFormats:
     def test_the_format_choices_come_from_the_registry(self) -> None:
         scan_command = cli.commands["scan"]
         choice = next(p for p in scan_command.params if p.name == "output_format").type
-        assert list(choice.choices) == format_names()  # type: ignore[attr-defined]
+        assert list(choice.choices) == visible_format_names()  # type: ignore[attr-defined]
+        # the deprecated alias is accepted but not advertised
+        assert "matrix" in format_names()
+        assert "matrix" not in choice.choices  # type: ignore[attr-defined]
 
     def test_an_unknown_format_is_a_usage_error(self) -> None:
         result = invoke("scan", SIMPLE_PLAN, "-f", "yaml")
@@ -929,7 +932,10 @@ class TestLlmIsOptIn:
         assert "LLM" not in result.stderr
         assert "API key" not in result.stderr
 
-    def test_the_flag_builds_a_client_and_says_where_the_graph_goes(self, built: list[Any]) -> None:
+    def test_the_flag_builds_a_client_and_says_where_the_graph_goes(
+        self, built: list[Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         result = invoke("scan", SIMPLE_TF, "--llm")
         assert len(built) == 1
         assert "LLM enrichment enabled: sending a redacted graph to anthropic/" in result.stderr
@@ -1260,7 +1266,7 @@ class TestHelpAndDiscoverability:
 
     def test_the_diff_help(self) -> None:
         out = invoke("diff", "--help").stdout
-        assert "--fail-on-new SEVERITY" in out
+        assert "--fail-on-new [critical|high|medium|low|info|none]" in out
         assert "--output" in out
         assert "Exit codes:" in out
 
@@ -1431,14 +1437,16 @@ class TestSlimmedSurface:
     """The scanning layer is gone: the CLI has scan and diff and nothing else."""
 
     def test_only_scan_and_diff_are_commands(self) -> None:
-        assert sorted(cli.commands) == ["diff", "scan"]
+        visible = sorted(name for name, command in cli.commands.items() if not command.hidden)
+        assert visible == ["diff", "scan"]
 
     @pytest.mark.parametrize("command", REMOVED_COMMANDS)
-    def test_removed_command_is_not_found(self, command: str) -> None:
+    def test_removed_command_points_to_the_migration_page(self, command: str) -> None:
         result = invoke(command, K8S_FIXTURE)
         assert result.exit_code == 2
-        assert "No such command" in result.stderr
-        assert command in result.stderr
+        assert f"'threatcode {command}' was removed in 1.0" in result.stderr
+        assert "docs/migrating.md" in result.stderr
+        assert "No such command" not in result.stderr
 
     @pytest.mark.parametrize(
         "option", ["--scanners=misconfig", "--ignore-unfixed", "--severity=high"]
