@@ -36,6 +36,7 @@ from threatcode.parsers._helm_render import (
     DEFAULT_TIME_BUDGET_SECONDS,
     RELEASE_NAME,
     ChartRender,
+    RenderedFile,
     find_document_line,
     read_template,
     render_chart,
@@ -105,9 +106,13 @@ class HelmParser(BaseParser):
                 raise ConfigError(f"helm is required but {reason}")
 
         renderer = "helm"
+        left_out: list[str] = []
+        missing: list[str] = []
         if documents is None:
             renderer = "fallback"
-            documents = self._fallback(chart_dir, meta, source_path, reason, diagnostics)
+            documents = self._fallback(
+                chart_dir, meta, source_path, reason, diagnostics, left_out, missing
+            )
 
         result = KubernetesParser().parse_documents(documents, source_path)
         result.format_type = "helm"
@@ -115,6 +120,12 @@ class HelmParser(BaseParser):
         result.metadata["render"] = renderer
         if renderer == "fallback":
             result.metadata["render_reason"] = reason
+            if left_out or missing:
+                # Templates that rendered to nothing usable, and dependencies that are not
+                # vendored: what the chart creates is only partly modelled
+                result.metadata["incomplete"] = True
+                result.metadata["skipped_templates"] = left_out
+                result.metadata["missing_dependencies"] = missing
         return result
 
     # -- the fallback renderer -----------------------------------------------------------
@@ -126,6 +137,8 @@ class HelmParser(BaseParser):
         source_path: str,
         reason: str,
         diagnostics: list[Diagnostic],
+        left_out: list[str],
+        missing: list[str],
     ) -> list[ManifestDocument]:
         name = Path(source_path).name or "Chart.yaml"
         message = (
@@ -135,7 +148,8 @@ class HelmParser(BaseParser):
         logger.warning("%s", message)
         diagnostics.append(Diagnostic("warning", "helm.fallback_render", message, source_path))
         render = render_chart(chart_dir, chart_meta=meta, time_budget=self.time_budget)
-        return _documents_from_render(render, chart_dir, source_path, diagnostics)
+        missing.extend(render.missing_dependencies)
+        return _documents_from_render(render, chart_dir, source_path, diagnostics, left_out)
 
     # -- the helm binary -----------------------------------------------------------------
 
@@ -242,11 +256,53 @@ def _warn(diagnostics: list[Diagnostic], message: str, file: str) -> None:
     diagnostics.append(Diagnostic("warning", "helm.render_warning", message, file))
 
 
+_LISTED_INCLUDES = 3
+
+
+def _dependency_names(names: list[str]) -> str:
+    return f"{'dependency' if len(names) == 1 else 'dependencies'} {', '.join(names)}"
+
+
+def _cause(rendered: RenderedFile, missing: list[str]) -> str:
+    """Why a template rendered to something unusable, when its includes say so.
+
+    A template that includes a definition no chart supplies prints a placeholder where the
+    definition's text belongs, and a placeholder that stands for a block of YAML (labels,
+    annotations, a selector) breaks the document around it.
+    Naming the includes, and the dependency that should have supplied them, turns "invalid YAML
+    on line 9" into something the chart's owner can act on.
+    """
+    if not rendered.undefined:
+        return ""
+    shown = ", ".join(rendered.undefined[:_LISTED_INCLUDES])
+    more = len(rendered.undefined) - _LISTED_INCLUDES
+    cause = (
+        f"; it includes {shown}{f' and {more} more' if more > 0 else ''}, which no chart defines"
+    )
+    if missing:
+        verb = "is" if len(missing) == 1 else "are"
+        cause += f" ({_dependency_names(missing)} {verb} not vendored)"
+    return cause
+
+
 def _documents_from_render(
-    render: ChartRender, chart_dir: Path, source_path: str, diagnostics: list[Diagnostic]
+    render: ChartRender,
+    chart_dir: Path,
+    source_path: str,
+    diagnostics: list[Diagnostic],
+    skipped: list[str] | None = None,
 ) -> list[ManifestDocument]:
     for message in render.warnings:
         _warn(diagnostics, message, source_path)
+    if render.missing_dependencies:
+        names = render.missing_dependencies
+        _warn(
+            diagnostics,
+            f"{_dependency_names(names)} {'is' if len(names) == 1 else 'are'} not vendored in "
+            "charts/, so the templates that include its definitions and the resources of its "
+            "subchart are not analysed; run 'helm dependency build' in the chart, or install helm",
+            source_path,
+        )
     documents: list[ManifestDocument] = []
     for rendered in render.files:
         file = str(chart_dir / rendered.path)
@@ -257,9 +313,12 @@ def _documents_from_render(
         except ParseError as exc:
             _warn(
                 diagnostics,
-                f"{rendered.path} rendered to invalid YAML and was skipped: {exc}",
+                f"{rendered.path} rendered to invalid YAML and was skipped: {exc}"
+                f"{_cause(rendered, render.missing_dependencies)}",
                 file,
             )
+            if skipped is not None:
+                skipped.append(rendered.path)
             continue
         for data, index in zip(loaded, indexes, strict=False):
             if _is_test_hook(data):

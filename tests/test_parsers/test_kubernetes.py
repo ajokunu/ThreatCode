@@ -806,6 +806,97 @@ class TestHostileDocuments:
         assert [d.code for d in output.diagnostics].count("k8s.skipped_document") >= 1
 
 
+def _role(rules: list[dict[str, Any]], kind: str = "ClusterRole") -> dict[str, Any]:
+    result = KubernetesParser().parse(
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": kind,
+            "metadata": {"name": "r", "namespace": "ns"},
+            "rules": rules,
+        },
+        source_path="role.yaml",
+    )
+    return dict(result.resources[0].properties)
+
+
+class TestRbacGrantsLimitedToNamedObjects:
+    """A grant limited by resourceNames is not a grant over every Secret or every pod."""
+
+    def test_reading_every_secret_is_flagged(self) -> None:
+        facts = _role([{"apiGroups": [""], "resources": ["secrets"], "verbs": ["get", "list"]}])
+        assert facts["has_secrets_read"] is True
+
+    def test_reading_the_one_secret_it_names_is_not(self) -> None:
+        facts = _role(
+            [
+                {
+                    "apiGroups": [""],
+                    "resources": ["secrets"],
+                    "resourceNames": ["tls-cert"],
+                    "verbs": ["get"],
+                }
+            ]
+        )
+        assert facts["has_secrets_read"] is False
+
+    def test_a_named_grant_does_not_hide_a_broad_one_in_the_next_rule(self) -> None:
+        facts = _role(
+            [
+                {
+                    "apiGroups": [""],
+                    "resources": ["secrets"],
+                    "resourceNames": ["tls-cert"],
+                    "verbs": ["get"],
+                },
+                {"apiGroups": [""], "resources": ["secrets"], "verbs": ["list"]},
+            ]
+        )
+        assert facts["has_secrets_read"] is True
+
+    def test_an_empty_resource_names_list_limits_nothing(self) -> None:
+        facts = _role(
+            [{"apiGroups": [""], "resources": ["secrets"], "resourceNames": [], "verbs": ["get"]}]
+        )
+        assert facts["has_secrets_read"] is True
+
+    def test_a_wildcard_resource_with_names_is_not_every_secret_either(self) -> None:
+        facts = _role(
+            [{"apiGroups": ["*"], "resources": ["*"], "resourceNames": ["x"], "verbs": ["get"]}],
+            kind="Role",
+        )
+        assert facts["has_secrets_read"] is False
+        assert facts["has_wildcard_resources"] is True
+
+    def test_exec_into_every_pod_is_flagged_and_into_a_named_pod_is_not(self) -> None:
+        broad = _role([{"apiGroups": [""], "resources": ["pods/exec"], "verbs": ["create"]}])
+        named = _role(
+            [
+                {
+                    "apiGroups": [""],
+                    "resources": ["pods/exec"],
+                    "resourceNames": ["debug-0"],
+                    "verbs": ["create"],
+                }
+            ]
+        )
+        assert broad["has_pod_exec"] is True
+        assert named["has_pod_exec"] is False
+
+    def test_the_other_facts_do_not_depend_on_resource_names(self) -> None:
+        facts = _role(
+            [
+                {
+                    "apiGroups": [""],
+                    "resources": ["secrets"],
+                    "resourceNames": ["x"],
+                    "verbs": ["*", "escalate"],
+                }
+            ]
+        )
+        assert facts["has_wildcard_verbs"] is True
+        assert facts["has_escalation_verbs"] is True
+
+
 class TestNameSource:
     @pytest.mark.parametrize(
         ("metadata", "source"),

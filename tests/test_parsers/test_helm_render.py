@@ -1095,6 +1095,90 @@ def add_subchart(
     return sub
 
 
+class TestUndefinedIncludes:
+    """What a template includes that no chart defines is recorded on its rendered file."""
+
+    def test_the_undefined_names_are_listed_in_the_order_they_are_met(self, tmp_path: Path) -> None:
+        chart = make_chart(
+            tmp_path,
+            {
+                "t.yaml": 'a: {{ include "lib.one" . }}\nb: {{ include "lib.two" . }}\n'
+                'c: {{ include "lib.one" . }}\n'
+            },
+        )
+        (rendered,) = render_chart(chart).files
+        assert rendered.undefined == ("lib.one", "lib.two")
+
+    def test_a_template_action_counts_too(self, tmp_path: Path) -> None:
+        chart = make_chart(tmp_path, {"t.yaml": 'a: {{ template "lib.named" . }}\n'})
+        (rendered,) = render_chart(chart).files
+        assert rendered.undefined == ("lib.named",)
+
+    def test_a_defined_include_is_not_listed(self, tmp_path: Path) -> None:
+        chart = make_chart(
+            tmp_path,
+            {
+                "_helpers.tpl": '{{- define "d.name" -}}n{{- end -}}\n',
+                "t.yaml": 'a: {{ include "d.name" . }}\nb: {{ include "gone" . }}\n',
+            },
+        )
+        (rendered,) = render_chart(chart).files
+        assert rendered.undefined == ("gone",)
+
+    def test_a_template_that_includes_nothing_undefined_lists_nothing(self, tmp_path: Path) -> None:
+        chart = make_chart(tmp_path, {"t.yaml": "a: 1\n"})
+        (rendered,) = render_chart(chart).files
+        assert rendered.undefined == ()
+
+
+class TestMissingDependencies:
+    def test_a_listed_dependency_with_no_subchart_is_missing(self, tmp_path: Path) -> None:
+        chart = make_chart(
+            tmp_path, {"t.yaml": "a: 1\n"}, chart={"dependencies": [{"name": "common"}]}
+        )
+        assert render_chart(chart).missing_dependencies == ["common"]
+
+    def test_a_vendored_subchart_is_not_missing(self, tmp_path: Path) -> None:
+        chart = make_chart(
+            tmp_path, {"t.yaml": "a: 1\n"}, chart={"dependencies": [{"name": "common"}]}
+        )
+        add_subchart(chart, "common", {"t.yaml": "b: 2\n"})
+        assert render_chart(chart).missing_dependencies == []
+
+    def test_a_disabled_dependency_is_not_missing(self, tmp_path: Path) -> None:
+        chart = make_chart(
+            tmp_path,
+            {"t.yaml": "a: 1\n"},
+            {"redis": {"enabled": False}},
+            chart={"dependencies": [{"name": "redis", "condition": "redis.enabled"}]},
+        )
+        assert render_chart(chart).missing_dependencies == []
+
+    def test_a_dependency_of_a_subchart_counts_and_a_name_is_listed_once(
+        self, tmp_path: Path
+    ) -> None:
+        chart = make_chart(tmp_path, {"t.yaml": "a: 1\n"})
+        mid = add_subchart(
+            chart,
+            "mid",
+            {"t.yaml": "b: 2\n"},
+            meta="dependencies:\n  - name: common\n  - name: common\n",
+        )
+        assert render_chart(chart).missing_dependencies == ["common"]
+        assert mid.is_dir()
+
+    def test_a_chart_without_dependencies_has_none(self, tmp_path: Path) -> None:
+        assert render_chart(make_chart(tmp_path, {"t.yaml": "a: 1\n"})).missing_dependencies == []
+
+    def test_a_malformed_dependency_entry_is_ignored(self, tmp_path: Path) -> None:
+        chart = make_chart(
+            tmp_path,
+            {"t.yaml": "a: 1\n"},
+            chart={"dependencies": ["common", {"version": "1"}, {"name": 5}, {"name": ""}]},
+        )
+        assert render_chart(chart).missing_dependencies == []
+
+
 class TestSubcharts:
     def test_a_subchart_renders_with_its_own_values_and_chart(self, tmp_path: Path) -> None:
         parent = make_chart(tmp_path, {"t.yaml": "who: parent\n"})

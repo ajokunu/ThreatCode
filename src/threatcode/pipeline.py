@@ -65,7 +65,7 @@ from threatcode.discovery import (
 )
 from threatcode.exceptions import ParseError, ThreatCodeError, UnsupportedFormatError, UsageError
 from threatcode.fingerprint import assign_fingerprints
-from threatcode.formatters._utils import display_path
+from threatcode.formatters._utils import display_path, plural
 from threatcode.ir.addressing import split_location
 from threatcode.models.analysis import AnalysisResult
 from threatcode.models.report import (
@@ -370,8 +370,9 @@ def run_scan(request: ScanRequest) -> ScanResult:
                 {
                     "file": label,
                     "code": "parse.zero_resources",
-                    "message": f"{len(outputs)} input(s) were parsed but produced no resources "
-                    "to model, so there is nothing to scan",
+                    "message": f"{plural(len(outputs), 'input')} "
+                    f"{'was' if len(outputs) == 1 else 'were'} parsed but produced no "
+                    "resources to model, so there is nothing to scan",
                 }
             )
 
@@ -521,18 +522,23 @@ def _parse_unit(
     errors: list[dict[str, str]],
     label: str = "",
 ) -> ParsedOutput | None:
-    from threatcode.parsers import detect_and_parse
+    from threatcode.parsers import detect_and_parse, looks_like_infrastructure
 
     try:
         parsed = detect_and_parse(unit.path)
     except UnsupportedFormatError as exc:
         # Nothing claimed the file. For a file found by walking that is "not infrastructure",
-        # unless its name says it should be (Chart.yaml, an MCP config) and it is so broken
-        # that no parser could have told: then it is an input error.
+        # unless its name says it should be (Chart.yaml, an MCP config, plan.json) or the start
+        # of it reads like a plan, template or manifest, and it is so broken that no parser could
+        # have told: then it is an input error, because a truncated plan must never pass as a
+        # clean scan.
         if (
             unit.explicit
             or unit.kind == HCL_MODULE
-            or (unit.by_name and not _well_formed(unit.path))
+            or (
+                (unit.by_name or looks_like_infrastructure(unit.path))
+                and not _well_formed(unit.path)
+            )
         ):
             errors.append(_parse_error(unit, exc, label))
         else:
@@ -553,7 +559,28 @@ def _parse_unit(
         logger.debug("Unexpected failure parsing %s", unit.relpath, exc_info=True)
         errors.append(_parse_error(unit, exc, label, unexpected=True))
         return None
-    return _localize_parsed(parsed, unit, root)
+    parsed = _localize_parsed(parsed, unit, root)
+    _promote_parse_failures(parsed, errors)
+    return parsed
+
+
+def _promote_parse_failures(parsed: ParsedOutput, errors: list[dict[str, str]]) -> None:
+    """Make a file that failed inside a unit an input error, like the same file named alone.
+
+    A Terraform module reads its other files when one cannot be parsed and records the failure
+    as an error-level ``parse.failed`` diagnostic.
+    The exit contract does not depend on what sits beside a broken file, so each of those is an
+    input error (exit 2, "incomplete" in the summary) and is no longer also listed as a gap.
+    """
+    kept: list[Diagnostic] = []
+    for diagnostic in parsed.diagnostics:
+        if diagnostic.level == "error" and diagnostic.code == "parse.failed":
+            errors.append(
+                {"file": diagnostic.file, "code": diagnostic.code, "message": diagnostic.message}
+            )
+        else:
+            kept.append(diagnostic)
+    parsed.diagnostics = kept
 
 
 def _readable_text(path: Path) -> bool:
@@ -577,6 +604,8 @@ def _well_formed(path: Path) -> bool:
     except (ParseError, OSError):
         return False
     suffix = path.suffix.lower()
+    if suffix in (".template", ".cfn"):
+        suffix = ".json" if text.lstrip().startswith(("{", "[")) else ".yaml"
     try:
         if suffix == ".json":
             try:

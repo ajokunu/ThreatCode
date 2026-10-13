@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from threatcode.exceptions import ParseError
 from threatcode.parsers import _hcl_adapter
@@ -20,6 +22,7 @@ from threatcode.parsers._hcl_adapter import (
     load,
     load_attributes,
     load_json_syntax,
+    normalize_layout,
     scan_blocks,
 )
 
@@ -412,3 +415,493 @@ class TestDescribeError:
         assert (
             _hcl_adapter.describe_error(ValueError(), "f.tf") == "Invalid HCL in f.tf: ValueError"
         )
+
+
+# --- layout normalization and the retry -------------------------------------------------------
+
+
+def one_line(text: str) -> str:
+    return " ".join(text.split())
+
+
+class TestNormalizeLayout:
+    """The rewrites that make valid HCL readable to python-hcl2 4.x and 8.x."""
+
+    def test_an_operator_expression_in_an_object_element_is_wrapped(self) -> None:
+        text = 'locals {\n  a = {\n    i = var.n == 0 ? 0 : 1\n    n = "x"\n  }\n}\n'
+        assert normalize_layout(text) == (
+            'locals {\n  a = {\n    i = (var.n == 0 ? 0 : 1)\n    n = "x"\n  }\n}\n'
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "var.n == 1",
+            "var.n != 1",
+            "var.a && var.b",
+            "var.a || var.b",
+            "var.n > 1",
+            "var.n + 1",
+            "var.n * 2",
+            "var.n / 2",
+            "var.n % 2",
+            "var.n - 1",
+            "!var.a ? 1 : 2",
+            "var.n <= 1",
+        ],
+    )
+    def test_every_operator_expression_is_wrapped(self, value: str) -> None:
+        text = f"locals {{\n  a = {{\n    k = {value}\n    m = 1\n  }}\n}}\n"
+        result = normalize_layout(text)
+        assert result is not None
+        assert f"k = ({value})\n" in result
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            '"x"',
+            "var.a",
+            "1",
+            "-1",
+            "[1, 2]",
+            "{ a = 1 }",
+            "f(var.a + 1)",
+            "var.a.*.b",
+            "true",
+            "var.a[0].b",
+            "<<EOT\nx\nEOT",
+        ],
+    )
+    def test_an_element_without_a_top_level_operator_is_left_alone(self, value: str) -> None:
+        text = f"locals {{\n  a = {{\n    k = {value}\n    m = 1\n  }}\n}}\n"
+        assert normalize_layout(text) == text
+
+    def test_the_comment_after_a_wrapped_value_stays_outside_the_parentheses(self) -> None:
+        text = "locals {\n  a = {\n    i = var.n + 1 # note\n    m = 1\n  }\n}\n"
+        assert normalize_layout(text) == (
+            "locals {\n  a = {\n    i = (var.n + 1) # note\n    m = 1\n  }\n}\n"
+        )
+
+    def test_comma_separated_elements_are_each_judged(self) -> None:
+        text = "locals { a = { i = var.n + 1, j = var.q, k = var.a && var.b } }\n"
+        assert normalize_layout(text) == (
+            "locals { a = { i = (var.n + 1), j = var.q, k = (var.a && var.b) } }\n"
+        )
+
+    def test_a_nested_object_is_judged_on_its_own(self) -> None:
+        text = (
+            "locals {\n  a = {\n    o = {\n      i = var.n + 1\n      j = 2\n    }\n"
+            "    k = 1\n  }\n}\n"
+        )
+        assert normalize_layout(text) == text.replace("var.n + 1", "(var.n + 1)")
+
+    def test_a_block_body_is_not_an_object(self) -> None:
+        text = 'resource "a" "b" {\n  x = var.n + 1\n  y = 2\n}\n'
+        assert normalize_layout(text) == text
+
+    def test_line_breaks_inside_parentheses_become_spaces(self) -> None:
+        text = "locals {\n  p = (\n    var.a\n    ? 1\n    : 2\n  )\n}\n"
+        assert normalize_layout(text) == "locals {\n  p = (     var.a     ? 1     : 2   )\n}\n"
+
+    def test_line_breaks_inside_brackets_and_calls_become_spaces(self) -> None:
+        text = "locals {\n  a = [\n    1,\n    2\n  ]\n  b = f(\n    x,\n    y\n  )\n}\n"
+        assert (
+            normalize_layout(text)
+            == "locals {\n  a = [     1,     2   ]\n  b = f(     x,     y   )\n}\n"
+        )
+
+    def test_a_traversal_that_continues_on_the_next_line_joins(self) -> None:
+        text = "locals {\n  a = try(\n    var.b\n    .c\n    .d,\n    1\n  )\n}\n"
+        assert ".c" in one_line(normalize_layout(text) or "")
+        assert "\n    .c" not in (normalize_layout(text) or "")
+
+    def test_line_breaks_inside_a_for_object_join(self) -> None:
+        text = "locals {\n  a = {\n    for k, v in var.m :\n    k => v\n  }\n}\n"
+        assert (
+            normalize_layout(text)
+            == "locals {\n  a = {     for k, v in var.m :     k => v   }\n}\n"
+        )
+
+    def test_line_breaks_between_the_elements_of_an_object_stay(self) -> None:
+        text = "locals {\n  a = {\n    b = 1\n    c = 2\n  }\n}\n"
+        assert normalize_layout(text) == text
+
+    def test_an_object_inside_parentheses_keeps_its_own_line_breaks(self) -> None:
+        text = "locals {\n  a = (\n    {\n      b = 1\n      c = 2\n    }\n  )\n}\n"
+        result = normalize_layout(text)
+        assert result == "locals {\n  a = (     {\n      b = 1\n      c = 2\n    }   )\n}\n"
+
+    def test_a_comment_inside_parentheses_is_blanked_so_it_cannot_swallow_the_next_line(
+        self,
+    ) -> None:
+        text = "locals {\n  a = (\n    1 # one\n    + 2 // two\n    /* three */\n  )\n}\n"
+        result = normalize_layout(text)
+        assert result is not None
+        assert "#" not in result and "//" not in result and "/*" not in result
+        assert "\n" not in result.split("a = (")[1].split(")")[0]
+
+    def test_a_comment_outside_brackets_is_not_touched(self) -> None:
+        text = "# one\nlocals {\n  // two\n  a = 1 /* three */\n}\n"
+        assert normalize_layout(text) == text
+
+    def test_a_heredoc_inside_parentheses_keeps_its_line_breaks(self) -> None:
+        text = "locals {\n  a = f(\n    <<EOT\nline one\nline two\nEOT\n  )\n}\n"
+        result = normalize_layout(text)
+        assert result is not None
+        assert "<<EOT\nline one\nline two\nEOT\n" in result
+
+    def test_brackets_and_operators_inside_strings_are_never_looked_into(self) -> None:
+        text = (
+            'locals {\n  a = {\n    s = "( [ { ? : == ${f(1 +\n 2)}"\n    t = "x"\n  }\n'
+            '  b = ")"\n}\n'
+        )
+        assert normalize_layout(text) == text
+
+    def test_a_group_inside_an_interpolation_is_not_marked(self) -> None:
+        text = 'locals {\n  a = "${(1 + 2) * 3}"\n}\n'
+        assert normalize_layout(text, flatten=False, mark=True) == text
+
+    def test_crlf_becomes_lf(self) -> None:
+        text = "/**\r\n * header\r\n */\r\nlocals {\r\n  a = 1\r\n}\r\n"
+        assert normalize_layout(text) == "/**\n * header\n */\nlocals {\n  a = 1\n}\n"
+
+    def test_text_that_needs_nothing_comes_back_unchanged(self) -> None:
+        text = 'resource "a" "b" {\n  tags = {\n    Name = "x"\n  }\n  ids = [1, 2]\n}\n'
+        assert normalize_layout(text) == text
+        assert normalize_layout(text, flatten=False, mark=True) == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "locals {\n  a = (1\n",
+            "locals {\n  a = 1\n}}\n",
+            "locals {\n  a = (1]\n}\n",
+            'locals {\n  a = "unterminated\n}\n',
+            "locals {\n  a = [\n}\n",
+            ")",
+        ],
+    )
+    def test_brackets_that_do_not_match_give_nothing_to_rewrite(self, text: str) -> None:
+        assert normalize_layout(text) is None
+
+    def test_nesting_past_the_frame_limit_gives_nothing_to_rewrite(self) -> None:
+        assert normalize_layout("a = " + "(" * 300 + "1" + ")" * 300 + "\n") is None
+
+    def test_a_long_flat_text_is_handled(self) -> None:
+        text = "locals {\n" + "".join(f"  v{i} = {{ a = {i} + 1 }}\n" for i in range(2000)) + "}\n"
+        result = normalize_layout(text)
+        assert result is not None
+        assert result.count("(") == 2000
+
+
+class TestGroupMarks:
+    """python-hcl2 4.x drops the parentheses of a group; the adapter carries them through."""
+
+    def test_a_group_is_marked_and_a_call_is_not(self) -> None:
+        result = normalize_layout("x = (a || b) && f(c)\n", flatten=False, mark=True)
+        assert result == "x =  __tcg(a || b) && f(c)\n"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "x = a ? (b) : c",
+            "x = !(a)",
+            "x = -(a)",
+            "x = [(a)]",
+            "x = {k = (a)}",
+            "x = f((a))",
+            "x = a == (b)",
+            "y = [for i in z : i if (i > 1)]",
+            "y = [for i in (z) : i]",
+        ],
+    )
+    def test_every_other_position_is_a_group(self, text: str) -> None:
+        result = normalize_layout(text + "\n", flatten=False, mark=True)
+        assert result is not None
+        assert "__tcg(" in result
+
+    @pytest.mark.parametrize(
+        "text",
+        ["x = f(a)", "x = a.b(c)", "x = provider::aws::arn_parse(a)", "x = f (a)", "x = f(g(a))"],
+    )
+    def test_a_call_is_not_a_group(self, text: str) -> None:
+        assert normalize_layout(text + "\n", flatten=False, mark=True) == text + "\n"
+
+    def test_the_parenthesized_key_of_an_object_element_is_not_marked(self) -> None:
+        text = "x = { (var.k) = (a || b) }\n"
+        assert normalize_layout(text, flatten=False, mark=True) == (
+            "x = { (var.k) =  __tcg(a || b) }\n"
+        )
+
+    def test_a_text_that_already_uses_the_marker_is_left_unmarked(self) -> None:
+        text = "x = (a)\ny = __tcg(b)\n"
+        assert normalize_layout(text, flatten=False, mark=True) == text
+
+    @pytest.mark.parametrize(
+        ("expression", "expected"),
+        [
+            ("a && (b || c)", "${a && (b || c)}"),
+            ("(a || b) && c", "${(a || b) && c}"),
+            ("(a + b) * c", "${(a + b) * c}"),
+            ("!(a && b)", "${!(a && b)}"),
+            ("a ? (b || c) : d", "${a ? (b || c) : d}"),
+            ("f((a || b) && c)", "${f((a || b) && c)}"),
+        ],
+    )
+    def test_a_grouped_expression_keeps_its_parentheses_under_both_majors(
+        self, expression: str, expected: str
+    ) -> None:
+        block = only(f'resource "a" "b" {{\n  v = {expression}\n}}\n')
+        assert block.body["v"] == expected
+        assert "__tcg" not in json.dumps(block.body)
+
+    def test_a_group_in_a_nested_block_and_a_list_keeps_its_parentheses(self) -> None:
+        block = only(
+            'resource "a" "b" {\n  inner {\n    v = [(x || y) && z, 1]\n  }\n'
+            "  w = { k = (p + q) * r }\n}\n"
+        )
+        assert block.body["inner"][0]["v"][0] == "${(x || y) && z}"
+        assert block.body["w"]["k"] == "${(p + q) * r}"
+
+    def test_a_group_inside_a_quoted_template_is_left_as_written(self) -> None:
+        block = only('resource "a" "b" {\n  v = "${(1 + 2) * 3}-x"\n}\n')
+        assert "(1 + 2) * 3" in block.body["v"]
+
+
+LAYOUT_SHAPES = {
+    "an operator in an object element": (
+        'locals {\n  cfg = {\n    index = var.n == 0 ? 0 : 1\n    name = "x"\n  }\n}\n'
+    ),
+    "a conditional that breaks before the question mark": (
+        'locals {\n  p = (\n    var.a == null\n    ? null\n    : (\n      startswith(var.a, "o")\n'
+        '      ? "o"\n      : "f"\n    )\n  )\n}\n'
+    ),
+    "a function argument that breaks before the question mark": (
+        'locals {\n  z = merge(\n    { a = 1 },\n    contains(keys(x), "p")\n'
+        "    ? { b = 1 }\n    : {}\n  )\n}\n"
+    ),
+    "an or that begins its line": (
+        "locals {\n  p = (\n    var.a == null\n    || var.b == 1\n  )\n}\n"
+    ),
+    "an object element holding an object branch": (
+        "locals {\n  x = {\n    use = try(v.a, null) == null ? null : {\n      id = v.a\n    }\n"
+        "    other = 1\n  }\n}\n"
+    ),
+    "a list of objects with operator values": (
+        "locals {\n  z = [\n    {\n      a = var.x == 1 ? 1 : 2\n      c = 3\n    }\n  ]\n}\n"
+    ),
+    "a traversal that continues on the next line": (
+        "locals {\n  a = try(\n    var.b\n    .c\n    .d,\n    1\n  )\n}\n"
+    ),
+    "a for object whose conditional breaks its line": (
+        "locals {\n  u = {\n    for k, v in var.m : k =>\n    v == 1\n"
+        "    ? { n = k }\n    : { n = v }\n  }\n}\n"
+    ),
+    "windows line endings": "/**\r\n * header\r\n */\r\nlocals {\r\n  a = 1\r\n}\r\n",
+}
+
+
+class TestGrammarGapsAreRetried:
+    """Valid HCL that python-hcl2 rejects as written is read, and means what it says."""
+
+    @pytest.mark.parametrize("shape", sorted(LAYOUT_SHAPES))
+    def test_the_shape_reads(self, shape: str) -> None:
+        block = only(LAYOUT_SHAPES[shape])
+        assert block.kind == "locals"
+        assert block.body
+
+    def test_the_values_are_the_ones_the_text_says(self) -> None:
+        block = only(LAYOUT_SHAPES["an operator in an object element"])
+        cfg = block.body["cfg"]
+        assert cfg["name"] == "x"
+        assert "var.n == 0" in cfg["index"]
+        assert cfg["index"].startswith("${") and cfg["index"].endswith("}")
+
+    def test_the_second_block_keeps_the_lines_of_the_original_text(self) -> None:
+        text = (
+            "locals {\n  p = (\n    var.a\n    ? 1\n    : 2\n  )\n}\n\n"
+            'resource "a" "b" {\n  x = 1\n}\n'
+        )
+        document = load(text)
+        resource = next(b for b in document.blocks if b.kind == "resource")
+        assert (resource.start_line, resource.end_line) == (9, 11)
+        local = next(b for b in document.blocks if b.kind == "locals")
+        assert (local.start_line, local.end_line) == (1, 7)
+
+    def test_crlf_text_keeps_its_lines_too(self) -> None:
+        text = "/**\r\n * header\r\n */\r\nlocals {\r\n  a = 1\r\n}\r\n"
+        (block,) = load(text).blocks
+        assert (block.start_line, block.end_line) == (4, 6)
+
+    def test_text_that_fails_every_way_reports_the_error_of_the_original_text(self) -> None:
+        # as written it fails at the line that starts with `.c` (line 4); with the layout
+        # normalized the group is one line and it fails later, which would name another line
+        text = "locals {\n  a = try(\n    var.b\n    .c,\n    1\n  )\n  b = = 3\n}\n"
+        with pytest.raises(ParseError, match=r"line 4") as exc_info:
+            load(text, "broken.tf")
+        assert "broken.tf" in str(exc_info.value)
+
+    def test_a_failure_under_4x_says_how_to_upgrade_and_under_8x_does_not(self) -> None:
+        with pytest.raises(ParseError) as exc_info:
+            load("locals {\n  b = = 3\n}\n", "broken.tf")
+        assert ("pip install -U" in str(exc_info.value)) is (not MODERN)
+
+    def test_the_retry_is_not_made_for_text_past_the_size_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_hcl_adapter, "_MAX_NORMALIZED_CHARS", 10)
+        # fine as written under 8.x, rejected as written under 4.x
+        text = "locals {\n  a = {\n    i = var.n == 0 ? 0 : 1\n    j = 1\n  }\n}\n"
+        if MODERN:
+            assert load(text).blocks
+        else:
+            with pytest.raises(ParseError):
+                load(text)
+
+    def test_a_layout_pass_that_raises_is_not_a_new_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def explode(text: str, **_: object) -> str:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(_hcl_adapter, "normalize_layout", explode)
+        with pytest.raises(ParseError, match="broken.tf"):
+            load("locals {\n  a = = 1\n}\n", "broken.tf")
+
+
+class TestParseCache:
+    """The same text is parsed once; the data a caller gets is its own."""
+
+    @pytest.fixture(autouse=True)
+    def clean_cache(self) -> None:
+        _hcl_adapter._PARSE_CACHE.clear()
+
+    @staticmethod
+    def counting(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        calls: list[str] = []
+        real = _hcl_adapter._hcl2_loads
+
+        def counted(text: str) -> dict[str, object]:
+            calls.append(text)
+            return real(text)
+
+        monkeypatch.setattr(_hcl_adapter, "_hcl2_loads", counted)
+        return calls
+
+    def test_the_same_text_is_parsed_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = self.counting(monkeypatch)
+        text = 'resource "a" "b" {\n  x = 1\n}\n'
+        first, second = load(text), load(text, "other.tf")
+        assert len(calls) == 1
+        assert first.blocks[0].body == second.blocks[0].body
+
+    def test_another_text_is_parsed_again(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = self.counting(monkeypatch)
+        load('resource "a" "b" {\n  x = 1\n}\n')
+        load('resource "a" "b" {\n  x = 2\n}\n')
+        assert len(calls) == 2
+
+    def test_changing_a_returned_body_does_not_change_the_next_load(self) -> None:
+        text = 'resource "a" "b" {\n  x = [1, 2]\n  tags = { k = "v" }\n  n { m = 1 }\n}\n'
+        first = load(text).blocks[0]
+        first.body["x"].append(99)
+        first.body["tags"]["k"] = "changed"
+        first.body["n"][0]["m"] = 100
+        again = load(text).blocks[0]
+        assert again.body["x"] == [1, 2]
+        assert again.body["tags"]["k"] == "v"
+        assert again.body["n"][0]["m"] == 1
+
+    def test_load_attributes_shares_the_cache_and_copies_too(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = self.counting(monkeypatch)
+        text = 'region = "us-east-1"\nids = [1, 2]\n'
+        first = load_attributes(text)
+        first["ids"].append(3)
+        assert load_attributes(text)["ids"] == [1, 2]
+        assert len(calls) == 1
+
+    def test_a_failure_is_not_cached(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = self.counting(monkeypatch)
+        for _ in range(2):
+            with pytest.raises(ParseError):
+                load("resource {{{\n", "broken.tf")
+        assert len(calls) >= 2
+
+    def test_a_different_loader_does_not_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        text = 'resource "a" "b" {\n  x = 1\n}\n'
+        load(text)
+        calls = self.counting(monkeypatch)
+        load(text)
+        assert len(calls) == 1
+
+    def test_the_oldest_text_is_evicted_past_the_cap(self) -> None:
+        cache = _hcl_adapter._ParseCache(max_chars=10)
+        loads = object()
+        keys = [(name, loads) for name in ("aaaa", "bbbb", "cccc")]
+        for key in keys:
+            cache.put(key, {"v": key[0]}, 4)  # type: ignore[arg-type]
+        assert cache.get(keys[0]) is None  # type: ignore[arg-type]
+        assert cache.get(keys[1]) == {"v": "bbbb"}  # type: ignore[arg-type]
+        assert cache.get(keys[2]) == {"v": "cccc"}  # type: ignore[arg-type]
+
+    def test_reading_an_entry_keeps_it_from_being_the_oldest(self) -> None:
+        cache = _hcl_adapter._ParseCache(max_chars=10)
+        loads = object()
+        keys = [(name, loads) for name in ("aaaa", "bbbb", "cccc")]
+        cache.put(keys[0], {"v": 1}, 4)  # type: ignore[arg-type]
+        cache.put(keys[1], {"v": 2}, 4)  # type: ignore[arg-type]
+        assert cache.get(keys[0]) == {"v": 1}  # type: ignore[arg-type]
+        cache.put(keys[2], {"v": 3}, 4)  # type: ignore[arg-type]
+        assert cache.get(keys[1]) is None  # type: ignore[arg-type]
+        assert cache.get(keys[0]) == {"v": 1}  # type: ignore[arg-type]
+
+    def test_a_text_larger_than_the_whole_cache_is_not_kept(self) -> None:
+        cache = _hcl_adapter._ParseCache(max_chars=10)
+        key = ("x" * 11, object())
+        cache.put(key, {"v": 1}, 11)  # type: ignore[arg-type]
+        assert cache.get(key) is None  # type: ignore[arg-type]
+        assert cache._chars == 0
+
+
+class TestNormalizeLayoutProperties:
+    """Whatever the text, the rewrite neither raises nor invents or loses anything."""
+
+    ALPHABET = st.sampled_from(
+        list('{}()[]"#/<\n\r= ?:,.+-*!&|ab1_$%\\') + ["==", "=>", "<<EOT\n", "${", "/*", "*/"]
+    )
+    texts = st.lists(ALPHABET, max_size=60).map("".join)
+
+    @settings(max_examples=400, deadline=None)
+    @given(texts)
+    def test_it_never_raises(self, text: str) -> None:
+        for flatten, mark in ((True, False), (False, True), (True, True), (False, False)):
+            result = normalize_layout(text, flatten=flatten, mark=mark)
+            assert result is None or isinstance(result, str)
+
+    @settings(max_examples=400, deadline=None)
+    @given(texts)
+    def test_without_flattening_or_marking_nothing_changes(self, text: str) -> None:
+        assert normalize_layout(text, flatten=False, mark=False) in (None, text)
+
+    @settings(max_examples=400, deadline=None)
+    @given(texts)
+    def test_marks_are_the_only_change_and_come_out_again(self, text: str) -> None:
+        result = normalize_layout(text, flatten=False, mark=True)
+        if result is not None:
+            assert result.replace(" __tcg(", "(") == text
+
+    @settings(max_examples=400, deadline=None)
+    @given(texts)
+    def test_flattening_twice_is_flattening_once(self, text: str) -> None:
+        once = normalize_layout(text)
+        if once is not None:
+            assert normalize_layout(once) == once
+
+    @settings(max_examples=400, deadline=None)
+    @given(texts)
+    def test_flattening_never_adds_a_line(self, text: str) -> None:
+        result = normalize_layout(text)
+        if result is not None:
+            assert result.count("\n") <= text.replace("\r\n", "\n").count("\n")

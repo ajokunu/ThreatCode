@@ -22,6 +22,7 @@ from threatcode.parsers import (
     ParseFileParser,
     ParserPriority,
     detect_and_parse,
+    looks_like_infrastructure,
     register_parser,
 )
 from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
@@ -846,3 +847,156 @@ class TestCaseInsensitiveSuffixes:
         text = (SHAPES / "cdk.tf.json").read_text(encoding="utf-8")
         path = _write(tmp_path, "CDK.TF.JSON", text)
         assert len(detect_and_parse(path).resources) == 2
+
+
+class TestLooksLikeInfrastructure:
+    """The start of an unparseable file says whether it was meant to be infrastructure (TUX-04)."""
+
+    PLAN_HEAD = '{"format_version": "1.2", "terraform_version": "1.9.0", "planned_values": {"root'
+    CFN_JSON_HEAD = '{"AWSTemplateFormatVersion": "2010-09-09", "Resources": {"B": {"Type": "AW'
+    CFN_NO_VERSION_JSON = '{"Resources": {"B": {"Type": "AWS::S3::Bucket", "Properties": {'
+    K8S_JSON_HEAD = '{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"na'
+
+    @pytest.mark.parametrize(
+        ("name", "text"),
+        [
+            ("plan.json", PLAN_HEAD),
+            ("show.json", PLAN_HEAD),
+            ("t.json", CFN_JSON_HEAD),
+            ("t.json", CFN_NO_VERSION_JSON),
+            ("d.json", K8S_JSON_HEAD),
+            ("t.yaml", "AWSTemplateFormatVersion: '2010-09-09'\nResources:\n  B: [\n"),
+            ("t.yaml", "Description: x\nResources:\n  B:\n    Type: AWS::S3::Bucket\n    x: [\n"),
+            ("t.yml", "---\napiVersion: v1\nkind: Pod\nmetadata:\n  name: [\n"),
+            ("t.template", "\ufeffAWSTemplateFormatVersion: x\nbad: [\n"),
+        ],
+    )
+    def test_a_prefix_that_reads_like_infrastructure_is_claimed(
+        self, tmp_path: Path, name: str, text: str
+    ) -> None:
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        assert looks_like_infrastructure(path)
+
+    @pytest.mark.parametrize(
+        ("name", "text"),
+        [
+            ("tsconfig.json", '{"compilerOptions": {"target": "es5"}'),
+            ("package.json", '{"name": "x", "version": "1.0.0", "scripts": {'),
+            ("plan.json", '{"tier": "pro", "seats": 5'),
+            ("ci.yml", "stages: [build\n"),
+            ("x.json", '{"format_version": "1"'),
+            ("x.json", '{"apiVersion": "v1"'),
+            ("x.yaml", "apiVersion: v1\nname: not a manifest\n"),
+            ("x.yaml", "kind: Thing\n"),
+            ("x.yaml", "Resources:\n  - one\n  - two: [\n"),
+        ],
+    )
+    def test_other_files_are_not(self, tmp_path: Path, name: str, text: str) -> None:
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        assert not looks_like_infrastructure(path)
+
+    def test_a_template_for_another_tool_is_not_claimed(self, tmp_path: Path) -> None:
+        for text in (
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Values.name }}\n",
+            "apiVersion: v1\nkind: ConfigMap\n{% if x %}\ndata: {}\n{% endif %}\n",
+        ):
+            path = tmp_path / "t.yaml"
+            path.write_text(text, encoding="utf-8")
+            assert not looks_like_infrastructure(path)
+
+    def test_a_missing_or_binary_file_is_not_claimed(self, tmp_path: Path) -> None:
+        assert not looks_like_infrastructure(tmp_path / "absent.json")
+        blob = tmp_path / "blob.json"
+        blob.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01" * 100)
+        assert not looks_like_infrastructure(blob)
+
+    def test_only_the_start_of_a_huge_file_is_read_and_the_check_stays_linear(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "hostile.json"
+        path.write_text('{"Resources": ' + '"apiVersion": ' * 20000 + '"kind"', encoding="utf-8")
+        assert looks_like_infrastructure(path) is False
+        late = tmp_path / "late.yaml"
+        late.write_text("x: 1\n" * 40000 + "apiVersion: v1\nkind: Pod\n", encoding="utf-8")
+        assert not looks_like_infrastructure(late)
+
+
+class TestTheLoadedTextIsPassedOn:
+    """A parser that finds its line numbers in the text gets the text the registry decoded."""
+
+    @staticmethod
+    def count_reads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        from threatcode.parsers import cloudformation, kubernetes
+        from threatcode.parsers._text import decode_input
+
+        reads: list[str] = []
+
+        def counting(path: Path, **kwargs: bool) -> str:
+            reads.append(path.name)
+            return decode_input(path, **kwargs)
+
+        for module in (cloudformation, kubernetes):
+            monkeypatch.setattr(module, "decode_input", counting)
+        monkeypatch.setattr("threatcode.parsers.decode_input", counting)
+        return reads
+
+    def test_a_cloudformation_template_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "stack.yaml"
+        path.write_text(RESOURCES_ONLY, encoding="utf-8")
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["stack.yaml"]
+        assert result.resources[0].start_line == 2
+
+    def test_a_json_cloudformation_template_is_read_once_and_keeps_its_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "stack.json"
+        path.write_text(
+            '{\n  "Resources": {\n    "B": {\n      "Type": "AWS::S3::Bucket"\n    }\n  }\n}\n',
+            encoding="utf-8",
+        )
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["stack.json"]
+        assert (result.resources[0].start_line, result.resources[0].end_line) == (3, 5)
+
+    def test_a_kubernetes_manifest_is_read_once_and_keeps_its_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "pod.yaml"
+        path.write_text(
+            "apiVersion: v1\nkind: Pod\nmetadata:\n  name: a\n---\n"
+            "apiVersion: v1\nkind: Pod\nmetadata:\n  name: b\n",
+            encoding="utf-8",
+        )
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["pod.yaml"]
+        assert [r.start_line for r in result.resources] == [1, 6]
+
+    def test_a_kubernetes_json_list_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "pod.json"
+        path.write_text(
+            '{"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "a"}}\n', encoding="utf-8"
+        )
+        reads = self.count_reads(monkeypatch)
+        result = detect_and_parse(path)
+        assert reads == ["pod.json"]
+        assert result.resources[0].start_line == 1
+
+    def test_a_parser_that_does_not_take_text_still_gets_what_it_did(self) -> None:
+        from threatcode.parsers import _takes_text
+        from threatcode.parsers.cloudformation import CloudFormationParser
+        from threatcode.parsers.dockerfile import DockerfileParser
+        from threatcode.parsers.kubernetes import KubernetesParser
+
+        assert _takes_text(CloudFormationParser)
+        assert _takes_text(KubernetesParser)
+        assert not _takes_text(DockerfileParser)

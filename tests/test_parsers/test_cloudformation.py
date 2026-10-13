@@ -286,7 +286,6 @@ class TestTypeTable:
 
 class TestValidation:
     def test_type_as_a_mapping_is_skipped_with_a_diagnostic(self) -> None:
-        # the shape of a Rain::Module entry
         output = parse_text(
             "Resources:\n"
             "  Mod:\n"
@@ -301,6 +300,40 @@ class TestValidation:
         assert skipped[0].level == "warning"
         assert "Mod" in skipped[0].message and "Type must be a string" in skipped[0].message
         assert skipped[0].line == 2
+        assert "Rain" not in skipped[0].message
+        assert "incomplete" not in output.metadata
+
+    def test_a_rain_module_says_what_it_is_and_what_to_run(self) -> None:
+        output = parse_text(
+            "Resources:\n"
+            "  Storage:\n"
+            "    Type: !Rain::Module ../../RainModules/bucket.yml\n"
+            "    Properties:\n"
+            "      Name: data\n"
+            "  Bucket:\n"
+            "    Type: AWS::S3::Bucket\n"
+        )
+        assert [r.name for r in output.resources] == ["Bucket"]
+        (skipped,) = [d for d in output.diagnostics if d.code == "cfn.skipped_resource"]
+        assert skipped.level == "warning"
+        assert skipped.line == 2
+        assert skipped.message == (
+            "Resource 'Storage' was skipped: Rain module not expanded "
+            "(Type is !Rain::Module ../../RainModules/bucket.yml; run rain pkg to expand it), "
+            "so the resources it creates are not analysed"
+        )
+        assert "Type must be a string" not in skipped.message
+        assert "dict" not in skipped.message
+
+    def test_a_rain_module_makes_the_template_incomplete(self) -> None:
+        output = parse_text(
+            "Resources:\n  M:\n    Type: !Rain::Module ./m.yaml\n  B:\n    Type: AWS::S3::Bucket\n"
+        )
+        assert output.metadata["incomplete"] is True
+
+    def test_a_template_without_a_rain_module_is_not_marked_incomplete(self) -> None:
+        output = parse_text("Resources:\n  B:\n    Type: AWS::S3::Bucket\n")
+        assert "incomplete" not in output.metadata
 
     def test_a_non_mapping_entry_is_skipped_not_dropped_silently(self) -> None:
         output = parse_text(

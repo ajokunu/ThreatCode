@@ -353,6 +353,260 @@ class TestCoverage:
         assert scan(tmp_path).coverage.files_discovered == 3
 
 
+class TestAParseFailureIsOneRuleEverywhere:
+    """A file a parser claims and cannot parse is an input error, whatever sits beside it."""
+
+    def test_a_broken_sibling_in_a_module_directory_exits_two_like_the_files_named_alone(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "good.tf", bucket("fine"))
+        write(tmp_path, "bad.tf", BAD_TF)
+        named = scan(tmp_path / "bad.tf", tmp_path / "good.tf", fail_on="none")
+        walked = scan(tmp_path, fail_on="none")
+        assert named.exit_code == walked.exit_code == EXIT_USAGE
+        assert [e["file"] for e in walked.coverage.errors] == ["bad.tf"]
+        assert [e["code"] for e in walked.coverage.errors] == ["parse.failed"]
+        assert "aws_s3_bucket.fine" in walked.graph.nodes
+
+    def test_the_failure_is_an_error_and_not_also_a_gap(self, tmp_path: Path) -> None:
+        write(tmp_path, "good.tf", bucket("fine"))
+        write(tmp_path, "bad.tf", BAD_TF)
+        coverage = scan(tmp_path, fail_on="none").coverage
+        assert [e["code"] for e in coverage.errors] == ["parse.failed"]
+        assert coverage.gaps == []
+
+    def test_a_failure_in_a_nested_module_directory_names_the_file_relative_to_the_root(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "infra/modules/net/main.tf", bucket("net"))
+        write(tmp_path, "infra/modules/net/zz_bad.tf", BAD_TF)
+        result = scan(tmp_path, fail_on="none")
+        assert [e["file"] for e in result.coverage.errors] == ["infra/modules/net/zz_bad.tf"]
+        assert result.exit_code == EXIT_USAGE
+
+    def test_the_failure_is_in_the_json_report_so_a_ci_job_can_read_it(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "good.tf", bucket("fine"))
+        write(tmp_path, "bad.tf", BAD_TF)
+        errors = scan(tmp_path, fail_on="none").to_dict()["coverage"]["errors"]
+        assert [(e["file"], e["code"]) for e in errors] == [("bad.tf", "parse.failed")]
+
+    def test_a_directory_whose_only_resource_file_is_broken_leads_with_the_parse_failure(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", BAD_TF)
+        write(tmp_path, "variables.tf", 'variable "region" {\n  default = "us-east-1"\n}\n')
+        result = scan(tmp_path)
+        assert [e["code"] for e in result.coverage.errors] == ["parse.failed"]
+        assert result.coverage.errors[0]["file"] == "main.tf"
+        assert result.exit_code == EXIT_USAGE
+
+    def test_a_tfvars_that_cannot_be_read_stays_a_warning_gap(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(tmp_path, "terraform.tfvars", "region = \n")
+        result = scan(tmp_path, fail_on="none")
+        assert result.coverage.errors == []
+        assert [g["code"] for g in result.coverage.gaps] == ["parse.failed"]
+        assert result.coverage.gaps[0]["level"] == "warning"
+
+
+class TestAnUnparseableCandidateThatLooksLikeInfrastructure:
+    """A truncated plan, template or manifest is never counted as "not infrastructure"."""
+
+    PLAN = (
+        '{"format_version": "1.2", "terraform_version": "1.9.0", "planned_values": '
+        '{"root_module": {"resources": [{"address": "aws_s3_bucket.b", "mode": "managed", '
+        '"type": "aws_s3_bucket", "name": "b", "values": {"bucket": "b"}}]}}}'
+    )
+
+    def test_a_truncated_plan_json_beside_a_module_is_an_input_error(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(tmp_path, "plan.json", self.PLAN[:150])
+        result = scan(tmp_path, fail_on="none")
+        assert [(e["file"], e["code"]) for e in result.coverage.errors] == [
+            ("plan.json", "parse.failed")
+        ]
+        assert "Invalid JSON" in result.coverage.errors[0]["message"]
+        assert result.coverage.not_iac_count == 0
+        assert result.exit_code == EXIT_USAGE
+        assert "aws_s3_bucket.fine" in result.graph.nodes
+
+    def test_the_same_file_named_alone_fails_the_same_way(self, tmp_path: Path) -> None:
+        path = write(tmp_path, "plan.json", self.PLAN[:150])
+        alone = scan(path)
+        beside = scan(write(tmp_path / "d", "plan.json", self.PLAN[:150]).parent)
+        assert alone.exit_code == beside.exit_code == EXIT_USAGE
+        assert alone.coverage.errors[0]["message"] == beside.coverage.errors[0]["message"]
+
+    def test_a_directory_holding_only_the_truncated_plan_reports_the_plan_not_nothing_found(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "tfplan.json", self.PLAN[:170])
+        result = scan(tmp_path)
+        assert [(e["file"], e["code"]) for e in result.coverage.errors] == [
+            ("tfplan.json", "parse.failed")
+        ]
+        assert result.exit_code == EXIT_USAGE
+
+    @pytest.mark.parametrize(
+        "name", ["plan.json", "tfplan.json", "prod.tfplan.json", "plan-prod.json", "TFPLAN.JSON"]
+    )
+    def test_the_usual_plan_names_say_what_the_file_is(self, tmp_path: Path, name: str) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(tmp_path, name, "{")
+        assert [e["file"] for e in scan(tmp_path).coverage.errors] == [name]
+
+    def test_a_plan_with_an_unusual_name_is_recognised_by_what_it_starts_with(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(tmp_path, "out/show.json", self.PLAN[:190])
+        result = scan(tmp_path, fail_on="none")
+        assert [e["file"] for e in result.coverage.errors] == ["out/show.json"]
+        assert result.coverage.not_iac_count == 0
+
+    def test_a_truncated_cloudformation_template_is_an_input_error(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(
+            tmp_path,
+            "stack.yaml",
+            "AWSTemplateFormatVersion: '2010-09-09'\nResources:\n  Bucket:\n    Type: [AWS::S3\n",
+        )
+        result = scan(tmp_path, fail_on="none")
+        assert [e["file"] for e in result.coverage.errors] == ["stack.yaml"]
+        assert result.coverage.not_iac_count == 0
+
+    def test_a_broken_kubernetes_manifest_is_an_input_error(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(
+            tmp_path,
+            "deploy/app.yaml",
+            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: [unclosed\n",
+        )
+        result = scan(tmp_path, fail_on="none")
+        assert [e["file"] for e in result.coverage.errors] == ["deploy/app.yaml"]
+
+    def test_a_templated_manifest_is_a_template_not_a_parse_failure(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(
+            tmp_path,
+            "deploy/app.yaml",
+            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Values.name }}\n",
+        )
+        result = scan(tmp_path, fail_on="none")
+        assert result.coverage.errors == []
+        assert result.coverage.not_iac_paths == ["deploy/app.yaml"]
+
+    def test_broken_files_that_do_not_look_like_infrastructure_stay_not_infrastructure(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(
+            tmp_path, "tsconfig.json", '{\n  // comments are fine here\n  "compilerOptions": {}\n}'
+        )
+        write(tmp_path, "ci/pipeline.yml", "stages: [build\n")
+        result = scan(tmp_path)
+        assert result.coverage.errors == []
+        assert result.coverage.not_iac_count == 2
+
+    def test_a_well_formed_file_called_plan_json_that_is_not_a_plan_is_not_an_error(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(tmp_path, "billing/plan.json", '{"tier": "pro", "seats": 5}')
+        result = scan(tmp_path)
+        assert result.coverage.errors == []
+        assert result.coverage.not_iac_paths == ["billing/plan.json"]
+
+    def test_strict_has_something_to_trip_on_and_so_does_the_default(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", bucket("fine"))
+        write(tmp_path, "plan.json", self.PLAN[:150])
+        assert scan(tmp_path, fail_on="none").exit_code == EXIT_USAGE
+        assert scan(tmp_path, fail_on="none", strict=True).exit_code == EXIT_USAGE
+
+
+class TestNothingToModelWording:
+    """The message for a scan that parsed inputs and found no resources."""
+
+    def test_one_input_is_singular(self, tmp_path: Path) -> None:
+        write(tmp_path, "vars.tf", 'variable "region" {\n  default = "us-east-1"\n}\n')
+        (error,) = scan(tmp_path).coverage.errors
+        assert error["code"] == "parse.zero_resources"
+        assert error["message"].startswith("1 input was parsed but produced no resources")
+        assert "input(s)" not in error["message"]
+
+    def test_several_inputs_are_plural(self, tmp_path: Path) -> None:
+        write(tmp_path, "a/vars.tf", 'variable "region" {\n  default = "us-east-1"\n}\n')
+        write(tmp_path, "b/vars.tf", 'variable "zone" {\n  default = "a"\n}\n')
+        (error,) = scan(tmp_path).coverage.errors
+        assert error["message"].startswith("2 inputs were parsed but produced no resources")
+
+
+class TestAVariableDefaultThatDisablesAResource:
+    """A flow log gated by `count = var.enable ? 1 : 0` must not hide a missing flow log."""
+
+    NET = (
+        'variable "enable" {\n  default = false\n}\n'
+        'resource "aws_vpc" "this" {\n  cidr_block = "10.0.0.0/16"\n}\n'
+        'resource "aws_flow_log" "this" {\n  count           = var.enable ? 1 : 0\n'
+        '  vpc_id          = aws_vpc.this.id\n  traffic_type    = "ALL"\n'
+        '  log_destination = "arn:aws:s3:::logs"\n}\n'
+    )
+
+    @staticmethod
+    def rule_ids(result: ScanResult) -> list[str]:
+        return [t.rule_id for t in result.report.threats]
+
+    def test_a_module_called_without_the_variable_has_no_flow_log(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", 'module "net" {\n  source = "./net"\n}\n')
+        write(tmp_path, "net/main.tf", self.NET)
+        result = scan(tmp_path / "main.tf", fail_on="none")
+        assert [
+            (t.rule_id, t.resource_address)
+            for t in result.report.threats
+            if t.rule_id == "VPC_NO_FLOW_LOGS"
+        ] == [("VPC_NO_FLOW_LOGS", "module.net.aws_vpc.this")]
+        assert result.coverage.gaps == []
+
+    def test_a_module_called_with_the_variable_has_one(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", 'module "net" {\n  source = "./net"\n  enable = true\n}\n')
+        write(tmp_path, "net/main.tf", self.NET)
+        result = scan(tmp_path / "main.tf", fail_on="none")
+        assert "VPC_NO_FLOW_LOGS" not in self.rule_ids(result)
+        assert "module.net.aws_flow_log.this" in result.graph.nodes
+
+    def test_the_module_scanned_itself_reports_the_missing_flow_log_and_the_gap(
+        self, tmp_path: Path
+    ) -> None:
+        write(tmp_path, "main.tf", self.NET)
+        result = scan(tmp_path, fail_on="none")
+        assert "VPC_NO_FLOW_LOGS" in self.rule_ids(result)
+        (gap,) = result.coverage.gaps
+        assert gap["code"] == "hcl.default_disabled"
+        assert gap["level"] == "warning"
+        assert "aws_flow_log.this" in gap["message"]
+        assert gap["file"] == "main.tf"
+        assert result.exit_code == EXIT_OK
+
+    def test_strict_fails_on_that_gap(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.NET)
+        assert scan(tmp_path, fail_on="none", strict=True).exit_code == EXIT_USAGE
+
+    def test_a_tfvars_file_in_the_directory_settles_it(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.NET)
+        write(tmp_path, "terraform.tfvars", "enable = true\n")
+        result = scan(tmp_path, fail_on="none", strict=True)
+        assert "VPC_NO_FLOW_LOGS" not in self.rule_ids(result)
+        assert result.coverage.gaps == []
+        assert result.exit_code == EXIT_OK
+
+    def test_a_flow_log_that_is_not_gated_still_counts(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", self.NET.replace("var.enable ? 1 : 0", "1"))
+        result = scan(tmp_path, fail_on="none")
+        assert "VPC_NO_FLOW_LOGS" not in self.rule_ids(result)
+
+
 class TestExitContract:
     @pytest.mark.parametrize(
         ("fail_on", "expected"),

@@ -46,7 +46,9 @@ __all__ = [
     "STDIN_PATH",
     "Discovery",
     "ScanUnit",
+    "classify_name",
     "discover",
+    "is_plan_name",
     "scan_root",
 ]
 
@@ -129,7 +131,8 @@ class ScanUnit:
     ``files`` lists the root-relative POSIX paths of the regular files the unit is made of (the
     ``.tf`` files of a module, the single file of any other unit).
     ``by_name`` is true when the file name alone identifies infrastructure (Terraform, Dockerfile,
-    Chart.yaml, MCP config names), so a failure to read it is an error, not "not infrastructure".
+    Chart.yaml, MCP config names, the usual names of a Terraform plan), so a failure to read it is
+    an error, not "not infrastructure".
     ``explicit`` is true when the user named the path on the command line.
     ``parsed`` is set by the pipeline once the unit has been parsed.
     """
@@ -173,9 +176,45 @@ class Discovery:
         return sum(len(unit.files) for unit in self.units) + len(self.oversized)
 
 
+_PLAN_STEMS: frozenset[str] = frozenset({"plan", "tfplan"})
+_PLAN_STEM_SUFFIXES: tuple[str, ...] = (".plan", ".tfplan", "-plan", "_plan", "-tfplan", "_tfplan")
+_PLAN_STEM_PREFIXES: tuple[str, ...] = (
+    "plan-",
+    "plan_",
+    "plan.",
+    "tfplan-",
+    "tfplan_",
+    "tfplan.",
+)
+
+
+def is_plan_name(name: str) -> bool:
+    """Whether a file name is one of the usual names of ``terraform show -json`` output.
+
+    ``plan.json``, ``tfplan.json``, ``prod.tfplan.json`` and ``plan-prod.json`` say what the file
+    is.
+    A truncated one is then a parse failure, never "not infrastructure", because a CI job that
+    saved half a plan must not pass.
+    """
+    lowered = name.lower()
+    if not lowered.endswith(".json"):
+        return False
+    stem = lowered[: -len(".json")]
+    return (
+        stem in _PLAN_STEMS
+        or stem.endswith(_PLAN_STEM_SUFFIXES)
+        or stem.startswith(_PLAN_STEM_PREFIXES)
+    )
+
+
 def classify_name(name: str) -> tuple[bool, bool]:
     """Return ``(is_candidate, by_name)`` for a file name that is not a Terraform file."""
-    if name == _HELM_CHART_FILE or is_dockerfile_name(name) or name in _mcp_names():
+    if (
+        name == _HELM_CHART_FILE
+        or is_dockerfile_name(name)
+        or name in _mcp_names()
+        or is_plan_name(name)
+    ):
         return True, True
     suffix = PurePosixPath(name).suffix.lower()
     return suffix in _CANDIDATE_SUFFIXES, False

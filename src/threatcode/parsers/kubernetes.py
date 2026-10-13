@@ -33,6 +33,7 @@ from threatcode.parsers._k8s_links import (
     workload_references,
 )
 from threatcode.parsers._k8s_security import (
+    PLACEHOLDER_PREFIX,
     WORKLOAD_KINDS,
     PodTemplate,
     as_dict,
@@ -275,8 +276,9 @@ class _Item:
 class KubernetesParser(BaseParser):
     """Parse Kubernetes YAML and JSON manifests into ParsedResource objects."""
 
-    def parse(self, data: Any, source_path: str = "") -> ParsedOutput:
-        return self.parse_documents(self._load(data, source_path), source_path)
+    def parse(self, data: Any, source_path: str = "", text: str | None = None) -> ParsedOutput:
+        """Parse loaded manifests; ``text`` is what they were loaded from, for their lines."""
+        return self.parse_documents(self._load(data, source_path, text), source_path)
 
     def parse_documents(
         self, documents: Sequence[ManifestDocument], source_path: str = ""
@@ -309,12 +311,12 @@ class KubernetesParser(BaseParser):
 
     # -- loading -------------------------------------------------------------------------
 
-    def _load(self, data: Any, source_path: str) -> list[ManifestDocument]:
+    def _load(self, data: Any, source_path: str, text: str | None = None) -> list[ManifestDocument]:
         name = Path(source_path).name if source_path else "<input>"
         if isinstance(data, str):
             return _documents_from_text(data, source_path, name)
         documents = data if isinstance(data, list) else [data]
-        return _attach_lines(documents, source_path, isinstance(data, list))
+        return _attach_lines(documents, source_path, isinstance(data, list), text)
 
     def _flatten(
         self,
@@ -393,10 +395,13 @@ class KubernetesParser(BaseParser):
         metadata = as_dict(doc.get("metadata"))
         spec = as_dict(doc.get("spec"))
         name, name_source = _resource_name(metadata, index)
+        name = readable_placeholders(name, "name")
         cluster_scoped = kind in CLUSTER_SCOPED_KINDS
         namespace_value = metadata.get("namespace")
         namespace = (
-            namespace_value if isinstance(namespace_value, str) and namespace_value else "default"
+            readable_placeholders(namespace_value, "namespace")
+            if isinstance(namespace_value, str) and namespace_value
+            else "default"
         )
 
         resource_type = resource_type_for(kind)
@@ -502,15 +507,16 @@ def _documents_from_text(text: str, source_path: str, name: str) -> list[Manifes
 
 
 def _attach_lines(
-    documents: list[Any], source_path: str, from_list: bool
+    documents: list[Any], source_path: str, from_list: bool, text: str | None = None
 ) -> list[ManifestDocument]:
-    """Wrap documents the registry already loaded, recovering their lines from the file.
+    """Wrap documents the registry already loaded, recovering their lines from their text.
 
-    The registry hands over loaded values, never text, so the lines come from reading the file
-    once more. A file that cannot be read, is too large or does not hold as many documents as
-    were loaded simply has no line numbers.
+    The registry passes the text it loaded them from; without it the lines come from reading
+    the file once more.
+    A file that cannot be read, is too large or does not hold as many documents as were loaded
+    simply has no line numbers.
     """
-    indexes = _recover_lines(source_path, len(documents), from_list)
+    indexes = _recover_lines(source_path, len(documents), from_list, text)
     if indexes is None:
         return [ManifestDocument(doc, source_path) for doc in documents]
     return [
@@ -520,17 +526,20 @@ def _attach_lines(
 
 
 def _recover_lines(
-    source_path: str, count: int, from_list: bool
+    source_path: str, count: int, from_list: bool, text: str | None = None
 ) -> list[tuple[Mapping[str, int], str]] | None:
     if not source_path or count == 0:
         return None
     path = Path(source_path)
     try:
-        if not path.is_file() or path.stat().st_size > min(
-            _MAX_LINE_INDEX_BYTES, MAX_INPUT_SIZE_BYTES
-        ):
+        if text is None:
+            if not path.is_file() or path.stat().st_size > min(
+                _MAX_LINE_INDEX_BYTES, MAX_INPUT_SIZE_BYTES
+            ):
+                return None
+            text = decode_input(path)
+        elif len(text) > _MAX_LINE_INDEX_BYTES:
             return None
-        text = decode_input(path)
         if path.suffix.lower() == ".json":
             index = json_line_index(text)
             if from_list:
@@ -578,6 +587,39 @@ def _is_list_kind(doc: Mapping[str, Any]) -> bool:
     if not isinstance(kind, str):
         return False
     return kind == "List" or (kind.endswith("List") and "items" in doc)
+
+
+_PLACEHOLDER = re.compile(rf"{PLACEHOLDER_PREFIX}([a-z0-9]+(?:-[a-z0-9]+)*?)-(\d+)-(\d+)")
+_CHART_FOLDERS = frozenset({"charts", "templates"})
+_TEMPLATE_SUFFIXES = ("-yaml", "-yml", "-tpl", "-json")
+
+
+def readable_placeholders(value: str, field: str) -> str:
+    """A name or namespace the Helm fallback renderer could not resolve, in words.
+
+    The renderer prints ``placeholder-<template>-<document>-<n>`` for a value it cannot know,
+    which made an address such as ``kubernetes_service.placeholder-templates-svc-yaml-0-2.
+    placeholder-templates-svc-yaml-0-1``.
+    The template (``svc``) and the document number are what tell two unresolved names apart, so
+    the name becomes ``unresolved-svc`` (``unresolved-svc-1`` for the second document) and the
+    namespace ``unresolved-namespace``, which every template of the chart shares because they
+    all print the same expression.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        if field == "namespace":
+            return "unresolved-namespace"
+        template = match.group(1)
+        for suffix in _TEMPLATE_SUFFIXES:
+            if template.endswith(suffix):
+                template = template[: -len(suffix)]
+                break
+        # `charts/redis/templates/svc.yaml` is the slug `charts-redis-templates-svc-yaml`
+        template = "-".join(part for part in template.split("-") if part not in _CHART_FOLDERS)
+        document = int(match.group(2))
+        return f"unresolved-{template}{f'-{document}' if document else ''}"
+
+    return _PLACEHOLDER.sub(replace, value) if PLACEHOLDER_PREFIX in value else value
 
 
 def _resource_name(metadata: Mapping[str, Any], index: int) -> tuple[str, str]:
@@ -653,9 +695,21 @@ def _role_properties(doc: Mapping[str, Any], spec: Mapping[str, Any]) -> dict[st
         escalation = escalation or bool(verbs & _ESCALATION_VERBS)
         # Secrets and pods/exec live in the core group, which is "" (or no group at all)
         core = not groups or "" in groups or _WILDCARD in groups
-        if core and bool({"secrets", _WILDCARD} & resources) and bool(verbs & _READ_VERBS):
+        # A grant limited to named objects is not a grant over every Secret or every pod
+        named = bool(as_str_list(rule.get("resourceNames")))
+        if (
+            core
+            and not named
+            and bool({"secrets", _WILDCARD} & resources)
+            and bool(verbs & _READ_VERBS)
+        ):
             secrets_read = True
-        if core and bool(resources & _EXEC_RESOURCES) and bool({"create", _WILDCARD} & verbs):
+        if (
+            core
+            and not named
+            and bool(resources & _EXEC_RESOURCES)
+            and bool({"create", _WILDCARD} & verbs)
+        ):
             pod_exec = True
     return {
         "rbac_rules": raw,

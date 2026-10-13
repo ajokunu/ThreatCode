@@ -8,8 +8,11 @@ as "unsupported format": it surfaces as a ``ParseError`` that names the parser a
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -34,6 +37,7 @@ __all__ = [
     "ParserPriority",
     "detect_and_parse",
     "is_dockerfile_name",
+    "looks_like_infrastructure",
     "register_parser",
 ]
 
@@ -171,6 +175,71 @@ def detect_and_parse(path: str | Path) -> ParsedOutput:
     raise _unsupported(path, data)
 
 
+# How much of the start of a file ``looks_like_infrastructure`` reads
+_SNIFF_BYTES = 64 * 1024
+_CFN_TYPE = r"(?:AWS|Custom|Alexa)::"
+# Every pattern is a single search with no unbounded gap between two parts, so a hostile file
+# cannot make the check quadratic; two-part conditions are two searches combined in code.
+_JSON_PLAN_MARKERS = re.compile(
+    r'"(?:terraform_version|planned_values|resource_changes|prior_state)"\s*:'
+)
+_JSON_FORMAT_VERSION = re.compile(r'"format_version"\s*:')
+_JSON_CFN_VERSION = re.compile(r'"AWSTemplateFormatVersion"\s*:')
+_JSON_RESOURCES = re.compile(r'"Resources"\s*:')
+_JSON_CFN_TYPE = re.compile(r'"Type"\s*:\s*"' + _CFN_TYPE)
+_JSON_API_VERSION = re.compile(r'"apiVersion"\s*:')
+_JSON_KIND = re.compile(r'"kind"\s*:')
+_YAML_CFN_VERSION = re.compile(r"^AWSTemplateFormatVersion\s*:", re.MULTILINE)
+_YAML_RESOURCES = re.compile(r"^Resources\s*:", re.MULTILINE)
+_YAML_CFN_TYPE = re.compile(r"\bType\s*:\s*['\"]?" + _CFN_TYPE)
+_YAML_API_VERSION = re.compile(r"^apiVersion\s*:", re.MULTILINE)
+_YAML_KIND = re.compile(r"^kind\s*:", re.MULTILINE)
+_TEMPLATE_DELIMITERS = ("{{", "{%")
+
+
+def looks_like_infrastructure(path: Path) -> bool:
+    """Whether the start of a JSON or YAML file reads as a plan, template or manifest.
+
+    This is for a file that could not be parsed: a truncated ``terraform show -json`` output, a
+    CloudFormation template or a Kubernetes manifest with a syntax error is not "some other JSON
+    or YAML file", and counting it as one would let a broken input pass as a clean scan.
+    A recognisable prefix is enough, so the check does not need the file to be well formed.
+    YAML with template delimiters (``{{ .Values.x }}``, ``{% if %}``) is a template for some
+    other tool and is not claimed, because its syntax errors are expected.
+
+    It reads at most 64 KiB and returns False for anything it cannot read.
+    """
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(_SNIFF_BYTES)
+    except OSError:
+        return False
+    head = raw.decode("utf-8", errors="replace").lstrip("\ufeff \t\r\n")
+    if head.startswith(("{", "[")):
+        return _json_looks_like_infrastructure(head)
+    if any(delimiter in head for delimiter in _TEMPLATE_DELIMITERS):
+        return False
+    return _yaml_looks_like_infrastructure(head)
+
+
+def _json_looks_like_infrastructure(head: str) -> bool:
+    if _JSON_FORMAT_VERSION.search(head) and _JSON_PLAN_MARKERS.search(head):
+        return True
+    if _JSON_CFN_VERSION.search(head):
+        return True
+    if _JSON_RESOURCES.search(head) and _JSON_CFN_TYPE.search(head):
+        return True
+    return bool(_JSON_API_VERSION.search(head) and _JSON_KIND.search(head))
+
+
+def _yaml_looks_like_infrastructure(head: str) -> bool:
+    if _YAML_CFN_VERSION.search(head):
+        return True
+    if _YAML_RESOURCES.search(head) and _YAML_CFN_TYPE.search(head):
+        return True
+    return bool(_YAML_API_VERSION.search(head) and _YAML_KIND.search(head))
+
+
 def _call_parser(name: str, path: Path, call: Callable[[], ParsedOutput]) -> ParsedOutput:
     """Run a parser that claimed ``path``; any failure other than ParseError is wrapped."""
     try:
@@ -183,11 +252,24 @@ def _call_parser(name: str, path: Path, call: Callable[[], ParsedOutput]) -> Par
         ) from exc
 
 
+@functools.cache
+def _takes_text(parser_class: type[BaseParser]) -> bool:
+    """Whether ``parse`` of a parser class accepts the decoded text it was loaded from."""
+    try:
+        return "text" in inspect.signature(parser_class.parse).parameters
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
 def _run_parser(entry: ParserEntry, path: Path, text: str, data: Any) -> ParsedOutput:
     def call() -> ParsedOutput:
         parser = entry.factory()
         if data is None and isinstance(parser, ParseFileParser):
             return parser.parse_text(text, source_path=str(path))
+        if data is not None and _takes_text(type(parser)):
+            # The loaded value and its text, so the parser finds line numbers without reading
+            # the file again (and cannot read a different file than the one that was loaded)
+            return parser.parse(data, source_path=str(path), text=text)  # type: ignore[call-arg]
         return parser.parse(data if data is not None else text, source_path=str(path))
 
     return _call_parser(entry.name, path, call)

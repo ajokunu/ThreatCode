@@ -1409,6 +1409,19 @@ class TestContainersAndEdge:
         assert block["default_action"] == [{"block": [{}]}]
         assert allow["default_action"] == [{"allow": [{}]}]
 
+    def test_wafv2_rule_group_uses_the_terraform_names_of_the_web_acl(self) -> None:
+        rules = [{"Name": "r", "Priority": 1, "Statement": {"RateBasedStatement": {"Limit": 100}}}]
+        group = plain(
+            tr(
+                "AWS::WAFv2::RuleGroup",
+                {"Capacity": 10, "Scope": "REGIONAL", "Rules": rules, "VisibilityConfig": {}},
+            )
+        )
+        acl = plain(tr("AWS::WAFv2::WebACL", {"Rules": rules, "VisibilityConfig": {}}))
+        assert "rule" in group and "rules" not in group
+        assert group["rule"] == acl["rule"]
+        assert group["visibility_config"] == acl["visibility_config"]
+
     def test_guardduty_data_sources(self) -> None:
         props = {
             "Enable": True,
