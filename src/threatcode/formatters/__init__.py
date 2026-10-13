@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEPRECATED_FORMATS",
+    "DIAGRAM_DETAILS",
     "FORMATTERS",
     "FormatterSpec",
     "RenderOptions",
@@ -71,6 +72,17 @@ class RenderOptions:
     # The gate (`--fail-on`) of the scan. Bitbucket's report result follows it: FAILED when a
     # finding or attack path at or above it remains. None means the default gate, `high`.
     fail_on: str | None = None
+    # SVG diagram only (`--diagram-*`). The findings rows kept in the table: None is the renderer's
+    # own limit, 0 keeps every row.
+    diagram_max_rows: int | None = None
+    # Draw every Dockerfile instruction instead of one node per large build stage.
+    diagram_expand_docker: bool = False
+    # How much detail the diagram draws: "auto" collapses nodes by zone and type once the graph is
+    # large, "full" never collapses and "collapsed" always does.
+    diagram_detail: str = "auto"
+
+
+DIAGRAM_DETAILS: tuple[str, ...] = ("auto", "full", "collapsed")
 
 
 class FormatterSpec(NamedTuple):
@@ -128,9 +140,34 @@ def _mermaid(analysis: AnalysisResult, options: RenderOptions) -> str:
 
 
 def _diagram(analysis: AnalysisResult, options: RenderOptions) -> str:
-    from threatcode.formatters.diagram import format_diagram
+    from threatcode.formatters.diagram import (
+        DEFAULT_LOD_THRESHOLD,
+        DEFAULT_MAX_ROWS,
+        format_diagram,
+    )
 
-    return format_diagram(analysis.report, analysis.graph)
+    if options.diagram_detail not in DIAGRAM_DETAILS:
+        raise UsageError(
+            f"diagram_detail must be one of {', '.join(DIAGRAM_DETAILS)}, "
+            f"got '{options.diagram_detail}'"
+        )
+    if options.diagram_max_rows is not None and options.diagram_max_rows < 0:
+        raise UsageError(f"diagram_max_rows must be 0 or more, got {options.diagram_max_rows}")
+    max_rows: int | None = DEFAULT_MAX_ROWS
+    if options.diagram_max_rows is not None:
+        max_rows = options.diagram_max_rows or None
+    lod_threshold: int | None = {
+        "auto": DEFAULT_LOD_THRESHOLD,
+        "full": None,
+        "collapsed": 0,
+    }[options.diagram_detail]
+    return format_diagram(
+        analysis.report,
+        analysis.graph,
+        max_rows=max_rows,
+        expand_docker=options.diagram_expand_docker,
+        lod_threshold=lod_threshold,
+    )
 
 
 def _text(analysis: AnalysisResult, options: RenderOptions) -> str:
@@ -192,15 +229,23 @@ def get_formatter(name: str) -> FormatterSpec:
         ) from None
 
 
-def render(name: str, analysis: AnalysisResult, options: RenderOptions | None = None) -> str:
+def render(
+    name: str,
+    analysis: AnalysisResult,
+    options: RenderOptions | None = None,
+    *,
+    warn_deprecated: bool = True,
+) -> str:
     """Render ``analysis`` in format ``name``.
 
     A deprecated alias still renders; it logs one warning on the ``threatcode`` logger, which the
     CLI shows on stderr.
+    A caller that tells the person itself (the CLI does, even with ``--quiet``) passes
+    ``warn_deprecated=False`` so the notice is not printed twice.
     """
     spec = get_formatter(name)
     notice = deprecation_notice(name)
-    if notice:
+    if notice and warn_deprecated:
         logger.warning(notice)
     return spec.render(analysis, options or RenderOptions())
 
