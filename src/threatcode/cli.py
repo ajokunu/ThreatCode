@@ -8,10 +8,12 @@ looks clean while part of the input was not analysed is worse than a failed scan
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import sys
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -20,7 +22,17 @@ import click
 
 from threatcode import __version__
 from threatcode.exceptions import ThreatCodeError, UsageError
-from threatcode.formatters import RenderOptions, format_names, render, write_text_file
+from threatcode.formatters import (
+    DIAGRAM_DETAILS,
+    RenderOptions,
+    deprecation_notice,
+    extension_mismatch,
+    format_for_extension,
+    format_names,
+    render,
+    visible_format_names,
+    write_text_file,
+)
 from threatcode.formatters._utils import set_aside_phrase, terminal_safe
 from threatcode.formatters.terminal_coverage import (
     error_text,
@@ -49,6 +61,35 @@ _LISTED_LIMIT = 10
 _MIN_STDERR_WIDTH = 40
 _DEFAULT_STDERR_WIDTH = 100
 
+# The environment variables the CLI reads, in one list: (names, what they do).
+# Both the group help and the help of every command print it, so they cannot disagree.
+_ENVIRONMENT: tuple[tuple[str, str], ...] = (
+    (
+        "THREATCODE_FAIL_ON, THREATCODE_MIN_SEVERITY, THREATCODE_FORMAT, THREATCODE_LLM",
+        "defaults below the flags and above a config file",
+    ),
+    ("THREATCODE_MAX_NODES, THREATCODE_MAX_EDGES", "graph size limits"),
+    ("THREATCODE_DEBUG=1", "show tracebacks for unexpected errors"),
+    ("ANTHROPIC_API_KEY", "read only when the LLM is requested with --llm"),
+    ("SOURCE_DATE_EPOCH", "fixed report timestamp for reproducible output"),
+    ("NO_COLOR", "plain text output"),
+    ("CI", "skips the home directory when looking for a config file"),
+)
+_ENVIRONMENT_COLUMN = 25
+
+
+def _environment_block() -> str:
+    """The ``Environment:`` section of a help page, built from ``_ENVIRONMENT``."""
+    lines = ["\b", "Environment:"]
+    for names, meaning in _ENVIRONMENT:
+        if len(names) + 2 < _ENVIRONMENT_COLUMN:
+            lines.append(f"  {names.ljust(_ENVIRONMENT_COLUMN - 2)}{meaning}")
+        else:
+            lines.append(f"  {names}")
+            lines.append(f"{' ' * _ENVIRONMENT_COLUMN}{meaning}")
+    return "\n".join(lines) + "\n"
+
+
 _GROUP_EPILOG = """\b
 Examples:
   threatcode scan infra/
@@ -63,17 +104,7 @@ Exit codes:
   2  usage or input error: an unreadable path, a file that failed to parse, nothing to
      scan, a bad option, or --strict with a coverage gap
 
-\b
-Environment:
-  THREATCODE_FAIL_ON, THREATCODE_MIN_SEVERITY, THREATCODE_FORMAT, THREATCODE_LLM
-                         defaults below the flags and above a config file
-  THREATCODE_DEBUG=1     show tracebacks for unexpected errors
-  THREATCODE_MAX_NODES, THREATCODE_MAX_EDGES   graph size limits
-  ANTHROPIC_API_KEY      read only when the LLM is requested with --llm
-  SOURCE_DATE_EPOCH      fixed report timestamp for reproducible output
-  NO_COLOR               plain text output
-  CI                     skips the home directory when looking for a config file
-"""
+""" + _environment_block()
 
 _SCAN_EPILOG = """\b
 Examples:
@@ -81,6 +112,7 @@ Examples:
   threatcode scan a.tf b.yaml k8s/             several files and directories
   terraform show -json tfplan | threatcode scan - --stdin-name plan.json
   threatcode scan infra/ --fail-on critical --min-severity medium -f markdown
+  threatcode scan infra/ -o threatcode.sarif   the .sarif extension picks the SARIF format
   threatcode scan infra/ --write-baseline .threatcode-baseline.json
   threatcode scan infra/ --baseline .threatcode-baseline.json
 
@@ -92,11 +124,7 @@ Exit codes:
   2  usage or input   unreadable path, file that failed to parse, nothing to scan,
                       bad option, or --strict with any coverage gap
 
-\b
-Environment:
-  THREATCODE_FAIL_ON, THREATCODE_MIN_SEVERITY, THREATCODE_FORMAT, THREATCODE_LLM,
-  ANTHROPIC_API_KEY (with --llm), SOURCE_DATE_EPOCH, NO_COLOR, CI
-"""
+""" + _environment_block()
 
 _DIFF_EPILOG = """\b
 Examples:
@@ -109,7 +137,27 @@ Exit codes:
   0  no new or worsened threat at or above --fail-on-new (or the flag was not given)
   1  a threat was added, or got worse, at or above --fail-on-new
   2  an input is not a ThreatCode JSON report, or another usage error
-"""
+
+""" + _environment_block()
+
+# Defaults the help states; tests check them against the modules that own the values.
+DEFAULT_MAX_NODES = 10_000
+DEFAULT_MAX_EDGES = 50_000
+DEFAULT_DIAGRAM_MAX_ROWS = 200
+# Names that mean standard output where a file name is expected.
+_STDOUT_NAMES = frozenset({"-", "/dev/stdout", "/dev/fd/1"})
+# Formats that are not meant to be read in a terminal, with what to do instead.
+_NOT_FOR_A_TERMINAL = {
+    "diagram": "diagram output is SVG; pass -o file.svg instead of printing it",
+    "navigator": (
+        "navigator output is an ATT&CK Navigator layer (JSON); "
+        "pass -o layer.json instead of printing it"
+    ),
+    "matrix": (
+        "matrix output is an ATT&CK Navigator layer (JSON); "
+        "pass -o layer.json instead of printing it"
+    ),
+}
 
 
 def _stderr_is_tty() -> bool:
@@ -219,28 +267,39 @@ class _SafeFormatter(logging.Formatter):
         return terminal_safe(super().format(record), keep_lines=True)
 
 
-def _configure_logging(ctx: click.Context, verbose: int, quiet: bool, debug: bool) -> None:
-    """Send ThreatCode's log records to stderr, once per invocation, at the requested level."""
-    if debug or verbose >= 2:
+def _configure_logging(ctx: click.Context, state: CliState) -> None:
+    """Send ThreatCode's log records to stderr at the level ``state`` asks for.
+
+    The handler is installed once per invocation; ``-q`` and ``-v`` given after the command call
+    this again, which only moves the level.
+    """
+    if state.debug or state.verbose >= 2:
         level = logging.DEBUG
-    elif verbose == 1:
+    elif state.verbose == 1:
         level = logging.INFO
-    elif quiet:
+    elif state.quiet:
         level = logging.ERROR
     else:
         level = logging.WARNING
+    target = logging.getLogger("threatcode")
+    if _LOG_HANDLER_KEY in ctx.meta:
+        target.setLevel(level)
+        return
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(_SafeFormatter("%(levelname)s: %(message)s"))
-    target = logging.getLogger("threatcode")
     previous = target.level
     target.addHandler(handler)
     target.setLevel(level)
+    ctx.meta[_LOG_HANDLER_KEY] = handler
 
     def restore() -> None:
         target.removeHandler(handler)
         target.setLevel(previous)
 
     ctx.call_on_close(restore)
+
+
+_LOG_HANDLER_KEY = "threatcode.log_handler"
 
 
 @click.group(
@@ -260,10 +319,81 @@ def cli(ctx: click.Context, verbose: int, quiet: bool, debug: bool, no_color: bo
     scan reads Terraform, CloudFormation, Kubernetes, Helm, Dockerfiles and MCP configs and models
     them as one graph.
     diff compares two JSON reports.
-    The options above go before the command: threatcode -q scan infra/.
+    -v, -q and --no-color work before or after the command; --debug goes before it:
+    threatcode --debug scan infra/.
     """
-    ctx.obj = CliState(quiet=quiet, verbose=verbose, debug=debug, color=not no_color)
-    _configure_logging(ctx, verbose, quiet, debug)
+    state = CliState(quiet=quiet, verbose=verbose, debug=debug, color=not no_color)
+    ctx.obj = state
+    _configure_logging(ctx, state)
+
+
+def _command_state(ctx: click.Context) -> CliState:
+    """The state of the group, created when a command runs without one (``scan.main()``)."""
+    found = ctx.find_object(CliState)
+    if found is None:
+        found = CliState()
+        ctx.obj = found
+    return found
+
+
+def _set_quiet(ctx: click.Context, _param: click.Parameter, value: bool) -> bool:
+    state = _command_state(ctx)
+    if value:
+        state.quiet = True
+        _configure_logging(ctx, state)
+    return value
+
+
+def _set_verbose(ctx: click.Context, _param: click.Parameter, value: int) -> int:
+    state = _command_state(ctx)
+    if value:
+        state.verbose += value
+        _configure_logging(ctx, state)
+    return value
+
+
+def _set_no_color(ctx: click.Context, _param: click.Parameter, value: bool) -> bool:
+    if value:
+        _command_state(ctx).color = False
+    return value
+
+
+def _global_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    """``-q``, ``-v`` and ``--no-color`` on a command, the same options the group has.
+
+    They act on the shared ``CliState`` while the command line is parsed, so a command never sees
+    them as arguments, and ``threatcode scan -q infra/`` means what ``threatcode -q scan infra/``
+    does.
+    """
+    options = (
+        click.option(
+            "-v",
+            "--verbose",
+            count=True,
+            expose_value=False,
+            callback=_set_verbose,
+            help="More log detail on stderr (-vv for debug). Also works before the command.",
+        ),
+        click.option(
+            "-q",
+            "--quiet",
+            is_flag=True,
+            expose_value=False,
+            callback=_set_quiet,
+            help="Hide progress and notices; errors and coverage gaps stay. "
+            "Also works before the command.",
+        ),
+        click.option(
+            "--no-color",
+            is_flag=True,
+            expose_value=False,
+            callback=_set_no_color,
+            help="Never use colors (NO_COLOR does the same). Also works before the command.",
+        ),
+    )
+    for option in reversed(options):
+        func = option(func)
+    return func
 
 
 # ── Shared helpers ────────────────────────────────────────────────────
@@ -300,8 +430,20 @@ def write_output(
         echo_err(f"{label} written to {target}")
 
 
+def _output_target(path: str | None) -> str | None:
+    """``path`` for ``-o``, or None when it means standard output (``-``, ``/dev/stdout``).
+
+    ``/dev/stdout`` is not a file to create: a pipe or a terminal cannot be rewritten, and opening
+    it again would also truncate a file the shell redirected standard output to.
+    """
+    return None if path in _STDOUT_NAMES else path
+
+
 def _default_format(output_path: str | None) -> str:
-    return "text" if _stdout_is_tty() and output_path is None else "json"
+    """The format when nothing chose one: the output file's extension, else text on a terminal."""
+    if output_path is not None:
+        return format_for_extension(output_path) or "json"
+    return "text" if _stdout_is_tty() else "json"
 
 
 def _use_color(state: CliState, output_path: str | None) -> bool:
@@ -312,6 +454,22 @@ def _use_color(state: CliState, output_path: str | None) -> bool:
 
 def _first_line(text: str) -> str:
     return text.splitlines()[0] if text else text
+
+
+class _FormatChoice(click.Choice):  # type: ignore[type-arg]
+    """The ``--format`` choice: advertises the current formats, still accepts a deprecated alias.
+
+    ``--help`` and the invalid-value error list ``visible_format_names()``; ``matrix`` is accepted
+    but never offered.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(visible_format_names())
+
+    def convert(self, value: Any, param: click.Parameter | None, ctx: click.Context | None) -> Any:
+        if isinstance(value, str) and value in format_names() and value not in self.choices:
+            return value
+        return super().convert(value, param, ctx)
 
 
 # ── scan ──────────────────────────────────────────────────────────────
@@ -326,16 +484,19 @@ def _first_line(text: str) -> str:
     "-f",
     "output_format",
     default=None,
-    type=click.Choice(format_names()),
-    help="Output format. Default: the config's output_format, else text on a terminal, else json.",
+    type=_FormatChoice(),
+    metavar="FORMAT",
+    help=f"Output format: {', '.join(visible_format_names())}. "
+    "Default: THREATCODE_FORMAT or the config's format, else the one the -o extension names "
+    "(.sarif, .md, .mmd, .svg, .json), else text on a terminal and json otherwise.",
 )
 @click.option(
     "--output",
     "-o",
     "output_path",
-    type=click.Path(),
+    type=click.Path(readable=False),
     default=None,
-    help="Write the report to this file instead of stdout.",
+    help="Write the report to this file instead of stdout. - means stdout.",
 )
 @click.option(
     "--min-severity",
@@ -429,8 +590,48 @@ def _first_line(text: str) -> str:
     is_flag=True,
     help="Add the graph (nodes and edges, no properties) to the JSON report.",
 )
-@click.option("--max-nodes", type=click.IntRange(min=1), default=None, help="Graph node limit.")
-@click.option("--max-edges", type=click.IntRange(min=1), default=None, help="Graph edge limit.")
+@click.option(
+    "--source-root",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="The repository root that SARIF and Bitbucket paths are relative to, for a checkout "
+    "with no .git directory. Default: the git top level above the scan root.",
+)
+@click.option(
+    "--diagram-max-rows",
+    type=click.IntRange(min=0),
+    metavar="N",
+    default=None,
+    help=f"-f diagram: findings rows drawn in the table (default {DEFAULT_DIAGRAM_MAX_ROWS}; "
+    "0 draws every row).",
+)
+@click.option(
+    "--diagram-expand-docker",
+    is_flag=True,
+    help="-f diagram: draw every Dockerfile instruction, not one node per large build stage.",
+)
+@click.option(
+    "--diagram-detail",
+    type=click.Choice(DIAGRAM_DETAILS),
+    default=None,
+    help="-f diagram: auto collapses nodes by zone and type once the graph is large (default), "
+    "full never collapses, collapsed always does.",
+)
+@click.option(
+    "--max-nodes",
+    type=click.IntRange(min=1),
+    metavar="N",
+    default=None,
+    help=f"Graph node limit (default {DEFAULT_MAX_NODES:,}).",
+)
+@click.option(
+    "--max-edges",
+    type=click.IntRange(min=1),
+    metavar="N",
+    default=None,
+    help=f"Graph edge limit (default {DEFAULT_MAX_EDGES:,}).",
+)
+@_global_options
 @click.pass_context
 def scan(
     ctx: click.Context,
@@ -453,6 +654,10 @@ def scan(
     no_timestamp: bool,
     stdin_name: str | None,
     include_graph: bool,
+    source_root: str | None,
+    diagram_max_rows: int | None,
+    diagram_expand_docker: bool,
+    diagram_detail: str | None,
     max_nodes: int | None,
     max_edges: int | None,
 ) -> None:
@@ -466,6 +671,7 @@ def scan(
     from threatcode.pipeline import prepare_request, run_scan
 
     state = _state(ctx)
+    output_path = _output_target(output_path)
     prepared = prepare_request(
         paths,
         config_path=config_path,
@@ -489,19 +695,38 @@ def scan(
     )
     settings = prepared.request.settings
     chosen = settings.output_format or _default_format(output_path)
-    if chosen == "diagram" and output_path is None and _stdout_is_tty():
-        raise UsageError("diagram output is SVG; pass -o file.svg instead of printing it")
+    _check_format_choice(
+        chosen,
+        output_path,
+        explicit=settings.output_format is not None,
+        state=state,
+        diagram_options=diagram_max_rows is not None
+        or diagram_expand_docker
+        or diagram_detail is not None,
+    )
     _check_output_path(output_path)
     _check_output_path(write_baseline)
     _announce_config(prepared.config, state)
-    _announce_llm(settings, state)
+    llm_ready = _check_llm(settings)
+    if llm_ready:
+        _announce_llm(settings, state)
 
     result = run_scan(prepared.request)
     # A parser that meets one cause twice reports it twice; the count and the listing are of causes
     result.coverage.gaps[:] = unique_gaps(result.coverage.gaps)
+    _warn_on_duplicate_ids(result.report)
 
-    options = RenderOptions(color=_use_color(state, output_path), include_graph=include_graph)
-    text = render(chosen, result.analysis, options)
+    options = RenderOptions(
+        color=_use_color(state, output_path),
+        include_graph=include_graph,
+        repo_root=source_root,
+        fail_on=settings.fail_on,
+        diagram_max_rows=diagram_max_rows,
+        diagram_expand_docker=diagram_expand_docker,
+        diagram_detail=diagram_detail or "auto",
+    )
+    # The deprecation notice was printed above, where -q cannot hide it
+    text = render(chosen, result.analysis, options, warn_deprecated=False)
     write_output(output_path, text, label="Report", quiet=state.quiet)
     if result.baseline_written is not None:
         state.info(f"Baseline written to {result.baseline_written}")
@@ -513,6 +738,66 @@ def scan(
         fail_on=settings.fail_on,
     )
     ctx.exit(result.exit_code)
+
+
+def _check_format_choice(
+    chosen: str,
+    output_path: str | None,
+    *,
+    explicit: bool,
+    state: CliState,
+    diagram_options: bool,
+) -> None:
+    """Refuse or warn about a format and destination that do not fit, before the scan runs."""
+    if diagram_options and chosen != "diagram":
+        raise UsageError(f"--diagram-* options only apply to -f diagram, not -f {chosen}")
+    if output_path is None and chosen in _NOT_FOR_A_TERMINAL and _stdout_is_tty():
+        raise UsageError(_NOT_FOR_A_TERMINAL[chosen])
+    notice = deprecation_notice(chosen)
+    if notice:
+        state.warn(f"Warning: {notice}")
+    if explicit and output_path is not None:
+        mismatch = extension_mismatch(chosen, output_path)
+        if mismatch:
+            state.warn(f"Warning: {mismatch}")
+
+
+def _check_llm(settings: Any) -> bool:
+    """Whether the LLM can run, checked before the scan says it will send anything.
+
+    Without the anthropic SDK this raises one error that names the extra, whether or not a key
+    is set: the SDK is checked first, because a key does not help without it.
+    Without a key the scan goes on with rules only (the client factory warns), so nothing is said
+    about sending.
+    A dry run needs neither.
+    """
+    if not settings.use_llm or settings.dry_run:
+        return bool(settings.use_llm)
+    llm = settings.config.llm
+    if llm.provider != "anthropic":
+        return True
+    # Looked for, not imported: only the model client touches the SDK.
+    if importlib.util.find_spec("anthropic") is None:
+        raise ThreatCodeError(
+            "the LLM needs the anthropic SDK, which is not installed; "
+            "install it with: pip install 'threatcode[llm]'"
+        )
+    from threatcode.engine.llm.factory import resolve_api_key
+
+    return bool(resolve_api_key(llm))
+
+
+def _warn_on_duplicate_ids(report: Any) -> None:
+    """Log the warning ``threatcode.scan()`` logs when two threats share an id."""
+    repeated = report.duplicate_ids()
+    if repeated:
+        # An id names one finding in a diff and in an ignore entry; a repeat would merge two.
+        logging.getLogger("threatcode").warning(
+            "the report holds %d threat id(s) more than once, so a diff or an ignore entry "
+            "cannot tell the threats apart: %s",
+            len(repeated),
+            ", ".join(repeated[:5]),
+        )
 
 
 def _announce_config(loaded: LoadedConfig, state: CliState) -> None:
@@ -591,9 +876,31 @@ def _summary_extras(result: ScanResult) -> str:
     if coverage.hidden_findings or coverage.hidden_paths:
         hidden = set_aside_phrase(coverage.hidden_findings, coverage.hidden_paths)
         extras.append(f"{hidden} below {coverage.min_severity} hidden by --min-severity")
-    if coverage.errors:
-        extras.append(f"incomplete: {plural(len(coverage.errors), 'input error')}")
+    incomplete = _incomplete_phrase(coverage)
+    if incomplete:
+        extras.append(f"incomplete: {incomplete}")
     return f" ({', '.join(extras)})" if extras else ""
+
+
+def _incomplete_phrase(coverage: Coverage) -> str:
+    """What makes the scan incomplete: input errors, error-level gaps and skipped Helm templates.
+
+    A Helm template that was skipped or only approximated leaves resources out of the model, so a
+    ``found 0 findings`` over it must not read as clean.
+    Other coverage gaps (an unresolved value, a capped search) are listed on their own and do not
+    make the scan incomplete.
+    """
+    parts = []
+    if coverage.errors:
+        parts.append(plural(len(coverage.errors), "input error"))
+    unique = unique_gaps(coverage.gaps)
+    helm = [gap for gap in unique if gap.get("code") == "helm.render_warning"]
+    other = [gap for gap in unique if gap.get("level") == "error" and gap not in helm]
+    if other:
+        parts.append(plural(len(other), "error-level coverage gap"))
+    if helm:
+        parts.append(f"{plural(len(helm), 'Helm template')} skipped or approximated")
+    return ", ".join(parts)
 
 
 def _report_to_stderr(
@@ -680,18 +987,18 @@ def _report_to_stderr(
     "--output",
     "-o",
     "output_path",
-    type=click.Path(),
+    type=click.Path(readable=False),
     default=None,
-    help="Write the diff to this file instead of stdout.",
+    help="Write the diff to this file instead of stdout. - means stdout.",
 )
 @click.option(
     "--fail-on-new",
     default=None,
-    type=click.Choice(SEVERITY_CHOICES),
-    metavar="SEVERITY",
-    help="Exit 1 when a threat at or above SEVERITY was added or got worse "
-    f"({', '.join(SEVERITY_CHOICES)}).",
+    type=click.Choice(FAIL_ON_CHOICES),
+    help="Exit 1 when a threat at or above this severity was added or got worse. "
+    "'none' never fails. Default: never fail.",
 )
+@_global_options
 @click.pass_context
 def diff(
     ctx: click.Context,
@@ -709,6 +1016,7 @@ def diff(
     from threatcode.formatters.diff import compute_diff, format_diff, gating_threats
 
     state = _state(ctx)
+    output_path = _output_target(output_path)
     _check_output_path(output_path)
     result = compute_diff(baseline, current)
     chosen = output_format or ("text" if _stdout_is_tty() and output_path is None else "json")
@@ -716,7 +1024,7 @@ def diff(
 
     summary = _diff_summary(result)
     state.info(summary)
-    if fail_on_new is not None:
+    if fail_on_new is not None and fail_on_new != "none":
         offenders = gating_threats(result, fail_on_new)
         if offenders:
             state.warn(
@@ -739,3 +1047,60 @@ def _diff_summary(result: dict[str, Any]) -> str:
         f"{plural(len(added), 'new threat')}{detail}, "
         f"{len(result['removed'])} resolved, {len(result['changed'])} changed."
     )
+
+
+# ── Removed commands ──────────────────────────────────────────────────
+
+# The 0.9 commands that no longer exist, and what replaces each. They are registered hidden so
+# that a script or a habit gets a pointer to the migration page instead of "No such command".
+_REMOVED_COMMANDS: dict[str, str] = {
+    "fs": "use 'threatcode scan DIR', which reads every supported file under DIR into one graph",
+    "repo": "clone the repository, then use 'threatcode scan DIR'",
+    "image": (
+        "run Trivy or Grype on the image and pass its JSON to 'threatcode scan DIR --ingest FILE'"
+    ),
+    "vuln": (
+        "run OSV-Scanner, Grype or Trivy and pass its JSON to 'threatcode scan DIR --ingest FILE'"
+    ),
+    "db": "there is no vulnerability database any more; pass scanner results to --ingest",
+    "secret": (
+        "'threatcode scan DIR' runs the secret detectors over the files it models; for a "
+        "whole-repository secret scan, run Gitleaks and pass its SARIF to --ingest"
+    ),
+    "sbom": "use Syft or Trivy",
+    "license": "use Syft or Trivy",
+}
+
+
+class _RemovedCommandError(click.UsageError):
+    """A removed command was run: one ``Error:`` line, exit 2, like every other usage error."""
+
+    def show(self, file: Any = None) -> None:  # noqa: ARG002 - click's signature
+        echo_err(f"Error: {self.message}")
+
+
+class _RemovedCommand(click.Command):
+    """A command that no longer exists, kept so that it can say what replaced it.
+
+    It fails while the command line is parsed, whatever follows its name, so a tool that only
+    parses a command line (the check of the documentation's examples) refuses it too.
+    """
+
+    def __init__(self, name: str, replacement: str) -> None:
+        super().__init__(
+            name,
+            hidden=True,
+            add_help_option=False,
+            context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+            params=[click.Argument(["arguments"], nargs=-1, type=click.UNPROCESSED)],
+        )
+        self.message = (
+            f"'threatcode {name}' was removed in 1.0: {replacement}. See docs/migrating.md"
+        )
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:  # noqa: ARG002
+        raise _RemovedCommandError(self.message, ctx=ctx)
+
+
+for _name, _replacement in _REMOVED_COMMANDS.items():
+    cli.add_command(_RemovedCommand(_name, _replacement))
