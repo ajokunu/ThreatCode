@@ -510,6 +510,33 @@ class TestAttackPaths:
         assert "   - enabled by finding `gone`" in text
         assert "[T1190](https://attack.mitre.org/techniques/T1190/)" in text
 
+    def test_a_boundary_finding_is_named_by_its_boundary_rule_not_by_its_source(self) -> None:
+        report = ThreatReport(scanned_resources=2)
+        report.add(
+            make_threat(
+                0,
+                Severity.HIGH,
+                source=ThreatSource.BOUNDARY,
+                metadata={"boundary_rule": "BOUNDARY_GENERIC_FLOW"},
+            )
+        )
+        report.add(make_threat(1, Severity.MEDIUM, rule_id="IMDS_V1"))
+        path = self.path()
+        path.hops[1].enabled_by = ["t0", "t1"]
+        report.attack_paths.append(path)
+        text = format_markdown(report)
+        assert "   - enabled by [HIGH] Threat 0 (`BOUNDARY_GENERIC_FLOW`)" in text
+        assert "   - enabled by [MEDIUM] Threat 1 (`IMDS_V1`)" in text
+        assert "(`boundary`)" not in text
+
+    def test_a_finding_with_neither_rule_nor_boundary_is_named_by_its_source(self) -> None:
+        report = ThreatReport(scanned_resources=2)
+        report.add(make_threat(0, Severity.HIGH, source=ThreatSource.LLM))
+        path = self.path()
+        path.hops[1].enabled_by = ["t0"]
+        report.attack_paths.append(path)
+        assert "   - enabled by [HIGH] Threat 0 (`llm`)" in format_markdown(report)
+
     def test_a_mermaid_flowchart_follows_the_paths(self) -> None:
         text = format_markdown(self.report())
         block = text.split("```mermaid\n")[1].split("```")[0]
