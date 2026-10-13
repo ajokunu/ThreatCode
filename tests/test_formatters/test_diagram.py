@@ -14,9 +14,15 @@ import pytest
 from threatcode.engine.hybrid import HybridEngine
 from threatcode.formatters.diagram import (
     ATTACK_PATH_MAX_PATHS,
+    CROSSING_WIDTH,
+    EDGE_STYLES,
     LEGEND_H,
+    NODE_TYPE_FONT,
+    NODE_TYPE_MAX_CHARS,
     NODE_W,
+    SEVERITY_COLORS,
     SUMMARY_BAR_H,
+    TABLE_DESCRIPTION_LINES,
     THREAT_TABLE_HEADER_H,
     THREAT_TABLE_ROW_H,
     format_diagram,
@@ -187,8 +193,12 @@ class TestDiagramFormatter:
         # data_store (storage) -> ellipse elements (cylinder)
         assert "<ellipse" in svg
 
-        # data_flow (network) -> polygon (diamond)
-        assert "<polygon" in svg
+        # network plumbing -> a box with a dashed outline, never a diamond
+        root = ElementTree.fromstring(svg)
+        (alb,) = [g for g in root.iter(f"{NS}g") if g.get("data-id") == "aws_lb.alb"]
+        assert not alb.findall(f"{NS}polygon")
+        (outline,) = alb.findall(f"{NS}rect")
+        assert outline.get("stroke-dasharray")
 
         # entity (IAM) -> double border: two rects in one node group
         root = ElementTree.fromstring(svg)
@@ -205,15 +215,42 @@ class TestDiagramFormatter:
         paths = [p for p in root.iter(f"{NS}path") if p.get("class") == "edge"]
         assert len(paths) == len(SAMPLE_EDGES)
 
-    def test_boundary_crossing_highlighted(self) -> None:
+    def test_a_crossing_flow_keeps_the_look_of_its_type_and_gets_a_zone_label(self) -> None:
         graph = _make_graph_with_nodes(SAMPLE_NODES, SAMPLE_EDGES)
-        report = _make_report()
-        svg = format_diagram(report, graph)
+        svg = format_diagram(_make_report(), graph)
         root = ElementTree.fromstring(svg)
-        boundary_paths = [p for p in root.iter(f"{NS}path") if p.get("data-boundary") == "true"]
-        assert len(boundary_paths) == 2
-        for p in boundary_paths:
-            assert p.get("stroke") == "#ef4444"
+        crossing = [p for p in root.iter(f"{NS}path") if p.get("data-boundary") == "true"]
+        assert sorted(p.get("data-type") or "" for p in crossing) == ["data_flow", "network_flow"]
+        for p in crossing:
+            color, _, _ = EDGE_STYLES[EdgeType(p.get("data-type"))]
+            assert p.get("stroke") == color
+            assert p.get("stroke-width") == CROSSING_WIDTH
+            assert p.get("filter") is None
+        assert sorted(re.findall(r'class="edge-label">(.*?)</text>', svg)) == [
+            "INTERNET \u2192 DMZ",
+            "PRIVATE \u2192 DATA",
+        ]
+
+    def test_a_reference_that_spans_two_zones_is_not_a_crossing(self) -> None:
+        """FV-09: a Terraform reference is wiring, not traffic across a trust boundary."""
+        nodes = SAMPLE_NODES[:2]
+        edges = [
+            InfraEdge(
+                source="aws_internet_gateway.igw",
+                target="aws_lb.alb",
+                edge_type=edge_type,
+                metadata={
+                    "crosses_trust_boundary": True,
+                    "source_zone": "internet",
+                    "target_zone": "dmz",
+                },
+            )
+            for edge_type in (EdgeType.DEPENDENCY, EdgeType.IAM_BINDING)
+        ]
+        svg = format_diagram(_make_report(), _make_graph_with_nodes(nodes, edges))
+        root = ElementTree.fromstring(svg)
+        assert not [p for p in root.iter(f"{NS}path") if p.get("data-boundary") == "true"]
+        assert 'class="edge-label"' not in svg
 
     def test_threat_badges(self) -> None:
         graph = _make_graph_with_nodes(SAMPLE_NODES)
@@ -231,7 +268,7 @@ class TestDiagramFormatter:
         circles = s3_group[0].findall(f"{NS}circle")
         assert len(circles) == 1
         # Critical color (worst of 2 threats)
-        assert circles[0].get("fill") == "#ef4444"
+        assert circles[0].get("fill") == SEVERITY_COLORS["critical"]
 
     def test_header_metadata(self) -> None:
         graph = _make_graph_with_nodes(SAMPLE_NODES)
@@ -339,8 +376,9 @@ class TestNodeLabels:
             assert short in svg
 
     def test_wider_nodes(self) -> None:
-        """Nodes use NODE_W=160 (wider than old 130)."""
-        assert NODE_W == 160
+        """Nodes are wide enough for the longest type caption at the caption's font size."""
+        assert NODE_W == 176
+        assert NODE_TYPE_MAX_CHARS * NODE_TYPE_FONT * 0.55 <= NODE_W - 12
 
 
 class TestEdgeLabels:
@@ -482,9 +520,9 @@ class TestLegendOverhaul:
         svg = format_diagram(report, graph)
         assert "Node Shapes" in svg
         assert "Process" in svg
-        assert "Data Store" in svg
-        assert "Data Flow" in svg
-        assert "External Entity" in svg
+        assert "Data store" in svg
+        assert "Network (network, cdn, dns, messaging)" in svg
+        assert "External entity" in svg
 
     def test_legend_has_edge_types_section(self) -> None:
         graph = _make_graph_with_nodes(SAMPLE_NODES)
@@ -492,17 +530,19 @@ class TestLegendOverhaul:
         svg = format_diagram(report, graph)
         assert "Edge Types" in svg
         assert "Dependency" in svg
-        assert "Containment" in svg
-        assert "Network Flow" in svg
-        assert "IAM Binding" in svg
-        assert "Trust Boundary Crossing" in svg
+        assert "Container (nested frame)" in svg
+        assert "Network flow" in svg
+        assert "IAM binding" in svg
+        assert "Attack path hop" in svg
+        assert "Attack path number" in svg
+        assert "Trust boundary crossing (flow)" in svg
 
     def test_legend_has_severity_badges_section(self) -> None:
         graph = _make_graph_with_nodes(SAMPLE_NODES)
         report = _make_report()
         svg = format_diagram(report, graph)
         assert "Severity Badges" in svg
-        assert "Badge number = threat count on resource" in svg
+        assert "Badge number = threat count" in svg
 
     def test_legend_uses_mini_svg_shapes(self) -> None:
         """Legend contains actual SVG shape elements, not Unicode chars."""
@@ -514,7 +554,7 @@ class TestLegendOverhaul:
         # Should have actual shape elements in legend
         assert legend.findall(f".//{NS}rect")  # for process + entity shapes
         assert legend.findall(f".//{NS}ellipse")  # for data store shape
-        assert legend.findall(f".//{NS}polygon")  # for data flow shape
+        assert legend.findall(f".//{NS}polygon")  # for the arrow heads
         assert legend.findall(f".//{NS}line")  # for edge line samples
 
     def test_legend_height_constant(self) -> None:
@@ -628,7 +668,7 @@ class TestAttackPaths:
         lines = list(group.iter(f"{NS}line"))
         assert len(lines) == len(_CHAIN) - 1
         for line in lines:
-            assert line.get("stroke") == "#ef4444"
+            assert line.get("stroke") == SEVERITY_COLORS["critical"]
             assert "arrow-path-critical" in (line.get("marker-end") or "")
         root = ElementTree.fromstring(svg)
         marker_ids = {m.get("id") or "" for m in root.iter(f"{NS}marker")}
@@ -641,13 +681,14 @@ class TestAttackPaths:
         )
         groups = _groups(svg, "attack-path")
         colours = {g.get("data-severity"): next(g.iter(f"{NS}line")).get("stroke") for g in groups}
-        assert colours == {"low": "#3b82f6", "high": "#f97316"}
+        assert colours == {"low": SEVERITY_COLORS["low"], "high": SEVERITY_COLORS["high"]}
 
     def test_edge_labels_use_hop_edge_type_and_ports(self) -> None:
         svg = _paths_svg([_chain_path()])
         (group,) = _groups(svg, "attack-path")
         text = " ".join("".join(t.itertext()) for t in group.iter(f"{NS}text"))
-        assert "network :443" in text
+        assert "HTTPS 443" in text
+        assert "network_flow" not in text
 
     def test_edge_markers_only_on_directed_hops(self) -> None:
         """The path marks the connector that points along its hops."""
@@ -655,7 +696,7 @@ class TestAttackPaths:
         assert 'class="attack-path-marker"' in svg
 
     def test_reverse_connector_is_not_marked(self) -> None:
-        """A hop a -> b does not light up a graph that only has b -> a."""
+        """A hop a -> b does not light up a graph that only has b -> a: it draws its own."""
         reverse = [
             InfraEdge(
                 source="aws_lb.alb",
@@ -665,7 +706,16 @@ class TestAttackPaths:
         ]
         path = _chain_path(["aws_internet_gateway.igw", "aws_lb.alb"])
         svg = _paths_svg([path], edges=reverse)
-        assert 'class="attack-path-marker"' not in svg
+        root = ElementTree.fromstring(svg)
+        tips = {
+            (g.find(f"{NS}title").text or "").splitlines()[0]: g.find(f"{NS}path")  # type: ignore[union-attr]
+            for g in root.iter(f"{NS}g")
+            if g.get("class") == "edge-group"
+        }
+        hop = tips["aws_internet_gateway.igw \u2192 aws_lb.alb"]
+        back = tips["aws_lb.alb \u2192 aws_internet_gateway.igw"]
+        assert hop is not None and hop.get("data-path") == "1"
+        assert back is not None and back.get("data-path") is None
         # The path section still names both nodes
         assert len(_groups(svg, "attack-path")) == 1
 
@@ -681,7 +731,9 @@ class TestAttackPaths:
     def test_caption_font_is_readable_and_not_cut_at_18_characters(self) -> None:
         long_title = "Trust boundary crossing without any encryption"
         threat = _make_threat("aws_lb.alb", "high", long_title)
-        svg = _paths_svg([_chain_path()], threats=[threat])
+        threat.id = "T-long"
+        path = _chain_path(enabled_by={"aws_lb.alb": ["T-long"]})
+        svg = _paths_svg([path], threats=[threat])
         (group,) = _groups(svg, "attack-path")
         sizes = [float(t.get("font-size", "0")) for t in group.iter(f"{NS}text")]
         assert min(sizes) >= 9
@@ -800,7 +852,7 @@ class TestExpandedThreatTable:
         root = ElementTree.fromstring(svg)
         (cell,) = [t for t in root.iter(f"{NS}text") if t.get("class") == "threat-desc"]
         lines = [ts.text or "" for ts in cell.iter(f"{NS}tspan")]
-        assert 2 <= len(lines) <= 3
+        assert 2 <= len(lines) <= TABLE_DESCRIPTION_LINES
         assert lines[-1].endswith("...")
         assert not any(line.endswith("...") for line in lines[:-1])
         assert lines[0].startswith("word0 word1")
@@ -1217,14 +1269,15 @@ class TestEdgeLabelPlacement:
         """A network flow and a data flow between the same pair yield a single label."""
         svg = _fixture_svg()
         texts = re.findall(r'class="edge-label">(.*?)</text>', svg)
-        assert texts.count("INTERNET → PRIVATE") == 1
-        # public_db is a data store (exposure internet, WP-3-1), so only the public subnet remains
-        assert texts.count("DMZ → PRIVATE") == 1
+        # One label per transition, however many connectors cross it (FV-09)
+        assert texts
+        assert len({t.split(" x")[0] for t in texts}) == len(texts)
 
         root = ElementTree.fromstring(_skip_lane_svg())
         assert len(_label_boxes(root)) == 1
+        # Both flows run between the same two nodes, so they are one connector
         paths = [p for p in root.iter(f"{NS}path") if p.get("class") == "edge"]
-        assert len(paths) == 2
+        assert len(paths) == 1
 
 
 class TestEdgeRouting:
@@ -1315,10 +1368,11 @@ class TestContainmentFrames:
         frames = _frames(svg)
         assert set(frames) == {"aws_vpc.main", "aws_subnet.pub", "aws_subnet.priv"}
         root = ElementTree.fromstring(svg)
-        for g in root.iter(f"{NS}g"):
-            if g.get("class") == "frame":
-                label = " ".join(t.text or "" for t in g.iter(f"{NS}text"))
-                assert g.get("data-id") in label
+        labels = [g for g in root.iter(f"{NS}g") if g.get("class") == "frame-label"]
+        assert len(labels) == sum(len(v) for v in frames.values())
+        for g in labels:
+            label = " ".join(t.text or "" for t in g.iter(f"{NS}text"))
+            assert g.get("data-id") in label
 
     def test_no_containment_connectors(self) -> None:
         svg = format_diagram(_make_report(), _vpc_graph())
@@ -1410,7 +1464,7 @@ class TestContainmentFrames:
 
     def test_legend_shows_a_frame_sample(self) -> None:
         svg = format_diagram(_make_report(), _vpc_graph())
-        assert "Containment (nested frame)" in svg
+        assert "Container (nested frame)" in svg
 
     def test_realistic_plan_has_frames_and_valid_xml(self) -> None:
         from threatcode.parsers import detect_and_parse
@@ -1541,7 +1595,7 @@ class TestDockerStages:
             for g in root.iter(f"{NS}g")
             if g.get("class") == "edge-group"
         ]
-        assert any("copy_from" in t and "dockerfile.stage.1" in t for t in tips)
+        assert any("copy from" in t and "dockerfile.stage.1" in t for t in tips)
 
     def test_no_edge_is_lost_to_collapse(self) -> None:
         svg, _ = _docker_render("insecure.Dockerfile")
@@ -1606,7 +1660,10 @@ class TestScale:
         elapsed = time.perf_counter() - start
         assert elapsed < 3.0, f"{elapsed:.1f}s"
         root = ElementTree.fromstring(svg)
-        assert len(_label_boxes(root)) >= 200
+        # One label per distinct zone transition, not one per crossing connector
+        labels = re.findall(r'class="edge-label">(.*?)</text>', svg)
+        assert labels and len({t.split(" x")[0] for t in labels}) == len(labels)
+        assert len(_label_boxes(root)) == len(labels)
         assert len(_node_boxes(root)) == 300
 
     def test_default_render_of_300_nodes_is_fast_and_collapsed(self) -> None:
