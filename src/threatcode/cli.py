@@ -1079,28 +1079,33 @@ class _RemovedCommandError(click.UsageError):
         echo_err(f"Error: {self.message}")
 
 
-class _RemovedCommand(click.Command):
+def _removed_command(name: str, replacement: str) -> click.Command:
     """A command that no longer exists, kept so that it can say what replaced it.
 
     It fails while the command line is parsed, whatever follows its name, so a tool that only
     parses a command line (the check of the documentation's examples) refuses it too.
     """
+    message = f"'threatcode {name}' was removed in 1.0: {replacement}. See docs/migrating.md"
 
-    def __init__(self, name: str, replacement: str) -> None:
-        super().__init__(
-            name,
-            hidden=True,
-            add_help_option=False,
-            context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
-            params=[click.Argument(["arguments"], nargs=-1, type=click.UNPROCESSED)],
-        )
-        self.message = (
-            f"'threatcode {name}' was removed in 1.0: {replacement}. See docs/migrating.md"
-        )
+    def refuse(ctx: click.Context, _param: click.Parameter, _value: object) -> None:
+        raise _RemovedCommandError(message, ctx=ctx)
 
-    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:  # noqa: ARG002
-        raise _RemovedCommandError(self.message, ctx=ctx)
+    return click.Command(
+        name,
+        hidden=True,
+        add_help_option=False,
+        context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+        params=[
+            click.Argument(
+                ["arguments"],
+                nargs=-1,
+                type=click.UNPROCESSED,
+                expose_value=False,
+                callback=refuse,
+            )
+        ],
+    )
 
 
 for _name, _replacement in _REMOVED_COMMANDS.items():
-    cli.add_command(_RemovedCommand(_name, _replacement))
+    cli.add_command(_removed_command(_name, _replacement))
