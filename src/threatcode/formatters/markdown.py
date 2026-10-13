@@ -31,7 +31,6 @@ Severities are plain text labels such as ``[HIGH]``.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -39,7 +38,6 @@ from typing import TYPE_CHECKING
 from threatcode.engine.mitre import TECHNIQUE_DB
 from threatcode.formatters._utils import (
     STRIDE_ORDER,
-    collapse_whitespace,
     md_code,
     md_inline,
     plural,
@@ -48,7 +46,6 @@ from threatcode.formatters._utils import (
     stride_label,
     technique_url,
     threat_source,
-    truncate,
     verdict_line,
 )
 from threatcode.formatters.diagram_labels import (
@@ -90,41 +87,14 @@ _MIN_SHARED_HOPS = 2
 # Where each finding sits: threat id -> (file, start line); "" when nothing knows.
 _Places = dict[str, tuple[str, int | None]]
 
-# A web address in running text, up to the first character that ends it
-_URL = re.compile(r"(?i)\b(?:https?|ftp)://[^\s<>\"'`|]+")
-_URL_TRAILING = ".,;:!?)]}"
-_URL_MARK = "\ue000{}\ue001"
-_URL_SLOT = re.compile("\ue000(\\d+)\ue001")
-_PRIVATE_USE = re.compile("[\ue000-\uf8ff]")
-
 
 def _prose(text: str, *, limit: int | None = None) -> str:
-    """Untrusted running text as inline Markdown, with each web address in a code span.
+    """Untrusted running text as inline Markdown.
 
-    ``md_inline`` keeps a bare address from becoming a link by putting an invisible character
-    inside ``://``, which breaks the address for anyone who copies it.
-    A code span is inert for the same reason and copies exactly, so addresses go there and the
-    rest of the text goes through ``md_inline``.
-    The engine's edge type tokens (``network_flow``) read as words.
+    The engine's edge type tokens (``network_flow``) read as words, and ``md_inline`` puts each
+    web address, handle and issue number in a code span, which copies exactly.
     """
-    flat = _PRIVATE_USE.sub("", collapse_whitespace(humanize_tokens(text)))
-    if limit is not None:
-        flat = truncate(flat, limit)
-    urls: list[str] = []
-
-    def slot(match: re.Match[str]) -> str:
-        url = match.group(0)
-        tail = ""
-        while url and url[-1] in _URL_TRAILING:
-            tail = url[-1] + tail
-            url = url[:-1]
-        if not url:
-            return match.group(0)
-        urls.append(url)
-        return _URL_MARK.format(len(urls) - 1) + tail
-
-    marked = _URL.sub(slot, flat)
-    return _URL_SLOT.sub(lambda m: md_code(urls[int(m.group(1))]), md_inline(marked))
+    return md_inline(humanize_tokens(text), limit=limit)
 
 
 @dataclass

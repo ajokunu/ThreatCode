@@ -184,14 +184,11 @@ runs:
           if [ -n "${ingest_file//[[:space:]]/}" ]; then shared+=(--ingest "$ingest_file"); fi
         done <<< "$TC_INGEST"
 
-        case "$TC_FORMAT" in
-          sarif) ext=sarif ;;
-          markdown) ext=md ;;
-          mermaid) ext=mmd ;;
-          text) ext=txt ;;
-          diagram) ext=svg ;;
-          *) ext=json ;;
-        esac
+        # The extension is the one the format registry gives the format, so the file name here
+        # and the one `-o` infers from can never disagree. A name the registry does not know falls
+        # back to json, and the scan below rejects it with the list of formats.
+        ext="$(python3 -c 'import sys; from threatcode.formatters import FORMATTERS; print(FORMATTERS[sys.argv[1]].extension.lstrip("."))' "$TC_FORMAT" 2> /dev/null)"
+        ext="${ext:-json}"
         report="threatcode-results.$ext"
         rm -f "$report"
 

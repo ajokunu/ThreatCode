@@ -73,11 +73,11 @@ _STRIDE_LABELS: dict[str, str] = {
     "elevation_of_privilege": "Elevation of Privilege",
 }
 
-ZERO_WIDTH_JOINER = "‍"
-
 # What the text report puts where it cut something; a single character, so it cannot be mistaken
 # for the ``...`` that a name may contain.
 ELLIPSIS = "…"
+
+ZERO_WIDTH_JOINER = "\u200d"
 
 _WHITESPACE = re.compile(r"\s+")
 # Control characters other than tab and newline, which collapse to spaces with the rest.
@@ -99,9 +99,17 @@ _LEADING_BLOCK = re.compile(
 _INLINE_SPECIAL = re.compile(r"([\\`*\[\]<|~&])")
 # An underscore inside a word (snake_case) is literal; one at a word edge can start emphasis.
 _EDGE_UNDERSCORE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")
-_URL_SCHEME = re.compile(r"(?i)\b(https?|ftp)://")
+# What GitHub turns into a link or a notification when it sits in running text: a web address up
+# to the first character that ends it (a code span), and an ``@user`` handle or an issue number
+# (defused with a zero-width joiner).
+_URL = re.compile(r"(?i)\b(?:https?|ftp)://[^\s<>\"'`|]+")
+_URL_TRAILING = ".,;:!?)]}"
 _MENTION = re.compile(r"(?<![A-Za-z0-9])@(?=[A-Za-z0-9_])")
 _ISSUE_REF = re.compile(r"#(?=\d)")
+# Where a code span is put back after the escaping: private-use characters nothing else writes.
+_SLOT_MARK = "\ue000{}\ue001"
+_SLOT = re.compile("\ue000(\\d+)\ue001")
+_PRIVATE_USE = re.compile("[\ue000-\uf8ff]")
 _TECHNIQUE_ID = re.compile(r"^T\d{4}(?:\.\d{3})?$")
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:/")
 
@@ -155,23 +163,38 @@ def md_inline(text: str, *, limit: int | None = None) -> str:
     Block markers at the start are dropped.
     The characters Markdown treats as syntax inside a line are backslash-escaped, so
     ``<script>``, ``[label](url)``, ``*bold*``, ``|`` and the like show literally.
+    A web address is written as a code span, which GitHub does not link and which copies exactly.
     A zero-width joiner after ``@`` and ``#`` before a digit stops GitHub from notifying a user or
-    team and from linking an issue, and one inside ``://`` stops a bare URL from becoming a link.
+    team and from linking an issue.
     ``->`` and parentheses stay readable.
     ``limit`` caps the length of the plain text before escaping.
     """
-    flat = collapse_whitespace(text)
+    flat = collapse_whitespace(_PRIVATE_USE.sub("", text))
     previous = None
     while previous != flat:
         previous = flat
         flat = _LEADING_BLOCK.sub("", flat, count=1)
     if limit is not None:
         flat = truncate(flat, limit)
-    escaped = _INLINE_SPECIAL.sub(r"\\\1", flat)
+    spans: list[str] = []
+
+    def slot(match: re.Match[str]) -> str:
+        found = match.group(0)
+        tail = ""
+        while found and found[-1] in _URL_TRAILING:
+            tail = found[-1] + tail
+            found = found[:-1]
+        if not found:
+            return match.group(0)
+        spans.append(found)
+        return _SLOT_MARK.format(len(spans) - 1) + tail
+
+    marked = _URL.sub(slot, flat)
+    escaped = _INLINE_SPECIAL.sub(r"\\\1", marked)
     escaped = _EDGE_UNDERSCORE.sub(r"\\_", escaped)
-    escaped = _URL_SCHEME.sub(lambda m: f"{m.group(1)}:{ZERO_WIDTH_JOINER}//", escaped)
     escaped = _MENTION.sub(f"@{ZERO_WIDTH_JOINER}", escaped)
-    return _ISSUE_REF.sub(f"#{ZERO_WIDTH_JOINER}", escaped)
+    escaped = _ISSUE_REF.sub(f"#{ZERO_WIDTH_JOINER}", escaped)
+    return _SLOT.sub(lambda m: md_code(spans[int(m.group(1))]), escaped)
 
 
 def md_code(text: str, *, table: bool = False) -> str:

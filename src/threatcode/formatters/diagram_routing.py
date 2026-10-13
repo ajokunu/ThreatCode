@@ -29,6 +29,12 @@ _FACING_PORT_SEP = 6.0
 # arrowheads of a busy node apart; a diamond narrows towards its tips, so it gets less
 _PORT_SPAN = {"rect": 0.8, "cylinder": 0.8, "diamond": 0.5}
 
+# A label strip is kept clear by a vertical run only when this much room is left for the run, and
+# only strips this close above a node are taken to belong to its frames
+_LABEL_CLEAR = 3.0
+_LABEL_MIN_ROOM = 8.0
+_LABEL_REACH = 72.0
+
 # Track spreading inside a channel
 _TRACK_SPACING = 10.0
 _TRACK_MIN_SEP = 30.0
@@ -197,12 +203,16 @@ class Grid:
     the usable x band of the column gap to the left of column ``g`` (the last
     entry is the gap to the right of the final column). ``keep_out[r]`` is a y
     band inside channel ``r`` that tracks must skip, such as a lane border.
+    ``label_strips`` are the rectangles that hold the labels of frames drawn around nodes: a
+    vertical run is kept out of them where the room allows, so a connector does not run through
+    the text of a label.
     """
 
     nodes: dict[str, GridNode]
     channels: list[tuple[float, float]]
     gaps: list[tuple[float, float]]
     keep_out: dict[int, tuple[float, float]] = field(default_factory=dict)
+    label_strips: tuple[Rect, ...] = ()
 
 
 @dataclass
@@ -321,6 +331,10 @@ def _assign_ports(grid: Grid, plans: dict[tuple[str, str], _Plan]) -> None:
         spacing = min(_PORT_SPACING, 2 * span / (n - 1)) if n > 1 else 0.0
         offsets = [(i - (n - 1) / 2) * spacing for i in range(n)]
         keys = [key for _, key, _ in ends]
+        blocked: list[tuple[float, float]] = []
+        if side == "top":
+            blocked = _label_shadow(node, grid.label_strips)
+            offsets = _avoid(offsets, blocked, span, _PORT_SPACING)
 
         # Ports on the facing side of the vertically adjacent node share the channel
         # between them; nudge ours so stubs of different routes are never collinear.
@@ -331,7 +345,10 @@ def _assign_ports(grid: Grid, plans: dict[tuple[str, str], _Plan]) -> None:
             other_id = cells.get((node.col, other_row))
             if other_id is not None:
                 facing = placed.get((other_id, other_side), [])
-        offsets = _nudge(offsets, keys, facing, span, max(spacing, _PORT_SPACING))
+        nudged = _nudge(offsets, keys, facing, span, max(spacing, _PORT_SPACING))
+        if blocked and _inside(nudged, blocked) and not _inside(offsets, blocked):
+            nudged = offsets
+        offsets = nudged
         placed[(node_id, side)] = list(zip(offsets, keys, strict=True))
 
         for offset, (_, key, is_src) in zip(offsets, ends, strict=True):
@@ -340,6 +357,66 @@ def _assign_ports(grid: Grid, plans: dict[tuple[str, str], _Plan]) -> None:
                 plans[key].src_port = port
             else:
                 plans[key].tgt_port = port
+
+
+def _label_shadow(node: GridNode, strips: Sequence[Rect]) -> list[tuple[float, float]]:
+    """The x ranges, relative to the node's center, of the strips that start above ``node``'s top.
+
+    These are the labels of its frames and its own badge, which straddles the top edge.
+    """
+    r = node.rect
+    result = []
+    for strip in strips:
+        if strip.y <= r.y + 0.5 and r.y - strip.y <= _LABEL_REACH + strip.h:
+            lo, hi = strip.x - _LABEL_CLEAR, strip.right + _LABEL_CLEAR
+            if hi > r.x and lo < r.right:
+                result.append((lo - r.cx, hi - r.cx))
+    return result
+
+
+def _inside(offsets: Sequence[float], blocked: Sequence[tuple[float, float]]) -> bool:
+    return any(a <= o <= b for o in offsets for a, b in blocked)
+
+
+def _free_pieces(
+    lo: float, hi: float, blocked: Sequence[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    """``lo..hi`` with the blocked ranges cut out, widest piece first."""
+    pieces = [(lo, hi)]
+    for a, b in sorted(blocked):
+        cut: list[tuple[float, float]] = []
+        for x0, x1 in pieces:
+            if b <= x0 or a >= x1:
+                cut.append((x0, x1))
+                continue
+            if a > x0:
+                cut.append((x0, a))
+            if b < x1:
+                cut.append((b, x1))
+        pieces = cut
+    return sorted(pieces, key=lambda piece: (piece[0] - piece[1], piece[0]))
+
+
+def _avoid(
+    offsets: list[float],
+    blocked: Sequence[tuple[float, float]],
+    span: float,
+    spacing: float,
+) -> list[float]:
+    """Move the ports of one side out of the blocked ranges when one free piece holds them all."""
+    if not blocked or not _inside(offsets, blocked):
+        return offsets
+    n = len(offsets)
+    pieces = _free_pieces(-span, span, blocked)
+    if not pieces:
+        return offsets
+    lo, hi = pieces[0]
+    width = hi - lo
+    if width < max(_LABEL_MIN_ROOM, (n - 1) * 6.0):
+        return offsets
+    step = min(spacing, width / (n - 1)) if n > 1 else 0.0
+    mid = (lo + hi) / 2
+    return [mid + (i - (n - 1) / 2) * step for i in range(n)]
 
 
 def _nudge(
@@ -482,7 +559,19 @@ def _assign_gap_tracks(grid: Grid, plans: dict[tuple[str, str], _Plan]) -> None:
         runs.setdefault(plan.gap, []).append((lo, hi, key, 0))
 
     for gap, items in runs.items():
-        positions = _spread_tracks(grid.gaps[gap], _color_intervals(items))
+        band = grid.gaps[gap]
+        top = min(item[0] for item in items)
+        bottom = max(item[1] for item in items)
+        blocked = [
+            (strip.x - _LABEL_CLEAR, strip.right + _LABEL_CLEAR)
+            for strip in grid.label_strips
+            if strip.bottom >= top
+            and strip.y <= bottom
+            and strip.right + _LABEL_CLEAR > band[0]
+            and strip.x - _LABEL_CLEAR < band[1]
+        ]
+        colors = _color_intervals(items)
+        positions = _spread_tracks(band, colors, blocked=blocked)
         for (_, _, key, _), pos in zip(items, positions, strict=True):
             plans[key].gap_track = pos
 
@@ -509,14 +598,23 @@ def _spread_tracks(
     band: tuple[float, float],
     colors: list[int],
     keep_out: tuple[float, float] | None = None,
+    blocked: Sequence[tuple[float, float]] = (),
 ) -> list[float]:
-    """Spread track indices evenly over the band, skipping the keep-out zone."""
+    """Spread track indices evenly over the band, skipping the keep-out zone.
+
+    ``blocked`` ranges are skipped as well, but only when what is left of the band can still
+    hold every track a minimum distance apart; a band that cannot is used whole.
+    """
     lo, hi = band
+    n = max(colors, default=0) + 1
     pieces = [(lo, hi)]
     if keep_out is not None and lo < keep_out[0] and keep_out[1] < hi:
         pieces = [(lo, keep_out[0]), (keep_out[1], hi)]
+    if blocked:
+        cut = sorted(_free_pieces(lo, hi, [*blocked, *([keep_out] if keep_out else [])]))
+        if sum(b - a for a, b in cut) >= max(_LABEL_MIN_ROOM, (n - 1) * 4.0):
+            pieces = cut
     usable = sum(b - a for a, b in pieces)
-    n = max(colors, default=0) + 1
     spacing = min(_TRACK_SPACING, usable / (n - 1)) if n > 1 else 0.0
     start = (usable - spacing * (n - 1)) / 2
 

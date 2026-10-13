@@ -131,6 +131,17 @@ class TestManifestShape:
         assert "matrix" not in description
         assert "navigator" in names and "mermaid" in names
 
+    def test_the_report_extension_has_one_source_not_a_table_in_the_script(self) -> None:
+        """CH-05: a second table of extensions in bash is what let mermaid land in a .json file."""
+        script = scan_script()
+        assert "FORMATTERS[" in script
+        for fragment in ("ext=md", "ext=mmd", "ext=svg", "ext=txt", "ext=sarif"):
+            assert fragment not in script
+
+    def test_the_documented_input_names_stay(self) -> None:
+        inputs = load_action()["inputs"]
+        assert "extra-rules" in inputs and "config-file" in inputs
+
     def test_the_file_input_was_renamed_without_breaking_old_workflows(self) -> None:
         inputs = load_action()["inputs"]
         assert "deprecated" in inputs["input-file"]["description"].lower()
@@ -672,6 +683,43 @@ class TestTheScanStepRuns:
         report = runner.outputs()["report-file"]
         assert report == f"threatcode-results{FORMATTERS[fmt].extension}"
         assert not report.endswith(".json")
+
+    @pytest.mark.parametrize(
+        "fmt", ["sarif", "json", "markdown", "bitbucket", "navigator", "mermaid", "diagram", "text"]
+    )
+    def test_every_advertised_format_has_a_report_name_from_the_registry(
+        self, runner: Runner, fmt: str
+    ) -> None:
+        """CH-05: the extension is read from the format registry, so no format can drift."""
+        from threatcode.formatters import FORMATTERS, visible_format_names
+
+        assert fmt in visible_format_names()
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format=fmt)
+        assert proc.returncode == 0, proc.stderr
+        report = runner.outputs()["report-file"]
+        assert report == "threatcode-results" + FORMATTERS[fmt].extension
+
+    def test_a_mermaid_report_is_mermaid_text_in_an_mmd_file(self, runner: Runner) -> None:
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format="mermaid")
+        assert proc.returncode == 0, proc.stderr
+        report = runner.workspace / "threatcode-results.mmd"
+        assert report.is_file()
+        assert report.read_text().lstrip().startswith(("flowchart", "%%"))
+        assert not (runner.workspace / "threatcode-results.json").exists()
+
+    def test_the_deprecated_matrix_alias_still_writes_a_json_layer(self, runner: Runner) -> None:
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format="matrix")
+        assert proc.returncode == 0, proc.stderr
+        assert runner.outputs()["report-file"] == "threatcode-results.json"
+
+    def test_an_unknown_format_fails_the_step_with_the_list_of_formats(
+        self, runner: Runner
+    ) -> None:
+        proc = runner.run(path=str(AWS_EXAMPLE / "tfplan.json"), format="bogus")
+        assert proc.returncode == 2
+        assert runner.outputs()["exit-code"] == "2"
+        assert "report-file" not in runner.outputs()
+        assert "::error title=ThreatCode failed (exit 2)" in proc.stdout + proc.stderr
 
     def test_the_sarif_paths_are_relative_to_the_repository_for_a_subdirectory_input(
         self, runner: Runner

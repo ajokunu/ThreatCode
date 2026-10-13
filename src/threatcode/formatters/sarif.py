@@ -60,6 +60,7 @@ from threatcode.formatters._utils import (
     threat_source,
     truncate,
 )
+from threatcode.formatters.diagram_labels import edge_phrase
 from threatcode.models.report import ThreatReport, threat_severity
 from threatcode.models.threat import Severity, Threat, ThreatSource
 
@@ -786,12 +787,15 @@ def _hop_text(
     following: AttackHop | None,
     shown: tuple[dict[str, Any], str] | None,
 ) -> str:
-    """``Hop 3: aws_instance.app[0] -> aws_iam_role.app (iam_binding); enabled by EC2_IMDSV1``."""
+    """``Hop 3: aws_instance.app[0] -> aws_iam_role.app (assumes the role); enabled by X``."""
     text = f"Hop {number}: {hop.node_id}"
     if following is not None:
         text += f" -> {following.node_id}"
-        if hop.edge_type_to_next:
-            text += f" ({hop.edge_type_to_next}{_via_detail(hop.via)})"
+        phrase = edge_phrase(
+            hop.edge_type_to_next, via=hop.via, target_type=following.resource_type
+        )
+        if phrase:
+            text += f" ({phrase})"
     enabling = list(
         dict.fromkeys(
             ctx.rule_id_by_threat[t] for t in hop.enabled_by if t in ctx.rule_id_by_threat
@@ -802,15 +806,6 @@ def _hop_text(
     if shown is not None and shown[1] != hop.node_id:
         text += f"; no file of its own, shown at {shown[1]}"
     return truncate(collapse_whitespace(text), _MAX_MESSAGE)
-
-
-def _via_detail(via: dict[str, Any]) -> str:
-    """`` tcp/443`` for a flow edge that names a protocol and ports, else nothing."""
-    ports = via.get("ports")
-    protocol = via.get("protocol")
-    if isinstance(ports, list) and ports and isinstance(protocol, str) and protocol:
-        return f" {protocol}/{','.join(str(p) for p in ports[:5])}"
-    return ""
 
 
 # ── invocation ────────────────────────────────────────────────────────

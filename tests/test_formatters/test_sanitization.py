@@ -96,10 +96,33 @@ class TestMdInline:
         assert f"#{ZWJ}123" in out and f"#{ZWJ}45" in out
         assert "#123" not in out
 
-    def test_bare_urls_do_not_become_links(self) -> None:
+    def test_a_hash_that_is_not_an_issue_number_is_left_alone(self) -> None:
+        assert md_inline("see #abc and C# and #") == "see #abc and C# and #"
+
+    def test_bare_urls_are_code_spans_that_copy_exactly(self) -> None:
         out = md_inline("see https://evil.example/x and HTTP://E.example and ftp://f")
-        assert "https://" not in out and "HTTP://" not in out and "ftp://" not in out
-        assert f"https:{ZWJ}//evil.example/x" in out
+        assert out == "see `https://evil.example/x` and `HTTP://E.example` and `ftp://f`"
+        assert ZWJ not in out, "an address copies exactly: nothing is inserted into it"
+
+    def test_trailing_punctuation_stays_outside_the_span(self) -> None:
+        out = md_inline("See http://a.example. Then (see http://a.example), or http://a.example!")
+        assert out == (
+            "See `http://a.example`. Then (see `http://a.example`), or `http://a.example`!"
+        )
+
+    def test_a_mention_or_issue_number_inside_an_address_is_left_alone(self) -> None:
+        out = md_inline("https://example.com/@octocat#12 ok")
+        assert out == "`https://example.com/@octocat#12` ok"
+
+    def test_a_bare_scheme_without_an_address_is_plain_text(self) -> None:
+        assert md_inline("http://") == "http://"
+
+    def test_hostile_markup_next_to_a_span_is_still_escaped(self) -> None:
+        out = md_inline("<script>@octocat</script> [x](http://e) *b* | ~")
+        assert out == f"\\<script>@{ZWJ}octocat\\</script> \\[x\\](`http://e`) \\*b\\* \\| \\~"
+
+    def test_private_use_characters_cannot_forge_a_span(self) -> None:
+        assert md_inline("odd \ue0000\ue001 x") == "odd 0 x"
 
     def test_arrows_and_parentheses_stay_readable(self) -> None:
         assert md_inline("internet -> private (cpu, memory)") == "internet -> private (cpu, memory)"

@@ -21,7 +21,7 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from threatcode.engine.mitre import TECHNIQUE_DB
-from threatcode.formatters._utils import threat_source
+from threatcode.formatters._utils import rule_label, threat_source
 from threatcode.formatters.diagram_labels import (
     GENERIC_EDGE_LABELS,
     Enabler,
@@ -110,6 +110,10 @@ FRAME_LABEL_CHAR_W = 5.4
 FRAME_LABEL_PAD = 5
 # How many places along a frame's top edge a label is tried at
 FRAME_LABEL_SLOTS = 24
+# A label is cut down to this many characters, at the least, to get clear of a connector
+FRAME_LABEL_MIN_CHARS = 12
+# Room left on a frame's top edge beside its label for connectors to enter
+FRAME_LABEL_ENTRY_ROOM = 40
 FRAME_STROKES = {1: "#64748b", 2: "#94a3b8", 3: "#b6c2d2"}
 
 # Node text baselines (offsets from the node top), shared by every shape so names
@@ -492,8 +496,10 @@ class _Frame:
     # What the frame is called on the diagram: the container, and for a container drawn in
     # several lanes or rows, which part this is
     label: str = ""
-    # Where the label sits, once the routes are known
+    # Where the label sits, once the routes are known, and the text it shows there (the label cut
+    # in the middle when only a shorter one fits clear of the connectors)
     label_rect: Rect | None = None
+    shown: str = ""
 
 
 @dataclass
@@ -1258,8 +1264,19 @@ class DiagramRenderer:
         dropped capabilities and no resource limits is one row that says it has two more related
         findings, not three rows that read alike.
         """
-        rank = {sev: i for i, sev in enumerate(SEVERITY_ORDER)}
-        ordered = sorted(self.report.threats, key=lambda t: rank.get(threat_severity(t).value, 99))
+        enabling = {
+            i for path in self.report.attack_paths for hop in path.hops for i in hop.enabled_by
+        }
+        ordered = sorted(
+            self.report.threats,
+            key=lambda t: (
+                -threat_severity(t).rank,
+                t.id not in enabling,
+                t.resource_address,
+                rule_label(t),
+                t.id,
+            ),
+        )
         groups: dict[tuple[str, str], list[Threat]] = {}
         entries: list[list[Threat]] = []
         for threat in ordered:
@@ -1395,7 +1412,15 @@ class DiagramRenderer:
                 shape=_shape_for(self._dnodes[node_id].category),
             )
 
-        self._grid = Grid(nodes=grid_nodes, channels=channels, gaps=gaps, keep_out=keep_out)
+        # What a vertical run keeps out of: the label of each frame and the badge of each node
+        strips = tuple(self._reserved_label(frame) for frame in self._frames) + tuple(
+            _badge_rect(*self._node_positions[node_id])
+            for node_id in grid_nodes
+            if self._dnodes[node_id].threats
+        )
+        self._grid = Grid(
+            nodes=grid_nodes, channels=channels, gaps=gaps, keep_out=keep_out, label_strips=strips
+        )
         pairs = [(e.source, e.target) for e in self._dedges]
         self._routes = route_edges(self._grid, pairs)
 
@@ -1776,34 +1801,86 @@ class DiagramRenderer:
         max_chars = max(int(room / FRAME_LABEL_CHAR_W), 6)
         return shorten_middle(frame.label or frame.container, max_chars)
 
+    def _label_candidates(self, frame: _Frame) -> list[str]:
+        """The texts a frame's label may show, the whole label first and the shortest last.
+
+        The part in parentheses (the zone a split frame is in) goes first, then the middle of
+        the name is cut a few characters at a time.
+        """
+        full = self._shown_frame_label(frame)
+        texts = [full]
+        base = full[: full.rindex(" (")] if full.endswith(")") and " (" in full else full
+        if base != full:
+            texts.append(base)
+        chars = len(base)
+        while chars > FRAME_LABEL_MIN_CHARS:
+            chars = max(chars - 3, FRAME_LABEL_MIN_CHARS)
+            cut = shorten_middle(base, chars)
+            if cut != texts[-1]:
+                texts.append(cut)
+        return texts
+
+    def _reserved_label(self, frame: _Frame) -> Rect:
+        """The label the routes are planned around: the longest that leaves room to enter.
+
+        A frame around one node has a top edge about as wide as its label.
+        Planning around the whole label would leave no spot for a connector to cross that edge, so
+        the routes keep clear of the longest candidate that leaves a few ports of room, and the
+        label slides to it or shortens to it at the end.
+        """
+        texts = self._label_candidates(frame)
+        chosen = texts[-1]
+        for text in texts:
+            width = len(text) * FRAME_LABEL_CHAR_W + 2 * FRAME_LABEL_PAD
+            if frame.rect.w - 12 - width >= FRAME_LABEL_ENTRY_ROOM:
+                chosen = text
+                break
+        return self._frame_label_rect(frame, chosen, frame.rect.x + 6)
+
+    @staticmethod
+    def _frame_label_rect(frame: _Frame, text: str, x: float) -> Rect:
+        width = len(text) * FRAME_LABEL_CHAR_W + 2 * FRAME_LABEL_PAD
+        return Rect(x, frame.rect.y + 1, width, FRAME_LABEL_H - 1)
+
     def _place_frame_labels(self) -> None:
         """Put each frame's label where no connector runs through it.
 
         A label starts at the top left of its frame, and slides right along the frame's top
         edge to the first spot clear of every route and of the other labels.
-        When the whole edge is crossed it stays at the left, on an opaque background.
+        When the whole edge is crossed the label loses its zone part and is then cut in the
+        middle, a few characters at a time, until a shorter one fits somewhere clear: a name that
+        is cut still reads, and a connector through the text does not.
+        Only when even the shortest does not fit does it stay at the left, on an opaque
+        background.
         """
         index = SpatialIndex()
         for key, points in self._routes.items():
             index.add_route(points, key)
         placed = SpatialIndex()
         for frame in self._frames:
-            width = len(self._shown_frame_label(frame)) * FRAME_LABEL_CHAR_W + 2 * FRAME_LABEL_PAD
-            top = frame.rect.y + 1
+            texts = self._label_candidates(frame)
+            full = texts[0]
             lo = frame.rect.x + 6
-            # Keep clear of the badge at the right end of a frame that carries one
-            hi = frame.rect.right - width - (22 if frame.badge else 6)
-            positions = [lo]
-            if hi > lo:
-                step = max((hi - lo) / FRAME_LABEL_SLOTS, 4.0)
-                positions += [lo + step * i for i in range(1, int((hi - lo) / step) + 1)]
-            chosen = Rect(lo, top, width, FRAME_LABEL_H - 1)
-            for x in positions:
-                rect = Rect(x, top, width, FRAME_LABEL_H - 1)
-                if self._label_is_clear(rect, index, placed):
-                    chosen = rect
+            chosen = self._frame_label_rect(frame, full, lo)
+            shown = full
+            found = False
+            for text in texts:
+                rect = self._frame_label_rect(frame, text, lo)
+                # Keep clear of the badge at the right end of a frame that carries one
+                hi = frame.rect.right - rect.w - (22 if frame.badge else 6)
+                positions = [lo]
+                if hi > lo:
+                    step = max((hi - lo) / FRAME_LABEL_SLOTS, 4.0)
+                    positions += [lo + step * i for i in range(1, int((hi - lo) / step) + 1)]
+                for x in positions:
+                    candidate = Rect(x, rect.y, rect.w, rect.h)
+                    if self._label_is_clear(candidate, index, placed):
+                        chosen, shown, found = candidate, text, True
+                        break
+                if found:
                     break
             frame.label_rect = chosen
+            frame.shown = shown
             placed.add_rect(chosen)
 
     @staticmethod
@@ -1854,7 +1931,7 @@ class DiagramRenderer:
             rect = frame.label_rect
             if rect is None:
                 continue
-            label = self._shown_frame_label(frame)
+            label = frame.shown or self._shown_frame_label(frame)
             parts.append(
                 f'<g class="frame-label" data-id="{_esc(frame.container)}">'
                 f'<rect x="{rect.x:.1f}" y="{rect.y:.1f}" width="{rect.w:.1f}" '

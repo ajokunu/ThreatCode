@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import xml.etree.ElementTree as ElementTree
 from collections.abc import Iterator
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,7 @@ from threatcode.formatters.diagram import (
     ZONE_TITLE_COLORS,
     format_diagram,
 )
-from threatcode.formatters.diagram_routing import Rect
+from threatcode.formatters.diagram_routing import Grid, GridNode, Rect, route_edges
 from threatcode.formatters.markdown import format_markdown
 from threatcode.formatters.sarif import format_sarif
 from threatcode.formatters.text import format_text
@@ -1023,6 +1024,19 @@ class TestFindingsTable:
         lines = ["".join(s.itertext()) for s in row.iter(f"{NS}tspan")]
         assert "aws_sns_topic." in lines
 
+    def test_findings_that_enable_a_path_come_before_others_of_their_severity(self) -> None:
+        """FV-06: the order is the text report's: severity, then on a path, then resource."""
+        threats = [
+            threat_on("a.first", "high", "Off the path", "off"),
+            threat_on("z.last", "high", "On the path", "on"),
+        ]
+        path = path_of(hop("internet", None), hop("z.last", None, enabled_by=["on"]))
+        graph = graph_of([node("a.first"), node("z.last")])
+        report = _report(threats)
+        report.attack_paths = [path]
+        rows = _rows(format_diagram(report, graph))
+        assert [r[2] for r in rows] == ["On the path", "Off the path"]
+
     def test_the_table_is_ordered_worst_first(self) -> None:
         threats = [threat_on("a.x", "low", "L", "l"), threat_on("a.x", "critical", "C", "c")]
         assert [r[0] for r in _rows(render([node("a.x")], threats=threats))] == ["CRITICAL", "LOW"]
@@ -1084,6 +1098,22 @@ class TestDocumentIds:
 
 
 # -- Frames ---------------------------------------------------------------------
+
+
+def crossed_labels(svg: str) -> list[str]:
+    """The frame labels of ``svg`` that a connector runs through."""
+    root = root_of(svg)
+    lines = edge_polylines(root)
+    found = []
+    for label in groups(root, "frame-label"):
+        box = rect_of(label.find(f"{NS}rect")).expand(1)  # type: ignore[arg-type]
+        if any(
+            box.intersects_segment(a, b)
+            for points in lines
+            for a, b in zip(points, points[1:], strict=False)
+        ):
+            found.append("".join(label.itertext()))
+    return found
 
 
 class TestFrameLabels:
@@ -1162,6 +1192,64 @@ class TestFrameLabels:
             assert slots and all(crossed(Rect(x, box.y, box.w, box.h)) for x in slots), "".join(
                 label.itertext()
             )
+
+    @pytest.mark.parametrize("name", EXAMPLES)
+    def test_no_connector_runs_through_any_label_of_an_example(self, name: str) -> None:
+        """FV-13: the routes keep clear of the labels, so no label has to hide a line."""
+        assert crossed_labels(example_svg(name)) == []
+
+    @pytest.mark.parametrize(
+        "fixture",
+        [
+            "01_aws_ecommerce_platform.json",
+            "05_hybrid_vpn_datacenter.tf",
+            "07_azure_webapp_java.tf",
+            "08_aws_ml_training_platform.json",
+            "10_aws_gaming_backend.json",
+        ],
+    )
+    def test_no_connector_runs_through_a_label_of_a_realistic_stack(self, fixture: str) -> None:
+        analysis = threatcode.analyze(
+            REPO / "tests/fixtures/realistic" / fixture, no_timestamp=True
+        )
+        assert crossed_labels(analysis.to_svg()) == []
+
+    def test_a_label_that_gives_way_keeps_its_full_name_in_the_tooltip(self) -> None:
+        root = root_of(example_svg("aws-webapp"))
+        shown = {"".join(g.itertext()) for g in groups(root, "frame-label")}
+        assert "aws_subnet.public_a" in shown
+        assert not any("..." in label for label in shown)
+        tips = " ".join((g.findtext(f"{NS}title") or "") for g in groups(root, "frame"))
+        assert "aws_subnet.public_a" in tips
+
+    def test_a_connector_enters_a_frame_beside_its_label_not_through_it(self) -> None:
+        """The port of a framed node moves out from under the label while there is room."""
+        grid = Grid(
+            nodes={
+                "a": GridNode("a", 0, 0, Rect(0, 0, 176, 54), "rect"),
+                "b": GridNode("b", 0, 1, Rect(0, 130, 176, 54), "rect"),
+            },
+            channels=[(62, 120), (192, 250)],
+            gaps=[(-30, -6), (182, 206)],
+            label_strips=(Rect(2, 110, 100, 13),),
+        )
+        (route,) = route_edges(grid, [("a", "b")]).values()
+        assert route[-1][0] > 102 + 3
+        free = route_edges(replace(grid, label_strips=()), [("a", "b")])
+        assert free[("a", "b")][-1][0] == 88
+
+    def test_a_connector_still_enters_when_a_label_covers_the_whole_top_edge(self) -> None:
+        grid = Grid(
+            nodes={
+                "a": GridNode("a", 0, 0, Rect(0, 0, 176, 54), "rect"),
+                "b": GridNode("b", 0, 1, Rect(0, 130, 176, 54), "rect"),
+            },
+            channels=[(62, 120), (192, 250)],
+            gaps=[(-30, -6), (182, 206)],
+            label_strips=(Rect(2, 110, 172, 13),),
+        )
+        route = route_edges(grid, [("a", "b")])[("a", "b")]
+        assert route[-1] == (88, 130)
 
     @pytest.mark.parametrize("name", EXAMPLES)
     def test_frame_labels_do_not_overlap_each_other(self, name: str) -> None:
