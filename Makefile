@@ -9,16 +9,17 @@ dev:
 test:
 	pytest --cov=threatcode --cov-report=term-missing -q
 
+# The whole repository, scripts included, so a script cannot fall behind the rules src follows.
 lint:
-	ruff check src/ tests/
-	ruff format --check src/ tests/
+	ruff check .
+	ruff format --check .
 
 typecheck:
 	mypy src/threatcode/
 
 format:
-	ruff format src/ tests/
-	ruff check --fix src/ tests/
+	ruff format .
+	ruff check --fix .
 
 audit:
 	pip-audit
@@ -44,7 +45,7 @@ mitre-check:
 	$${PYTHON:-python3} scripts/gen_mitre_db.py --check
 
 clean:
-	rm -rf build/ dist/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ .coverage
+	rm -rf build/ dist/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ .coverage
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 ci: lint typecheck test audit docs-check smoke

@@ -1,0 +1,20 @@
+# The sdist carries everything needed to run the test suite from an unpacked copy:
+# the tests and the fixtures, examples and documentation they read, the scripts the
+# documentation runs, and the files that describe the project.
+include CHANGELOG.md
+include CONTRIBUTING.md
+include LICENSE
+include README.md
+include SECURITY.md
+include Makefile
+include mkdocs.yml
+include .pre-commit-hooks.yaml
+recursive-include tests *
+recursive-include docs *
+recursive-include examples *
+recursive-include scripts *
+recursive-include changelog.d *
+recursive-include .github *
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store

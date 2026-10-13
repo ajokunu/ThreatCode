@@ -31,7 +31,6 @@ dependencies = [
     "python-hcl2>=4.3,<9",
     "pyyaml>=6.0.1,<7",
     "networkx>=3.1,<4",
-    "tomli>=2.0,<3;python_version<'3.11'",
 ]
 
 [project.urls]
@@ -58,6 +57,8 @@ dev = [
     "jsonschema>=4.0",
     "hypothesis>=6.0",
     "build>=1.0",
+    # The tests read pyproject.toml; the standard library has tomllib from Python 3.11
+    "tomli>=2.0,<3;python_version<'3.11'",
 ]
 # mkdocs.yml enables the search plugin only and no page uses a mkdocstrings directive, so the
 # docs build needs MkDocs and the Material theme. Both are capped below their next major: the
