@@ -667,7 +667,7 @@ From `builtin/kubernetes/workloads.yml`:
     description: >
       A container is configured with privileged: true, giving it full access to the host.
       This effectively disables all container isolation.
-      The container_findings property of the workload names the containers.
+      It applies to regular, init and ephemeral containers alike.
     stride_category: elevation_of_privilege
     severity: critical
     confidence: definitive

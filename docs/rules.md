@@ -486,7 +486,7 @@ To write your own rules, see [Writing rules](writing-rules.md).
 | `K8S_CLUSTER_ADMIN_BINDING` | high | definitive | elevation of privilege | T1078 | `kubernetes_cluster_role_binding` | ClusterRoleBinding to cluster-admin or admin |
 | `K8S_RBAC_ESCALATION_VERBS` | high | definitive | elevation of privilege | T1098.006 | `kubernetes_role`, `kubernetes_cluster_role` | Role can escalate, bind or impersonate |
 | `K8S_RBAC_POD_EXEC` | medium | definitive | elevation of privilege | T1609 | `kubernetes_role`, `kubernetes_cluster_role` | Role can exec into pods |
-| `K8S_RBAC_SECRETS_READ` | high | heuristic | information disclosure | T1552.007 | `kubernetes_role`, `kubernetes_cluster_role` | Role can read Secrets |
+| `K8S_RBAC_SECRETS_READ` | high | definitive | information disclosure | T1552.007 | `kubernetes_role`, `kubernetes_cluster_role` | Role can read Secrets |
 | `K8S_ROLE_BINDING_ADMIN` | medium | definitive | elevation of privilege | T1078 | `kubernetes_role_binding` | RoleBinding to cluster-admin or admin |
 | `K8S_ROLE_WILDCARD_API_GROUPS` | low | definitive | elevation of privilege | T1078 | `kubernetes_role` | Role with wildcard API groups |
 | `K8S_ROLE_WILDCARD_RESOURCES` | medium | definitive | elevation of privilege | T1078 | `kubernetes_role` | Role with wildcard resources |

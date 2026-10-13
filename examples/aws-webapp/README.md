@@ -41,7 +41,6 @@ P1  CRITICAL  internet -> aws_s3_bucket.customer_data
     > aws_s3_bucket.customer_data
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_iam_instance_profile.app: HIGH EC2_IMDSV1
     ignore id: 5453d439158d
 
@@ -52,7 +51,6 @@ P2  HIGH      internet -> aws_secretsmanager_secret.db_credentials
     > aws_secretsmanager_secret.db_credentials
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_iam_instance_profile.app: HIGH EC2_IMDSV1
     ignore id: 1e87639aaf0e
 
@@ -62,7 +60,6 @@ P3  HIGH      internet -> aws_db_instance.orders
     internet > aws_lb.front > aws_instance.app[0] > aws_db_instance.orders
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_db_instance.orders on tcp/5432: HIGH EC2_IMDSV1
     ignore id: e716deafaabc
 
@@ -161,7 +158,6 @@ P1  CRITICAL  internet -> aws_s3_bucket.customer_data
     > aws_s3_bucket.customer_data
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434,
         HIGH EC2_IMDSV1
     ignore id: 5453d439158d
@@ -174,7 +170,6 @@ P2  CRITICAL  internet -> aws_secretsmanager_secret.db_credentials
     > aws_secretsmanager_secret.db_credentials
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434,
         HIGH EC2_IMDSV1
     ignore id: 1e87639aaf0e
@@ -186,7 +181,6 @@ P3  CRITICAL  internet -> aws_db_instance.orders
     internet > aws_lb.front > aws_instance.app[0] > aws_db_instance.orders
     enabled by:
       internet -> aws_lb.front on tcp/443: LOW SG_WEB_PORT_OPEN_TO_WORLD
-      aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_db_instance.orders on tcp/5432: CRITICAL trivy:CVE-2022-37434,
         HIGH EC2_IMDSV1
     ignore id: e716deafaabc
