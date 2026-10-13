@@ -43,7 +43,7 @@ P1  CRITICAL  internet -> aws_s3_bucket.customer_data
     ignore id: 5453d439158d
 
 P2  CRITICAL  internet -> aws_secretsmanager_secret.db_credentials
-    secret store, 5 hops, score 9; 4 findings enable it, the worst being CRITICAL
+    secret store, 5 hops, score 9; 3 findings enable it, the worst being CRITICAL
     trivy:CVE-2022-37434; plus 1 equivalent route through other instances of the same resources.
     internet > aws_lb.front > aws_instance.app[0] > aws_iam_instance_profile.app > aws_iam_role.app
     > aws_secretsmanager_secret.db_credentials
@@ -52,7 +52,6 @@ P2  CRITICAL  internet -> aws_secretsmanager_secret.db_credentials
       aws_lb.front -> aws_instance.app[0] on tcp/8080: LOW SG_WEB_PORT_OPEN_TO_WORLD
       aws_instance.app[0] -> aws_iam_instance_profile.app: CRITICAL trivy:CVE-2022-37434, HIGH
         EC2_IMDSV1
-      aws_secretsmanager_secret.db_credentials: MEDIUM SM_NO_ROTATION
     ignore id: 1e87639aaf0e
 
 P3  CRITICAL  internet -> aws_db_instance.orders
@@ -87,8 +86,6 @@ HIGH      aws_lb.front                              BOUNDARY_GENERIC_FLOW
           T1565.002  Tampering
 HIGH^     aws_s3_bucket.customer_data               S3_NO_VERSIONING
           S3 bucket without versioning  tfplan.json:660  T1485  DoS
-MEDIUM    aws_secretsmanager_secret.db_credentials  SM_NO_ROTATION             P2
-          Secrets Manager secret without rotation  tfplan.json:721  T1555.006  Info disclosure
 MEDIUM    aws_instance.app[0]                       BOUNDARY_GENERIC_FLOW
           Trust boundary crossing, private > data: to aws_db_instance.orders (tcp/5432)
           tfplan.json:484  T1530,T1565.002  Tampering
@@ -100,6 +97,8 @@ MEDIUM    aws_lb.front                              BOUNDARY_GENERIC_FLOW
           T1190,T1565.002  Tampering
 MEDIUM^   aws_s3_bucket.customer_data               S3_NO_LOGGING
           S3 bucket without access logging  tfplan.json:660  Repudiation
+MEDIUM    aws_secretsmanager_secret.db_credentials  SM_NO_ROTATION
+          Secrets Manager secret without rotation  tfplan.json:721  T1555.006  Info disclosure
 MEDIUM    aws_vpc.main                              VPC_NO_FLOW_LOGS
           VPC without flow logs  tfplan.json:12  Repudiation
 LOW       aws_security_group.alb                    SG_WEB_PORT_OPEN_TO_WORLD  P1,P2+1
