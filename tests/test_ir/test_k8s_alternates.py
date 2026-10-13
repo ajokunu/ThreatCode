@@ -107,7 +107,7 @@ class TestVariantsOfOneApplication:
         crossings = [
             t
             for t in result.threats
-            if t.source.value == "boundary" and "frontend-external" in t.title and "->" in t.title
+            if t.source.value == "boundary" and "frontend-external" in t.resource_address
         ]
         # internet -> Service and Service -> Deployment, once for each variant
         assert len(crossings) == 2 * len(self.VARIANTS)

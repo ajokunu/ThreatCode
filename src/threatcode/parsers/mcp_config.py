@@ -805,11 +805,13 @@ def _agent_for(
     for item in enabled:
         server = item.resource.address
         props = item.resource.properties
-        # What the edge carries, for the boundary analysis that will read it
-        carried = {
-            "protocol": props["url_scheme"] or "stdio",
-            "authenticated": bool(props["has_configured_auth"]),
-        }
+        # What the edge carries, for the boundary analysis that reads it. A configured credential
+        # shows the flow is authenticated; the lack of one shows nothing, because a client that
+        # follows the MCP authorization spec discovers OAuth when it connects, so the flag is
+        # left off rather than set to False
+        carried: dict[str, Any] = {"protocol": props["url_scheme"] or "stdio"}
+        if props["has_configured_auth"]:
+            carried["authenticated"] = True
         # The agent calls the server, and the server's content comes back into the agent
         edges.append(
             ParsedEdge(

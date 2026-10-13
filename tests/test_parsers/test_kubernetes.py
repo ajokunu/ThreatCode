@@ -22,6 +22,8 @@ from threatcode.parsers.kubernetes import (
     resource_type_for,
 )
 
+FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "kubernetes"
+
 
 @pytest.fixture
 def parser() -> KubernetesParser:
@@ -30,7 +32,7 @@ def parser() -> KubernetesParser:
 
 class TestKubernetesParser:
     def test_parse_insecure_deployment(self, parser: KubernetesParser) -> None:
-        content = Path("tests/fixtures/kubernetes/insecure_deployment.yml").read_text()
+        content = (FIXTURES / "insecure_deployment.yml").read_text()
         result = parser.parse(content, source_path="insecure.yml")
         assert result.format_type == "kubernetes"
         assert len(result.resources) == 1
@@ -45,7 +47,7 @@ class TestKubernetesParser:
         assert len(r.properties["dangerous_capabilities"]) > 0
 
     def test_parse_secure_deployment(self, parser: KubernetesParser) -> None:
-        content = Path("tests/fixtures/kubernetes/secure_deployment.yml").read_text()
+        content = (FIXTURES / "secure_deployment.yml").read_text()
         result = parser.parse(content, source_path="secure.yml")
         assert len(result.resources) == 1
         r = result.resources[0]
@@ -57,7 +59,7 @@ class TestKubernetesParser:
         assert r.properties["has_readiness_probe"] is True
 
     def test_multi_document(self, parser: KubernetesParser) -> None:
-        content = Path("tests/fixtures/kubernetes/multi_resource.yml").read_text()
+        content = (FIXTURES / "multi_resource.yml").read_text()
         result = parser.parse(content, source_path="multi.yml")
         types = {r.resource_type for r in result.resources}
         assert "kubernetes_namespace" in types
@@ -68,7 +70,7 @@ class TestKubernetesParser:
         assert "kubernetes_network_policy" in types
 
     def test_rbac_wildcard_detection(self, parser: KubernetesParser) -> None:
-        content = Path("tests/fixtures/kubernetes/multi_resource.yml").read_text()
+        content = (FIXTURES / "multi_resource.yml").read_text()
         result = parser.parse(content, source_path="multi.yml")
         roles = [r for r in result.resources if r.resource_type == "kubernetes_cluster_role"]
         assert len(roles) == 1
@@ -76,7 +78,7 @@ class TestKubernetesParser:
         assert roles[0].properties["has_wildcard_resources"] is True
 
     def test_cluster_admin_binding(self, parser: KubernetesParser) -> None:
-        content = Path("tests/fixtures/kubernetes/multi_resource.yml").read_text()
+        content = (FIXTURES / "multi_resource.yml").read_text()
         result = parser.parse(content, source_path="multi.yml")
         bindings = [
             r for r in result.resources if r.resource_type == "kubernetes_cluster_role_binding"
@@ -113,7 +115,6 @@ class TestKubernetesParser:
 # Documents: List kinds, JSON, mixed files
 # ---------------------------------------------------------------------------------------
 
-FIXTURES = Path(__file__).parent.parent / "fixtures" / "kubernetes"
 
 POD = {
     "apiVersion": "v1",
@@ -1051,3 +1052,189 @@ metadata: {{name: c, namespace: {self.BOMB}}}
         }
         (resource,) = KubernetesParser().parse(doc).resources
         assert resource.properties["binds_unauthenticated_group"] is False
+
+
+DEPLOYMENT_TEXT = """\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop
+  namespace: prod
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      containers:
+        - name: web
+          image: shop:1.0
+          securityContext:
+            runAsNonRoot: true
+        - name: sidecar
+          image: proxy:latest
+          securityContext:
+            privileged: true
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: host
+          hostPath:
+            path: /var/run
+"""
+
+
+def _lines(text: str, name: str | None = None) -> dict[str, int]:
+    output = KubernetesParser().parse(text, source_path="manifest.yaml")
+    resources = [r for r in output.resources if name is None or r.name == name]
+    assert len(resources) == 1
+    lines = resources[0].meta["lines"]
+    assert isinstance(lines, dict)
+    return lines
+
+
+class TestFindingLines:
+    """FV-08, FR-19: a finding points at the key it is about, not at line 1 of the manifest."""
+
+    def test_the_kind_line_is_recorded(self) -> None:
+        assert _lines(DEPLOYMENT_TEXT)["kind"] == 2
+
+    def test_a_pod_level_key_has_its_own_line(self) -> None:
+        assert _lines(DEPLOYMENT_TEXT)["host_network"] == 9
+
+    def test_a_container_property_points_at_the_key_of_the_container_that_sets_it(self) -> None:
+        lines = _lines(DEPLOYMENT_TEXT)
+        assert lines["privileged"] == 18
+        # The second container is the one that is unsafe, not the first
+        assert lines["privileged"] > lines["has_resource_limits"]
+
+    def test_the_first_unsafe_container_wins(self) -> None:
+        text = DEPLOYMENT_TEXT.replace(
+            "            runAsNonRoot: true\n", "            privileged: true\n"
+        )
+        assert _lines(text)["privileged"] == 14
+
+    def test_a_missing_key_points_at_the_object_that_should_hold_it(self) -> None:
+        lines = _lines(DEPLOYMENT_TEXT)
+        # The first container has a securityContext without a seccomp profile
+        assert lines["has_seccomp_profile"] == 13
+        # Neither container sets limits, so the line is that of the container
+        assert lines["has_resource_limits"] == 11
+        # The tag of the second container is the key behind uses_latest_tag
+        assert lines["uses_latest_tag"] == 16
+
+    def test_a_volume_property_points_at_the_hostpath_key(self) -> None:
+        assert _lines(DEPLOYMENT_TEXT)["has_host_path_volume"] == 23
+
+    def test_a_property_nothing_flags_has_no_entry(self) -> None:
+        lines = _lines(DEPLOYMENT_TEXT)
+        assert "host_pid" not in lines
+        assert "has_host_port" not in lines
+
+    def test_a_later_document_gets_its_own_lines(self) -> None:
+        text = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: a\n---\n" + DEPLOYMENT_TEXT
+        output = KubernetesParser().parse(text, source_path="m.yaml")
+        by_kind = {r.properties["kind"]: r for r in output.resources}
+        assert by_kind["Namespace"].meta["lines"]["kind"] == 2
+        assert by_kind["Deployment"].meta["lines"]["kind"] == 7
+        assert by_kind["Deployment"].meta["lines"]["host_network"] == 14
+        assert by_kind["Deployment"].start_line == 6
+
+    def test_a_json_manifest_has_lines_too(self) -> None:
+        text = json.dumps(yaml.safe_load(DEPLOYMENT_TEXT), indent=2)
+        lines = _lines(text)
+        assert lines["kind"] > 1
+        assert lines["privileged"] > lines["host_network"]
+
+    def test_the_items_of_a_list_kind_have_lines_of_their_own(self) -> None:
+        text = (
+            "apiVersion: v1\n"
+            "kind: List\n"
+            "items:\n"
+            "  - apiVersion: v1\n"
+            "    kind: Namespace\n"
+            "    metadata:\n"
+            "      name: one\n"
+            "  - apiVersion: v1\n"
+            "    kind: Namespace\n"
+            "    metadata:\n"
+            "      name: two\n"
+        )
+        output = KubernetesParser().parse(text, source_path="list.yaml")
+        assert [r.meta["lines"]["kind"] for r in output.resources] == [5, 9]
+
+    def test_a_manifest_passed_as_a_value_has_no_lines_and_no_entry(self) -> None:
+        output = KubernetesParser().parse(yaml.safe_load(DEPLOYMENT_TEXT))
+        assert "lines" not in output.resources[0].meta
+
+    def test_the_lines_come_from_the_text_the_registry_loaded(self, tmp_path: Path) -> None:
+        path = tmp_path / "deploy.yaml"
+        path.write_text(DEPLOYMENT_TEXT, encoding="utf-8")
+        (resource,) = detect_and_parse(path).resources
+        assert resource.meta["lines"]["privileged"] == 18
+
+    def test_a_role_flag_points_at_the_first_rule_that_sets_it(self) -> None:
+        text = (
+            "apiVersion: rbac.authorization.k8s.io/v1\n"
+            "kind: ClusterRole\n"
+            "metadata:\n"
+            "  name: reader\n"
+            "rules:\n"
+            "  - apiGroups: ['']\n"
+            "    resources: [pods]\n"
+            "    verbs: [get]\n"
+            "  - apiGroups: ['']\n"
+            "    resources: [secrets]\n"
+            "    verbs: [list]\n"
+            "  - apiGroups: ['']\n"
+            "    resources: [secrets]\n"
+            "    verbs: [watch]\n"
+        )
+        lines = _lines(text)
+        assert lines["has_secrets_read"] == 10
+        assert "has_wildcard_verbs" not in lines
+        assert "has_pod_exec" not in lines
+
+    def test_a_secrets_grant_limited_by_resource_names_has_no_line(self) -> None:
+        text = (
+            "apiVersion: rbac.authorization.k8s.io/v1\n"
+            "kind: Role\n"
+            "metadata:\n"
+            "  name: reader\n"
+            "rules:\n"
+            "  - apiGroups: ['']\n"
+            "    resources: [secrets]\n"
+            "    resourceNames: [tls]\n"
+            "    verbs: [get]\n"
+        )
+        assert "has_secrets_read" not in _lines(text)
+
+    def test_a_binding_flag_points_at_the_subject(self) -> None:
+        text = (
+            "apiVersion: rbac.authorization.k8s.io/v1\n"
+            "kind: ClusterRoleBinding\n"
+            "metadata:\n"
+            "  name: b\n"
+            "roleRef:\n"
+            "  kind: ClusterRole\n"
+            "  name: cluster-admin\n"
+            "subjects:\n"
+            "  - kind: Group\n"
+            "    name: ops\n"
+            "  - kind: Group\n"
+            "    name: system:unauthenticated\n"
+        )
+        lines = _lines(text)
+        assert lines["binds_unauthenticated_group"] == 12
+        assert lines["role_ref_name"] == 7
+        assert "binds_authenticated_group" not in lines
+
+    def test_an_alias_bomb_in_a_name_costs_nothing_and_does_not_raise(self) -> None:
+        text = (
+            "apiVersion: rbac.authorization.k8s.io/v1\n"
+            "kind: ClusterRoleBinding\n"
+            "metadata: {name: b}\n"
+            "roleRef: {kind: ClusterRole, name: x}\n"
+            "subjects:\n"
+            "  - kind: Group\n"
+            "    name: [a, b]\n"
+        )
+        assert _lines(text)["kind"] == 2

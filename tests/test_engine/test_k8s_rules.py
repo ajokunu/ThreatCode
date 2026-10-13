@@ -954,6 +954,34 @@ class TestRoleRules:
         assert "K8S_RBAC_SECRETS_READ" in _threats(_role("Role", secrets))[ROLE_ADDRESS]
         assert _threats(_role("Role", config)) == {}
 
+    def test_a_secrets_grant_limited_by_resource_names_does_not_fire(self) -> None:
+        # The parser honours resourceNames, so the rule no longer guesses
+        named = [
+            {
+                "apiGroups": [""],
+                "resources": ["secrets"],
+                "resourceNames": ["tls-cert"],
+                "verbs": ["get", "list", "watch"],
+            }
+        ]
+        assert _threats(_role("Role", named)) == {}
+        assert _threats(_role("ClusterRole", named)) == {}
+        # A second, unlimited rule in the same role still fires
+        mixed = [*named, {"apiGroups": [""], "resources": ["secrets"], "verbs": ["list"]}]
+        assert "K8S_RBAC_SECRETS_READ" in _threats(_role("Role", mixed))[ROLE_ADDRESS]
+
+    def test_reading_secrets_is_a_definitive_finding_that_says_what_it_proves(self) -> None:
+        rule = next(r for r in load_builtin_rules() if r.id == "K8S_RBAC_SECRETS_READ")
+        assert rule.confidence == "definitive"
+        assert "cannot tell" not in rule.description
+        assert "heuristic" not in rule.description
+        assert "resourceNames" in rule.description
+        assert "resourceNames" in rule.mitigation
+        secrets = [{"apiGroups": [""], "resources": ["secrets"], "verbs": ["get"]}]
+        threat = _threats(_role("Role", secrets))[ROLE_ADDRESS]["K8S_RBAC_SECRETS_READ"]
+        assert threat.confidence == 1.0
+        assert threat.severity == Severity.HIGH
+
     def test_writing_secrets_is_not_reading_them(self) -> None:
         rules = [{"apiGroups": [""], "resources": ["secrets"], "verbs": ["create"]}]
         assert "K8S_RBAC_SECRETS_READ" not in _threats(_role("Role", rules)).get(ROLE_ADDRESS, {})

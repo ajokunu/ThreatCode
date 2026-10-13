@@ -449,8 +449,12 @@ class _Finder:
             hop_threats = _unique(t for site in sites for t in enabling.get(site, ()))
             if edge is None:
                 hop_threats = [t for t in hop_threats if _gives_access(t)]
+            # A finding enables the first hop it opens: the security group that admits the
+            # internet to a load balancer is named again by the edge from the balancer to its
+            # targets, but it opens only the first of them
+            hop_threats = [t for t in hop_threats if t.id not in used]
             for threat in hop_threats:
-                used.setdefault(threat.id, threat)
+                used[threat.id] = threat
             arrival = route.edges[position - 1] if position > 0 else None
             hops.append(
                 AttackHop(

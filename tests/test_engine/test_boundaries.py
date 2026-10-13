@@ -211,7 +211,7 @@ class TestPairsAreMerged:
         )
         threat = _only(graph)
         assert threat.metadata["flow"]["edge_types"] == ["data_flow", "network_flow"]
-        assert "data_flow and network_flow" in threat.description
+        assert "data flow and a network flow" in threat.description
         assert "5432" in threat.description
 
     def test_the_reverse_direction_is_a_separate_threat_with_its_own_id(self) -> None:
@@ -253,9 +253,75 @@ class TestPairsAreMerged:
 
 
 class TestWhatTheThreatSays:
-    def test_the_title_names_both_endpoints_and_both_zones(self) -> None:
-        assert _only(_tiers(_edge(WEB, DB))).title == (
-            f"Trust boundary crossing: {WEB} (dmz) -> {DB} (data)"
+    def test_the_title_leads_with_the_zones_and_the_other_end(self) -> None:
+        # FV-03, TUX-07: the RESOURCE column already shows WEB, so the title starts at what differs
+        assert _only(_tiers(_edge(WEB, DB))).title == f"dmz > data: to {DB}"
+
+    def test_the_title_ends_with_the_protocol_and_port_when_the_flow_has_them(self) -> None:
+        threat = _only(_tiers(_edge(WEB, DB, protocol="tcp", port=5432)))
+        assert threat.title == f"dmz > data: to {DB} (tcp/5432)"
+
+    @pytest.mark.parametrize(
+        ("meta", "suffix"),
+        [
+            ({"port": 22}, " (port 22)"),
+            ({"protocol": "udp"}, " (udp)"),
+            ({"protocol": "all"}, " (all protocols)"),
+            ({"protocol": "http", "port": 80}, " (http/80), unencrypted"),
+            ({"protocol": "tcp", "port": 80, "authenticated": False}, " (tcp/80), unauthenticated"),
+            ({}, ""),
+        ],
+    )
+    def test_the_title_words_how_the_traffic_travels(
+        self, meta: dict[str, Any], suffix: str
+    ) -> None:
+        assert _only(_tiers(_edge(WEB, DB, **meta))).title == f"dmz > data: to {DB}{suffix}"
+
+    def test_two_flows_from_one_resource_never_share_a_title(self) -> None:
+        graph = _graph(
+            [
+                _res("aws_lb", "front", "dmz"),
+                _res("aws_instance", "a", "private"),
+                _res("aws_instance", "b", "private"),
+            ],
+            [
+                _edge("aws_lb.front", "aws_instance.a", "network_flow", protocol="tcp", port=8080),
+                _edge("aws_lb.front", "aws_instance.b", "network_flow", protocol="tcp", port=8080),
+            ],
+        )
+        titles = [t.title for t in boundaries.analyze(graph)]
+        assert titles == [
+            "dmz > private: to aws_instance.a (tcp/8080)",
+            "dmz > private: to aws_instance.b (tcp/8080)",
+        ]
+        # What tells them apart is at the front, where a narrow column still shows it
+        assert all(len(title.split(":")[0]) < 20 for title in titles)
+
+    def test_no_title_carries_an_internal_edge_type(self) -> None:
+        for edge_type in ("network_flow", "data_flow"):
+            title = _only(_tiers(_edge(WEB, DB, edge_type))).title
+            assert "_flow" not in title
+
+    @pytest.mark.parametrize("declared", [True, False])
+    @pytest.mark.parametrize("meta", [{}, {"port": 8080}, {"protocol": "tcp", "port": 8080}])
+    @pytest.mark.parametrize("edge_type", ["network_flow", "data_flow"])
+    def test_no_description_carries_an_internal_edge_type(
+        self, edge_type: str, meta: dict[str, Any], declared: bool
+    ) -> None:
+        # FV-16: "(network_flow)" and "(data_flow)" are tokens of the model, not words
+        edge = ParsedEdge(WEB, DB, edge_type, meta, declared=declared)
+        graph = _graph(
+            [
+                _res("design_service", "web", "dmz"),
+                _res("design_database", "orders", "data"),
+            ],
+            [edge],
+            strict=False,
+        )
+        description = _only(graph).description
+        assert "_flow" not in description
+        assert (
+            "crosses a trust boundary" in description or "crossing a trust boundary" in description
         )
 
     def test_the_target_is_recorded_on_the_threat_and_in_the_metadata(self) -> None:
@@ -683,7 +749,7 @@ class TestReachabilityFlows:
         assert (threat.resource_address, threat.resource_type) == ("aws_lb.front", "aws_lb")
         assert threat.target_address == ""
         assert threat.metadata["flow"]["source"] == "internet"
-        assert threat.title == "Trust boundary crossing: internet (internet) -> aws_lb.front (dmz)"
+        assert threat.title.startswith("internet > dmz: to aws_lb.front")
 
     def test_it_is_located_at_the_resource_it_enters_after_a_scan(self) -> None:
         from threatcode.pipeline import ScanRequest, run_scan
@@ -753,7 +819,20 @@ class TestBoundaryRules:
         threat = _only(_tiers(_edge(WEB, DB, **meta)))
         assert threat.metadata["boundary_rule"] == rule
         # Rule ids belong to the rule engine, so tools that list the rules which fired skip these
+        # (the planted-issue benchmark counts a crossing on a hardened resource otherwise)
         assert threat.rule_id == ""
+
+    def test_every_crossing_of_a_real_input_names_its_kind_and_its_resource_type(self) -> None:
+        graph = InfraGraph.from_parsed(
+            detect_and_parse(
+                REPO_ROOT / "tests/fixtures/real_shapes/terraform/plan/webapp.plan.json"
+            )
+        )
+        threats = boundaries.analyze(graph)
+        assert threats
+        for threat in threats:
+            assert threat.metadata["boundary_rule"].startswith("BOUNDARY_")
+            assert threat.resource_type == graph.nodes[threat.resource_address].resource_type
 
     def test_an_unauthenticated_flow_wins_over_an_unencrypted_one(self) -> None:
         threat = _only(_tiers(_edge(WEB, DB, authenticated=False, encrypted=False)))
@@ -836,6 +915,30 @@ class TestAMissingMcpCredentialIsNotEvidence:
         assert threat.metadata["flow"]["authenticated"] is True
         assert threat.severity == Severity.MEDIUM
         assert threat.confidence == 1.0
+
+    def test_an_edge_that_declares_an_mcp_flow_unauthenticated_is_believed(self) -> None:
+        # The MCP parser leaves the flag off; boundaries no longer second-guesses a flag that an
+        # input does state
+        graph = _graph(
+            [_res("mcp_server", "docs", "internet"), _res("mcp_agent", "config", "private")],
+            [_edge("mcp_server.docs", "mcp_agent.config", protocol="https", authenticated=False)],
+        )
+        (threat,) = boundaries.analyze(graph)
+        assert threat.metadata["flow"]["authenticated"] is False
+        assert threat.stride_category == "spoofing"
+        assert threat.metadata["boundary_rule"] == "BOUNDARY_UNAUTHENTICATED_FLOW"
+        assert threat.severity == Severity.HIGH
+        assert threat.confidence == 1.0
+
+    def test_an_mcp_edge_with_no_flag_is_unknown_not_false(self) -> None:
+        graph = _graph(
+            [_res("mcp_server", "docs", "internet"), _res("mcp_agent", "config", "private")],
+            [_edge("mcp_server.docs", "mcp_agent.config", protocol="https")],
+        )
+        (threat,) = boundaries.analyze(graph)
+        assert threat.metadata["flow"]["authenticated"] is None
+        assert threat.severity == Severity.LOW
+        assert threat.confidence == 0.5
 
     def test_a_declared_unauthenticated_flow_of_another_kind_is_unchanged(self) -> None:
         graph = _graph(

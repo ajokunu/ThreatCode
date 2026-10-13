@@ -18,6 +18,8 @@ from threatcode.engine.rules.matcher import evaluate_rule
 from threatcode.models.threat import Severity
 from threatcode.parsers.dockerfile import DockerfileParser
 
+TESTS = Path(__file__).resolve().parent.parent
+
 
 @pytest.fixture
 def docker_rules():
@@ -210,9 +212,9 @@ class TestEveryRuleReadsAPropertyTheParserEmits:
 
     def emitted(self) -> dict[str, set[str]]:
         keys: dict[str, set[str]] = {}
-        sources = sorted(Path("tests/fixtures/docker").glob("*.Dockerfile"))
-        sources += sorted(Path("tests/fixtures/real_shapes/docker").glob("*Dockerfile"))
-        sources += sorted(Path("tests/test_rules/cases").glob("docker__*/*/bad.Dockerfile"))
+        sources = sorted((TESTS / "fixtures" / "docker").glob("*.Dockerfile"))
+        sources += sorted((TESTS / "fixtures" / "real_shapes" / "docker").glob("*Dockerfile"))
+        sources += sorted((TESTS / "test_rules" / "cases").glob("docker__*/*/bad.Dockerfile"))
         for source in sources:
             for resource in DockerfileParser().parse(source.read_text()).resources:
                 keys.setdefault(resource.resource_type, set()).update(resource.properties)
@@ -240,7 +242,8 @@ class TestEveryRuleReadsAPropertyTheParserEmits:
 
     def test_every_docker_rule_fires_on_its_bad_case(self) -> None:
         for rule in docker_rule_objects():
-            bad = next(Path("tests/test_rules/cases").glob(f"docker__*/{rule.id}/bad.Dockerfile"))
+            cases = TESTS / "test_rules" / "cases"
+            bad = next(cases.glob(f"docker__*/{rule.id}/bad.Dockerfile"))
             assert rule.id in fired(bad.read_text()), rule.id
 
 

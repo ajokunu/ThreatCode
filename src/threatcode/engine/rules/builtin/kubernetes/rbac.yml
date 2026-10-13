@@ -293,18 +293,18 @@ rules:
       a wildcard resource, in the core API group.
       A ClusterRole grants that in every namespace; a Role in its own.
       list and watch return the contents of every Secret, not only their names.
-      The rule cannot tell that resourceNames limits the grant to a few Secrets, which is why
-      this finding is heuristic.
+      A grant that lists the Secrets it covers in resourceNames is not reported, so every Secret
+      in scope is readable by every subject of the role.
     stride_category: information_disclosure
     severity: high
-    confidence: heuristic
+    confidence: definitive
     resource_types: ["kubernetes_role", "kubernetes_cluster_role"]
     condition:
       has_secrets_read:
         equals: true
     mitigation: >
-      Remove the read verbs on Secrets, or name the single Secret the subject needs in
-      resourceNames.
+      Remove the get, list and watch verbs on Secrets from this role, or limit the rule to the
+      Secrets the subject needs by listing their names in resourceNames.
     metadata:
       mitre:
         techniques: ["T1552.007"]

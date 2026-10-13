@@ -23,9 +23,10 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import yaml
 
 from threatcode.constants import VALID_SEVERITIES, VALID_STRIDE_CATEGORIES
-from threatcode.engine.mitre import TECHNIQUE_DB
+from threatcode.engine.mitre import TECHNIQUE_DB, is_deprecated, is_revoked, normalize_technique
 from threatcode.engine.rules.matcher import (
     ELEMENT_PREDICATES,
+    EXPOSURE_PROPERTY,
     LOGICAL_OPERATORS,
     MAX_CONDITION_DEPTH,
     PROPERTY_OPERATORS,
@@ -209,6 +210,42 @@ class Rule:
     def matches_type(self, resource_type: str) -> bool:
         """Whether a node of this resource type is in scope for the rule."""
         return resource_type_matches(self.resource_types, resource_type)
+
+    @property
+    def properties_read(self) -> tuple[str, ...]:
+        """The top-level properties the condition reads, in the order it names them."""
+        return condition_properties(self.condition)
+
+
+def condition_properties(condition: Mapping[str, Any]) -> tuple[str, ...]:
+    """The top-level properties a condition reads, in the order it names them, each once.
+
+    ``labels.app`` and ``labels['a.b']`` both read ``labels``; the logical operators are walked
+    and name nothing themselves; the ``_exposure`` pseudo-property and the element predicates
+    (``port_overlaps``) are not properties of the resource.
+    A malformed condition yields what can be read from it, because the loader validates a
+    condition before it builds a rule and this only describes one that passed.
+    """
+    found: dict[str, None] = {}
+
+    def walk(node: Any, depth: int) -> None:
+        if not isinstance(node, Mapping) or depth > MAX_CONDITION_DEPTH:
+            return
+        for key, value in node.items():
+            if key in LOGICAL_OPERATORS:
+                children = [value] if isinstance(value, Mapping) else list(value or ())
+                for child in children:
+                    walk(child, depth + 1)
+            elif isinstance(key, str) and key not in ELEMENT_PREDICATES:
+                if key == EXPOSURE_PROPERTY:
+                    continue
+                try:
+                    found.setdefault(parse_path(key)[0].text)
+                except PathError:
+                    continue
+
+    walk(condition, 0)
+    return tuple(found)
 
 
 @dataclass(frozen=True)
@@ -522,6 +559,19 @@ def _validate_metadata(metadata: Any, rule_id: str, path: Path) -> None:
         elif tid not in TECHNIQUE_DB:
             logger.warning(
                 "Rule %s: MITRE technique ID '%s' not found in known technique database",
+                rule_id,
+                tid,
+            )
+        elif is_revoked(tid):
+            logger.warning(
+                "Rule %s: MITRE technique ID '%s' was revoked by ATT&CK - use '%s' instead",
+                rule_id,
+                tid,
+                normalize_technique(tid),
+            )
+        elif is_deprecated(tid):
+            logger.warning(
+                "Rule %s: MITRE technique ID '%s' was deprecated by ATT&CK without a replacement",
                 rule_id,
                 tid,
             )
