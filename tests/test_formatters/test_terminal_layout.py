@@ -12,8 +12,10 @@ from threatcode.formatters.terminal_layout import (
     columns,
     flow,
     hanging,
+    path_components,
     split_token,
     wrap,
+    wrap_path,
 )
 
 ADDRESS = st.text(alphabet="abcxyz_.-:/[]0123456789", min_size=0, max_size=120)
@@ -44,6 +46,96 @@ class TestSplitToken:
         pieces = split_token(token, width)
         assert "".join(pieces) == token
         assert all(len(piece) <= width for piece in pieces)
+
+
+class TestALineReferenceStaysWithItsFile:
+    def test_the_number_is_not_left_alone_when_the_cut_would_fall_after_the_colon(self) -> None:
+        # The window ends on the colon, which is a boundary: cutting there would strand the 1
+        assert split_token("0" * 19 + ":1", 20) == ["0" * 18, "0:1"]
+
+    def test_a_boundary_before_the_reference_is_used_when_there_is_one(self) -> None:
+        assert split_token("src/app/handler.py:12", 20) == ["src/app/handler.", "py:12"]
+
+    def test_a_long_number_is_not_split_from_the_name_either(self) -> None:
+        pieces = split_token("a" * 12 + ":123456", 15)
+        assert pieces == ["a" * 11, "a:123456"]
+
+    def test_a_reference_with_a_trailing_colon_stays_with_its_file(self) -> None:
+        # ``file:line:`` is how a message about a line is introduced
+        pieces = split_token("x" * 30 + ":12:", 10)
+        assert "".join(pieces) == "x" * 30 + ":12:"
+        assert pieces[-1].endswith(":12:") and len(pieces[-1]) > len(":12:")
+
+    def test_a_token_without_a_reference_at_its_end_is_cut_as_before(self) -> None:
+        assert split_token("x" * 12 + ":ab", 10) == ["x" * 10, "xx:ab"]
+        # Digits inside a name, with more name after them, are not a reference
+        assert split_token("x" * 8 + ":12:" + "y" * 8, 10) == ["x" * 8 + ":", "12:" + "y" * 7, "y"]
+
+    def test_a_reference_wider_than_the_line_is_still_cut_and_keeps_its_characters(self) -> None:
+        pieces = split_token("n:" + "9" * 12, 5)
+        assert "".join(pieces) == "n:" + "9" * 12
+        assert all(len(piece) <= 5 for piece in pieces)
+
+    @given(
+        st.text(alphabet="abcxyz_.-:/[]0123456789", min_size=1, max_size=100),
+        st.integers(min_value=1, max_value=99999),
+        st.integers(min_value=1, max_value=60),
+    )
+    @settings(max_examples=300)
+    def test_the_last_piece_of_any_name_carries_its_number_and_some_of_the_name(
+        self, name: str, line: int, width: int
+    ) -> None:
+        tail = f":{line}"
+        pieces = split_token(name + tail, max(width, len(tail) + 1))
+        assert "".join(pieces) == name + tail
+        assert pieces[-1].endswith(tail) and len(pieces[-1]) > len(tail)
+
+
+class TestPathComponents:
+    def test_a_path_is_cut_after_each_slash(self) -> None:
+        assert path_components("a/bb/ccc.tf:12") == ["a/", "bb/", "ccc.tf:12"]
+        assert path_components("main.tf:1") == ["main.tf:1"]
+        assert path_components("") == []
+
+    def test_a_slash_at_the_end_does_not_leave_the_line_number_alone(self) -> None:
+        assert path_components("dir/:7") == ["dir/:7"]
+
+    def test_a_backslash_is_not_a_separator(self) -> None:
+        # The terminal shows an escape as ``\x1b``; cutting after the backslash would split it
+        assert path_components("a\\x1b[2J.tf:3") == ["a\\x1b[2J.tf:3"]
+
+
+class TestWrapPath:
+    def test_a_path_that_fits_is_one_line(self) -> None:
+        assert wrap_path("modules/net/main.tf:120", 40) == ["modules/net/main.tf:120"]
+        assert wrap_path("", 10) == [""]
+
+    def test_as_many_components_share_a_line_as_fit(self) -> None:
+        assert wrap_path("terraform/environments/production/main.tf:1234", 30) == [
+            "terraform/environments/",
+            "production/main.tf:1234",
+        ]
+
+    def test_the_file_name_is_not_cut_where_a_boundary_inside_it_would_have_fit(self) -> None:
+        # ``split_token`` would break after the dot in ``handler.py``; a path breaks at the slash
+        assert wrap_path("src/app/handler.py:12", 20) == ["src/app/", "handler.py:12"]
+
+    def test_a_component_wider_than_the_line_is_the_only_thing_that_is_cut(self) -> None:
+        pieces = wrap_path("d/" + "n" * 25 + ".tf:12345", 12)
+        assert pieces[0] == "d/"
+        assert pieces[-1].endswith(".tf:12345")
+        assert all(len(piece) <= 12 for piece in pieces)
+
+    @given(st.text(alphabet="abc_.-:/[]0123456789", max_size=120), st.integers(1, 60))
+    @settings(max_examples=300)
+    def test_the_pieces_hold_every_character_and_fit_and_break_only_after_a_slash_if_they_can(
+        self, path: str, width: int
+    ) -> None:
+        pieces = wrap_path(path, width)
+        assert "".join(pieces) == path
+        assert all(len(piece) <= width for piece in pieces)
+        if all(len(part) <= width for part in path_components(path)):
+            assert all(piece.endswith("/") for piece in pieces[:-1])
 
 
 class TestWrap:
@@ -186,6 +278,13 @@ class TestColumns:
     def test_a_row_is_as_tall_as_its_tallest_cell(self) -> None:
         lines = columns([("a", 3, ""), ("b c d", 1, "")])
         assert len(lines) == 3
+
+    def test_a_cell_given_as_lines_is_taken_as_wrapped_already(self) -> None:
+        lines = columns([(["src/", "main.tf:1"], 9, ""), ("X", 1, "")])
+        assert text_of(lines) == ["src/       X", "main.tf:1"]
+
+    def test_a_cell_given_as_no_lines_is_one_empty_line(self) -> None:
+        assert text_of(columns([([], 4, ""), ("X", 1, "")])) == ["      X"]
 
     def test_the_lead_starts_every_line(self) -> None:
         lines = columns([("one two", 3, "")], lead="> ")

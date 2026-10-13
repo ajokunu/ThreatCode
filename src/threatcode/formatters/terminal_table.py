@@ -27,6 +27,9 @@ A table never mixes the two: the layout is decided once for all rows, from their
 
 Nothing is shortened with dots.
 A cell wider than its column wraps onto further lines of that column (``terminal_layout``).
+A location wraps after its ``/`` only, so a directory or a file name is not cut when it fits, and
+its line number is never left alone: a table whose location column would have to cut a name to
+line up flows instead.
 
 Everything here is pure: rows in, lines out.
 Every string from the scanned input is made safe for a terminal on its way in.
@@ -45,7 +48,15 @@ from threatcode.formatters._utils import (
     terminal_safe,
     threat_source,
 )
-from threatcode.formatters.terminal_layout import TIE, Run, columns, flow, hanging
+from threatcode.formatters.terminal_layout import (
+    TIE,
+    Run,
+    columns,
+    flow,
+    hanging,
+    path_components,
+    wrap_path,
+)
 from threatcode.models.report import ThreatReport, threat_severity
 from threatcode.models.threat import Threat, ThreatSource
 
@@ -60,6 +71,8 @@ SEVERITY_HEAD = "SEVERITY"
 MAX_TECHNIQUES = 3
 # A location column narrower than this wraps an ordinary path on every row; below it the
 # location, techniques and category flow instead of lining up.
+# A column also never gets narrower than the widest component of a path (the file name and its
+# line number, or a directory), which would have to be cut.
 MIN_LOCATION = 20
 HEAD_LOCATION, HEAD_TECHNIQUES, HEAD_STRIDE = "LOCATION", "ATT&CK", "STRIDE"
 # The text of a finding that no resource could be found for
@@ -316,11 +329,17 @@ def _meta_columns(rows: Sequence[Row], room: int) -> tuple[tuple[str, ...], tupl
     widths = [max([len(head), *(len(row.meta(head)) for row in rows)]) for head in heads]
     over = sum(widths) + GAP * (len(heads) - 1) - room
     if over > 0:
-        # Only the location can be long; it wraps inside its column before anything flows
-        if heads[0] != HEAD_LOCATION or widths[0] - over < max(MIN_LOCATION, len(HEAD_LOCATION)):
+        # Only the location can be long; it wraps inside its column before anything flows, after
+        # a ``/``, so the column keeps room for the widest piece that has none
+        if heads[0] != HEAD_LOCATION or widths[0] - over < max(MIN_LOCATION, _widest_piece(rows)):
             return heads, ()
         widths[0] -= over
     return heads, tuple(widths)
+
+
+def _widest_piece(rows: Sequence[Row]) -> int:
+    """The most characters of a location that cannot be wrapped: a directory, or file and line."""
+    return max((len(part) for row in rows for part in path_components(row.location)), default=0)
 
 
 def layout_of(rows: Sequence[Row], width: int) -> Layout:
@@ -404,7 +423,10 @@ def _meta(layout: Layout, cells: Sequence[str], style: str, width: int) -> list[
     lead = " " * layout.indent
     if layout.aligned:
         return columns(
-            [(text, w, style) for text, w in zip(cells, layout.widths, strict=True)],
+            [
+                (wrap_path(text, w) if head == HEAD_LOCATION else text, w, style)
+                for head, text, w in zip(layout.heads, cells, layout.widths, strict=True)
+            ],
             gap=GAP,
             lead=lead,
         )

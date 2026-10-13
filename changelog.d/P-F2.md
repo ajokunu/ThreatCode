@@ -35,8 +35,13 @@
   A gap with a line keeps `file:line:` in front, because that is the part an editor jumps to.
 - **A table too narrow for its widest rule id and its attack paths no longer wraps the rule id.**
   The paths take a line of their own, because the rule id is a key that is copied whole.
+- **A line number is never left alone at the start of a line.**
+  A location that was one or two characters wider than its column could wrap as `0000000000000000000:` over `1`, and a name too long for a line could be cut right before its number.
+  The piece that carries the number now always carries at least one character of the file name before it, in the table and anywhere else a `file:line` is wrapped.
+  A location in a column of its own wraps after its slashes only (`src/app/` over `handler.py:12`), so a directory or a file name is not cut when it fits.
+  When the column would have to cut a name to line up, as with a file name that has no slash in it, the techniques and the category flow beside the location in the same order instead.
 
 ### Internal
-- `formatters/terminal_table.py` holds the findings table (rows, layout, header and blocks), `formatters/terminal_verdict.py` the Helm-aware verdict, and `formatters/terminal_layout.py` gains `columns()` and the `TIE` that joins two words across a wrap.
+- `formatters/terminal_table.py` holds the findings table (rows, layout, header and blocks), `formatters/terminal_verdict.py` the Helm-aware verdict, and `formatters/terminal_layout.py` gains `columns()`, `wrap_path()` and the `TIE` that joins two words across a wrap.
 - The golden recordings are unchanged.
 - The generated blocks in `README.md`, `docs/getting-started.md` and the three example READMEs embed the text report, so `python scripts/gen_docs_counts.py --write` has to run once this is merged.

@@ -7,16 +7,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from hypothesis import example as pinned
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from tests.test_formatters.test_text import WIDTHS, analysis_of, example, make_threat
 from threatcode.formatters import RenderOptions
 from threatcode.formatters.terminal_layout import TIE
-from threatcode.formatters.terminal_table import build_rows, layout_of
+from threatcode.formatters.terminal_table import GAP, Layout, build_rows, layout_of
 from threatcode.formatters.text import format_text
 from threatcode.models.attack_path import AttackHop, AttackPath
-from threatcode.models.threat import Severity, ThreatSource
+from threatcode.models.threat import Severity, Threat, ThreatSource
 
 HEAD = ("LOCATION", "ATT&CK", "STRIDE")
 EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples"
@@ -162,6 +163,60 @@ class TestTheLineUnderTheTitle:
     def test_a_category_is_not_broken_between_its_words_when_the_columns_flow(self) -> None:
         text = format_text(analysis_of(*threats_with_meta()), RenderOptions(width=44))
         assert not re.search(r"Info\s*\n\s*disclosure", text)
+
+
+class TestALocationAndItsLineNumber:
+    """A file and its line number are one name: a narrow table never puts them on two lines."""
+
+    def one(self, file: str, line: int, width: int, *, others: tuple[str, ...] = ()) -> list[str]:
+        threats = [
+            make_threat(1, file=file, line=line, mitre_techniques=["T1190"], stride="tampering"),
+            *(
+                make_threat(i, file=name, line=1, mitre_techniques=["T1190"], stride="tampering")
+                for i, name in enumerate(others, start=2)
+            ),
+        ]
+        text = format_text(analysis_of(*threats), RenderOptions(width=width))
+        assert all(len(line) <= width for line in text.splitlines())
+        return next(b for b in blocks(text) if "R1" in b[0])
+
+    def test_a_location_one_character_too_wide_for_its_column_flows_instead_of_being_cut(
+        self,
+    ) -> None:
+        # 21 characters in a column that would have been 20 wide: ``0000000000000000000:`` / ``1``
+        file = "0" * 19
+        rows = build_rows([make_threat(1, file=file, line=1, mitre_techniques=["T1190"])], {}, None)
+        assert not layout_of(rows, 49).aligned
+        meta = self.one(file, 1, 49)[-1]
+        assert meta.split() == [f"{file}:1", "T1190", "Tampering"]
+
+    def test_a_long_name_without_a_slash_stays_whole_at_every_width_where_the_line_has_room(
+        self,
+    ) -> None:
+        file = "0" * 19
+        for width in range(49, 80):
+            meta = self.one(file, 1, width)[-1]
+            assert meta.split()[0] == f"{file}:1", width
+
+    def test_a_deep_path_wraps_after_its_slashes_and_the_file_keeps_its_line(self) -> None:
+        deep = "modules/networking/security_groups/internal/rules/main.tf"
+        block = self.one(deep, 120, 70, others=("a.tf",))
+        pieces = [line.strip().split("  ")[0] for line in block[2:]]
+        assert "".join(pieces) == f"{deep}:120"
+        assert all(piece.endswith("/") for piece in pieces[:-1])
+        assert pieces == ["modules/networking/security_groups/", "internal/rules/main.tf:120"]
+
+    def test_a_file_name_is_not_cut_at_a_dot_when_the_slash_before_it_fits(self) -> None:
+        block = self.one("src/app/handler.py", 12, 49, others=("a.tf",))
+        pieces = [line.strip().split("  ")[0] for line in block[2:]]
+        assert pieces == ["src/app/", "handler.py:12"]
+
+    def test_when_the_columns_flow_a_name_too_long_for_the_line_keeps_its_number_attached(
+        self,
+    ) -> None:
+        meta = self.one("a" * 25, 12345, 40)[2:]
+        assert [line.strip().split("  ")[0] for line in meta[:2]] == ["a" * 24, "a:12345"]
+        assert "T1190" in meta[1] and "Tampering" in meta[1]
 
 
 class TestTheTitle:
@@ -405,6 +460,36 @@ class TestEveryFieldIsMadeSafeForTheTerminal:
 
 NAMES = st.text(alphabet="abcdefgxyz_.-:/[]0123456789", min_size=1, max_size=70)
 WORDS = st.lists(st.text(alphabet="abcdefg", min_size=1, max_size=12), min_size=1, max_size=14)
+# The last word of every title in the property test below.
+# It ends the last line of the title and no other line of a block: the rule ids hold no ``N``
+# and everything else a block prints is lower case, a digit or a word that is not this one.
+TITLE_END = "END"
+
+
+def under_the_title(block: list[str]) -> list[str]:
+    """The lines of a finding after its title: where it is, its techniques and its category."""
+    last = max(i for i, line in enumerate(block) if line.split()[-1:] == [TITLE_END])
+    return block[last + 1 :]
+
+
+def cells_of(meta: list[str], layout: Layout) -> dict[str, list[str]]:
+    """The text each column of the line under the title holds, one entry per line, by position."""
+    out: dict[str, list[str]] = {}
+    offset = layout.indent
+    for head, width in zip(layout.heads, layout.widths, strict=True):
+        out[head] = [line[offset : offset + width].strip() for line in meta]
+        offset += width + GAP
+    return out
+
+
+def first_cells(meta: list[str], location: str) -> list[str]:
+    """The pieces of ``location`` in a table that flows: the first cell of each line it spans."""
+    pieces: list[str] = []
+    for line in meta:
+        if "".join(pieces) == location:
+            break
+        pieces.append(line.strip().split("  ")[0])
+    return pieces
 
 
 class TestAnyTableAtAnyWidth:
@@ -423,6 +508,35 @@ class TestAnyTableAtAnyWidth:
         ),
         st.integers(min_value=40, max_value=200),
     )
+    # Cases that failed once: a 21 character location 1 character too wide for its column (the
+    # table has to flow, not cut the name), a file name that ends in a slash, a location that
+    # does not fit a line of the flowing table, and a deep path in a column of its own
+    @pinned(
+        rows=[("0", "AA", ["a"], "0" * 19, 1, Severity.CRITICAL)],
+        width=49,
+    )
+    @pinned(
+        rows=[("0", "AA", ["a"], "0" * 17 + "/0", 1, Severity.CRITICAL)],
+        width=49,
+    )
+    @pinned(
+        rows=[("0", "AA", ["a"], "a" * 25, 12345, Severity.HIGH)],
+        width=40,
+    )
+    @pinned(
+        rows=[
+            (
+                "res",
+                "RULE",
+                ["a", "b"],
+                "terraform/environments/production/modules/main.tf",
+                1234,
+                Severity.LOW,
+            ),
+            ("res", "RULE", ["a"], "a.tf", 7, Severity.LOW),
+        ],
+        width=60,
+    )
     @settings(max_examples=120, deadline=None)
     def test_no_line_is_wider_than_the_terminal_and_every_name_is_kept_whole(
         self,
@@ -433,24 +547,51 @@ class TestAnyTableAtAnyWidth:
             make_threat(
                 i,
                 severity,
-                address=f"aws_x.{address}",
+                address=f"aws_x{i}.{address}",
                 rule_id=rule,
-                title=" ".join(words),
+                title=" ".join([*words, TITLE_END]),
                 file=file,
                 line=line,
                 mitre_techniques=["T1190"] if i % 2 else [],
             )
             for i, (address, rule, words, file, line, severity) in enumerate(rows, start=1)
         ]
-        text = format_text(analysis_of(*threats), RenderOptions(width=width))
+        analysis = analysis_of(*threats)
+        text = format_text(analysis, RenderOptions(width=width))
         assert max(len(line) for line in text.splitlines()) <= width
-        flat = re.sub(r"\s+", "", text)
-        for threat in threats:
-            assert threat.rule_id in flat
-            assert threat.resource_address in flat
-            assert f"{threat.location_file}:{threat.location_start_line}" in flat
         assert len(blocks(text)) == len(threats)
         assert all(line.strip() for line in section(text))
+        layout = layout_of(build_rows(analysis.report.threats, {}, analysis.graph), width)
+        for i, threat in enumerate(threats, start=1):
+            # Each finding is found by the number its resource starts with
+            block = next(b for b in blocks(text) if b[0].split()[1].startswith(f"aws_x{i}."))
+            flat = re.sub(r"\s+", "", "".join(block))
+            assert threat.rule_id in flat and threat.resource_address in flat
+            self.check_the_line_under_the_title(
+                under_the_title(block), layout, threat, with_technique=bool(i % 2)
+            )
+
+    def check_the_line_under_the_title(
+        self, meta: list[str], layout: Layout, threat: Threat, *, with_technique: bool
+    ) -> None:
+        tail = f":{threat.location_start_line}"
+        location = f"{threat.location_file}{tail}"
+        if layout.aligned:
+            by_column = cells_of(meta, layout)
+            pieces = [piece for piece in by_column[HEAD[0]] if piece]
+            # Cut after a slash and nowhere else: no directory and no file name is broken
+            assert "".join(pieces) == location
+            assert all(piece.endswith("/") for piece in pieces[:-1]), pieces
+            # The other columns stay where they are, on the first line of the location
+            assert by_column[HEAD[1]][0] == ("T1190" if with_technique else "")
+            assert by_column[HEAD[2]][0] == "Tampering"
+            assert not any(by_column[HEAD[1]][1:]) and not any(by_column[HEAD[2]][1:])
+        else:
+            pieces = first_cells(meta, location)
+            assert "".join(pieces) == location, (pieces, meta)
+            assert "Tampering" in re.sub(r"\s+", "", "".join(meta))
+        # Whichever way the table is laid out, the line number stays with its file name
+        assert pieces[-1].endswith(tail) and len(pieces[-1]) > len(tail), pieces
 
 
 EXAMPLES = [
