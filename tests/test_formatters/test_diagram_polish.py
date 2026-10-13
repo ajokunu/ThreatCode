@@ -1356,7 +1356,7 @@ def _sarif_path_order(sarif: str, targets_by_id: dict[str, str]) -> list[str]:
     return [
         targets_by_id[r["properties"]["attack_path_id"]]
         for r in results
-        if r["ruleId"] == "THREATCODE_ATTACK_PATH"
+        if r["ruleId"].split("/")[0] == "THREATCODE_ATTACK_PATH"
     ]
 
 
