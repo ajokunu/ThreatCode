@@ -33,8 +33,8 @@
 - **A gap whose message already begins with its file name is not given the file twice.**
   `[helm.fallback_render] Chart.yaml: Chart.yaml was rendered without helm` is now `[helm.fallback_render] Chart.yaml was rendered without helm`.
   A gap with a line keeps `file:line:` in front, because that is the part an editor jumps to.
-- **A table too narrow for its widest rule id and its attack paths no longer cuts the rule id.**
-  The paths take a line of their own, as the rule id is a key that is copied whole.
+- **A table too narrow for its widest rule id and its attack paths no longer wraps the rule id.**
+  The paths take a line of their own, because the rule id is a key that is copied whole.
 
 ### Internal
 - `formatters/terminal_table.py` holds the findings table (rows, layout, header and blocks), `formatters/terminal_verdict.py` the Helm-aware verdict, and `formatters/terminal_layout.py` gains `columns()` and the `TIE` that joins two words across a wrap.

@@ -146,7 +146,8 @@ def format_text(analysis: AnalysisResult, options: RenderOptions | None = None) 
     lines.append("")
     lines.extend(_coverage_lines(report, width))
     lines.extend(_llm_lines(report, width))
-    return "\n".join(lines) + "\n"
+    # A tie is a space by the time a line is made; one that got through would be a control byte
+    return "\n".join(lines).replace(TIE, " ") + "\n"
 
 
 # ── header and verdict ────────────────────────────────────────────────

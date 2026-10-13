@@ -40,8 +40,10 @@ Item = tuple[str, str]
 Cell = tuple[str, int, str]
 
 # Joins two words that must not be separated by a line break (``HIGH`` and the rule id after it).
-# It is a word joiner, which is not a space to ``str.split``, and it prints as a plain space.
-TIE = "\u2060"
+# It is a C1 control: ``terminal_safe`` prints one that comes from the scanned input as a visible
+# ``\x9c``, so no name can carry a tie, and ``str.split`` does not take it for a space.
+# Every function here prints it as a plain space, and it is never written to a terminal as itself.
+TIE = "\x9c"
 
 # Where an identifier may be broken: after one of these.
 _SOFT_BREAK_AFTER = ".:/_-[,"

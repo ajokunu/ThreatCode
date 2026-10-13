@@ -11,6 +11,7 @@ import pytest
 
 from tests.test_formatters.test_text import analysis_of, make_threat
 from threatcode.formatters import RenderOptions
+from threatcode.formatters.terminal_layout import TIE
 from threatcode.formatters.terminal_verdict import (
     incomplete_phrase,
     unanalysed_templates,
@@ -167,7 +168,7 @@ class TestWorstStaysTogether:
         text = format_text(
             analysis_of(make_threat(1), attack_paths=[self.path()]), RenderOptions(width=60)
         )
-        assert "\u2060" not in text
+        assert TIE not in text
 
 
 class TestInTheTextReport:

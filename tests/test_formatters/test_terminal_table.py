@@ -12,6 +12,7 @@ from hypothesis import strategies as st
 
 from tests.test_formatters.test_text import WIDTHS, analysis_of, example, make_threat
 from threatcode.formatters import RenderOptions
+from threatcode.formatters.terminal_layout import TIE
 from threatcode.formatters.terminal_table import build_rows, layout_of
 from threatcode.formatters.text import format_text
 from threatcode.models.attack_path import AttackHop, AttackPath
@@ -479,7 +480,7 @@ class TestTheBundledExamplesAreTidy:
         plain = format_text(example(name, ingest), RenderOptions(width=width))
         colored = format_text(example(name, ingest), RenderOptions(width=width, color=True))
         assert re.sub(r"\x1b\[[0-9;]*m", "", colored) == plain
-        assert "\u2060" not in colored
+        assert TIE not in colored
 
     @pytest.mark.parametrize(("name", "ingest"), EXAMPLES)
     @pytest.mark.parametrize("width", [80, 100, 120, 160])
@@ -494,3 +495,21 @@ class TestTheBundledExamplesAreTidy:
             meta = one[also - 1] if also else one[-1]
             assert re.search(r"\S+:\d+|T\d{4}|EoP|DoS|Tampering|Repudiation|Info|Spoofing", meta)
             assert meta.startswith(" " * 10) and not meta.startswith(" " * 11)
+
+
+class TestANameCannotForgeATie:
+    """The tie joins two words across a wrap; input must not be able to plant one."""
+
+    @pytest.mark.parametrize("width", [40, 60, 100])
+    def test_a_name_with_the_tie_character_prints_it_as_a_visible_escape(self, width: int) -> None:
+        threat = make_threat(1, address=f"mcp_server.a{TIE}b", rule_id=f"R{TIE}1")
+        text = format_text(analysis_of(threat), RenderOptions(width=width))
+        flat = re.sub(r"\s+", "", text)
+        assert "mcp_server.a\\x9cb" in flat and "R\\x9c1" in flat
+        assert TIE not in text
+
+    @pytest.mark.parametrize("width", [40, 100])
+    def test_a_word_joiner_in_a_name_is_kept_and_not_turned_into_a_space(self, width: int) -> None:
+        threat = make_threat(1, address="mcp_server.a\u2060b")
+        text = format_text(analysis_of(threat), RenderOptions(width=width))
+        assert "mcp_server.a\u2060b" in re.sub(r"[ \n]+", "", text)

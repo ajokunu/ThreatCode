@@ -8,6 +8,7 @@ import pytest
 
 from tests.test_formatters.test_text import analysis_of, entries, make_threat
 from threatcode.formatters import RenderOptions
+from threatcode.formatters.terminal_layout import TIE
 from threatcode.formatters.text import format_text
 from threatcode.models.analysis import AnalysisResult
 from threatcode.models.attack_path import AttackHop, AttackPath
@@ -264,7 +265,7 @@ class TestASeverityStaysWithItsRule:
 
     def test_the_tie_never_reaches_the_screen(self) -> None:
         analysis = analysis_of(*self.threats(), attack_paths=[self.path()])
-        assert "\u2060" not in format_text(analysis, RenderOptions(width=60, color=True))
+        assert TIE not in format_text(analysis, RenderOptions(width=60, color=True))
 
 
 class TestWrappingAPath:
