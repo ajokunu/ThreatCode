@@ -88,6 +88,40 @@ class TestGapLines:
         assert "\\x1b[2J" in line.text()
 
 
+class TestAMessageThatNamesItsFile:
+    def test_a_message_that_begins_with_the_file_is_not_given_the_file_twice(self) -> None:
+        (line,) = gap_lines(
+            [gap(file="Chart.yaml", message="Chart.yaml was rendered without helm (no helm)")]
+        )
+        assert (
+            line.text()
+            == "[hcl.module_call_skipped] Chart.yaml was rendered without helm (no helm)"
+        )
+
+    def test_a_message_with_a_colon_after_the_file_counts_too(self) -> None:
+        (line,) = gap_lines([gap(file="a.tf", message="a.tf: unresolved")])
+        assert line.text() == "[hcl.module_call_skipped] a.tf: unresolved"
+
+    def test_a_gap_with_a_line_keeps_file_and_line_whatever_the_message_says(self) -> None:
+        (line,) = gap_lines([gap(file="a.tf", line=4, message="a.tf has a problem")])
+        assert line.text() == "[hcl.module_call_skipped] a.tf:4: a.tf has a problem"
+
+    def test_a_message_that_merely_contains_the_file_is_left_as_it_is(self) -> None:
+        (line,) = gap_lines([gap(file="a.tf", message="see a.tf for details")])
+        assert line.text() == "[hcl.module_call_skipped] a.tf: see a.tf for details"
+
+    def test_a_file_that_is_only_a_prefix_of_a_longer_name_is_not_mistaken_for_it(self) -> None:
+        (line,) = gap_lines([gap(file="a.tf", message="a.tfvars was not read")])
+        assert line.text() == "[hcl.module_call_skipped] a.tf: a.tfvars was not read"
+
+    def test_the_counted_line_of_a_noisy_file_is_unchanged(self) -> None:
+        gaps = [gap(file="a.tf", line=n, message=f"a.tf var {n}") for n in range(1, 10)]
+        (line,) = gap_lines(gaps)
+        assert line.text() == (
+            "[hcl.module_call_skipped] a.tf: 9 times, first at line 1: a.tf var 1"
+        )
+
+
 class TestGapSummary:
     def test_the_codes_are_counted_most_frequent_first(self) -> None:
         gaps = [gap(line=n) for n in range(4)] + [gap(code="helm.fallback_render", line=1)]

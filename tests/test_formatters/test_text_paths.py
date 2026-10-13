@@ -8,6 +8,7 @@ import pytest
 
 from tests.test_formatters.test_text import analysis_of, entries, make_threat
 from threatcode.formatters import RenderOptions
+from threatcode.formatters.terminal_layout import TIE
 from threatcode.formatters.text import format_text
 from threatcode.models.analysis import AnalysisResult
 from threatcode.models.attack_path import AttackHop, AttackPath
@@ -200,6 +201,71 @@ class TestAPathSaysWhyItExists:
         assert "plus 2 equivalent routes through other instances" in text
         none = format_text(webapp(alternatives=0), RenderOptions(width=200))
         assert "equivalent route" not in none
+
+
+class TestScoresPrintWithOneDecimal:
+    @pytest.mark.parametrize(
+        ("score", "shown"),
+        [(9.0, "score 9.0"), (9.2, "score 9.2"), (7.5, "score 7.5"), (10.0, "score 10.0")],
+    )
+    def test_a_score_always_has_one_decimal(self, score: float, shown: str) -> None:
+        block = path_block(format_text(webapp(score=score), RenderOptions(width=200)))
+        assert f", {shown};" in block[2]
+
+    def test_a_whole_score_does_not_print_next_to_a_fractional_one_in_another_form(self) -> None:
+        paths = [
+            webapp_path(id="a" * 12, score=9.0),
+            webapp_path(id="b" * 12, score=9.2, severity=Severity.HIGH),
+        ]
+        text = format_text(analysis_of(*webapp_threats(), attack_paths=paths))
+        scores = re.findall(r"score (\S+?);", text)
+        assert sorted(scores) == ["9.0", "9.2"]
+        assert not re.search(r"score \d+;", text)
+
+    def test_a_score_is_rounded_to_the_decimal_not_cut(self) -> None:
+        block = path_block(format_text(webapp(score=7.46), RenderOptions(width=200)))
+        assert "score 7.5;" in block[2]
+
+    def test_a_path_with_no_score_says_nothing_about_one(self) -> None:
+        block = path_block(format_text(webapp(score=0), RenderOptions(width=200)))
+        assert "score" not in block[2]
+
+
+class TestASeverityStaysWithItsRule:
+    def threats(self) -> list[Threat]:
+        return [
+            make_threat(1, Severity.CRITICAL, rule_id="MCP_SECRET_IN_CONFIG"),
+            make_threat(2, Severity.HIGH, rule_id="MCP_PLAINTEXT_TRANSPORT"),
+        ]
+
+    def path(self) -> AttackPath:
+        hops = [
+            AttackHop(
+                node_id="mcp_server.team-tools",
+                zone="internet",
+                edge_type_to_next="network_flow",
+                enabled_by=["t1", "t2"],
+            ),
+            AttackHop(node_id="mcp_server.filesystem", zone="data"),
+        ]
+        return webapp_path(hops=hops, target="mcp_server.filesystem", alternatives=0)
+
+    @pytest.mark.parametrize("width", [40, 50, 60, 70, 80, 90, 100])
+    def test_the_severity_word_is_never_alone_at_the_end_of_a_line(self, width: int) -> None:
+        analysis = analysis_of(*self.threats(), attack_paths=[self.path()])
+        block = path_block(format_text(analysis, RenderOptions(width=width)))
+        for line in block:
+            assert not re.search(r"\b(CRITICAL|HIGH|MEDIUM|LOW|INFO)[,;.]?$", line.rstrip()), line
+
+    def test_the_worst_finding_is_named_with_its_severity_on_one_line(self) -> None:
+        analysis = analysis_of(*self.threats(), attack_paths=[self.path()])
+        for width in (40, 60, 80, 100):
+            block = path_block(format_text(analysis, RenderOptions(width=width)))
+            assert any("CRITICAL MCP_SECRET_IN_CONFIG" in line for line in block), width
+
+    def test_the_tie_never_reaches_the_screen(self) -> None:
+        analysis = analysis_of(*self.threats(), attack_paths=[self.path()])
+        assert TIE not in format_text(analysis, RenderOptions(width=60, color=True))
 
 
 class TestWrappingAPath:
