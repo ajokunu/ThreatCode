@@ -313,7 +313,7 @@ class TestSourceLines:
     def test_the_source_location_is_the_file_without_a_line_suffix(self) -> None:
         path = MCP_FIXTURES / "vulnerable" / ".mcp.json"
         parsed = detect_and_parse(path)
-        assert {r.source_location for r in parsed.resources} == {str(path)}
+        assert {r.source_location for r in parsed.resources} == {path.as_posix()}
 
     def test_a_key_repeated_in_other_scopes_gets_its_own_line(self, tmp_path: Path) -> None:
         text = (MCP_FIXTURES / "claude_json_collision" / ".claude.json").read_text()
@@ -360,7 +360,7 @@ class TestUnknownShapes:
         path = MCP_FIXTURES / "unknown_shape" / ".mcp.json"
         parsed = detect_and_parse(path)
         warning = next(d for d in parsed.diagnostics if d.code == "mcp.unknown_entry")
-        assert warning.file == str(path)
+        assert warning.file == path.as_posix()
         assert warning.line == 3
 
     def test_known_shapes_raise_no_unknown_entry_warning(self) -> None:

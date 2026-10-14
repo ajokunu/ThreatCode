@@ -233,7 +233,7 @@ class TestFallbackRender:
 
     def test_the_output_names_the_chart_as_its_source(self) -> None:
         output = fallback(SCAFFOLD)
-        assert output.source_path == str(SCAFFOLD / "Chart.yaml")
+        assert output.source_path == (SCAFFOLD / "Chart.yaml").as_posix()
         assert output.format_type == "helm"
 
 
@@ -734,10 +734,11 @@ class TestWithHelm:
     def test_each_document_is_attributed_to_its_template_with_a_line(self, helm_dir: Path) -> None:
         by_type = {r.resource_type: r for r in parse_chart(SCAFFOLD).resources}
         deployment = by_type["kubernetes_deployment"]
-        assert deployment.source_location == str(SCAFFOLD / "templates" / "deployment.yaml")
+        assert deployment.source_location == (SCAFFOLD / "templates" / "deployment.yaml").as_posix()
         assert deployment.start_line == 1  # where the document starts in the template
-        assert by_type["kubernetes_service"].source_location == str(
-            SCAFFOLD / "templates" / "service.yaml"
+        assert (
+            by_type["kubernetes_service"].source_location
+            == (SCAFFOLD / "templates" / "service.yaml").as_posix()
         )
         assert by_type["kubernetes_service_account"].start_line == 2
 
@@ -751,7 +752,7 @@ class TestWithHelm:
         script = "printf 'apiVersion: v1\\nkind: ConfigMap\\nmetadata:\\n  name: bare\\n'\n"
         put_on_path(monkeypatch, fake_helm(tmp_path / "bin", script))
         (resource,) = parse_chart(TEST_CHART).resources
-        assert resource.source_location == str(TEST_CHART / "Chart.yaml")
+        assert resource.source_location == (TEST_CHART / "Chart.yaml").as_posix()
         assert resource.start_line is None
 
     def test_helm_test_hooks_in_the_output_are_dropped(

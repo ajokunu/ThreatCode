@@ -76,8 +76,8 @@ class TestParseText:
         from_text = TerraformHCLParser().parse_text(text, source_path=str(path))
         from_file = TerraformHCLParser().parse_file(path)
         assert [r.address for r in from_text.resources] == [r.address for r in from_file.resources]
-        assert from_text.source_path == from_file.source_path == str(path)
-        assert {r.source_location for r in from_text.resources} == {str(path)}
+        assert from_text.source_path == from_file.source_path == path.as_posix()
+        assert {r.source_location for r in from_text.resources} == {path.as_posix()}
 
     def test_file_is_read_once_through_the_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         reads: list[str] = []

@@ -1098,7 +1098,7 @@ class TestSourceSpans:
 
     def test_the_location_is_the_plan_file(self) -> None:
         path = real_shape("terraform/plan/two_vpcs.plan.json")
-        assert {r.source_location for r in detect_and_parse(path).resources} == {str(path)}
+        assert {r.source_location for r in detect_and_parse(path).resources} == {path.as_posix()}
 
     def test_a_resource_of_a_child_module_has_its_own_line(self) -> None:
         path = real_shape("terraform/plan/modules.plan.json")

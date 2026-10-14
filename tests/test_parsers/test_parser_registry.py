@@ -687,7 +687,7 @@ class TestTerraformDirectory:
         module = SHAPES / "tf_module"
         result = detect_and_parse(module)
         assert result.format_type == "terraform_hcl"
-        assert result.source_path == str(module)
+        assert result.source_path == module.as_posix()
         assert [r.address for r in result.resources] == [
             "aws_s3_bucket.logs",
             "aws_instance.web",

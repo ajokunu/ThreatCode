@@ -113,7 +113,9 @@ class TestCloudFormationParser:
 
     def test_source_location_is_the_file(self) -> None:
         parsed = detect_and_parse(CFN / "insecure_stack.yml")
-        assert {r.source_location for r in parsed.resources} == {str(CFN / "insecure_stack.yml")}
+        assert {r.source_location for r in parsed.resources} == {
+            (CFN / "insecure_stack.yml").as_posix()
+        }
 
     def test_meta_records_the_cloudformation_type(self) -> None:
         parsed = detect_and_parse(CFN / "insecure_stack.yml")
@@ -487,7 +489,7 @@ class TestDiagnostics:
     def test_diagnostics_carry_the_file_and_the_resource_line(self) -> None:
         output = detect_and_parse(CFN / "sam_function.yaml")
         note = next(d for d in output.diagnostics if d.code == "cfn.sam_policy_template")
-        assert note.file == str(CFN / "sam_function.yaml") and note.line == 27
+        assert note.file == (CFN / "sam_function.yaml").as_posix() and note.line == 27
 
 
 class TestHeadersAndDates:
@@ -584,7 +586,7 @@ class TestInputForms:
 
     def test_parse_file(self) -> None:
         output = CloudFormationParser().parse_file(CFN / "minimal.yaml")
-        assert output.source_path == str(CFN / "minimal.yaml")
+        assert output.source_path == (CFN / "minimal.yaml").as_posix()
 
     def test_a_json_template_is_read_like_its_yaml_twin(self) -> None:
         yaml_output = detect_and_parse(CFN / "graph_stack.yml")
