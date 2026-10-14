@@ -921,8 +921,9 @@ UNREFERENCED_ALLOWED: dict[str, str] = {
 
 # Families that are looked up by name at run time (``getattr(self, "_do_" + name)``).
 _DISPATCHED_PREFIXES = ("f_", "_do_")
-# Methods a library calls on a subclass of its class: yaml.Dumper.ignore_aliases.
-_LIBRARY_HOOKS = frozenset({"ignore_aliases"})
+# Methods a library calls on a subclass of its class: yaml.Dumper.ignore_aliases, and the
+# http_error_<status> methods urllib finds by name on a handler.
+_LIBRARY_HOOKS = frozenset({"ignore_aliases", "http_error_308"})
 
 
 def unreferenced_definitions(sources: dict[str, str], other_text: str = "") -> list[str]:
