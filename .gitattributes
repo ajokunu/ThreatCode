@@ -1,0 +1,4 @@
+# Text files are checked out with LF on every platform. A Windows checkout with core.autocrlf
+# would otherwise turn the fixtures, the golden recordings and the documentation into CRLF files,
+# which moves byte offsets and makes the tests that compare text differ from the Linux run.
+* text=auto eol=lf
