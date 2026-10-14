@@ -1431,7 +1431,7 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if args.write:
         for path in differing:
-            path.write_text(desired[path], encoding="utf-8")
+            path.write_text(desired[path], encoding="utf-8", newline="\n")
             print(f"wrote {path.relative_to(REPO_ROOT)}")
         if not differing:
             print("nothing to write: every page is current")

@@ -384,6 +384,13 @@ class TestDryRunRequest:
         assert str(target) in captured.err
         assert captured.out == ""
 
+    def test_the_request_file_has_unix_line_endings_on_every_platform(self, tmp_path: Path) -> None:
+        target = tmp_path / "payload.json"
+        DryRunLLMClient(output=str(target)).analyze("PROMPT")
+        raw = target.read_bytes()
+        assert raw.endswith(b"}\n")
+        assert b"\r" not in raw
+
     def test_an_unwritable_destination_is_an_llm_error(self, tmp_path: Path) -> None:
         with pytest.raises(LLMError, match="Cannot write the dry-run request"):
             DryRunLLMClient(output=str(tmp_path / "missing" / "p.json")).analyze("x")

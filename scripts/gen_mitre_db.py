@@ -347,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(source, encoding="utf-8")
+    out_path.write_text(source, encoding="utf-8", newline="\n")
     print(f"wrote {out_path} (ATT&CK v{version})")
     return 0
 

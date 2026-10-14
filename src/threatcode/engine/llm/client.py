@@ -574,7 +574,7 @@ class DryRunLLMClient(BaseLLMClient):
         text = json.dumps(request, indent=2, ensure_ascii=False) + "\n"
         if self._output:
             try:
-                Path(self._output).write_text(text, encoding="utf-8")
+                Path(self._output).write_text(text, encoding="utf-8", newline="\n")
             except OSError as e:
                 raise LLMError(f"Cannot write the dry-run request to {self._output}: {e}") from e
             where = f"The exact request was written to {self._output}; none was sent\n"

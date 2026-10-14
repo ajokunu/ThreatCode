@@ -690,6 +690,11 @@ class TestWriteTextFile:
         assert write_text_file(target, "hello") == target
         assert target.read_text(encoding="utf-8") == "hello"
 
+    def test_line_endings_are_written_as_they_are_on_every_platform(self, tmp_path: Path) -> None:
+        target = tmp_path / "out.txt"
+        write_text_file(target, "one\ntwo\r\nthree\n")
+        assert target.read_bytes() == b"one\ntwo\r\nthree\n"
+
     def test_a_directory_is_rejected_with_one_line(self, tmp_path: Path) -> None:
         with pytest.raises(ThreatCodeError) as info:
             write_text_file(tmp_path, "x")

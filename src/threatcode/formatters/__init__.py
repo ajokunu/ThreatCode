@@ -418,7 +418,8 @@ def write_text_file(path: str | os.PathLike[str], text: str) -> Path:
         if target.is_dir():
             raise ThreatCodeError(f"cannot write {target}: it is a directory, not a file")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
+        # "\n" as it is, never the line ending of the platform: a report has the same bytes anywhere
+        target.write_text(text, encoding="utf-8", newline="\n")
     except OSError as exc:
         raise ThreatCodeError(f"cannot write {target}: {exc.strerror or exc}") from exc
     return target
