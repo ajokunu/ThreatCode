@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from types import ModuleType
@@ -107,6 +107,7 @@ def _sarif(analysis: AnalysisResult, options: RenderOptions) -> str:
         source_root=analysis.root,
         repo_root=options.repo_root,
         ingest_sources=analysis.ingest_sources,
+        other_drives=analysis.other_drives,
     )
 
 
@@ -125,6 +126,7 @@ def _bitbucket(analysis: AnalysisResult, options: RenderOptions) -> str:
         source_root=analysis.root,
         repo_root=options.repo_root,
         fail_on=options.fail_on,
+        other_drives=analysis.other_drives,
     )
 
 
@@ -337,8 +339,10 @@ class RepoPaths:
     The repository root is, in order: ``repo_root`` when given, the git top level above the scan
     root, the current directory when the scan root is inside it, and else the scan root itself,
     in which case ``anchored`` is False and the paths are only relative to the scan.
-    A file that is outside the repository root cannot be placed; it is named by its file name
-    alone (never with ``..``) and counted in ``outside``.
+    A file that is outside the repository root cannot be placed and is counted in ``outside``.
+    It is named by its file name alone (never with ``..``), except a file on another Windows drive
+    (``other_drives`` lists the first segments of their names, such as ``D``), which keeps the
+    name the scan gave it and is not put below the scan root.
     ``source_root`` is None for a report built by hand, whose paths are relative to the current
     directory.
     """
@@ -350,23 +354,26 @@ class RepoPaths:
     # The path rules the paths follow: those of this machine, unless a test checks another's
     pathmod: ModuleType = field(default=os.path, repr=False, compare=False)
     _cache: dict[str, str] = field(default_factory=dict, repr=False)
+    other_drives: tuple[str, ...] = ()
 
     @classmethod
     def resolve(
         cls,
         source_root: str | os.PathLike[str] | None = None,
         repo_root: str | os.PathLike[str] | None = None,
+        other_drives: Iterable[str] = (),
     ) -> RepoPaths:
         cwd = os.path.realpath(os.getcwd())
         scan = os.path.realpath(source_root) if source_root is not None else cwd
+        drives = tuple(other_drives)
         if repo_root:
-            return cls(scan, os.path.realpath(repo_root), anchored=True)
+            return cls(scan, os.path.realpath(repo_root), anchored=True, other_drives=drives)
         git = find_repo_root(scan)
         if git is not None:
-            return cls(scan, str(git), anchored=True)
+            return cls(scan, str(git), anchored=True, other_drives=drives)
         if _inside(scan, cwd):
-            return cls(scan, cwd, anchored=True)
-        return cls(scan, scan, anchored=False)
+            return cls(scan, cwd, anchored=True, other_drives=drives)
+        return cls(scan, scan, anchored=False, other_drives=drives)
 
     def locate(self, path: str) -> str:
         """``path`` as a POSIX path relative to the repository root; ``.`` for the root itself."""
@@ -382,6 +389,10 @@ class RepoPaths:
     def _locate(self, path: str) -> str:
         mod = self.pathmod
         text = path.replace("\\", "/")
+        if any(text == name or text.startswith(f"{name}/") for name in self.other_drives):
+            # The scan named a file on another drive; it is not below the scan root
+            self.outside.add(path)
+            return _clamp(text) or "."
         drive_path = bool(WINDOWS_DRIVE_PATH.match(text))
         if drive_path and not is_windows_flavor(mod):
             # A path from a report made on Windows is not a place on this machine

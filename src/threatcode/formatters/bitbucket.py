@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from threatcode.formatters import RepoPaths
@@ -79,6 +80,7 @@ def format_bitbucket(
     source_root: str | os.PathLike[str] | None = None,
     repo_root: str | os.PathLike[str] | None = None,
     fail_on: str | None = None,
+    other_drives: Iterable[str] = (),
     indent: int = 2,
 ) -> str:
     """Format as Bitbucket Code Insights JSON (report, annotations and bulk batches).
@@ -87,8 +89,10 @@ def format_bitbucket(
     directory when None) and ``repo_root`` the repository root they are written relative to
     (default: the git top level above ``source_root``).
     ``fail_on`` is the scan gate (a severity name or ``none``) that ``report.result`` follows.
+    ``other_drives`` (``AnalysisResult.other_drives``) names the files on other Windows drives,
+    which are outside the repository too.
     """
-    paths = RepoPaths.resolve(source_root, repo_root)
+    paths = RepoPaths.resolve(source_root, repo_root, other_drives)
     annotations = _annotations(report, graph, paths)
     kept = annotations[:MAX_ANNOTATIONS]
     omitted = len(annotations) - len(kept)
@@ -131,8 +135,7 @@ def _build_report(
     )
     if outside:
         details += (
-            f" {plural(outside, 'file')} outside the repository root cannot be placed in a diff, "
-            "so their annotations name the file only."
+            f" {plural(outside, 'file')} outside the repository root cannot be placed in a diff."
         )
     if omitted:
         details += (

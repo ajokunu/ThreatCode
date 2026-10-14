@@ -921,7 +921,13 @@ def _finish(
     gate_findings, gate_paths = gating(report.threats, report.attack_paths, settings.fail_on)
     _apply_display_filter(report, settings.min_severity, coverage)
     report.coverage = coverage
-    analysis = AnalysisResult(graph=graph, report=report, root=root, ingest_sources=sources)
+    analysis = AnalysisResult(
+        graph=graph,
+        report=report,
+        root=root,
+        ingest_sources=sources,
+        other_drives=discovery.paths.other_drives,
+    )
     return ScanResult(
         analysis=analysis,
         exit_code=exit_code,

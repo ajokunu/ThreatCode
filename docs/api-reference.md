@@ -120,7 +120,7 @@ svg = result.to_svg()
 assert svg.startswith("<svg")
 ```
 
-`AnalysisResult` has `.graph` (the `InfraGraph`), `.report` (a `ThreatReport`), `.attack_paths`, `.root` (the scan root that report paths are relative to) and `.ingest_sources`.
+`AnalysisResult` has `.graph` (the `InfraGraph`), `.report` (a `ThreatReport`), `.attack_paths`, `.root` (the scan root that report paths are relative to), `.ingest_sources` and `.other_drives` (on Windows, the first segments of the names of files on drives other than the root's, such as `D`, which SARIF and Bitbucket treat as outside the repository).
 
 ## `run_scan()`
 

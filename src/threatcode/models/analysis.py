@@ -20,13 +20,17 @@ class AnalysisResult:
     are relative to, when the scan knows it; formats that must name files from the repository
     root, such as SARIF, use it.
     ``ingest_sources`` has one mapping per ingested scanner result (tool, version, file, counts).
-    Both are optional, so a result built by hand renders as before.
+    ``other_drives`` lists the first segments (``D``) of the names of files on a Windows drive
+    other than the root's; such a file is not under the root, so SARIF and Bitbucket say they
+    cannot place it.
+    All three are optional, so a result built by hand renders as before.
     """
 
     graph: InfraGraph
     report: ThreatReport
     root: Path | None = None
     ingest_sources: list[dict[str, Any]] = field(default_factory=list)
+    other_drives: tuple[str, ...] = ()
 
     @property
     def attack_paths(self) -> list[AttackPath]:

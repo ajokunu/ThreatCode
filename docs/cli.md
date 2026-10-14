@@ -194,7 +194,7 @@ The fingerprint leaves out property values, so editing a resource does not chang
   Paths are relative to the top level of the git checkout that holds the scan root, wherever the scan was started: the same scan from the repository root, from a subdirectory and from the scanned directory writes `examples/aws-webapp/tfplan.json`, which is what GitHub resolves.
   The checkout is found by a `.git` directory or file above the scan root.
   For a checkout with no `.git` (an exported tarball, a CI workspace that was copied), `--source-root DIR` names the repository root.
-  Two notifications say when GitHub cannot place the alerts: `sarif.paths.unanchored` (the scanned path is in no checkout and not below the current directory, so paths are relative to the scanned path) and `sarif.paths.outside_repository` (some files are outside the repository root and are named by file name only, never with `..`).
+  Two notifications say when GitHub cannot place the alerts: `sarif.paths.unanchored` (the scanned path is in no checkout and not below the current directory, so paths are relative to the scanned path) and `sarif.paths.outside_repository` (some files are outside the repository root, so they are named by file name only, never with `..`, except a file on another Windows drive, which keeps the name the scan gave it).
 - **SARIF rule ids** are stable.
   A rule finding uses its rule id, a secret its `SECRET_*` id, a scanner finding `<tool>:<id>` (`trivy:CVE-2022-37434`), and a trust boundary crossing one rule per zone pair (`THREATCODE_BOUNDARY_DMZ_PRIVATE`), where the text and JSON reports name the kind of flow (`BOUNDARY_GENERIC_FLOW`, `BOUNDARY_UNENCRYPTED_FLOW`).
   GitHub ranks an alert by the `security-severity` of its rule, so a rule has one severity.

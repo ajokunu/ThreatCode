@@ -80,6 +80,8 @@ def relative_posix(path: str, start: str, *, pathmod: ModuleType = os.path) -> s
     """``path`` relative to ``start`` as a POSIX path, ``..`` segments included.
 
     Returns None when there is no relative form: the two are on different drives.
+    Windows raises for that too, but the check is explicit so that every helper here agrees on
+    what a drive is.
     """
     if drive_of(pathmod.abspath(path), pathmod=pathmod) != drive_of(
         pathmod.abspath(start), pathmod=pathmod
@@ -142,6 +144,8 @@ class ReportPaths:
     wherever it is checked out, as under the root.
     A path on a drive that no input is on, or above the anchor of its drive (a local module in a
     parent directory), is named from the top of its drive: ``D/shared/modules/net/main.tf``.
+    ``other_drives`` lists the names that start such a file, so a format that places files in a
+    repository can tell they are not in it.
     ``pathmod`` names the path rules when they are not the ones of this machine.
     """
 
@@ -157,6 +161,7 @@ class ReportPaths:
         self.anchors: dict[str, str] = {
             drive_of(os.fspath(anchor), pathmod=pathmod): os.fspath(anchor) for anchor in anchors
         }
+        self._labels: set[str] = {drive_label(drive) for drive in self.anchors}
 
     def posix(self, path: str | os.PathLike[str]) -> str:
         """``path`` as the report names it."""
@@ -177,20 +182,28 @@ class ReportPaths:
             )
         return relative is not None and inside(relative)
 
+    @property
+    def other_drives(self) -> tuple[str, ...]:
+        """The first segments of the names of files on other drives (``D``), sorted."""
+        return tuple(sorted(self._labels))
+
     @cached_property
     def resolved(self) -> ReportPaths:
         """The same root and anchors with their symbolic links resolved."""
-        return ReportPaths(
+        found = ReportPaths(
             self.pathmod.realpath(self.root),
             (self.pathmod.realpath(anchor) for anchor in self.anchors.values()),
             pathmod=self.pathmod,
         )
+        found._labels = self._labels  # the names it gives are names of this object too
+        return found
 
     def _drive(self, path: str) -> str:
         return drive_of(str(self.pathmod.abspath(path)), pathmod=self.pathmod)
 
     def _on_another_drive(self, absolute: str) -> str:
         label = drive_label(self._drive(absolute))
+        self._labels.add(label)
         anchor = self.anchors.get(self._drive(absolute))
         if anchor is not None:
             relative = relative_posix(absolute, anchor, pathmod=self.pathmod)

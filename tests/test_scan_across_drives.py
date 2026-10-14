@@ -203,6 +203,31 @@ class TestTheNamesAreStable:
         }
         assert uris == {"main.tf", "D/main.tf"}
 
+    def test_sarif_says_the_other_drive_is_outside_the_repository_below_a_subdirectory(
+        self, drives: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        here, elsewhere = drives
+        (here / ".git").mkdir()
+        infra = here / "infra"
+        write(infra, "main.tf", BUCKET.format(name="one"))
+        write(elsewhere, "main.tf", BUCKET.format(name="two"))
+        monkeypatch.chdir(infra)
+        result = scan(infra, elsewhere)
+        assert result.analysis.other_drives == ("D",)
+        sarif = json.loads(render("sarif", result.analysis))
+        run = sarif["runs"][0]
+        uris = {
+            item["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            for item in run["results"]
+        }
+        assert uris == {"infra/main.tf", "D/main.tf"}
+        codes = {n["descriptor"]["id"] for n in run["invocations"][0]["toolExecutionNotifications"]}
+        assert "sarif.paths.outside_repository" in codes
+
+    def test_a_scan_of_one_drive_has_no_other_drive(self, tmp_path: Path) -> None:
+        write(tmp_path, "main.tf", BUCKET.format(name="one"))
+        assert scan(tmp_path).analysis.other_drives == ()
+
     def test_bitbucket_keeps_two_files_of_one_name_apart(self, drives: tuple[Path, Path]) -> None:
         here, elsewhere = drives
         write(here, "main.tf", BUCKET.format(name="same"))

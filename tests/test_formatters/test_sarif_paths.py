@@ -173,6 +173,56 @@ class TestRepoPaths:
         assert RepoPaths.resolve().locate("prod/main.tf") == "infra/prod/main.tf"
 
 
+class TestAFileOnAnotherDrive:
+    """The scan names it ``D/net/main.tf``; it keeps that name, not put below the scan root."""
+
+    def paths(self, tmp_path: Path) -> RepoPaths:
+        return RepoPaths.resolve(make_repo(tmp_path / "repo"), other_drives=("D", "HOST/SHARE"))
+
+    def test_the_file_keeps_its_name_and_is_counted_as_outside(self, tmp_path: Path) -> None:
+        paths = self.paths(tmp_path)
+        assert paths.locate("D/net/main.tf") == "D/net/main.tf"
+        assert paths.locate("HOST/SHARE/x.tf") == "HOST/SHARE/x.tf"
+        assert paths.locate("D") == "D"
+        assert paths.outside == {"D/net/main.tf", "HOST/SHARE/x.tf", "D"}
+
+    def test_a_name_that_only_begins_like_a_drive_is_a_file_of_the_repository(
+        self, tmp_path: Path
+    ) -> None:
+        paths = self.paths(tmp_path)
+        assert paths.locate("Data/main.tf") == "infra/prod/Data/main.tf"
+        assert paths.locate("D.tf") == "infra/prod/D.tf"
+        assert not paths.outside
+
+    def test_without_drives_a_directory_named_d_is_a_directory_of_the_repository(
+        self, tmp_path: Path
+    ) -> None:
+        paths = RepoPaths.resolve(make_repo(tmp_path / "repo"))
+        assert paths.locate("D/main.tf") == "infra/prod/D/main.tf"
+        assert not paths.outside
+
+    def test_the_uri_is_the_name_percent_encoded(self, tmp_path: Path) -> None:
+        assert self.paths(tmp_path).uri("D/a b/main.tf") == "D/a%20b/main.tf"
+
+    def test_sarif_reports_the_file_as_outside_the_repository_and_keeps_its_directory(
+        self, tmp_path: Path
+    ) -> None:
+        prod = make_repo(tmp_path / "repo")
+        report = ThreatReport(threats=[threat("main.tf"), threat("D/net/main.tf")])
+        text = format_sarif(report, source_root=prod, other_drives=("D",))
+        assert sarif_uris(text) == {"infra/prod/main.tf", "D/net/main.tf"}
+        assert "sarif.paths.outside_repository" in notification_codes(text)
+
+    def test_bitbucket_reports_the_file_as_outside_the_repository_and_keeps_its_directory(
+        self, tmp_path: Path
+    ) -> None:
+        prod = make_repo(tmp_path / "repo")
+        report = ThreatReport(threats=[threat("main.tf"), threat("D/net/main.tf")])
+        output = json.loads(format_bitbucket(report, source_root=prod, other_drives=("D",)))
+        assert {a["path"] for a in output["annotations"]} == {"infra/prod/main.tf", "D/net/main.tf"}
+        assert "1 file outside the repository root" in output["report"]["details"]
+
+
 class TestSarifFromAnywhere:
     @pytest.mark.parametrize("git_file", [False, True])
     def test_the_uri_is_the_same_from_every_directory(

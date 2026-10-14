@@ -253,6 +253,22 @@ class TestReportPaths:
         assert not paths.holds("D:\\a\\modules\\main.tf")
         assert not paths.holds("E:\\main.tf")
 
+    def test_the_other_drives_are_the_drives_of_the_anchors_and_of_every_name_given(self) -> None:
+        paths = self.paths("D:\\a\\infra", "\\\\host\\share\\mods")
+        assert paths.other_drives == ("D", "HOST/SHARE")
+        paths.posix("E:\\x\\main.tf")
+        assert paths.other_drives == ("D", "E", "HOST/SHARE")
+
+    def test_a_root_alone_has_no_other_drive(self) -> None:
+        paths = ReportPaths(self.ROOT, pathmod=ntpath)
+        paths.posix("C:\\work\\other\\main.tf")
+        assert paths.other_drives == ()
+
+    def test_a_name_given_by_the_resolved_paths_is_listed_on_the_paths_it_came_from(self) -> None:
+        paths = self.paths("D:\\a\\infra")
+        paths.resolved.posix("F:\\x\\main.tf")
+        assert "F" in paths.other_drives
+
     def test_a_path_may_be_a_path_object(self, tmp_path: pathlib.Path) -> None:
         assert ReportPaths(tmp_path).posix(tmp_path / "a" / "b.tf") == "a/b.tf"
         assert ReportPaths(tmp_path).holds(tmp_path / "a")

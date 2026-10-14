@@ -156,6 +156,7 @@ def format_sarif(
     source_root: str | os.PathLike[str] | None = None,
     repo_root: str | os.PathLike[str] | None = None,
     ingest_sources: Sequence[Mapping[str, Any]] = (),
+    other_drives: Iterable[str] = (),
     indent: int = 2,
 ) -> str:
     """Format a report as SARIF 2.1.0 JSON.
@@ -170,8 +171,10 @@ def format_sarif(
     ``ingest_sources`` (``AnalysisResult.ingest_sources``) become one notification each, and what
     suppressions, the baseline and ``--min-severity`` left out is counted in notifications, so a
     report that hides findings says so.
+    ``other_drives`` (``AnalysisResult.other_drives``) names the files on other Windows drives,
+    which are outside the repository too.
     """
-    paths = RepoPaths.resolve(source_root, repo_root)
+    paths = RepoPaths.resolve(source_root, repo_root, other_drives)
     sarif = _build_sarif(report, graph, paths, list(ingest_sources))
     return json.dumps(sarif, indent=indent, sort_keys=False)
 
@@ -902,8 +905,8 @@ def _path_notes(ctx: _Context, note: Callable[..., None]) -> None:
         note(
             "warning",
             "sarif.paths.outside_repository",
-            f"{count} file(s) are outside the repository root, so they are named by file name "
-            "only and GitHub cannot place their alerts.",
+            f"{count} file(s) are outside the repository root, "
+            "so GitHub cannot place their alerts.",
         )
 
 
