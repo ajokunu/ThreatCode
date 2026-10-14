@@ -60,6 +60,8 @@ class _RankOrdered:
 
 
 class Severity(_RankOrdered, str, Enum):
+    """How serious a threat is, from critical down to info."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -89,6 +91,8 @@ def hash_id(seed: str) -> str:
 
 @dataclass
 class Threat:
+    """One finding: what is wrong, where it is, and how to fix it."""
+
     id: str
     title: str
     description: str

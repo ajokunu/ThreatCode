@@ -483,19 +483,38 @@ def render_parsers(facts: Facts) -> str:
     return table(["Parser", "Priority", "File extensions"], rows)
 
 
+def _type_text(tp: Any) -> str:
+    """Spell a type the same way on every Python version.
+
+    ``str(Optional[X])`` is ``Optional[X]`` before 3.14 and ``X | None`` from 3.14, so the text
+    is built from the type's structure instead of from ``str``.
+    """
+    import types
+    import typing
+
+    if tp is type(None):
+        return "None"
+    origin = typing.get_origin(tp)
+    args = typing.get_args(tp)
+    if origin is typing.Union or origin is types.UnionType:
+        return " | ".join(_type_text(arg) for arg in args)
+    if origin is typing.Literal:
+        return "Literal[" + ", ".join(repr(arg) for arg in args) + "]"
+    if origin is not None:
+        base = getattr(origin, "__name__", str(origin))
+        return f"{base}[{', '.join(_type_text(arg) for arg in args)}]" if args else base
+    if isinstance(tp, type):
+        return tp.__name__
+    return str(tp).replace("typing.", "")
+
+
 def render_config_keys(facts: Facts) -> str:
     from pydantic import AliasChoices
 
     from threatcode.config import _SAFE_AUTO_FIELDS, LLMConfig, RedactionConfig, ThreatCodeConfig
 
     def annotation(model: Any, name: str) -> str:
-        raw = str(model.model_fields[name].annotation)
-        return (
-            raw.replace("typing.", "")
-            .replace("<class '", "")
-            .replace("'>", "")
-            .replace("typing.Literal", "Literal")
-        )
+        return _type_text(model.model_fields[name].annotation)
 
     def default(model: Any, name: str) -> str:
         field_info = model.model_fields[name]
@@ -578,8 +597,13 @@ def render_redaction(facts: Facts) -> str:
 
 
 def _api_summary(obj: Any) -> str:
-    doc = inspect.getdoc(obj) or ""
-    first = doc.split("\n\n", 1)[0].replace("\n", " ").strip()
+    # A class is described by its own docstring. inspect.getdoc would fall back to a base class
+    # or to what the standard library generates (a dataclass signature, "An enumeration." on
+    # Python 3.10), and that text differs between Python versions.
+    doc = obj.__dict__.get("__doc__") if inspect.isclass(obj) else obj.__doc__
+    if not doc:
+        raise SystemExit(f"error: public name {getattr(obj, '__name__', obj)!r} has no docstring")
+    first = inspect.cleandoc(doc).split("\n\n", 1)[0].replace("\n", " ").strip()
     return first
 
 

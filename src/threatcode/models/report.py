@@ -124,6 +124,8 @@ class Coverage:
 
 @dataclass
 class ThreatReport:
+    """The result of a scan: every threat, the attack paths and what was covered."""
+
     # Version of the report document contract, written to every report as schema_version.
     SCHEMA_VERSION: ClassVar[str] = "2"
 

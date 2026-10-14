@@ -37,9 +37,9 @@ A removed key (`no_llm`, `dry_run`) says what replaces it.
 <!-- gen:config-keys -->
 | Key | Type | Default | Read from an auto-discovered file |
 | --- | --- | --- | --- |
-| `min_severity` | Optional[Literal['critical', 'high', 'medium', 'low', 'info']] | unset | yes |
+| `min_severity` | Literal['critical', 'high', 'medium', 'low', 'info'] \| None | unset | yes |
 | `format` (was `output_format`) | str \| None | unset | yes |
-| `fail_on` | Optional[Literal['critical', 'high', 'medium', 'low', 'info', 'none']] | unset | no |
+| `fail_on` | Literal['critical', 'high', 'medium', 'low', 'info', 'none'] \| None | unset | no |
 | `rules` (was `extra_rule_paths`) | list[str] | none | no |
 | `max_nodes` | int \| None | unset | no |
 | `max_edges` | int \| None | unset | no |

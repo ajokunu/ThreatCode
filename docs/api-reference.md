@@ -18,10 +18,10 @@ Everything else is internal and can change between releases.
 | `RuleLoadError` | exception | Raised when a rule file cannot be loaded or is invalid. |
 | `ScanRequest` | class | Everything one scan needs: the paths and the resolved settings. |
 | `ScanResult` | class | The outcome of ``run_scan``. |
-| `Severity` | class | Orders members by ``rank``. |
-| `Threat` | class | Threat(id: 'str', title: 'str', description: 'str', stride_category: 'str', severity: 'Severity', source: 'ThreatSource', resource_type: 'str', resource_address: 'str', mitigation: 'str' = '', rule_id: 'str' = '', confidence: 'float' = 1.0, metadata: 'dict[str, Any]' = <factory>, mitre_techniques: 'list[str]' = <factory>, mitre_tactics: 'list[str]' = <factory>, location_file: 'str' = '', location_start_line: 'int \| None' = None, location_end_line: 'int \| None' = None, fingerprint: 'str' = '', evidence: 'str' = 'config', tool: 'str' = '', aliases: 'list[str]' = <factory>, target_address: 'str' = '', effective_severity: 'Severity \| None' = None, severity_reason: 'str' = '', path_ids: 'list[str]' = <factory>, root_cause: 'str' = '') |
+| `Severity` | class | How serious a threat is, from critical down to info. |
+| `Threat` | class | One finding: what is wrong, where it is, and how to fix it. |
 | `ThreatCodeError` | exception | Base exception for all ThreatCode errors. |
-| `ThreatReport` | class | ThreatReport(threats: 'list[Threat]' = <factory>, scanned_resources: 'int' = 0, input_file: 'str' = '', timestamp: 'str' = <factory>, version: 'str' = '', attack_paths: 'list[AttackPath]' = <factory>, llm: 'dict[str, Any] \| None' = None, rule_errors: 'list[dict[str, str]]' = <factory>, coverage: 'Coverage' = <factory>, input_paths: 'list[str]' = <factory>) |
+| `ThreatReport` | class | The result of a scan: every threat, the attack paths and what was covered. |
 | `UnsupportedFormatError` | exception | Raised when the input format is not recognized. |
 | `UsageError` | exception | Raised when the command line or a named input file is unusable. |
 | `__version__` | str | The installed version. |
