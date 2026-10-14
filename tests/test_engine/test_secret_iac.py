@@ -35,7 +35,7 @@ def _scan_tree(
 ) -> tuple[list[Threat], InfraGraph]:
     root = target if target.is_dir() else target.parent
     discovery = discover([str(target)], root=root)
-    _parse_units(discovery, root, _start_coverage(discovery), [])
+    _parse_units(discovery, _start_coverage(discovery), [])
     graph = InfraGraph.from_units([u.parsed for u in discovery.units if u.parsed is not None])
     return find_secrets(discovery.units, graph, config), graph
 

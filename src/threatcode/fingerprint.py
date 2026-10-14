@@ -8,7 +8,9 @@ A fingerprint is the first 16 hex characters of a SHA-256 over four parts:
    resources it connects);
 3. the resource address, or ``metadata['fingerprint_hint']`` when the producer sets one (the secret
    detectors use it so a moved secret keeps its identity);
-4. the root-relative POSIX path of the source file.
+4. the root-relative POSIX path of the source file (on Windows, a file on another drive than the
+   root is named by the drive and its place under the inputs on that drive, never by an
+   absolute path).
 
 Property values are not part of it, so editing a resource's settings does not change which finding
 it is, which is what makes baselines and ``diff`` useful.

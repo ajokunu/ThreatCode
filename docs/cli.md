@@ -127,7 +127,10 @@ Reports are reproducible.
 Findings are sorted by effective severity, then resource address, rule id and id.
 Every path in a report is POSIX and relative to the scan root, the common parent directory of the named paths, so the same tree gives byte-identical output wherever it is checked out.
 On Windows, paths on different drives have no common parent.
-The scan root is then the current directory, paths under it are relative to it, and a path on another drive is reported as it is, absolute and with forward slashes (`D:/other/main.tf`).
+The scan root is then the current directory, and paths under it are relative to it.
+A path on another drive is named by the drive and its place under the common parent of the inputs on that drive, so `scan C:\app D:\infra` reports `D:\infra\net\main.tf` as `D/net/main.tf`.
+The directories above those inputs are not part of the name, so the same tree has the same names and fingerprints wherever it is checked out.
+A local module above the inputs on its drive is named from the top of that drive (`D/shared/modules/net/main.tf`), because it lies outside every input on that drive.
 `SOURCE_DATE_EPOCH` fixes the timestamp and `--no-timestamp` leaves it out.
 
 ### The coverage block

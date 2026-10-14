@@ -30,10 +30,11 @@ import os
 import stat
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
-from threatcode._paths import common_directory, posix_relative
+from threatcode._paths import ReportPaths, common_directory, drive_anchors
 from threatcode.constants import is_dockerfile_name, is_terraform_name
 from threatcode.diagnostics import register_code
 from threatcode.exceptions import UsageError
@@ -171,6 +172,13 @@ class Discovery:
     oversized: list[str] = field(default_factory=list)
     # Paths that could not be read: {file, code, message}.
     errors: list[dict[str, str]] = field(default_factory=list)
+    # On Windows, one directory for each drive other than the root's that holds an input.
+    anchors: list[Path] = field(default_factory=list)
+
+    @cached_property
+    def paths(self) -> ReportPaths:
+        """How the report names a file: relative to the root, or to the anchor of another drive."""
+        return ReportPaths(self.root, self.anchors)
 
     @property
     def files_discovered(self) -> int:
@@ -228,11 +236,19 @@ def scan_root(paths: Sequence[str], *, cwd: Path | None = None) -> Path:
     ``scan infra/`` reports ``main.tf`` and ``scan a/x.tf b/y.tf`` reports ``a/x.tf`` and
     ``b/y.tf`` relative to their common parent.
     On Windows, paths on different drives have no common parent.
-    The root is then the current directory, the paths under it are reported relative to it, and
-    a path on another drive is reported as it is, absolute and with forward slashes
-    (``D:/other/main.tf``), because no relative form of it exists.
+    The root is then the current directory, and the paths on other drives are named by their
+    drive and their place under the common parent of the inputs on it (``ReportPaths``).
     """
     here = Path(os.path.abspath(cwd or Path.cwd()))
+    candidates = _input_directories(paths, here)
+    if not candidates:
+        return here
+    common = common_directory(candidates)
+    return Path(common) if common is not None else here
+
+
+def _input_directories(paths: Sequence[str], here: Path) -> list[str]:
+    """The directory each input stands for: itself, the parent of a file, ``here`` for stdin."""
     candidates: list[str] = []
     for raw in paths:
         if raw == STDIN_PATH:
@@ -240,14 +256,7 @@ def scan_root(paths: Sequence[str], *, cwd: Path | None = None) -> Path:
             continue
         absolute = os.path.abspath(raw)
         candidates.append(absolute if os.path.isdir(absolute) else os.path.dirname(absolute))
-    if not candidates:
-        return here
-    common = common_directory(candidates)
-    return Path(common) if common is not None else here
-
-
-def _posix_relative(path: str | Path, root: Path) -> str:
-    return posix_relative(path, root)
+    return candidates
 
 
 def discover(
@@ -270,7 +279,10 @@ def discover(
     if not paths:
         raise UsageError("no input: name at least one file or directory, or - for standard input")
     scan_root_path = root or scan_root(paths)
-    result = Discovery(root=scan_root_path)
+    here = Path(os.path.abspath(Path.cwd()))
+    anchors = drive_anchors(_input_directories(paths, here), str(scan_root_path))
+    result = Discovery(root=scan_root_path, anchors=[Path(anchor) for anchor in anchors])
+    named = result.paths
     units: dict[tuple[str, str], ScanUnit] = {}
 
     def add(unit: ScanUnit) -> None:
@@ -295,13 +307,13 @@ def discover(
         except OSError as exc:
             raise UsageError(f"cannot read {raw}: {exc.strerror or exc}") from exc
         if stat.S_ISDIR(mode):
-            _walk(Path(absolute), scan_root_path, result, add, max_file_bytes)
+            _walk(Path(absolute), named, result, add, max_file_bytes)
         elif stat.S_ISREG(mode):
-            add(_named_file_unit(Path(absolute), scan_root_path))
+            add(_named_file_unit(Path(absolute), named))
         else:
             result.errors.append(
                 {
-                    "file": _posix_relative(absolute, scan_root_path),
+                    "file": named.posix(absolute),
                     "code": "discovery.not_regular",
                     "message": f"{raw} is not a regular file or a directory, so it was not read",
                 }
@@ -328,9 +340,9 @@ def _stdin_unit(stdin_path: Path, name: str) -> ScanUnit:
     )
 
 
-def _named_file_unit(path: Path, root: Path) -> ScanUnit:
+def _named_file_unit(path: Path, paths: ReportPaths) -> ScanUnit:
     """A file the user named: it is parsed on its own, whatever its name."""
-    relpath = _posix_relative(path, root)
+    relpath = paths.posix(path)
     _candidate, by_name = classify_name(path.name)
     by_name = by_name or is_terraform_name(path.name)
     kind = HELM_CHART if path.name == _HELM_CHART_FILE else FILE
@@ -356,7 +368,7 @@ def _drop_covered_files(units: list[ScanUnit]) -> list[ScanUnit]:
 
 def _walk(
     top: Path,
-    root: Path,
+    paths: ReportPaths,
     result: Discovery,
     add: Callable[[ScanUnit], None],
     max_file_bytes: int,
@@ -365,9 +377,9 @@ def _walk(
         name = exc.filename if isinstance(exc.filename, str) else str(top)
         result.errors.append(
             {
-                "file": _posix_relative(name, root),
+                "file": paths.posix(name),
                 "code": "discovery.unreadable",
-                "message": f"cannot read {_posix_relative(name, root)}: {exc.strerror or exc}",
+                "message": f"cannot read {paths.posix(name)}: {exc.strerror or exc}",
             }
         )
 
@@ -392,10 +404,9 @@ def _walk(
             except OSError as exc:
                 result.errors.append(
                     {
-                        "file": _posix_relative(full, root),
+                        "file": paths.posix(full),
                         "code": "discovery.unreadable",
-                        "message": f"cannot read {_posix_relative(full, root)}: "
-                        f"{exc.strerror or exc}",
+                        "message": f"cannot read {paths.posix(full)}: {exc.strerror or exc}",
                     }
                 )
                 continue
@@ -413,14 +424,14 @@ def _walk(
             kept = [name for name in kept if name not in _HELM_SUBTREES]
         dirnames[:] = kept
 
-        _collect_directory(directory, regular, chart_here, root, result, add, max_file_bytes)
+        _collect_directory(directory, regular, chart_here, paths, result, add, max_file_bytes)
 
 
 def _collect_directory(
     directory: Path,
     regular: Iterable[tuple[str, int]],
     chart_here: bool,
-    root: Path,
+    paths: ReportPaths,
     result: Discovery,
     add: Callable[[ScanUnit], None],
     max_file_bytes: int,
@@ -428,7 +439,7 @@ def _collect_directory(
     tf_files: list[str] = []
     for name, size in regular:
         path = directory / name
-        relpath = _posix_relative(path, root)
+        relpath = paths.posix(path)
         if is_terraform_name(name):
             tf_files.append(relpath)
             continue
@@ -446,7 +457,7 @@ def _collect_directory(
         add(
             ScanUnit(
                 path=directory,
-                relpath=_posix_relative(directory, root),
+                relpath=paths.posix(directory),
                 kind=HCL_MODULE,
                 files=tuple(tf_files),
                 by_name=True,

@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
-from threatcode._paths import posix_relative
+from threatcode._paths import ReportPaths
 from threatcode.config import (
     FAIL_ON_CHOICES,
     SEVERITY_CHOICES,
@@ -355,7 +355,7 @@ def run_scan(request: ScanRequest) -> ScanResult:
             coverage.note_not_iac(relpath)
 
         label = _input_label(request, stdin_name, root)
-        covered = _parse_units(discovery, root, coverage, errors, label)
+        covered = _parse_units(discovery, coverage, errors, label)
         # A module directory read through the call that uses it is in the graph once, as that
         # call; its files are still scanned for secrets, so its parse output is kept on the unit
         outputs = [
@@ -477,7 +477,7 @@ def _input_paths(request: ScanRequest, discovery: Discovery, stdin_name: str) ->
         if raw == STDIN_PATH:
             paths.append(stdin_name)
         else:
-            paths.append(posix_relative(os.path.abspath(raw), discovery.root))
+            paths.append(discovery.paths.posix(os.path.abspath(raw)))
     return sorted(set(paths))
 
 
@@ -486,7 +486,6 @@ def _input_paths(request: ScanRequest, discovery: Discovery, stdin_name: str) ->
 
 def _parse_units(
     discovery: Discovery,
-    root: Path,
     coverage: Coverage,
     errors: list[dict[str, str]],
     label: str = "",
@@ -501,7 +500,7 @@ def _parse_units(
     units = discovery.units
     for unit in units:
         if unit.kind != HCL_MODULE:
-            unit.parsed = _parse_unit(unit, root, coverage, errors, label)
+            unit.parsed = _parse_unit(unit, discovery.paths, coverage, errors, label)
     plans: dict[Path, ScanUnit] = {
         unit.path.parent: unit
         for unit in units
@@ -522,7 +521,7 @@ def _parse_units(
                 )
             )
             continue
-        unit.parsed = _parse_unit(unit, root, coverage, errors, label)
+        unit.parsed = _parse_unit(unit, discovery.paths, coverage, errors, label)
     return _covered_modules(units)
 
 
@@ -611,7 +610,7 @@ def _covered_modules(units: list[ScanUnit]) -> set[str]:
 
 def _parse_unit(
     unit: ScanUnit,
-    root: Path,
+    paths: ReportPaths,
     coverage: Coverage,
     errors: list[dict[str, str]],
     label: str = "",
@@ -653,7 +652,7 @@ def _parse_unit(
         logger.debug("Unexpected failure parsing %s", unit.relpath, exc_info=True)
         errors.append(_parse_error(unit, exc, label, unexpected=True))
         return None
-    parsed = _localize_parsed(parsed, unit, root)
+    parsed = _localize_parsed(parsed, unit, paths)
     _promote_parse_failures(parsed, errors)
     return parsed
 
@@ -741,11 +740,12 @@ def _parse_error(
 # ── Root-relative paths ───────────────────────────────────────────────
 
 
-def _map_path(value: str, unit: ScanUnit, root: Path) -> str:
+def _map_path(value: str, unit: ScanUnit, paths: ReportPaths) -> str:
     """Rewrite one absolute path a parser reported to a root-relative POSIX path.
 
     A path outside the scan root (a local module in a parent directory) keeps its place as a
-    relative path with ``..`` segments, so no report carries a path from the machine it ran on.
+    relative path with ``..`` segments, and one on another drive is named like the files of that
+    drive (``ReportPaths``), so no report carries a path from the machine it ran on.
     """
     if not value or not os.path.isabs(value):
         return value
@@ -753,26 +753,23 @@ def _map_path(value: str, unit: ScanUnit, root: Path) -> str:
     try:
         sub = path.relative_to(unit.base_dir)
     except ValueError:
-        return _posix_relative(value, root)
+        return _posix_relative(value, paths)
     if str(sub) == ".":
         return unit.base_rel.as_posix()
     return (unit.base_rel / PurePosixPath(sub.as_posix())).as_posix()
 
 
-def _posix_relative(value: str, root: Path) -> str:
-    """The absolute path ``value`` relative to ``root`` as a POSIX path, ``..`` segments allowed.
+def _posix_relative(value: str, paths: ReportPaths) -> str:
+    """The absolute path ``value`` as the report names it: relative to the root, ``..`` allowed.
 
     A path that sits under the root only by its real location (the root names a symlink) is
-    relative to the real root.
-    A path on another drive than the root has no relative form and stays as it is.
+    relative to the real root, and likewise for the anchor of another drive.
     """
-    path = Path(value)
-    if not _under(path, root):
-        real_root = Path(os.path.realpath(root))
-        real_path = Path(os.path.realpath(value))
-        if _under(real_path, real_root):
-            return posix_relative(real_path, real_root)
-    return posix_relative(value, root)
+    if not paths.holds(value):
+        real_path = os.path.realpath(value)
+        if paths.resolved.holds(real_path):
+            return paths.resolved.posix(real_path)
+    return paths.posix(value)
 
 
 def _under(path: Path, root: Path) -> bool:
@@ -783,16 +780,16 @@ def _under(path: Path, root: Path) -> bool:
     return True
 
 
-def _map_location(value: str, unit: ScanUnit, root: Path) -> str:
+def _map_location(value: str, unit: ScanUnit, paths: ReportPaths) -> str:
     """Like ``_map_path`` for a ``path`` or legacy ``path:line`` location."""
     file_part, line = split_location(value)
-    mapped = _map_path(file_part, unit, root)
+    mapped = _map_path(file_part, unit, paths)
     if mapped == file_part:
         return value
     return f"{mapped}:{line}" if line is not None else mapped
 
 
-def _localize_parsed(parsed: ParsedOutput, unit: ScanUnit, root: Path) -> ParsedOutput:
+def _localize_parsed(parsed: ParsedOutput, unit: ScanUnit, paths: ReportPaths) -> ParsedOutput:
     """Make every path in a parse output root-relative POSIX, in place.
 
     The graph qualifies colliding addresses with ``source_path`` and every report location comes
@@ -800,9 +797,9 @@ def _localize_parsed(parsed: ParsedOutput, unit: ScanUnit, root: Path) -> Parsed
     """
     parsed.source_path = unit.relpath
     for resource in parsed.resources:
-        resource.source_location = _map_location(resource.source_location, unit, root)
+        resource.source_location = _map_location(resource.source_location, unit, paths)
     parsed.diagnostics = [
-        dataclasses.replace(d, file=_map_path(d.file, unit, root)) if d.file else d
+        dataclasses.replace(d, file=_map_path(d.file, unit, paths)) if d.file else d
         for d in parsed.diagnostics
     ]
     return parsed
@@ -854,7 +851,7 @@ def _finish(
     _localize_threats(
         report.threats,
         graph,
-        root,
+        discovery.paths,
         stdin_dir,
         stdin_name,
         _manifest_lines(discovery, list(settings.extra_rule_paths)),
@@ -1036,7 +1033,7 @@ def _threat_order(threat: Threat) -> tuple[int, str, str, str]:
 def _localize_threats(
     threats: Iterable[Threat],
     graph: InfraGraph,
-    root: Path,
+    paths: ReportPaths,
     stdin_dir: Path | None,
     stdin_name: str,
     lines: _ManifestLines | None = None,
@@ -1054,7 +1051,7 @@ def _localize_threats(
             threat.resource_type = node.resource_type
         if threat.location_file:
             threat.location_file = _relative_to_root(
-                threat.location_file, root, stdin_dir, stdin_name
+                threat.location_file, paths, stdin_dir, stdin_name
             )
         elif node is not None and node.source_file:
             threat.location_file = node.source_file
@@ -1128,14 +1125,16 @@ def _manifest_lines(discovery: Discovery, rule_paths: Sequence[Path]) -> _Manife
     return _ManifestLines(by_object, reads)
 
 
-def _relative_to_root(value: str, root: Path, stdin_dir: Path | None, stdin_name: str) -> str:
-    """A finding's file as a POSIX path relative to the scan root, ``..`` segments allowed."""
+def _relative_to_root(
+    value: str, paths: ReportPaths, stdin_dir: Path | None, stdin_name: str
+) -> str:
+    """A finding's file as the report names it: relative to the scan root, ``..`` allowed."""
     if not os.path.isabs(value):
         return value.replace("\\", "/")
     path = Path(value)
     if stdin_dir is not None and _under(path, stdin_dir):
         return stdin_name
-    return _posix_relative(value, root)
+    return _posix_relative(value, paths)
 
 
 def _apply_display_filter(report: ThreatReport, min_severity: str, coverage: Coverage) -> None:

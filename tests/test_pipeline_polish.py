@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from threatcode._paths import ReportPaths
 from threatcode.diagnostics import Diagnostic
 from threatcode.models.threat import Severity, Threat, ThreatSource
 from threatcode.pipeline import (
@@ -146,10 +147,10 @@ class TestPathsAreRelativeToTheScanRoot:
         root = tmp_path / "repo" / "infra"
         root.mkdir(parents=True)
         outside = tmp_path / "repo" / "modules" / "net" / "main.tf"
-        assert _posix_relative(str(outside), root) == "../modules/net/main.tf"
+        assert _posix_relative(str(outside), ReportPaths(root)) == "../modules/net/main.tf"
 
     def test_a_path_inside_the_root_has_no_dot_dot(self, tmp_path: Path) -> None:
-        assert _posix_relative(str(tmp_path / "a" / "b.tf"), tmp_path) == "a/b.tf"
+        assert _posix_relative(str(tmp_path / "a" / "b.tf"), ReportPaths(tmp_path)) == "a/b.tf"
 
     def test_a_root_named_through_a_symlink_still_finds_the_files_below_it(
         self, tmp_path: Path
@@ -161,7 +162,7 @@ class TestPathsAreRelativeToTheScanRoot:
             link.symlink_to(real, target_is_directory=True)
         except OSError:
             pytest.skip("symlinks are not available")
-        assert _posix_relative(str(real / "m" / "main.tf"), link) == "m/main.tf"
+        assert _posix_relative(str(real / "m" / "main.tf"), ReportPaths(link)) == "m/main.tf"
 
     def _tree(self, base: Path) -> Path:
         write(base, "repo/modules/net/main.tf", BUCKET.format(name="net"))
