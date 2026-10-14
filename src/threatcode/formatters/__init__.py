@@ -22,13 +22,14 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from types import ModuleType
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import quote
 
+from threatcode._paths import WINDOWS_DRIVE_PATH, inside, is_windows_flavor, relative_posix
 from threatcode.exceptions import ThreatCodeError, UsageError
 
 if TYPE_CHECKING:
@@ -296,8 +297,6 @@ def extension_mismatch(name: str, path: str | os.PathLike[str]) -> str:
 
 # ── paths relative to the repository ──────────────────────────────────
 
-_WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:/")
-
 
 def find_repo_root(start: str | os.PathLike[str]) -> Path | None:
     """The nearest directory at or above ``start`` that holds a ``.git`` entry, else None.
@@ -348,6 +347,8 @@ class RepoPaths:
     base: str
     anchored: bool
     outside: set[str] = field(default_factory=set)
+    # The path rules the paths follow: those of this machine, unless a test checks another's
+    pathmod: ModuleType = field(default=os.path, repr=False, compare=False)
     _cache: dict[str, str] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -379,29 +380,30 @@ class RepoPaths:
         return quote(self.locate(path), safe="/")
 
     def _locate(self, path: str) -> str:
+        mod = self.pathmod
         text = path.replace("\\", "/")
-        if _WINDOWS_ABSOLUTE.match(text):
+        drive_path = bool(WINDOWS_DRIVE_PATH.match(text))
+        if drive_path and not is_windows_flavor(mod):
+            # A path from a report made on Windows is not a place on this machine
             self.outside.add(path)
             return PurePosixPath(text).name or "."
-        if text.startswith("/"):
-            absolute = os.path.realpath(text)
-        else:
-            absolute = os.path.normpath(os.path.join(self.scan_root, text))
-        if _inside(absolute, self.base):
-            relative = os.path.relpath(absolute, self.base).replace(os.sep, "/")
+        rooted = drive_path or text.startswith("/")
+        absolute = str(
+            mod.realpath(text) if rooted else mod.normpath(mod.join(self.scan_root, text))
+        )
+        relative = relative_posix(absolute, self.base, pathmod=mod)
+        if relative is not None and inside(relative):
             return relative
         self.outside.add(path)
-        if text.startswith("/"):
-            return PurePosixPath(absolute.replace(os.sep, "/")).name or "."
+        if rooted:
+            return PurePosixPath(absolute.replace(str(mod.sep), "/")).name or "."
         return _clamp(text) or "."
 
 
 def _inside(path: str, base: str) -> bool:
     """Whether ``path`` is ``base`` or below it."""
-    try:
-        return os.path.commonpath([path, base]) == base
-    except ValueError:  # another drive on Windows, or a mix of absolute and relative
-        return False
+    relative = relative_posix(path, base)  # None: another drive on Windows
+    return relative is not None and inside(relative)
 
 
 def write_text_file(path: str | os.PathLike[str], text: str) -> Path:

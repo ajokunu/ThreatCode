@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -46,8 +47,10 @@ class TestDisplayPath:
         assert display_path(root, cwd="/work/repo", root=root) == "private"
         assert display_path("/elsewhere/x.tf", cwd="/work/repo", root=root) == "x.tf"
 
-    def test_the_filesystem_root_is_a_slash(self) -> None:
-        assert display_path("/", cwd="/work/repo") == "/"
+    def test_the_filesystem_root_is_named_by_what_it_is_called(self) -> None:
+        # a slash, and the drive on Windows (test_windows_paths has the Windows form)
+        called = os.path.splitdrive(os.path.abspath("/"))[0] or "/"
+        assert display_path("/", cwd="/work/repo") == called
 
     def test_the_default_is_the_real_current_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

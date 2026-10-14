@@ -17,9 +17,17 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from pathlib import Path, PurePosixPath
+from types import ModuleType
 from typing import TYPE_CHECKING
 from urllib.parse import quote
 
+from threatcode._paths import (
+    WINDOWS_DRIVE_PATH,
+    inside,
+    is_absolute,
+    is_windows_flavor,
+    relative_posix,
+)
 from threatcode.engine.stride import StrideCategory
 from threatcode.models.report import threat_severity
 from threatcode.models.threat import Severity, Threat
@@ -111,7 +119,6 @@ _SLOT_MARK = "\ue000{}\ue001"
 _SLOT = re.compile("\ue000(\\d+)\ue001")
 _PRIVATE_USE = re.compile("[\ue000-\uf8ff]")
 _TECHNIQUE_ID = re.compile(r"^T\d{4}(?:\.\d{3})?$")
-_WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:/")
 
 
 def collapse_whitespace(text: str) -> str:
@@ -401,20 +408,30 @@ def _nothing_left(report: ThreatReport) -> str:
 # ── paths ─────────────────────────────────────────────────────────────
 
 
-def repo_path(path: str, prefix: str = "") -> str:
+def repo_path(
+    path: str,
+    prefix: str = "",
+    *,
+    pathmod: ModuleType = os.path,
+    cwd: str | None = None,
+) -> str:
     """A repository-relative POSIX path for ``path``; never absolute, never ``..``.
 
     Backslashes become slashes, ``.`` and empty segments disappear and ``..`` removes the segment
     before it (or is dropped when there is none), so the result cannot point outside the checkout.
     An absolute path is made relative to the current directory when it is inside it, and reduced
     to its file name when it is not.
+    A path with a drive letter (``C:\\work\\main.tf``) is a place on this machine only on Windows;
+    anywhere else it came from a report made there, and is reduced to its file name.
     ``prefix`` is put in front of a relative path; it is the scan root's place inside the
     repository when the scan was not run from the repository root.
     A path with nothing left names the repository root, ``.``.
+    ``pathmod`` and ``cwd`` name the path rules and the current directory when they are not the
+    ones of this machine.
     """
     text = path.replace("\\", "/")
-    if text.startswith("/") or _WINDOWS_ABSOLUTE.match(text):
-        text = _relative_to_cwd(text)
+    if text.startswith("/") or WINDOWS_DRIVE_PATH.match(text):
+        text = _relative_to_cwd(text, pathmod, cwd)
     elif prefix:
         text = f"{prefix}/{text}"
     segments: list[str] = []
@@ -434,6 +451,7 @@ def display_path(
     *,
     cwd: str | os.PathLike[str] | None = None,
     root: str | os.PathLike[str] | None = None,
+    pathmod: ModuleType = os.path,
 ) -> str:
     """``raw`` as a report names a scanned path: the way it was typed, never absolute, never ``.``.
 
@@ -445,29 +463,29 @@ def display_path(
     that is given and the path is inside it, and is otherwise reduced to its own name.
     The current directory itself, and a path that is only ``..``, is named by its directory name,
     because ``.`` says nothing about what was scanned.
+    The root of a file system is named by what it is called: ``/``, or the drive on Windows.
+    ``pathmod`` names the path rules when they are not the ones of this machine.
     """
-    base = os.path.abspath(cwd) if cwd is not None else os.getcwd()
-    absolute = os.path.abspath(os.path.join(base, raw))
-    text = os.path.normpath(raw).replace(os.sep, "/")
-    if os.path.isabs(raw):
-        text = _inside(absolute, base)
+    sep: str = pathmod.sep
+    base: str = str(pathmod.abspath(cwd)) if cwd is not None else os.getcwd()
+    absolute: str = str(pathmod.abspath(pathmod.join(base, raw)))
+    text: str = str(pathmod.normpath(raw)).replace(sep, "/")
+    if is_absolute(raw, pathmod=pathmod):
+        text = _inside(absolute, base, pathmod)
         if not text and root is not None:
-            anchor = os.path.abspath(root)
-            text = _inside(absolute, anchor)
+            anchor = str(pathmod.abspath(root))
+            text = _inside(absolute, anchor, pathmod)
             if text == ".":
-                return PurePosixPath(anchor.replace(os.sep, "/")).name or "/"
+                return PurePosixPath(anchor.replace(sep, "/")).name or "/"
     if text in ("", ".", ".."):
-        return PurePosixPath(absolute.replace(os.sep, "/")).name or "/"
+        return PurePosixPath(absolute.replace(sep, "/")).name or "/"
     return text
 
 
-def _inside(absolute: str, base: str) -> str:
+def _inside(absolute: str, base: str, pathmod: ModuleType = os.path) -> str:
     """``absolute`` relative to ``base`` as a POSIX path, or ``""`` when it is not inside."""
-    try:
-        relative = os.path.relpath(absolute, base).replace(os.sep, "/")
-    except ValueError:  # another drive on Windows
-        return ""
-    return "" if relative == ".." or relative.startswith("../") else relative
+    relative = relative_posix(absolute, base, pathmod=pathmod)  # None: another drive on Windows
+    return relative if relative is not None and inside(relative) else ""
 
 
 def input_summary(label: str, *, limit: int = 60) -> str:
@@ -495,15 +513,12 @@ def source_uri(path: str, prefix: str = "") -> str:
     return quote(repo_path(path, prefix), safe="/")
 
 
-def _relative_to_cwd(text: str) -> str:
+def _relative_to_cwd(text: str, pathmod: ModuleType = os.path, cwd: str | None = None) -> str:
     """An absolute path relative to the current directory, or its file name when it is outside."""
-    if _WINDOWS_ABSOLUTE.match(text):
-        return PurePosixPath(text).name
-    try:
-        relative = PurePosixPath(os.path.relpath(text)).as_posix()
-    except ValueError:
-        return PurePosixPath(text).name
-    return PurePosixPath(text).name if relative.startswith("..") else relative
+    name = PurePosixPath(text).name
+    if WINDOWS_DRIVE_PATH.match(text) and not is_windows_flavor(pathmod):
+        return name
+    return _inside(text, os.getcwd() if cwd is None else cwd, pathmod) or name
 
 
 def root_prefix(source_root: str | os.PathLike[str] | None) -> str:
