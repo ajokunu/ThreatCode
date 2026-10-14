@@ -165,6 +165,41 @@ def _check_flow_depth(text: str, source: str) -> None:
             depth -= 1
 
 
+# Block collections recurse in the composer the same way flow collections do, one native call
+# per level. On Windows the main thread's stack is small enough that a few thousand levels of
+# indentation overflow it before Python can raise RecursionError, so block nesting gets the
+# same ceiling. Real manifests nest block collections a few dozen levels at most.
+MAX_BLOCK_DEPTH = 256
+
+
+def _check_block_depth(text: str, source: str) -> None:
+    """Raise ParseError when indentation nests block collections deeper than ``MAX_BLOCK_DEPTH``.
+
+    Each line that is not blank or a comment closes every open level indented at least as far
+    and opens one level at its own indent; every ``- `` that starts a compact nested sequence
+    on the line opens one more. A literal block scalar keeps one indent for its body, so it
+    adds a single level however long it is.
+    """
+    indents: list[int] = []
+    for line in text.splitlines():
+        content = line.lstrip(" ")
+        if not content or content.startswith("#"):
+            continue
+        indent = len(line) - len(content)
+        while indents and indents[-1] >= indent:
+            indents.pop()
+        indents.append(indent)
+        dashes = 0
+        while content.startswith("- ") or content == "-":
+            dashes += 1
+            content = content[2:].lstrip(" ")
+        if len(indents) + max(dashes - 1, 0) > MAX_BLOCK_DEPTH:
+            raise ParseError(
+                f"Invalid YAML in {source}: block collections nest deeper than "
+                f"{MAX_BLOCK_DEPTH} levels"
+            )
+
+
 @overload
 def load_yaml_documents(
     text: str, with_lines: Literal[False] = False, *, source: str = ...
@@ -197,6 +232,7 @@ def load_yaml_documents(
             message names the source, the line and the problem.
     """
     _check_flow_depth(text, source)
+    _check_block_depth(text, source)
     documents: list[Any] = []
     indexes: list[dict[str, int]] = []
     loader = CfnSafeLoader(text)

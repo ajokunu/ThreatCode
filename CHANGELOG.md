@@ -606,6 +606,7 @@ Four Docker rules that could never fire were revived on the properties the new p
 ### Security
 
 - **The image scanner was removed,** which closes a host file deletion through layer whiteouts and symlink chains.
+- **Deeply nested YAML is a parse error on every platform:** flow collections and indented block collections past 256 levels are refused before the loader recurses, so a crafted file can no longer overflow the native stack, which on Windows crashed the scan.
 - **A scanned repository cannot widen its own trust:** an auto-discovered config can no longer set `fail_on`, load rules, redirect the model client, weaken redaction or raise the graph limits, and the CI notice recommends keeping the ignore file outside the tree.
 - **The model request is pseudonymous, allowlisted and redacted.**
   Resources are opaque handles, every property outside a per-type allowlist is dropped, keys are matched by substring and values by secret shape, `redaction.fields` now works, redaction fails closed past 10000 values, and the `hash` strategy is a keyed HMAC.

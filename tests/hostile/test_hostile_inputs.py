@@ -165,3 +165,59 @@ class TestFlowDepthGuard:
         from threatcode.parsers._yaml import load_yaml_documents
 
         assert load_yaml_documents("a: [1, {b: [2, [3]]}]") == [{"a": [1, {"b": [2, [3]]}]}]
+
+
+class TestBlockDepthGuard:
+    """Indentation nesting is refused before the composer recurses past a small native stack."""
+
+    def test_indented_mappings_past_the_limit_are_a_parse_error(self) -> None:
+        from threatcode.exceptions import ParseError
+        from threatcode.parsers._yaml import MAX_BLOCK_DEPTH, load_yaml_documents
+
+        text = "\n".join(" " * i + "a:" for i in range(MAX_BLOCK_DEPTH + 1)) + "\n"
+        with pytest.raises(ParseError, match="block collections nest deeper than 256"):
+            load_yaml_documents(text, source="hostile.yaml")
+
+    def test_indented_mappings_at_the_limit_still_load(self) -> None:
+        from threatcode.parsers._yaml import MAX_BLOCK_DEPTH, load_yaml_documents
+
+        text = "\n".join(" " * i + "a:" for i in range(MAX_BLOCK_DEPTH)) + "\n"
+        (document,) = load_yaml_documents(text)
+        depth = 0
+        while isinstance(document, dict):
+            document = document["a"]
+            depth += 1
+        assert depth == MAX_BLOCK_DEPTH
+
+    def test_compact_nested_sequences_count_one_level_per_dash(self) -> None:
+        from threatcode.exceptions import ParseError
+        from threatcode.parsers._yaml import MAX_BLOCK_DEPTH, load_yaml_documents
+
+        with pytest.raises(ParseError, match="block collections nest deeper than"):
+            load_yaml_documents("- " * (MAX_BLOCK_DEPTH + 1) + "x\n", source="hostile.yaml")
+        assert load_yaml_documents("- - - x\n") == [[[["x"]]]]
+
+    def test_a_long_literal_block_adds_one_level(self) -> None:
+        from threatcode.parsers._yaml import MAX_BLOCK_DEPTH, load_yaml_documents
+
+        body = "\n".join(f"    line {n}" for n in range(MAX_BLOCK_DEPTH * 4))
+        (document,) = load_yaml_documents("script: |\n" + body + "\n")
+        assert document["script"].count("\n") == MAX_BLOCK_DEPTH * 4
+
+    def test_comments_and_blank_lines_do_not_open_levels(self) -> None:
+        from threatcode.parsers._yaml import MAX_BLOCK_DEPTH, load_yaml_documents
+
+        noise = "\n".join(" " * i + "# note" for i in range(MAX_BLOCK_DEPTH * 2))
+        assert load_yaml_documents(noise + "\n\nkind: Pod\n") == [{"kind": "Pod"}]
+
+    def test_a_real_manifest_shape_is_far_below_the_limit(self) -> None:
+        from threatcode.parsers._yaml import load_yaml_documents
+
+        manifest = (
+            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n"
+            "  template:\n    spec:\n      containers:\n        - name: app\n"
+            "          securityContext:\n            capabilities:\n              drop:\n"
+            "                - ALL\n---\nkind: Service\n"
+        )
+        documents = load_yaml_documents(manifest)
+        assert [d["kind"] for d in documents] == ["Deployment", "Service"]
