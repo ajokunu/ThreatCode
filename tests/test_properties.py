@@ -362,9 +362,16 @@ class TestWordPatterns:
         quoted = '"' + word + '"'
         assert _peak_megabytes(lambda: _dockerfile_lexer.split_words_raw(quoted)) < 100
 
+    # Named ids: a 600,000 character value as a test id overflows the Windows environment variable
+    # in which pytest keeps the id of the running test
     @pytest.mark.parametrize(
         "text",
-        ['"' + "a\\b" * 200_000, "'" + "a" * 600_000, '"' + '\\"' * 300_000, "\\" * 600_000],
+        [
+            pytest.param('"' + "a\\b" * 200_000, id="double-quote-and-word-escapes"),
+            pytest.param("'" + "a" * 600_000, id="single-quote-and-letters"),
+            pytest.param('"' + '\\"' * 300_000, id="double-quote-and-escaped-quotes"),
+            pytest.param("\\" * 600_000, id="backslashes"),
+        ],
     )
     def test_a_quote_that_never_closes_is_not_catastrophic(self, text: str) -> None:
         """An ambiguous loop would try every way to split the run; this ends at once."""

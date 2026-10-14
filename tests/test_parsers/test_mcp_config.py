@@ -1516,9 +1516,17 @@ class TestDiagnostics:
 class TestHostileInput:
     """Hostile values are judged in bounded time and never crash the parser."""
 
+    # The ids are named: a value of 200,000 characters as a test id is longer than a Windows
+    # environment variable may be, and pytest keeps the id of the running test in one
     @pytest.mark.parametrize(
         "value",
-        ["${" * 100_000, "<" * 200_000, "{{" * 100_000, "${A:-" * 40_000, "x-here" * 40_000],
+        [
+            pytest.param("${" * 100_000, id="open-placeholders"),
+            pytest.param("<" * 200_000, id="angle-brackets"),
+            pytest.param("{{" * 100_000, id="double-braces"),
+            pytest.param("${A:-" * 40_000, id="nested-defaults"),
+            pytest.param("x-here" * 40_000, id="repeated-word"),
+        ],
     )
     def test_a_value_built_to_make_the_placeholder_scan_slow_stays_fast(self, value: str) -> None:
         import time
