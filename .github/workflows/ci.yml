@@ -110,6 +110,9 @@ jobs:
 
   # The suite on the other two platforms. The scanner walks directories, refuses symlinks and
   # reads paths, which is where operating systems differ.
+  # The suite runs in about four minutes on Windows, so one process and 20 minutes are plenty.
+  # A run once used all 20 because failing tests printed a 600,000 character test id in every line
+  # of their tracebacks, not because the tests were slow.
   test-platforms:
     if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
