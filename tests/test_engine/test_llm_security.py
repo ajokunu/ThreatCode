@@ -296,12 +296,27 @@ def webapp_dry_run_payload(tmp_path_factory: pytest.TempPathFactory) -> str:
     return target.read_text(encoding="utf-8")
 
 
+def _without_data_tag_nonce(payload: str) -> str:
+    """The payload with the random suffix of every data tag cut off."""
+    from threatcode.engine.llm.prompts import DATA_TAG
+
+    return re.sub(rf"{DATA_TAG}_[0-9a-f]{{16}}", DATA_TAG, payload)
+
+
 class TestDryRunPayloadOfARealPlan:
     """FR-10: the dry-run payload of examples/aws-webapp carried an account id and a region."""
 
     def test_no_twelve_digit_account_id_survives(self, webapp_dry_run_payload: str) -> None:
-        assert re.findall(r"(?<!\d)\d{12}(?!\d)", webapp_dry_run_payload) == []
-        assert "111122223333" not in webapp_dry_run_payload
+        # The data tag ends in 16 random hex digits, and about one in sixty of them holds a run
+        # of twelve decimal digits. That is a delimiter, not an account id, so it is not counted.
+        data = _without_data_tag_nonce(webapp_dry_run_payload)
+        assert re.findall(r"(?<!\d)\d{12}(?!\d)", data) == []
+        assert "111122223333" not in data
+
+    def test_a_delimiter_nonce_made_of_digits_is_not_mistaken_for_an_account_id(self) -> None:
+        tagged = "<infrastructure_data_664065293300abcd>{}</infrastructure_data_664065293300abcd>"
+        assert re.findall(r"(?<!\d)\d{12}(?!\d)", tagged) == ["664065293300"] * 2
+        assert re.findall(r"(?<!\d)\d{12}(?!\d)", _without_data_tag_nonce(tagged)) == []
 
     def test_no_region_or_arn_text_survives(self, webapp_dry_run_payload: str) -> None:
         assert "us-east-1" not in webapp_dry_run_payload
