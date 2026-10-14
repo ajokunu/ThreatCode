@@ -47,6 +47,7 @@ from pydantic import (
     model_validator,
 )
 
+from threatcode._paths import is_absolute
 from threatcode.exceptions import ConfigError, UsageError
 from threatcode.models.threat import Severity
 
@@ -520,8 +521,9 @@ def resolve_settings(
     base = loaded.path.parent if loaded.path is not None else Path.cwd()
     rules: list[Path] = []
     for entry in config.extra_rule_paths:
-        path = Path(entry)
-        rules.append(path if path.is_absolute() else base / path)
+        # A path that starts at a root is used as written, with or without a drive letter; on
+        # Windows "/rules/a.yml" has none and is not absolute to pathlib, so it would be joined
+        rules.append(Path(entry) if is_absolute(entry) else base / entry)
     rules.extend(Path(p) for p in cli.get("rules") or ())
 
     return ResolvedSettings(
