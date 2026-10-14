@@ -1051,10 +1051,11 @@ class TestOpenAIRedirects:
         assert len(origin.seen) == 1
         assert target.seen == []
 
-    def test_a_same_origin_redirect_still_works(self, scripted: Any) -> None:
+    @pytest.mark.parametrize("status", [307, 308])
+    def test_a_same_origin_redirect_still_works(self, scripted: Any, status: int) -> None:
         def respond(n: int, seen: Seen) -> tuple[int, dict[str, str], bytes]:
             if seen.path == "/v1/chat/completions":
-                return 308, {"Location": "/v1/chat/completions/"}, b""
+                return status, {"Location": "/v1/chat/completions/"}, b""
             return _ok("FOLLOWED")
 
         server = scripted(respond)

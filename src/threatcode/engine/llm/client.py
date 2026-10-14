@@ -198,6 +198,14 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
         self._origin = _origin(origin_url)
         self._allow_local_network = allow_local_network
 
+    def http_error_308(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: Any
+    ) -> Any:
+        # Python 3.10 has no handler for 308, so a permanent redirect (a trailing-slash 308, say)
+        # surfaced as an HTTP error. From 3.11 the stdlib routes it to the same code as the other
+        # redirect statuses; doing that here gives every supported version one behaviour.
+        return self.http_error_302(req, fp, code, msg, headers)
+
     def redirect_request(
         self,
         req: urllib.request.Request,
