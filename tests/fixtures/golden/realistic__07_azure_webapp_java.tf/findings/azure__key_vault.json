@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "azurerm_key_vault.main",
+    "rule_id": "KEYVAULT_NO_DIAGNOSTICS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

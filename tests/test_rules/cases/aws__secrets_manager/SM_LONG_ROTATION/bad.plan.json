@@ -1,0 +1,146 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_secretsmanager_secret.db",
+          "mode": "managed",
+          "type": "aws_secretsmanager_secret",
+          "name": "db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "prod/db"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_secretsmanager_secret_rotation.db",
+          "mode": "managed",
+          "type": "aws_secretsmanager_secret_rotation",
+          "name": "db",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "rotation_lambda_arn": "arn:aws:lambda:us-east-1:111122223333:function:rotate-db",
+            "rotation_rules": [
+              {
+                "automatically_after_days": 180
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_secretsmanager_secret.db",
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret",
+      "name": "db",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "prod/db"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_secretsmanager_secret_rotation.db",
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret_rotation",
+      "name": "db",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "rotation_lambda_arn": "arn:aws:lambda:us-east-1:111122223333:function:rotate-db",
+          "rotation_rules": [
+            {
+              "automatically_after_days": 180
+            }
+          ]
+        },
+        "after_unknown": {
+          "id": true,
+          "secret_id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_secretsmanager_secret.db",
+          "mode": "managed",
+          "type": "aws_secretsmanager_secret",
+          "name": "db",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "prod/db"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_secretsmanager_secret_rotation.db",
+          "mode": "managed",
+          "type": "aws_secretsmanager_secret_rotation",
+          "name": "db",
+          "provider_config_key": "aws",
+          "expressions": {
+            "rotation_lambda_arn": {
+              "constant_value": "arn:aws:lambda:us-east-1:111122223333:function:rotate-db"
+            },
+            "rotation_rules": [
+              {
+                "automatically_after_days": {
+                  "constant_value": 180
+                }
+              }
+            ],
+            "secret_id": {
+              "references": [
+                "aws_secretsmanager_secret.db.id",
+                "aws_secretsmanager_secret.db"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

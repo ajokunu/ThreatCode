@@ -1,0 +1,53 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_service.stock.inventory",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "kubernetes_service.stock.inventory",
+      "stride": "tampering",
+      "target": "kubernetes_deployment.stock.inventory"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.stock.inventory",
+      "rule_id": "K8S_AUTOMOUNT_SA_TOKEN"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.stock.inventory",
+      "rule_id": "K8S_CAPABILITIES_NOT_DROPPED"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.stock.inventory",
+      "rule_id": "K8S_DEFAULT_ALLOW_EGRESS"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.stock.inventory",
+      "rule_id": "K8S_NO_NETWORK_POLICY"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.stock.inventory",
+      "rule_id": "K8S_NO_SECCOMP_PROFILE"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.stock.inventory",
+      "rule_id": "K8S_WRITABLE_ROOT_FS"
+    }
+  ]
+}

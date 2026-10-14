@@ -1,0 +1,155 @@
+# The same privileged pod spec as every kind that carries a pod. All seven must be read into
+# the same properties and get the same findings.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod
+  namespace: kinds
+spec:
+  hostNetwork: true
+  containers:
+  - name: app
+    image: nginx:latest
+    securityContext:
+      privileged: true
+      capabilities:
+        add:
+        - SYS_ADMIN
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment
+  namespace: kinds
+spec:
+  template:
+    metadata:
+      labels:
+        app: deployment
+    spec:
+      hostNetwork: true
+      containers:
+      - name: app
+        image: nginx:latest
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+  selector:
+    matchLabels:
+      app: deployment
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: daemonset
+  namespace: kinds
+spec:
+  template:
+    metadata:
+      labels:
+        app: daemonset
+    spec:
+      hostNetwork: true
+      containers:
+      - name: app
+        image: nginx:latest
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+  selector:
+    matchLabels:
+      app: daemonset
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: statefulset
+  namespace: kinds
+spec:
+  template:
+    metadata:
+      labels:
+        app: statefulset
+    spec:
+      hostNetwork: true
+      containers:
+      - name: app
+        image: nginx:latest
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+  selector:
+    matchLabels:
+      app: statefulset
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: replicaset
+  namespace: kinds
+spec:
+  template:
+    metadata:
+      labels:
+        app: replicaset
+    spec:
+      hostNetwork: true
+      containers:
+      - name: app
+        image: nginx:latest
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+  selector:
+    matchLabels:
+      app: replicaset
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job
+  namespace: kinds
+spec:
+  template:
+    metadata:
+      labels:
+        app: job
+    spec:
+      hostNetwork: true
+      containers:
+      - name: app
+        image: nginx:latest
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob
+  namespace: kinds
+spec:
+  schedule: 0 * * * *
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          hostNetwork: true
+          containers:
+          - name: app
+            image: nginx:latest
+            securityContext:
+              privileged: true
+              capabilities:
+                add:
+                - SYS_ADMIN

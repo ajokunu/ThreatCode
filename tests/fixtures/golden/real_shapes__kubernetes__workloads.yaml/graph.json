@@ -1,0 +1,33 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_cron_job.platform.nightly-report": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_daemon_set.platform.node-agent": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_deployment.platform.api": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_job.platform.reindex": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_pod.platform.debug-shell": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_replica_set.platform.legacy-worker": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_stateful_set.platform.queue": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "aws_s3_bucket.artifact_store",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

@@ -1,0 +1,29 @@
+# The security context is set once on the pod. Every container inherits it, and one container
+# overrides a single field.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-level
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-level
+  template:
+    metadata:
+      labels:
+        app: pod-level
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: registry.example.com/apps/app:2.0.0
+        - name: root-helper
+          image: registry.example.com/apps/helper:2.0.0
+          securityContext:
+            runAsNonRoot: false

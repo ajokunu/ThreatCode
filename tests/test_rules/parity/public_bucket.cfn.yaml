@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Assets:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: acme-public-assets
+      AccessControl: PublicRead
+  Private:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: acme-private
+      AccessControl: Private

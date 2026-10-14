@@ -1,0 +1,96 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "Distribution",
+        "LoadBalancer",
+        "Database"
+      ],
+      "severity": "critical",
+      "target": "Database"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "LoadBalancer",
+        "Database"
+      ],
+      "severity": "critical",
+      "target": "Database"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "WebInstance",
+        "Database"
+      ],
+      "severity": "critical",
+      "target": "Database"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "Distribution",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "LoadBalancer",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "LoadBalancer",
+      "stride": "tampering",
+      "target": "Database"
+    },
+    {
+      "severity": "medium",
+      "source": "WebInstance",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "WebInstance",
+      "stride": "tampering",
+      "target": "Database"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "Distribution",
+      "rule_id": "CLOUDFRONT_NO_HTTPS"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "Distribution",
+      "rule_id": "CLOUDFRONT_NO_WAF"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "WebInstance",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "WebInstance",
+      "rule_id": "EC2_UNENCRYPTED_EBS"
+    },
+    {
+      "base": "high",
+      "effective": "critical",
+      "resource_address": "Database",
+      "rule_id": "RDS_NO_ENCRYPTION"
+    }
+  ]
+}

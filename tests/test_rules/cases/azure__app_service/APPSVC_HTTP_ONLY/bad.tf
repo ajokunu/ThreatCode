@@ -1,0 +1,29 @@
+resource "azurerm_app_service" "bad" {
+  name                = "app-bad"
+  location            = "eastus"
+  resource_group_name = "rg-app"
+  app_service_plan_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/plan"
+  https_only = false
+}
+
+resource "azurerm_linux_web_app" "bad" {
+  name                = "app-bad"
+  location            = "eastus"
+  resource_group_name = "rg-app"
+  service_plan_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/plan"
+  https_only = false
+
+  site_config {
+  }
+}
+
+resource "azurerm_windows_web_app" "bad" {
+  name                = "app-bad"
+  location            = "eastus"
+  resource_group_name = "rg-app"
+  service_plan_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/plan"
+  https_only = false
+
+  site_config {
+  }
+}

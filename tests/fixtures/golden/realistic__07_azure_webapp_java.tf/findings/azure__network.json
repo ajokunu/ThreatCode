@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "azurerm_network_security_group.app",
+    "rule_id": "AZURE_NSG_ALLOW_ALL_INBOUND",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "azurerm_virtual_network.main",
+    "rule_id": "AZURE_VNET_NO_DDOS",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1498"
+    ]
+  }
+]

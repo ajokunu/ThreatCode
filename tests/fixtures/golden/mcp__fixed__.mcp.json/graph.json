@@ -1,0 +1,107 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.inventory",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "mcp_server.local-dev",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.builder",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.inventory",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.local-dev",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.project-files",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.weather",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.builder",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_server.inventory",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.local-dev",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.project-files",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.weather",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.builder": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.inventory": {
+      "category": "compute",
+      "zone": "internet"
+    },
+    "mcp_server.local-dev": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.project-files": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.weather": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

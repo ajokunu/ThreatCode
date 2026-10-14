@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcode"
-version = "0.9.1"
-description = "Automated security scanning and threat modeling from Infrastructure-as-Code and container images"
+dynamic = ["version"]
+description = "STRIDE threat models and attack paths from infrastructure code and AI-agent configs"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -21,21 +21,30 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Security",
+    "Typing :: Typed",
 ]
 dependencies = [
     "click>=8.1,<9",
     "pydantic>=2.0,<3",
-    "python-hcl2>=4.3,<5",
+    "python-hcl2>=4.3,<9",
     "pyyaml>=6.0.1,<7",
     "networkx>=3.1,<4",
-    "anthropic>=0.39,<1",
-    "httpx>=0.27,<1",
-    "packaging>=23.0,<25",
-    "tomli>=2.0,<3;python_version<'3.11'",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ajokunu/ThreatCode"
+Repository = "https://github.com/ajokunu/ThreatCode"
+Issues = "https://github.com/ajokunu/ThreatCode/issues"
+
 [project.optional-dependencies]
+llm = [
+    "anthropic>=0.39,<2",
+]
+all = [
+    "anthropic>=0.39,<2",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -44,28 +53,70 @@ dev = [
     "pip-audit>=2.6",
     "types-networkx>=3.1",
     "types-PyYAML>=6.0",
+    "anthropic>=0.39,<2",
+    "jsonschema>=4.0",
+    "hypothesis>=6.0",
+    "build>=1.0",
+    # The tests read pyproject.toml; the standard library has tomllib from Python 3.11
+    "tomli>=2.0,<3;python_version<'3.11'",
 ]
+# mkdocs.yml enables the search plugin only and no page uses a mkdocstrings directive, so the
+# docs build needs MkDocs and the Material theme. Both are capped below their next major: the
+# theme's own build warns that MkDocs 2.0 drops plugins and theme overrides.
 docs = [
-    "mkdocs-material>=9.0",
-    "mkdocs-autorefs",
-    "mkdocstrings[python]",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
 ]
 
 [project.scripts]
 threatcode = "threatcode.cli:cli"
 
+[tool.setuptools.dynamic]
+version = { attr = "threatcode.__version__" }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-threatcode = ["engine/rules/builtin/**/*.yml"]
+threatcode = ["py.typed", "engine/rules/builtin/**/*.yml"]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+# src/ runs under the widest set: a security tool should not carry blind excepts, bare asserts
+# (which -O strips), unchecked subprocess and URL calls, or branches nobody can read.
+# TRY is left out on purpose: its TRY003 fires on every message-carrying exception.
+select = [
+    "E", "F", "I", "N", "W", "UP",
+    "B", "BLE", "S", "ARG", "SIM", "C4", "C901",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and scripts keep the original selection: they assert, spawn processes, write fixtures
+# with throwaway tokens, and take fixture and callback arguments they do not read.
+"tests/**" = ["B", "BLE", "S", "ARG", "SIM", "C4", "C901"]
+"scripts/**" = ["B", "BLE", "S", "ARG", "SIM", "C4", "C901"]
+# Dispatch tables: every entry of a table has to take the same arguments, so an entry that
+# does not need one of them still names it. Renaming them to _x would hide which arguments exist.
+# Template functions in the Helm renderer all take the executor first.
+"src/threatcode/parsers/_helm_render.py" = ["ARG001"]
+# Derivers and companion handlers share (node or companion, parent, ctx).
+"src/threatcode/ir/enrichment/*.py" = ["ARG001"]
+# Exposure signals share (analysis, node).
+"src/threatcode/ir/exposure.py" = ["ARG001"]
+# Format detectors and loaders share (path, content, data).
+"src/threatcode/parsers/__init__.py" = ["ARG001"]
+# Intrinsic handlers share (argument, depth) and post hooks share (converter, raw, out).
+"src/threatcode/parsers/_cfn_properties.py" = ["ARG001", "ARG002"]
+# The resolver interface: the default implementation resolves nothing and ignores its arguments.
+"src/threatcode/parsers/_hcl_eval.py" = ["ARG002"]
+# Every renderer in the table takes (analysis, options).
+"src/threatcode/formatters/__init__.py" = ["ARG001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

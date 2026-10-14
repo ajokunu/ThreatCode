@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_ingress.edge.portal",
+    "rule_id": "K8S_INGRESS_NO_TLS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1557"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  }
+]

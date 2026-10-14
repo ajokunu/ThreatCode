@@ -1,235 +1,204 @@
 # Configuration
 
-ThreatCode is configured via a `.threatcode.yml` file and/or environment variables.
+ThreatCode needs no configuration.
+Settings come from four places, and the first one that sets a value wins:
 
----
+1. the command-line flag,
+2. an environment variable (`THREATCODE_FAIL_ON`, `THREATCODE_MIN_SEVERITY`, `THREATCODE_FORMAT`, `THREATCODE_LLM`),
+3. a config file,
+4. the built-in default.
 
-## Config File Location
+A flag that is absent counts as not set, so a config file's `min_severity` and `format` take effect when you do not pass the flag.
 
-ThreatCode searches for config in this order:
+## Which config file is trusted
 
-1. `--config / -c` flag (explicit path — all fields allowed)
-2. `.threatcode.yml` or `.threatcode.yaml` in the current working directory
-3. `~/.threatcode.yml` in the home directory (skipped in CI when `CI=true`)
-4. Built-in defaults
+**A `.threatcode.yml` that ThreatCode finds on its own is auto-discovered, and an auto-discovered file is not trusted.**
+It sits in the repository being scanned, so whoever opens a pull request controls it.
+Only two keys are read from it, `min_severity` and `format`, which change what you see and never what gates.
+Every other key is ignored with a warning, and a note on stderr names the file and the keys it used:
 
-**Security note:** Auto-discovered configs (2 and 3) are restricted to safe fields only: `min_severity`, `output_format`, `no_llm`, `dry_run`, `redaction`. Everything else, including the whole `llm` section (`api_key`, `base_url`, `allow_local_network`) and `extra_rule_paths`, is stripped with a warning when loaded from auto-discovered locations. Use `--config` for full control.
-
----
-
-## Full Schema
-
-```yaml
-# .threatcode.yml
-
-# LLM configuration
-llm:
-  provider: anthropic              # anthropic | openai | ollama | local
-  model: claude-sonnet-4-20250514  # Model identifier
-  api_key: ""                      # Prefer ANTHROPIC_API_KEY env var
-  base_url: ""                     # Model server URL for openai, ollama and local
-  allow_local_network: false       # ollama/local only: allow http to loopback and private addresses
-  max_tokens: 4096                 # Token budget for LLM response
-  temperature: 0.2                 # LLM sampling temperature
-
-# Data redaction (applied before any LLM call)
-redaction:
-  strategy: placeholder            # placeholder | hash
-  fields:
-    - arn
-    - account_id
-    - tags
-    - ip_address
-
-# Analysis settings
-min_severity: info                 # critical | high | medium | low | info
-no_llm: false                      # true = rules-only, no LLM call
-dry_run: false                     # true = show LLM prompt, don't call API
-
-# Rule loading
-extra_rule_paths: []               # Additional YAML rule files
-
-# Output
-output_format: json                # Default CLI output format
+```text
+Warning: Auto-discovered config proj/.threatcode.yml contains restricted fields ['fail_on', 'llm']; these are ignored for security. Use --config to load a trusted config file.
+Using config proj/.threatcode.yml (auto-discovered); fields used: min_severity
 ```
 
----
+A file you name with `--config` is trusted, and every key is honored.
+In CI, always name the file.
 
-## LLM Providers
+Discovery looks for `.threatcode.yml` and `.threatcode.yaml` in the scan root and the current directory, and then, when the `CI` environment variable is empty or unset, for `~/.threatcode.yml`.
+Any non-empty value of `CI`, including `0` or `false`, skips the home directory.
+The home file is auto-discovered too, so it is subject to the same two-key limit.
 
-### Anthropic (Claude)
+The config models reject unknown keys and name the key, with a suggestion for a typo.
+A removed key (`no_llm`, `dry_run`) says what replaces it.
 
-```yaml
-llm:
-  provider: anthropic
-  model: claude-sonnet-4-20250514
-```
+## Keys
 
-Set the API key via environment variable:
+<!-- gen:config-keys -->
+| Key | Type | Default | Read from an auto-discovered file |
+| --- | --- | --- | --- |
+| `min_severity` | Literal['critical', 'high', 'medium', 'low', 'info'] \| None | unset | yes |
+| `format` (was `output_format`) | str \| None | unset | yes |
+| `fail_on` | Literal['critical', 'high', 'medium', 'low', 'info', 'none'] \| None | unset | no |
+| `rules` (was `extra_rule_paths`) | list[str] | none | no |
+| `max_nodes` | int \| None | unset | no |
+| `max_edges` | int \| None | unset | no |
+| `strict_edges` | bool | true | no |
+| `llm.enabled` | bool | false | no |
+| `llm.provider` | Literal['anthropic', 'openai', 'ollama', 'local'] | anthropic | no |
+| `llm.model` | str | claude-sonnet-5-5 | no |
+| `llm.api_key` | str | empty | no |
+| `llm.api_key_env` | str \| None | unset | no |
+| `llm.base_url` | str | empty | no |
+| `llm.max_tokens` | int | 4096 | no |
+| `llm.temperature` | float \| None | unset | no |
+| `llm.timeout` | int | 120 | no |
+| `llm.max_retries` | int | 1 | no |
+| `llm.max_input_tokens` | int | 60000 | no |
+| `llm.allow_local_network` | bool | false | no |
+| `redaction.strategy` | Literal['placeholder', 'hash'] | placeholder | no |
+| `redaction.fields` | list[str] | ['arn', 'account_id', 'tags', 'ip_address'] | no |
+<!-- /gen:config-keys -->
+
+`rules` entries that are relative resolve against the directory of the config file.
+The two keys that were called `output_format` and `extra_rule_paths` in earlier versions still load, and each prints a notice that names the new spelling.
+Giving both spellings of one key is an error.
+`max_nodes` and `max_edges` also have flags and the `THREATCODE_MAX_NODES` and `THREATCODE_MAX_EDGES` environment variables.
+
+### One setting, its names
+
+A setting has the name of its flag everywhere it can be given, except where the rest of the platform fixes a different style.
+This table is the whole mapping.
+
+| Setting | Flag | Environment variable | Config key | Action input | `scan()` argument |
+| --- | --- | --- | --- | --- | --- |
+| Output format | `--format`, `-f` | `THREATCODE_FORMAT` | `format` | `format` | none: `scan()` returns a dict, and `threatcode.formatters.render()` renders a format |
+| Extra rule files | `--rules`, `-r` | none | `rules` | `extra-rules` | `extra_rule_paths` |
+| Config file | `--config`, `-c` | none | none | `config-file` | `config_path` |
+| Failure threshold | `--fail-on` | `THREATCODE_FAIL_ON` | `fail_on` | `fail-on` | `fail_on` |
+| Lowest severity shown | `--min-severity` | `THREATCODE_MIN_SEVERITY` | `min_severity` | `min-severity` | `min_severity` |
+| Model review | `--llm`, `--no-llm` | `THREATCODE_LLM` | `llm.enabled` | none | `llm` |
+| Suppressions file | `--ignore-file` | none | none | none | `ignore_file` |
+
+The Action keeps `extra-rules` and `config-file` because its input names are already in workflows.
+`output_format` and `extra_rule_paths` are the first spellings of the `format` and `rules` config keys; they still load, with a notice.
+
+An example, saved as `threatcode.yml` and used with `--config`:
+
+<!-- runnable exit=1 -->
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+cat > threatcode.yml <<'EOF'
+fail_on: critical
+min_severity: low
+format: markdown
+redaction:
+  strategy: hash
+EOF
+threatcode scan examples/k8s-platform --config threatcode.yml -o report.md
 ```
 
-Or in the config file (not recommended — prefer env var):
+## The LLM
+
+The model review is optional and off by default.
+It runs only when you ask for it with `--llm`, `THREATCODE_LLM=1` or `llm.enabled: true` in a config you named with `--config`, and only if the `llm` extra is installed.
+`--no-llm` always wins, and `--dry-run` implies `--llm` while sending nothing.
+An exported `ANTHROPIC_API_KEY` alone does not send anything anywhere.
+
+Because the whole `llm` section is ignored in an auto-discovered file, put it in a file you name:
 
 ```yaml
+# llm.yml, used with: threatcode scan infra/ --config llm.yml
 llm:
+  enabled: true
   provider: anthropic
-  api_key: sk-ant-...
+  model: claude-sonnet-5-5
 ```
 
-### OpenAI-compatible
+### Providers
+
+| Provider | Key comes from | Default endpoint |
+|----------|----------------|------------------|
+| `anthropic` | `llm.api_key`, else `ANTHROPIC_API_KEY` | the Anthropic API |
+| `openai` | `llm.api_key`, else `OPENAI_API_KEY` | `https://api.openai.com` |
+| `ollama`, `local` | none unless `llm.api_key_env` names a variable | `llm.base_url` |
+
+`llm.api_key_env` names a different variable for any provider.
+A key written into a config file produces a warning that names the variable to use instead.
+With no key, no `Authorization` header is sent.
+
+The default model is `claude-sonnet-5-5`.
+`llm.temperature` is unset by default and sent only when you set it; a model that rejects it gets one retry without it.
+
+A model on your own network needs an explicit opt-in:
 
 ```yaml
 llm:
-  provider: openai
-  model: gpt-4o
-  base_url: https://api.openai.com/v1
-  api_key: sk-...
-```
-
-### Ollama and other local servers
-
-Use the `ollama` provider for Ollama, and `local` for vLLM, llama.cpp or any other server that speaks the OpenAI chat completions API:
-
-```yaml
-llm:
+  enabled: true
   provider: ollama
   base_url: http://localhost:11434
   model: llama3.2
   allow_local_network: true
 ```
 
-```yaml
-llm:
-  provider: local
-  base_url: http://10.0.0.5:8080
-  model: my-model
-  allow_local_network: true
-```
+`allow_local_network` lets the `ollama`, `local` and `anthropic` providers use plain HTTP to loopback, private and shared (`100.64.0.0/10`) addresses.
+Without it, a `base_url` must be HTTPS and resolve to a public address.
+Link-local addresses, including the cloud metadata address `169.254.169.254`, are blocked either way, and a redirect to another scheme, host or port is refused, so the API key and the request are never forwarded.
 
-ThreatCode posts to `<base_url>/v1/chat/completions`, and `base_url` works with or without the trailing `/v1`.
+### Limits
 
-By default the SSRF guard on `base_url` accepts only HTTPS URLs that resolve to public addresses, which rules out a model server on your own machine or network.
-`allow_local_network: true` is the explicit opt-in for these two providers.
-It accepts loopback addresses, private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and the shared range `100.64.0.0/10` that Tailscale uses, over plain HTTP or HTTPS.
-
-Some protections stay on with the opt-in:
-
-- Link-local addresses, including the cloud metadata endpoint `169.254.169.254`, are still rejected, along with multicast, reserved and unspecified addresses.
-- Plain HTTP to a public address is still rejected, so use HTTPS for a hosted endpoint.
-- Redirects get the strict default check, so a local server cannot bounce ThreatCode to another local address.
-- The `openai` and `anthropic` providers refuse the option with a config error.
-- The `llm` section is stripped from auto-discovered configs, so only a file passed with `--config` can switch it on.
-
-If the server needs an API key and `base_url` uses plain HTTP, ThreatCode warns that the key travels unencrypted.
-If the server is down, the scan logs one warning and returns the rule-based findings.
-
-### Other OpenAI-compatible endpoints
-
-Hosted OpenAI-compatible APIs such as Together AI or Groq work through the `openai` provider, as long as `base_url` is an HTTPS URL on a public address:
-
-```yaml
-llm:
-  provider: openai
-  base_url: https://api.together.xyz/v1
-  model: my-model
-  api_key: ""
-```
-
----
+`llm.max_input_tokens` (default 60000, estimated as characters / 3.5) caps the request.
+A request over the limit is never cut: the infrastructure context is summarized first, then resources without findings lose their properties, then low-value resources are dropped with their edges.
+If it still does not fit, the LLM step fails with a clear error and the rule results are kept.
+What was summarized or dropped is counted in the report's `llm.context` block.
 
 ## Redaction
 
-Before any data is sent to an external LLM, ThreatCode replaces sensitive values with placeholder tokens like `__REDACTED_ARN_1__`. The original values are stored in a reversible mapping and substituted back into the LLM's output, so all threat findings still reference real resource addresses.
+Before anything is sent, resources become opaque handles and sensitive values become placeholders.
+`redaction.strategy` is `placeholder` (`REDACTED_<label>_<n>`) or `hash` (`REDACTED_<label>_<16 hex digits>`, an HMAC with a random per-run key, so a provider cannot confirm a guess by hashing it).
+`redaction.fields` adds names that are redacted at any depth, case-insensitively, on top of the built-in sensitive names; a listed name wins over the allowlist.
+Both keys are read only from a `--config` file, so a scanned repository cannot weaken redaction.
 
-**Redaction strategies:**
+[Security](security.md) shows real redactor output and `--dry-run`.
 
-| Strategy | Placeholder format | Notes |
-|----------|--------------------|-------|
-| `placeholder` (default) | `__REDACTED_ARN_1__` | Human-readable, reversible |
-| `hash` | `__HASH_a1b2c3d4__` | Consistent per value, reversible |
+## Environment variables
 
-**Fields always redacted** (hardcoded):
-- AWS account IDs (12-digit sequences with `aws` context)
-- ARNs (`arn:aws:...`)
-- IPv4 and IPv6 addresses
-- Email addresses
-- Any field named: `secret`, `password`, `token`, `api_key`, `access_key`, `secret_key`, `connection_string`, `credentials`, `private_key`, `certificate`, `name`, `module`, `provider`, `source_location`
+| Variable | Effect |
+|----------|--------|
+| `THREATCODE_FAIL_ON` | Default for `--fail-on`. |
+| `THREATCODE_MIN_SEVERITY` | Default for `--min-severity`. |
+| `THREATCODE_FORMAT` | Default for `-f`. |
+| `THREATCODE_LLM` | `1`, `true`, `yes` or `on` enables the model review; `0`, `false`, `no` or `off` disables it. |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | API keys, read only when the model review runs. |
+| `ANTHROPIC_BASE_URL` | Endpoint for the Anthropic provider; goes through the same address check as `llm.base_url`. |
+| `THREATCODE_MAX_NODES`, `THREATCODE_MAX_EDGES`, `THREATCODE_MAX_FANOUT` | Graph size limits. |
+| `THREATCODE_HELM` | `auto`, `off` or `required`. |
+| `SOURCE_DATE_EPOCH`, `NO_COLOR`, `CI` | See the [CLI reference](cli.md). |
 
-**Configurable additional fields** (via `redaction.fields`):
+An invalid value is an error that names the variable.
 
-```yaml
-redaction:
-  fields: [arn, account_id, tags, ip_address]
-```
+## Minimal configurations
 
----
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key (recommended over config file) |
-| `CI` | If set to `true`, disables home directory config discovery |
-
----
-
-## CLI Flags
-
-All config settings can be overridden per-command:
-
-```bash
-# Override config file
-threatcode scan tfplan.json --config /etc/threatcode.yml
-
-# Disable LLM
-threatcode scan tfplan.json --no-llm
-
-# Dry run (show LLM prompt, no API call)
-threatcode scan tfplan.json --dry-run
-
-# Minimum severity threshold
-threatcode scan tfplan.json --min-severity high
-
-# Extra custom rules
-threatcode scan tfplan.json --rules my_org_rules.yml --rules compliance.yml
-```
-
----
-
-## Minimal Configurations
-
-### Rules-only (no LLM)
+**Report only, never fail the build:**
 
 ```yaml
-no_llm: true
-min_severity: medium
+fail_on: none
 ```
 
-### CI quality gate
+**A CI gate that a pull request cannot edit** (save it outside the paths the pull request controls, or in a protected branch, and pass `--config`):
 
 ```yaml
-no_llm: true
-min_severity: high
-output_format: sarif
+fail_on: high
+min_severity: low
 ```
 
-### Air-gapped with a local LLM
+**Air-gapped review with a local model:**
 
 ```yaml
 llm:
-  provider: ollama
-  base_url: http://localhost:11434
-  model: llama3.2
-  max_tokens: 2048
+  enabled: true
+  provider: local
+  base_url: http://gpu-box.internal:8000
+  model: my-model
   allow_local_network: true
-no_llm: false
-```
-
-Without a local model server, run rules only:
-
-```yaml
-no_llm: true
 ```

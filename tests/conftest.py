@@ -16,6 +16,11 @@ from threatcode.ir.graph import InfraGraph
 from threatcode.ir.nodes import InfraNode, NodeCategory, TrustZone
 from threatcode.parsers.base import ParsedOutput
 
+# The pending marker and its hooks live in tests/helpers/pending.py; "pytester" backs the
+# harness self-tests that run a throwaway pytest session. Later packages add per-directory
+# conftest files and never edit this one.
+pytest_plugins = ["pytester", "tests.helpers.pending"]
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TERRAFORM_FIXTURES = FIXTURES_DIR / "terraform"
 

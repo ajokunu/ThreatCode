@@ -1,66 +1,92 @@
+# EC2 instances and launch templates.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+#
+# EC2_NO_MONITORING was removed: detailed monitoring is a cost and reliability setting, and a
+# missing metric is no attacker technique.
+
 rules:
   - id: EC2_PUBLIC_IP
-    title: EC2 instance with public IP address
+    title: EC2 instance with a public IP address
     description: >
-      The EC2 instance is configured with a public IP address,
-      directly exposing it to internet traffic. This increases
-      the attack surface significantly.
+      The instance is configured to receive a public IP address, so it can be reached from the
+      internet when its subnet routes to an internet gateway and its security group allows the
+      traffic.
+      Whether it is reachable depends on those two, which the attack path analysis checks.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: definitive
+    root_cause: instance-reachable-from-internet
     resource_type: aws_instance
     condition:
       associate_public_ip_address:
         equals: true
     mitigation: >
-      Remove public IP association and use a load balancer or
-      bastion host for access. Place instances in private subnets.
+      Place the instance in a private subnet and publish the service through a load balancer.
+      If operators need a shell, use AWS Systems Manager Session Manager or restrict the security
+      group to a known source instead of exposing the instance.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
-  - id: EC2_NO_MONITORING
-    title: EC2 instance without detailed monitoring
+  - id: EC2_IMDSV1
+    title: EC2 instance metadata service allows IMDSv1
     description: >
-      The EC2 instance does not have detailed monitoring enabled.
-      Without monitoring, unauthorized access or resource abuse
-      may go undetected and actions cannot be attributed.
-    stride_category: repudiation
-    severity: low
-    resource_type: aws_instance
+      The instance metadata service accepts session-less requests (IMDSv1), because
+      metadata_options.http_tokens is not "required" or the metadata_options block is missing.
+      A server-side request forgery or a command injection in any application on the instance can
+      then read the temporary credentials of the instance role from http://169.254.169.254.
+      A missing block is read as optional, which is the AWS default unless the image or the
+      account sets IMDSv2 as the default, so that case is heuristic.
+    stride_category: elevation_of_privilege
+    severity: medium
+    confidence: heuristic
+    root_cause: instance-metadata-credentials-exposed
+    resource_types:
+      - aws_instance
+      - aws_launch_template
+      - aws_launch_configuration
     condition:
       any_of:
-        - monitoring:
+        - metadata_options:
             not_exists: true
-        - monitoring:
-            equals: false
+        - metadata_options.http_tokens:
+            not_equals: "required"
     mitigation: >
-      Enable detailed monitoring and configure CloudWatch alarms
-      for suspicious activity patterns.
+      Set metadata_options { http_tokens = "required" } on the instance or launch template, and
+      consider http_put_response_hop_limit = 1 so containers on the host cannot reach the service.
+      An account-level default (ec2:ModifyInstanceMetadataDefaults) covers new instances.
     metadata:
       mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+        techniques: ["T1552.005"]
 
   - id: EC2_UNENCRYPTED_EBS
-    title: EC2 instance with unencrypted root volume
+    title: EC2 instance with an unencrypted root volume
     description: >
-      The EC2 instance root block device is not encrypted.
-      Data on the volume can be accessed if the underlying
-      storage media is compromised.
+      The root block device of the instance is not encrypted, or does not say.
+      Anyone who obtains a snapshot or the detached volume reads its content.
+      An account that turns on EBS encryption by default encrypts the volume anyway, so a missing
+      setting is reported at the lowest confidence.
     stride_category: information_disclosure
     severity: medium
+    confidence: absence
+    root_cause: ebs-not-encrypted
     resource_type: aws_instance
     condition:
       any_of:
-        - root_block_device.0.encrypted:
+        - root_block_device.encrypted:
             not_exists: true
-        - root_block_device.0.encrypted:
+        - root_block_device.encrypted:
             equals: false
     mitigation: >
-      Enable EBS encryption on all volumes using AWS-managed or
-      customer-managed KMS keys.
+      Set encrypted = true on the root_block_device and on every ebs_block_device, or enable EBS
+      encryption by default for the account and region.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
+
+deprecated_ids:
+  - EC2_NO_MONITORING

@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "aws_lambda_function.order_processor",
+    "rule_id": "LAMBDA_NO_VPC",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  }
+]

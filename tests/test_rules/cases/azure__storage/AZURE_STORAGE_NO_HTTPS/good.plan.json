@@ -1,0 +1,105 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_storage_account.data",
+          "mode": "managed",
+          "type": "azurerm_storage_account",
+          "name": "data",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "name": "acmedata",
+            "resource_group_name": "rg-data",
+            "location": "eastus",
+            "account_tier": "Standard",
+            "account_replication_type": "GRS",
+            "https_traffic_only_enabled": true,
+            "allow_nested_items_to_be_public": false,
+            "public_network_access_enabled": true
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_storage_account.data",
+      "mode": "managed",
+      "type": "azurerm_storage_account",
+      "name": "data",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "acmedata",
+          "resource_group_name": "rg-data",
+          "location": "eastus",
+          "account_tier": "Standard",
+          "account_replication_type": "GRS",
+          "https_traffic_only_enabled": true,
+          "allow_nested_items_to_be_public": false,
+          "public_network_access_enabled": true
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_storage_account.data",
+          "mode": "managed",
+          "type": "azurerm_storage_account",
+          "name": "data",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "name": {
+              "constant_value": "acmedata"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-data"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "account_tier": {
+              "constant_value": "Standard"
+            },
+            "account_replication_type": {
+              "constant_value": "GRS"
+            },
+            "https_traffic_only_enabled": {
+              "constant_value": true
+            },
+            "allow_nested_items_to_be_public": {
+              "constant_value": false
+            },
+            "public_network_access_enabled": {
+              "constant_value": true
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

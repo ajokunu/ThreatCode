@@ -1,12 +1,38 @@
+# Rules on the pod spec of a workload: Pod, Deployment, DaemonSet, StatefulSet, ReplicaSet,
+# Job and CronJob (the @kubernetes_pod_workloads group).
+#
+# The parser folds every container of a pod into one set of properties with Kubernetes
+# precedence (a container value wins, else the pod value) and one aggregation rule: a flag
+# describes the workload as unsafe when ANY applicable container is unsafe. The finding points
+# at the line of the first container that makes it so.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+# Critical is reserved for definitive, direct control of the host: a privileged container.
+#
+# Rules that report the same missing hardening share root_cause container_hardening, so a
+# bare container is one thing to fix, not seven.
+#
+# Removed rules, listed in deprecated_ids:
+#   K8S_NO_RESOURCE_QUOTAS and K8S_NO_PDB asked whether a ResourceQuota or PodDisruptionBudget
+#     exists somewhere else. One input cannot answer that, so a single manifest got a finding
+#     on every namespace and every Deployment.
+#   K8S_NO_LIVENESS_PROBE and K8S_NO_READINESS_PROBE were reliability advice with no attacker
+#     in them, and they were mapped to Endpoint Denial of Service.
+
 rules:
   - id: K8S_PRIVILEGED_CONTAINER
     title: Container running in privileged mode
     description: >
-      A container is configured with privileged: true, giving it full
-      access to the host. This effectively disables all container isolation.
+      A container is configured with privileged: true, giving it full access to the host.
+      This effectively disables all container isolation.
+      It applies to regular, init and ephemeral containers alike.
     stride_category: elevation_of_privilege
     severity: critical
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       privileged:
         equals: true
@@ -16,88 +42,99 @@ rules:
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
   - id: K8S_NO_RESOURCE_LIMITS
-    title: Container without resource limits
+    title: Container without CPU and memory limits
     description: >
-      No CPU or memory limits are set on the container.
-      This can lead to resource exhaustion and denial of service.
+      At least one container does not set both a CPU limit and a memory limit.
+      One container can then consume the resources of its node and starve its neighbours.
+      Init and ephemeral containers are not judged, because they do not run beside the
+      application.
+      Ephemeral storage is covered by K8S_EPHEMERAL_STORAGE_UNBOUNDED.
     stride_category: denial_of_service
     severity: medium
-    resource_type: kubernetes_deployment
+    confidence: absence
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_resource_limits:
         equals: false
     mitigation: >
-      Set resource limits (cpu, memory) for all containers.
+      Set resources.limits.cpu and resources.limits.memory on every container.
     metadata:
       mitre:
         techniques: ["T1499"]
-        tactics: ["TA0040"]
 
   - id: K8S_RUN_AS_ROOT
     title: Container may run as root
     description: >
-      runAsNonRoot is not set to true, allowing the container to run as root.
+      At least one container is not set to run as a non-root user.
+      A container counts as non-root when runAsNonRoot is true or runAsUser is a non-zero
+      number, at the container level or inherited from the pod.
+      An explicit runAsNonRoot: false on a container beats a pod-level true.
+      The image may still switch to a non-root user, so this is inferred from what is missing.
     stride_category: elevation_of_privilege
-    severity: high
-    resource_type: kubernetes_deployment
+    severity: medium
+    confidence: heuristic
+    root_cause: container_hardening
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       run_as_root:
         equals: true
     mitigation: >
-      Set runAsNonRoot: true in the pod or container securityContext.
+      Set runAsNonRoot: true and a non-zero runAsUser in the pod or container securityContext.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
   - id: K8S_WRITABLE_ROOT_FS
     title: Container root filesystem is writable
     description: >
-      readOnlyRootFilesystem is not set to true, allowing writes to the
-      container filesystem. This increases the attack surface.
+      At least one container does not set readOnlyRootFilesystem: true.
+      A process that is compromised can then write tools and persistence into the container
+      filesystem.
     stride_category: tampering
-    severity: medium
-    resource_type: kubernetes_deployment
+    severity: low
+    confidence: absence
+    root_cause: container_hardening
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       writable_root_fs:
         equals: true
     mitigation: >
-      Set readOnlyRootFilesystem: true in securityContext.
-      Use emptyDir volumes for writable paths.
+      Set readOnlyRootFilesystem: true in the container securityContext.
+      Mount emptyDir volumes for the paths that must be writable.
     metadata:
       mitre:
-        techniques: ["T1565.001"]
-        tactics: ["TA0040"]
+        techniques: ["T1105"]
 
   - id: K8S_HOST_NETWORK
     title: Pod uses host network namespace
     description: >
-      hostNetwork: true gives the pod access to the host's network
-      interfaces and can bypass network policies.
+      hostNetwork: true gives the pod the network interfaces of its node.
+      It can reach services bound to the node loopback, observe node traffic and bypass
+      NetworkPolicy.
     stride_category: information_disclosure
     severity: high
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       host_network:
         equals: true
     mitigation: >
-      Remove hostNetwork: true unless absolutely required.
+      Remove hostNetwork: true unless the workload is node-level networking software.
     metadata:
       mitre:
         techniques: ["T1040"]
-        tactics: ["TA0007"]
 
   - id: K8S_HOST_PID
     title: Pod uses host PID namespace
     description: >
-      hostPID: true lets the pod see and potentially interact with
-      all processes on the host.
-    stride_category: information_disclosure
+      hostPID: true lets the pod see, and with the right capabilities signal or trace, every
+      process on the node.
+    stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       host_pid:
         equals: true
@@ -105,254 +142,226 @@ rules:
       Remove hostPID: true.
     metadata:
       mitre:
-        techniques: ["T1613"]
-        tactics: ["TA0007"]
+        techniques: ["T1611"]
 
-  - id: K8S_AUTOMOUNT_SA_TOKEN
-    title: Service account token auto-mounted
+  - id: K8S_HOST_IPC
+    title: Pod uses host IPC namespace
     description: >
-      automountServiceAccountToken is not disabled.
-      Compromised pods can use the token to access the Kubernetes API.
-    stride_category: elevation_of_privilege
+      hostIPC: true shares the node's IPC namespace with the pod.
+      The pod can read the shared memory and message queues of host processes.
+    stride_category: information_disclosure
     severity: medium
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
-      automount_sa_token:
+      host_ipc:
         equals: true
     mitigation: >
-      Set automountServiceAccountToken: false unless API access is needed.
+      Remove hostIPC: true.
+    metadata:
+      mitre:
+        techniques: ["T1611"]
+
+  - id: K8S_AUTOMOUNT_SA_TOKEN
+    title: Workload mounts a service account token it may not need
+    description: >
+      The pod receives a ServiceAccount token, because automountServiceAccountToken is not
+      false on the pod or on its ServiceAccount.
+      A compromised container can use the token to call the Kubernetes API.
+      The effective value is the pod setting, else the ServiceAccount setting, else true.
+      When the ServiceAccount is not part of the scanned input the Kubernetes default of true
+      is assumed, which is why this finding is heuristic.
+      K8S_AUTOMOUNT_DEFAULT is the same advice at the ServiceAccount level.
+    stride_category: elevation_of_privilege
+    severity: low
+    confidence: heuristic
+    root_cause: sa_token_automount
+    resource_type: "@kubernetes_pod_workloads"
+    condition:
+      effective_automount_sa_token:
+        equals: true
+    mitigation: >
+      Set automountServiceAccountToken: false on the pod spec or its ServiceAccount, unless
+      the workload calls the Kubernetes API.
     metadata:
       mitre:
         techniques: ["T1528"]
-        tactics: ["TA0006"]
 
   - id: K8S_LATEST_TAG
-    title: Container image uses latest tag
+    title: Container image uses a floating tag
     description: >
-      A container image uses the 'latest' tag or no tag.
-      This makes deployments non-reproducible.
+      A container image uses the latest tag or no tag, and is not pinned by digest.
+      The image behind the reference can change between two pulls, so a deployment is not
+      reproducible and a poisoned push reaches the cluster without a change in git.
     stride_category: tampering
     severity: medium
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       uses_latest_tag:
         equals: true
     mitigation: >
-      Pin container images to specific version tags or SHA digests.
+      Pin container images to a version tag, ideally with a sha256 digest.
     metadata:
       mitre:
         techniques: ["T1195.002"]
-        tactics: ["TA0001"]
 
   - id: K8S_CAPABILITIES_NOT_DROPPED
     title: Container capabilities not dropped
     description: >
-      The container does not drop ALL Linux capabilities.
-      Unnecessary capabilities increase the attack surface.
+      At least one container does not drop ALL Linux capabilities.
+      Every capability a container keeps is available to an attacker who runs code in it.
     stride_category: elevation_of_privilege
-    severity: medium
-    resource_type: kubernetes_deployment
+    severity: low
+    confidence: absence
+    root_cause: container_hardening
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       capabilities_dropped:
         equals: false
     mitigation: >
-      Add 'drop: ["ALL"]' to securityContext.capabilities and
-      only add back specific required capabilities.
+      Add drop: ["ALL"] to securityContext.capabilities and add back only the capabilities
+      the workload needs.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
   - id: K8S_DANGEROUS_CAPABILITIES
     title: Dangerous Linux capabilities added
     description: >
-      The container adds dangerous capabilities like NET_ADMIN or SYS_ADMIN.
+      A container adds a capability that lets it act on the host or on other containers,
+      such as SYS_ADMIN, SYS_PTRACE, SYS_MODULE, NET_ADMIN, NET_RAW, BPF or ALL.
+      The names are compared in upper case without a CAP_ prefix.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       dangerous_capabilities:
         is_empty: false
     mitigation: >
-      Remove dangerous capabilities. Use more specific alternatives.
+      Remove the capability or replace it with a narrower one.
+      NET_BIND_SERVICE is enough to listen on a port below 1024.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
   - id: K8S_NO_SECURITY_CONTEXT
     title: Container missing securityContext
     description: >
-      No securityContext is configured for the container.
-      Security defaults may be too permissive.
+      At least one container has no securityContext of its own and inherits none from the
+      pod, so every Kubernetes default applies.
+      The other hardening findings of this workload say which defaults matter.
     stride_category: elevation_of_privilege
-    severity: medium
-    resource_type: kubernetes_deployment
+    severity: low
+    confidence: absence
+    root_cause: container_hardening
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_security_context:
         equals: false
     mitigation: >
-      Add a securityContext with restrictive settings.
+      Add a securityContext with restrictive settings to the pod and to each container.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
   - id: K8S_ALLOW_PRIVILEGE_ESCALATION
     title: Container allows privilege escalation
     description: >
-      allowPrivilegeEscalation is not set to false.
-      This allows processes to gain more privileges than the parent.
+      At least one container does not set allowPrivilegeEscalation: false.
+      A process in it can then gain more privileges than its parent, for example through a
+      setuid binary.
     stride_category: elevation_of_privilege
-    severity: high
-    resource_type: kubernetes_deployment
+    severity: medium
+    confidence: absence
+    root_cause: container_hardening
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       allow_privilege_escalation:
         equals: true
     mitigation: >
-      Set allowPrivilegeEscalation: false in securityContext.
+      Set allowPrivilegeEscalation: false in the container securityContext.
     metadata:
       mitre:
-        techniques: ["T1068"]
-        tactics: ["TA0004"]
+        techniques: ["T1548"]
 
   - id: K8S_HOSTPORT_USED
     title: Container uses hostPort
     description: >
-      A container port is bound to a host port, exposing it directly on the node.
+      A container port is bound to a port of the node, which exposes it on the node address
+      and bypasses the Service layer.
     stride_category: information_disclosure
     severity: medium
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_host_port:
         equals: true
     mitigation: >
-      Use Services instead of hostPort for network access.
+      Use a Service for network access instead of hostPort.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: K8S_SECRET_ENV_VAR
     title: Secret referenced via environment variable
     description: >
-      Secrets are referenced via env instead of mounted volumes.
-      Env vars are less secure as they may appear in logs and crash dumps.
+      A Secret is passed to a container through an environment variable instead of a mounted
+      file.
+      Environment variables appear in crash dumps, child processes and some logs.
     stride_category: information_disclosure
     severity: low
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       secret_env_vars:
         is_empty: false
     mitigation: >
-      Mount secrets as files instead of environment variables.
+      Mount the Secret as a file, or read it from a secret manager at run time.
     metadata:
       mitre:
         techniques: ["T1552.001"]
-        tactics: ["TA0006"]
-
-  - id: K8S_NO_LIVENESS_PROBE
-    title: Container missing liveness probe
-    description: >
-      No livenessProbe configured. Kubernetes cannot detect deadlocked containers.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: kubernetes_deployment
-    condition:
-      has_liveness_probe:
-        equals: false
-    mitigation: >
-      Add a livenessProbe to detect and restart unhealthy containers.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
-
-  - id: K8S_NO_READINESS_PROBE
-    title: Container missing readiness probe
-    description: >
-      No readinessProbe configured. Traffic may be sent to containers that are not ready.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: kubernetes_deployment
-    condition:
-      has_readiness_probe:
-        equals: false
-    mitigation: >
-      Add a readinessProbe to prevent traffic to unready containers.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
 
   - id: K8S_HOST_PATH_VOLUME
     title: hostPath volume mount detected
     description: >
-      A hostPath volume gives the pod access to host filesystem paths,
-      which can lead to host compromise.
+      A hostPath volume gives the pod access to a path on the node filesystem.
+      A writable mount of a sensitive path leads to host compromise.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: kubernetes_deployment
+    confidence: definitive
+    resource_type: "@kubernetes_pod_workloads"
     condition:
       has_host_path_volume:
         equals: true
     mitigation: >
-      Use PersistentVolumeClaims instead of hostPath volumes.
+      Use a PersistentVolumeClaim, an emptyDir or a projected volume instead of hostPath.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
-
-  - id: K8S_NO_RESOURCE_QUOTAS
-    title: Namespace without resource quotas
-    description: >
-      No ResourceQuota is defined for the namespace. Pods can consume
-      unlimited cluster resources, leading to resource starvation.
-    stride_category: denial_of_service
-    severity: medium
-    resource_type: kubernetes_namespace
-    condition:
-      has_resource_quota:
-        equals: false
-    mitigation: >
-      Define ResourceQuota objects to limit resource consumption per namespace.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
-
-  - id: K8S_NO_PDB
-    title: Deployment without PodDisruptionBudget
-    description: >
-      No PodDisruptionBudget is defined for the deployment.
-      Voluntary disruptions could take down all replicas simultaneously.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: kubernetes_deployment
-    condition:
-      has_pdb:
-        equals: false
-    mitigation: >
-      Create a PodDisruptionBudget to ensure minimum availability during disruptions.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
 
   - id: K8S_EPHEMERAL_STORAGE_UNBOUNDED
-    title: Container without ephemeral storage limits
+    title: Container without ephemeral storage limit
     description: >
-      No ephemeral storage limits are set on the container.
-      A container can fill the node's disk, causing node failure.
+      At least one container sets no ephemeral-storage limit.
+      It can fill the disk of its node with logs or scratch files and take the node down.
+      CPU and memory limits are covered by K8S_NO_RESOURCE_LIMITS.
     stride_category: denial_of_service
-    severity: medium
-    resource_type: kubernetes_deployment
+    severity: low
+    confidence: absence
+    resource_type: "@kubernetes_pod_workloads"
     condition:
-      has_resource_limits:
+      has_ephemeral_storage_limit:
         equals: false
     mitigation: >
-      Set ephemeral-storage limits in container resource specifications.
+      Set resources.limits.ephemeral-storage on every container.
     metadata:
       mitre:
         techniques: ["T1499"]
-        tactics: ["TA0040"]
+
+deprecated_ids:
+  - K8S_NO_RESOURCE_QUOTAS
+  - K8S_NO_PDB
+  - K8S_NO_LIVENESS_PROBE
+  - K8S_NO_READINESS_PROBE

@@ -1,0 +1,66 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.api-6c846ce7",
+      "target": "mcp_server.api-6c846ce7.postgres",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.api-be72395b",
+      "target": "mcp_server.api-be72395b.postgres",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.memory",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.api-6c846ce7.postgres",
+      "target": "mcp_agent.api-6c846ce7",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.api-be72395b.postgres",
+      "target": "mcp_agent.api-be72395b",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.memory",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "mcp_agent.api-6c846ce7": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_agent.api-be72395b": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.api-6c846ce7.postgres": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.api-be72395b.postgres": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.memory": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/08_aws_ml_training_platform.json.
+fixture: 08_aws_ml_training_platform.json
+must_find:
+  - resource: aws_iam_policy.sagemaker_execution
+    rule_ids: [IAM_WILDCARD_ACTION]
+    kind: wildcard_iam
+    why: 'TODO "Scope down to least privilege" (MLPLAT-2847): Sid FullAccessForTraining allows Action "*"'
+  - resource: aws_s3_bucket.notebook_outputs
+    rule_ids: [S3_PUBLIC_ACCESS]
+    kind: public_access
+    why: 'acl is "public-read"; "researchers need quick access"'
+  - resource: aws_security_group.notebook_debug
+    kind: open_ingress
+    why: 'Wide open SG for notebook debugging, all traffic from 0.0.0.0/0 (MLPLAT-3102)'
+  - resource: aws_instance.gpu_experiment_box
+    kind: imdsv1
+    why: 'metadata_options http_tokens is "optional"'
+  - resource: aws_instance.gpu_experiment_box
+    rule_ids: [EC2_PUBLIC_IP]
+    kind: public_ip
+    why: 'associate_public_ip_address is true in a subnet named ml_private_a'
+  - resource: aws_instance.gpu_experiment_box
+    rule_ids: [EC2_UNENCRYPTED_EBS]
+    kind: unencrypted_storage
+    why: 'root_block_device and ebs_block_device are both encrypted = false'
+must_not_find:
+  - resource: aws_s3_bucket.training_data
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'the companion encryption, versioning and logging resources configure all three'
+  - resource: aws_s3_bucket_server_side_encryption_configuration.training_data
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'the encryption companion is the encryption'
+  - resource: aws_s3_bucket_versioning.training_data
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a versioning companion is not a bucket'
+  - resource: aws_s3_bucket_logging.training_data
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a logging companion is not a bucket'
+  - resource: aws_lambda_function.experiment_tracker
+    why: 'VPC config, dead letter queue and tracing are set'

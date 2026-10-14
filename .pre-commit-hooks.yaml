@@ -1,0 +1,27 @@
+# Hooks that other repositories use through pre-commit. In their .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/ajokunu/ThreatCode
+#       rev: main
+#       hooks:
+#         - id: threatcode
+#
+# Use main until the first release of the 1.0 line is tagged, then pin that tag; the 0.9 tags
+# predate this hook and its command line.
+#
+# The hook builds one threat model across the whole repository, because an attack path can cross
+# files; pre-commit's changed-file list would hide half of it.
+# It runs when a commit touches a file type that can hold infrastructure code.
+# It fails on a finding or attack path at or above high.
+# It prints the text report: pre-commit shows output only when a hook fails, and standard output
+# is not a terminal there, so the default format would be JSON.
+# To change the gate, add args to the hook in your config:  args: ["--fail-on", "critical"]
+- id: threatcode
+  name: ThreatCode threat model
+  description: Build a STRIDE threat model of the repository and fail on high or critical findings.
+  entry: threatcode scan . --fail-on high --format text
+  language: python
+  pass_filenames: false
+  require_serial: true
+  types_or: [terraform, yaml, json, dockerfile]
+  minimum_pre_commit_version: "3.0.0"

@@ -1,0 +1,97 @@
+# Four workloads and the policies around them: a default-deny pair, an ingress-only policy, an
+# egress-only policy selected by matchExpressions, and a policy in another namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guarded
+  namespace: policy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guarded
+  template:
+    metadata:
+      labels:
+        app: guarded
+        tier: backend
+    spec:
+      containers:
+        - name: guarded
+          image: registry.example.com/policy/guarded:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exposed
+  namespace: policy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: exposed
+  template:
+    metadata:
+      labels:
+        app: exposed
+        tier: frontend
+    spec:
+      containers:
+        - name: exposed
+          image: registry.example.com/policy/exposed:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elsewhere
+  namespace: other
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elsewhere
+  template:
+    metadata:
+      labels:
+        app: elsewhere
+    spec:
+      containers:
+        - name: elsewhere
+          image: registry.example.com/other/elsewhere:1.0.0
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-for-guarded
+  namespace: policy
+spec:
+  podSelector:
+    matchLabels:
+      app: guarded
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-ingress-only
+  namespace: policy
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tier
+        operator: In
+        values: [frontend]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: guarded
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: other-namespace-policy
+  namespace: elsewhere-ns
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]

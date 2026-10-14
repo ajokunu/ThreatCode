@@ -1,0 +1,695 @@
+[
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_DANGEROUS_CAPABILITIES",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_HOST_NETWORK",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_LATEST_TAG",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_PRIVILEGED_CONTAINER",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.kinds.cronjob",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.kinds.daemonset",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.kinds.deployment",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.kinds.job",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.kinds.pod",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.kinds.replicaset",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.kinds.statefulset",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  }
+]

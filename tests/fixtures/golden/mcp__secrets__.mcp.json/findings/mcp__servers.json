@@ -1,0 +1,74 @@
+[
+  {
+    "resource_address": "mcp_server.default-literal",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.docker-env",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.flag-equals",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.flag-space",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.query-auth",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.userinfo",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.password-key",
+    "rule_id": "MCP_SECRET_LIKELY_IN_CONFIG",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.path-token",
+    "rule_id": "MCP_SECRET_LIKELY_IN_CONFIG",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  }
+]

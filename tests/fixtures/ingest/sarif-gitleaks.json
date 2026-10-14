@@ -1,0 +1,58 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "gitleaks",
+          "semanticVersion": "v8.18.4",
+          "informationUri": "https://github.com/gitleaks/gitleaks",
+          "rules": [
+            {
+              "id": "aws-access-token",
+              "name": "AWS",
+              "shortDescription": {
+                "text": "Identified a pattern that may indicate AWS credentials, risking unauthorized cloud resource access and data breaches on AWS platforms."
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "message": {
+            "text": "aws-access-token has detected secret for file infra/main.tf."
+          },
+          "ruleId": "aws-access-token",
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/main.tf"
+                },
+                "region": {
+                  "startLine": 20,
+                  "startColumn": 22,
+                  "endLine": 20,
+                  "endColumn": 42,
+                  "snippet": {
+                    "text": "REDACTED"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "commitSha": "0000000000000000000000000000000000000000",
+            "email": "dev@example.com",
+            "author": "dev",
+            "date": "2026-10-01T10:00:00Z",
+            "commitMessage": "add deploy script"
+          }
+        }
+      ]
+    }
+  ]
+}

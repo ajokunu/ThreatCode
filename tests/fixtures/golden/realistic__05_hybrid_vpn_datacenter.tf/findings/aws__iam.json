@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_iam_role_policy.vpn_mgmt",
+    "rule_id": "IAM_SERVICE_WILDCARD",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

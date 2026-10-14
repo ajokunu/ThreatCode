@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Front:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+  Https:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Front
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: arn:aws:acm:us-east-1:111122223333:certificate/0123-4567
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/app/0123456789abcdef

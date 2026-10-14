@@ -1,0 +1,128 @@
+[
+  {
+    "resource_address": "kubernetes_cron_job.platform.nightly-report",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.platform.node-agent",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.platform.api",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.platform.reindex",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.platform.debug-shell",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.platform.legacy-worker",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.platform.queue",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_cron_job.platform.nightly-report",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_daemon_set.platform.node-agent",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.platform.api",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_job.platform.reindex",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.platform.debug-shell",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_replica_set.platform.legacy-worker",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_stateful_set.platform.queue",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Sessions:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: session cache
+      CacheNodeType: cache.t3.small
+      Engine: redis
+      NumCacheClusters: 2

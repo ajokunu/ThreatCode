@@ -1,0 +1,16 @@
+[
+  {
+    "resource_address": "aws_lambda_function.admin_lambda",
+    "rule_id": "LAMBDA_NO_VPC",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_lambda_function.no_vpc_lambda",
+    "rule_id": "LAMBDA_NO_VPC",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  }
+]

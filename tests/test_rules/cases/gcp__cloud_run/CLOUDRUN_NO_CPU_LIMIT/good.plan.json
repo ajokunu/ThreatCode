@@ -1,0 +1,133 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_cloud_run_v2_service.svc",
+          "mode": "managed",
+          "type": "google_cloud_run_v2_service",
+          "name": "svc",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "svc",
+            "location": "us-central1",
+            "project": "shop-prod",
+            "ingress": "INGRESS_TRAFFIC_ALL",
+            "description": null,
+            "timeouts": null,
+            "template": [
+              {
+                "containers": [
+                  {
+                    "image": "gcr.io/shop-prod/app:1.4.2",
+                    "resources": [
+                      {
+                        "limits": {
+                          "cpu": "1",
+                          "memory": "512Mi"
+                        },
+                        "cpu_idle": true
+                      }
+                    ]
+                  }
+                ],
+                "scaling": [],
+                "vpc_access": [],
+                "timeout": "300s"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_cloud_run_v2_service.svc",
+      "mode": "managed",
+      "type": "google_cloud_run_v2_service",
+      "name": "svc",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "svc",
+          "location": "us-central1",
+          "project": "shop-prod",
+          "ingress": "INGRESS_TRAFFIC_ALL",
+          "description": null,
+          "timeouts": null,
+          "template": [
+            {
+              "containers": [
+                {
+                  "image": "gcr.io/shop-prod/app:1.4.2",
+                  "resources": [
+                    {
+                      "limits": {
+                        "cpu": "1",
+                        "memory": "512Mi"
+                      },
+                      "cpu_idle": true
+                    }
+                  ]
+                }
+              ],
+              "scaling": [],
+              "vpc_access": [],
+              "timeout": "300s"
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_cloud_run_v2_service.svc",
+          "mode": "managed",
+          "type": "google_cloud_run_v2_service",
+          "name": "svc",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "svc"
+            },
+            "location": {
+              "constant_value": "us-central1"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            },
+            "ingress": {
+              "constant_value": "INGRESS_TRAFFIC_ALL"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

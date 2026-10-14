@@ -1,0 +1,50 @@
+# Rules for the AI agent that a client config starts (resource type mcp_agent).
+#
+# The MCP config parser adds one synthetic mcp_agent node per config scope (the file itself,
+# and each project of ~/.claude.json). Its properties are the union of what the scope's
+# enabled servers can do, taken from the reviewed table in
+# src/threatcode/parsers/_mcp_capabilities.py. A server the table does not know adds nothing
+# to the union and is listed in unknown_capability_servers, so a gap in the table can hide a
+# trifecta but never invents one.
+#
+# metadata.owasp uses the same sources as servers.yml: OWASP MCP Top 10 (2025) and OWASP Top 10
+# for Agentic Applications 2026. The ids below follow those documents' categories for prompt
+# injection and goal hijack (MCP06 and MCP10, ASI01 and ASI02). No MITRE ATLAS ids are given:
+# none has been checked against pinned ATLAS data yet.
+rules:
+  - id: MCP_LETHAL_TRIFECTA
+    title: Agent can read private data, ingest untrusted content and exfiltrate or act
+    description: >
+      The servers this config starts give one agent all three of: access to private data
+      (files, databases, repositories, messages), exposure to content an outsider can
+      write (web pages, search results, issues, chat messages, shared documents), and the
+      ability to send data out or act on the outside world (HTTP requests, a browser, a
+      shell, posting messages, any remote server). No single server has to be unsafe. A
+      prompt injection in the untrusted content can tell the agent to read the private
+      data and send it out, and the user may never see it happen. The capabilities come
+      from a reviewed table of known servers, so a server missing from the table is not
+      counted.
+    stride_category: information_disclosure
+    severity: high
+    confidence: heuristic
+    resource_type: mcp_agent
+    condition:
+      all_of:
+        - reads_private_data:
+            equals: true
+        - ingests_untrusted_content:
+            equals: true
+        - can_exfiltrate_or_act:
+            equals: true
+    mitigation: >
+      Remove one of the three capabilities from the agent. Split the servers across
+      separate agent configs so no single session holds all three, require human approval
+      for every outbound call and write, and keep untrusted-content servers away from
+      sessions that read private data.
+    metadata:
+      mitre:
+        techniques: ["T1567"]
+        tactics: ["TA0010"]
+      owasp:
+        mcp_top_10: ["MCP06:2025", "MCP10:2025"]
+        agentic_top_10: ["ASI01", "ASI02"]

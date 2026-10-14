@@ -1,0 +1,98 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_apigatewayv2_route.items",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "items",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "route_key": "GET /items",
+            "authorization_type": "NONE",
+            "api_key_required": false,
+            "authorization_scopes": null,
+            "request_models": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_apigatewayv2_route.items",
+      "mode": "managed",
+      "type": "aws_apigatewayv2_route",
+      "name": "items",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "route_key": "GET /items",
+          "authorization_type": "NONE",
+          "api_key_required": false,
+          "authorization_scopes": null,
+          "request_models": null
+        },
+        "after_unknown": {
+          "authorizer_id": true,
+          "target": true,
+          "id": true,
+          "arn": true,
+          "api_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_apigatewayv2_route.items",
+          "mode": "managed",
+          "type": "aws_apigatewayv2_route",
+          "name": "items",
+          "provider_config_key": "aws",
+          "expressions": {
+            "route_key": {
+              "constant_value": "GET /items"
+            },
+            "authorization_type": {
+              "constant_value": "NONE"
+            },
+            "api_key_required": {
+              "constant_value": false
+            },
+            "api_id": {
+              "references": [
+                "aws_apigatewayv2_api.http.id",
+                "aws_apigatewayv2_api.http"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

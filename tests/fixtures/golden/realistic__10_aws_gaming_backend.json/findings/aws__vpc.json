@@ -1,0 +1,26 @@
+[
+  {
+    "resource_address": "aws_security_group.game_server_test_sg",
+    "rule_id": "SG_TEMPORARY_OPEN",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_security_group.game_server_test_sg",
+    "rule_id": "SG_UNRESTRICTED_INGRESS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1133",
+      "T1190"
+    ]
+  },
+  {
+    "resource_address": "aws_vpc.stormforge",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

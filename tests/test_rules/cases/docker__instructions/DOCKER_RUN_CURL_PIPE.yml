@@ -1,0 +1,34 @@
+# The verified-download remediation lives in DOCKER_RUN_CURL_PIPE/. These inline cases add
+# the pipe variants the parser must tell apart: a pipe into a checksum tool is not a pipe into
+# a shell, and a wrapper such as sudo does not hide one.
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN curl -fsSL https://get.example.com/install.sh | sh
+    good: |
+      FROM debian:12-slim
+      RUN curl -fsSLo /tmp/install.sh https://get.example.com/install.sh
+      RUN sh /tmp/install.sh
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN wget -qO- https://get.example.com/install.sh | sudo bash
+    good: |
+      FROM debian:12-slim
+      RUN curl -fsSL https://get.example.com/pkg.tgz | tar -xz -C /opt
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN <<EOF
+      set -eux
+      curl -fsSL https://get.example.com/install.py | python3
+      EOF
+    good: |
+      FROM debian:12-slim
+      RUN <<EOF
+      set -eux
+      curl -fsSLo /tmp/install.py https://get.example.com/install.py
+      echo "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08  /tmp/install.py" | sha256sum -c -
+      python3 /tmp/install.py
+      EOF

@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Main:
+    Type: AWS::EKS::Cluster
+    Properties:
+      RoleArn: arn:aws:iam::111122223333:role/cluster
+      Version: "1.34"
+      ResourcesVpcConfig:
+        SubnetIds: [subnet-0a1b2c3d, subnet-4e5f6a7b]
+        EndpointPublicAccess: true
+        PublicAccessCidrs: [0.0.0.0/0]
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+            - Type: authenticator
+      EncryptionConfig:
+        - Resources: [secrets]
+          Provider:
+            KeyArn: arn:aws:kms:us-east-1:111122223333:key/0a1b2c3d-4e5f-6789-abcd-ef0123456789

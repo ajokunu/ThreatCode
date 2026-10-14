@@ -1,6 +1,6 @@
 site_name: ThreatCode
-site_description: STRIDE threat model generator from Infrastructure-as-Code
-site_url: https://ajokunu.github.io/ThreatCode
+site_description: Attack paths from the internet to your data, found in the infrastructure code you already have
+site_url: https://ajokunu.github.io/ThreatCode/
 repo_url: https://github.com/ajokunu/ThreatCode
 repo_name: ajokunu/ThreatCode
 
@@ -31,13 +31,21 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - API Reference: api-reference.md
+  - CLI Reference: cli.md
+  - CI/CD Integration: cicd.md
+  - Configuration: configuration.md
+  - Support Matrix: support-matrix.md
+  - Architecture: architecture.md
+  - Rule Catalog: rules.md
   - Rule Writing Guide: writing-rules.md
   - MITRE ATT&CK: mitre-attack.md
-  - CI/CD Integration: cicd.md
-  - Architecture: architecture.md
-  - Configuration: configuration.md
+  - Benchmark: benchmark.md
   - Security: security.md
+  - Security Model: security-model.md
+  - API Reference: api-reference.md
+  - Migrating from 0.9: migrating.md
+  - Releasing: releasing.md
+  - Claims: claims.md
 
 markdown_extensions:
   - admonition

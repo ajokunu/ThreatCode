@@ -1,0 +1,25 @@
+[
+  {
+    "resource_address": "aws_cloudfront_distribution.storefront",
+    "rule_id": "CLOUDFRONT_NO_GEO_RESTRICTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_cloudfront_distribution.storefront",
+    "rule_id": "CLOUDFRONT_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_cloudfront_distribution.storefront",
+    "rule_id": "CLOUDFRONT_NO_WAF",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

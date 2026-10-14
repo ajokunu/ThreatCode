@@ -1,72 +1,114 @@
+# Rules on Cloud Run services, first generation (google_cloud_run_service) and second
+# generation (google_cloud_run_v2_service).
+#
+# The two resources lay the same settings out differently, so a rule that applies to both lists
+# both layouts and fires when neither has the setting. Paths ignore the single-element lists
+# that blocks become, so template.metadata.annotations reads the same in HCL and plan JSON, and a
+# dotted annotation key such as run.googleapis.com/vpc-access-connector is one key.
+#
+# Who may invoke a service is not set on the service: it comes from
+# google_cloud_run_service_iam_member and _iam_binding resources.
+# ir/enrichment/companions.py folds the members that hold roles/run.invoker into
+# derived.invoker_members of the service, which the unauthenticated-access rule reads.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: CLOUDRUN_UNAUTHENTICATED
-    title: Cloud Run service allows unauthenticated access
+    title: Cloud Run service can be invoked by anyone
     description: >
-      The Cloud Run service allows unauthenticated invocations.
-      Anyone can access the service without identity verification.
+      An IAM member or binding grants roles/run.invoker to allUsers or allAuthenticatedUsers.
+      Anyone on the internet, or anyone with a Google account, can call the service without
+      proving who they are.
+      This is intended for a public website or webhook; for anything else it exposes the
+      service's data and the permissions of its service account.
     stride_category: spoofing
     severity: high
-    resource_type: google_cloud_run_service
+    confidence: definitive
+    root_cause: gcp-public-iam-principal
+    resource_types: [google_cloud_run_service, google_cloud_run_v2_service]
     condition:
-      has_allow_unauthenticated:
-        equals: true
+      any_of:
+        - derived.invoker_members:
+            contains: "allUsers"
+        - derived.invoker_members:
+            contains: "allAuthenticatedUsers"
     mitigation: >
-      Require authentication by removing allUsers IAM binding.
+      Remove the allUsers and allAuthenticatedUsers members from the invoker binding and grant
+      roles/run.invoker to the specific callers, or put the service behind IAP or a load balancer
+      that authenticates.
     metadata:
       mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0001"]
+        techniques: ["T1190"]
 
   - id: CLOUDRUN_NO_VPC_CONNECTOR
-    title: Cloud Run service without VPC connector
+    title: Cloud Run service without a VPC connector or direct VPC egress
     description: >
-      The Cloud Run service does not use a VPC connector.
-      It cannot access internal VPC resources securely.
+      The service sets neither a Serverless VPC Access connector nor direct VPC egress.
+      Its outbound traffic leaves over the public internet and it cannot reach private
+      resources, such as a database, over private addresses.
     stride_category: information_disclosure
-    severity: medium
-    resource_type: google_cloud_run_service
+    severity: low
+    confidence: absence
+    root_cause: serverless-no-vpc-egress
+    resource_types: [google_cloud_run_service, google_cloud_run_v2_service]
     condition:
-      template.0.metadata.0.annotations.run.googleapis.com/vpc-access-connector:
-        not_exists: true
+      all_of:
+        - template.metadata.annotations.run.googleapis.com/vpc-access-connector:
+            not_exists: true
+        - template.metadata.annotations.run.googleapis.com/network-interfaces:
+            not_exists: true
+        - template.vpc_access.connector:
+            not_exists: true
+        - template.vpc_access.network_interfaces:
+            not_exists: true
     mitigation: >
-      Configure a VPC connector for private network access.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+      Add the run.googleapis.com/vpc-access-connector annotation (first generation) or a
+      vpc_access block (second generation).
 
   - id: CLOUDRUN_NO_CPU_LIMIT
-    title: Cloud Run service without CPU limit
+    title: Cloud Run container sets no explicit CPU limit
     description: >
-      The Cloud Run service does not set a CPU limit.
-      Unrestricted CPU usage can lead to cost overruns.
+      A container has no resources.limits.cpu.
+      Cloud Run then applies its default of one CPU, so usage is bounded, but the limit is not
+      written down and a change to the default changes the bill and the capacity of the service.
     stride_category: denial_of_service
     severity: low
-    resource_type: google_cloud_run_service
+    confidence: absence
+    root_cause: serverless-no-resource-limits
+    resource_types: [google_cloud_run_service, google_cloud_run_v2_service]
     condition:
-      template.0.spec.0.containers.0.resources.limits.cpu:
-        not_exists: true
+      any_of:
+        - template.spec.containers:
+            any_item:
+              resources.limits.cpu:
+                not_exists: true
+        - template.containers:
+            any_item:
+              resources.limits.cpu:
+                not_exists: true
     mitigation: >
-      Set CPU limits in container resource specifications.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+      Set resources.limits.cpu on every container.
 
   - id: CLOUDRUN_NO_MAX_INSTANCES
-    title: Cloud Run service without max instance scaling limit
+    title: Cloud Run service without a maximum instance count
     description: >
-      The Cloud Run service does not limit the maximum number of instances.
-      Unrestricted scaling can lead to cost explosion.
+      The service sets no maximum number of instances.
+      A flood of requests then scales it up to the project quota and the bill follows.
     stride_category: denial_of_service
-    severity: medium
-    resource_type: google_cloud_run_service
+    severity: low
+    confidence: absence
+    root_cause: serverless-unbounded-scaling
+    resource_types: [google_cloud_run_service, google_cloud_run_v2_service]
     condition:
-      template.0.metadata.0.annotations.autoscaling.knative.dev/maxScale:
-        not_exists: true
+      all_of:
+        - template.metadata.annotations.autoscaling.knative.dev/maxScale:
+            not_exists: true
+        - template.scaling.max_instance_count:
+            not_exists: true
     mitigation: >
-      Set maxScale annotation to limit instance scaling.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
+      Set the autoscaling.knative.dev/maxScale annotation (first generation) or
+      scaling.max_instance_count (second generation).

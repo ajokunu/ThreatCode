@@ -1,90 +1,94 @@
+# Rules on CloudTrail trails.
+#
+# enable_logging defaults to true, and is_multi_region_trail and enable_log_file_validation
+# default to false (see DEFAULTS in threatcode/ir/enrichment/aws_data.py), so a rule that reads
+# them means the same for Terraform HCL, CloudFormation and a plan.
+# A missing log is a detection gap, not an attack technique, so these rules map to no ATT&CK
+# technique and use the repudiation category.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # s3_bucket_name is a required argument of the trail and has nothing to do with access logging
+  # on that bucket, so the rule never fired. S3_NO_LOGGING judges the bucket itself.
+  - CLOUDTRAIL_NO_S3_ACCESS_LOGGING
+
 rules:
   - id: CLOUDTRAIL_NOT_ENABLED
-    title: CloudTrail logging not enabled
+    title: CloudTrail logging is turned off
     description: >
-      CloudTrail is not enabled or configured. Without CloudTrail,
-      API activity in the AWS account is not recorded.
+      The trail exists but enable_logging is false, so it records no API activity.
+      Nothing that happens in the account while it is off can be reconstructed afterwards.
     stride_category: repudiation
     severity: high
+    confidence: definitive
+    root_cause: cloudtrail-not-recording
     resource_type: aws_cloudtrail
     condition:
-      is_multi_region_trail:
+      enable_logging:
         equals: false
     mitigation: >
-      Enable CloudTrail with multi-region logging.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Remove enable_logging = false, or set it to true.
+
+  - id: CLOUDTRAIL_NOT_MULTI_REGION
+    title: CloudTrail not configured for all regions
+    description: >
+      The trail records only the region it is created in.
+      API calls in every other region, including the ones an attacker uses to start resources
+      where nobody is looking, are not logged.
+    stride_category: repudiation
+    severity: medium
+    confidence: definitive
+    resource_type: aws_cloudtrail
+    condition:
+      any_of:
+        - is_multi_region_trail:
+            equals: false
+        - is_multi_region_trail:
+            not_exists: true
+    mitigation: >
+      Set is_multi_region_trail to true.
 
   - id: CLOUDTRAIL_NO_LOG_VALIDATION
     title: CloudTrail log file validation disabled
     description: >
-      Log file validation is not enabled. Without validation,
-      log tampering cannot be detected.
-    stride_category: tampering
-    severity: medium
+      Log file validation is off, so the trail does not produce digest files that prove the log
+      files are unchanged.
+      Someone who can write to the log bucket can edit or delete records and nobody can tell.
+    stride_category: repudiation
+    severity: low
+    confidence: definitive
     resource_type: aws_cloudtrail
     condition:
-      enable_log_file_validation:
-        equals: false
+      any_of:
+        - enable_log_file_validation:
+            equals: false
+        - enable_log_file_validation:
+            not_exists: true
     mitigation: >
-      Enable log file validation on the CloudTrail trail.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Set enable_log_file_validation to true.
 
   - id: CLOUDTRAIL_NO_ENCRYPTION
-    title: CloudTrail logs not encrypted
+    title: CloudTrail logs not encrypted with a customer-managed KMS key
     description: >
-      CloudTrail logs are not encrypted with KMS.
-      Unencrypted logs can be read by anyone with S3 access.
+      The trail has no kms_key_id, so its log files use S3-managed encryption (SSE-S3) rather
+      than a customer-managed KMS key.
+      The logs are encrypted at rest; what is missing is a key whose policy limits who can
+      read them.
+      A key that is still to be created (a reference the scan cannot resolve) is not reported.
     stride_category: information_disclosure
-    severity: high
+    severity: low
+    confidence: absence
     resource_type: aws_cloudtrail
     condition:
       kms_key_id:
         not_exists: true
     mitigation: >
-      Configure KMS encryption for CloudTrail logs.
+      Set kms_key_id to a customer-managed key whose policy lets CloudTrail encrypt and the
+      security team decrypt.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
-
-  - id: CLOUDTRAIL_NOT_MULTI_REGION
-    title: CloudTrail not configured for all regions
-    description: >
-      CloudTrail is not set to multi-region. Activity in other
-      regions will not be logged.
-    stride_category: repudiation
-    severity: medium
-    resource_type: aws_cloudtrail
-    condition:
-      is_multi_region_trail:
-        equals: false
-    mitigation: >
-      Set is_multi_region_trail to true.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
-
-  - id: CLOUDTRAIL_NO_S3_ACCESS_LOGGING
-    title: CloudTrail S3 bucket without access logging
-    description: >
-      The S3 bucket storing CloudTrail logs does not have
-      access logging enabled.
-    stride_category: repudiation
-    severity: medium
-    resource_type: aws_cloudtrail
-    condition:
-      s3_bucket_name:
-        not_exists: true
-    mitigation: >
-      Enable access logging on the CloudTrail S3 bucket.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]

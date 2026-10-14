@@ -1,0 +1,74 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_AUTOMOUNT_SA_TOKEN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1528"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_CAPABILITIES_NOT_DROPPED",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_NO_RESOURCE_LIMITS",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_RUN_AS_ROOT",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.edge.portal",
+    "rule_id": "K8S_WRITABLE_ROOT_FS",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1105"
+    ]
+  }
+]

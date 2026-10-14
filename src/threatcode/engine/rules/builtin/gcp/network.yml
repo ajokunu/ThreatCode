@@ -1,54 +1,100 @@
+# Rules on Compute Engine firewall rules (google_compute_firewall).
+#
+# The rules read two facts that ir/enrichment/gcp.py derives, because a firewall rule has
+# defaults no single attribute shows:
+#   derived.ingress_allow  the allow blocks that admit inbound traffic. It is empty for an
+#                          egress rule (a missing direction is INGRESS), a disabled rule and a
+#                          deny rule, so none of those can fire.
+#   derived.world_source   true when the rule admits the whole internet, which includes a rule
+#                          that names no source at all.
+# A rule fires only when both hold, so HTTPS from the world is silent and SSH from a private
+# range is silent.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: GCP_FW_ALLOW_ALL
-    title: GCP firewall allows all ingress
+    title: GCP firewall admits every port from the internet
     description: >
-      The firewall rule allows all incoming traffic.
+      An enabled ingress firewall rule allows all protocols, or every port of tcp, udp or sctp,
+      from 0.0.0.0/0 or from no source restriction at all.
+      Every service on every instance the rule targets is then reachable from the internet.
+      A rule that opens only some ports, such as HTTPS, does not match.
     stride_category: information_disclosure
     severity: critical
+    confidence: definitive
+    root_cause: gcp-firewall-world-ingress
     resource_type: google_compute_firewall
     condition:
       all_of:
-        - direction:
-            equals: "INGRESS"
-        - source_ranges:
-            contains: "0.0.0.0/0"
+        - derived.world_source:
+            is_true: true
+        - derived.ingress_allow:
+            any_item:
+              all_ports:
+                equals: true
     mitigation: >
-      Restrict source ranges to specific IP ranges.
+      Restrict source_ranges to the addresses that need access and list only the ports and
+      protocols the service uses.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: GCP_FW_SSH_OPEN
-    title: GCP firewall allows SSH from any source
+    title: GCP firewall allows SSH from the internet
     description: >
-      SSH is open from any IP address.
+      An enabled ingress firewall rule allows tcp port 22, in a single port, a range or an
+      all-ports rule, from 0.0.0.0/0 or from no source restriction.
+      Anyone on the internet can then attempt to log in to the targeted instances.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: gcp-firewall-world-ingress
     resource_type: google_compute_firewall
     condition:
-      source_ranges:
-        contains: "0.0.0.0/0"
+      all_of:
+        - derived.world_source:
+            is_true: true
+        - derived.ingress_allow:
+            any_item:
+              all_of:
+                - protocol:
+                    matches_any: ["tcp", "all"]
+                - port_overlaps: [22]
     mitigation: >
-      Restrict SSH to specific source ranges.
+      Restrict SSH to specific source ranges, or reach instances through Identity-Aware Proxy
+      TCP forwarding (source range 35.235.240.0/20) and remove the public rule.
     metadata:
       mitre:
-        techniques: ["T1021"]
-        tactics: ["TA0008"]
+        techniques: ["T1133"]
 
   - id: GCP_FW_RDP_OPEN
-    title: GCP firewall allows RDP from any source
+    title: GCP firewall allows RDP from the internet
     description: >
-      RDP is open from any IP address.
+      An enabled ingress firewall rule allows tcp port 3389, in a single port, a range or an
+      all-ports rule, from 0.0.0.0/0 or from no source restriction.
+      Anyone on the internet can then attempt to log in to the targeted instances.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
+    root_cause: gcp-firewall-world-ingress
     resource_type: google_compute_firewall
     condition:
-      source_ranges:
-        contains: "0.0.0.0/0"
+      all_of:
+        - derived.world_source:
+            is_true: true
+        - derived.ingress_allow:
+            any_item:
+              all_of:
+                - protocol:
+                    matches_any: ["tcp", "all"]
+                - port_overlaps: [3389]
     mitigation: >
-      Restrict RDP to specific source ranges or use IAP.
+      Restrict RDP to specific source ranges, or reach instances through Identity-Aware Proxy
+      TCP forwarding and remove the public rule.
     metadata:
       mitre:
-        techniques: ["T1021"]
-        tactics: ["TA0008"]
+        techniques: ["T1133"]

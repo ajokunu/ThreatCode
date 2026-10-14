@@ -1,0 +1,46 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "AthenaResultsBucket"
+      ],
+      "severity": "critical",
+      "target": "AthenaResultsBucket"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "AthenaResultsBucket",
+      "stride": "tampering"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "RedshiftCluster",
+      "rule_id": "REDSHIFT_NO_LOGGING"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "AthenaResultsBucket",
+      "rule_id": "S3_NO_ENCRYPTION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "RawDataBucket",
+      "rule_id": "S3_NO_LOGGING"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "RedshiftCluster",
+      "rule_id": "SECRET_GENERIC_PASSWORD"
+    }
+  ]
+}

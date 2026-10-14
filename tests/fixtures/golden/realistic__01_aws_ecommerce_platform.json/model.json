@@ -1,0 +1,172 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_lb.storefront",
+        "aws_instance.web_a",
+        "aws_db_instance.orders"
+      ],
+      "severity": "critical",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_lb.storefront",
+        "aws_instance.web_b",
+        "aws_db_instance.orders"
+      ],
+      "severity": "critical",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_lb.storefront",
+        "aws_instance.web_a",
+        "aws_db_instance.sessions"
+      ],
+      "severity": "high",
+      "target": "aws_db_instance.sessions"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_lb.storefront",
+        "aws_instance.web_b",
+        "aws_db_instance.sessions"
+      ],
+      "severity": "high",
+      "target": "aws_db_instance.sessions"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_s3_bucket.product_images"
+      ],
+      "severity": "high",
+      "target": "aws_s3_bucket.product_images"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_cloudfront_distribution.storefront",
+      "stride": "tampering"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.web_a",
+      "stride": "tampering",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.web_a",
+      "stride": "tampering",
+      "target": "aws_db_instance.sessions"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.web_b",
+      "stride": "tampering",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.web_b",
+      "stride": "tampering",
+      "target": "aws_db_instance.sessions"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.inventory_sync",
+      "stride": "tampering",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.inventory_sync",
+      "stride": "tampering",
+      "target": "aws_db_instance.sessions"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb.storefront",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_lb.storefront",
+      "stride": "tampering",
+      "target": "aws_instance.web_a"
+    },
+    {
+      "severity": "high",
+      "source": "aws_lb.storefront",
+      "stride": "tampering",
+      "target": "aws_instance.web_b"
+    },
+    {
+      "severity": "high",
+      "source": "aws_s3_bucket.product_images",
+      "stride": "tampering"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_cloudfront_distribution.storefront",
+      "rule_id": "CLOUDFRONT_NO_GEO_RESTRICTION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_cloudfront_distribution.storefront",
+      "rule_id": "CLOUDFRONT_NO_WAF"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.web_a",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.web_b",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.web_b",
+      "rule_id": "EC2_UNENCRYPTED_EBS"
+    },
+    {
+      "base": "high",
+      "effective": "critical",
+      "resource_address": "aws_db_instance.sessions",
+      "rule_id": "RDS_NO_ENCRYPTION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "aws_s3_bucket.product_images",
+      "rule_id": "S3_NO_ENCRYPTION"
+    },
+    {
+      "base": "critical",
+      "effective": "high",
+      "resource_address": "aws_s3_bucket.product_images",
+      "rule_id": "S3_PUBLIC_ACCESS"
+    }
+  ]
+}

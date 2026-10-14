@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AdminFunctionRole",
+    "rule_id": "IAM_ADMIN_POLICY_ATTACHED",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

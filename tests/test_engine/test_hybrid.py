@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from threatcode.engine import boundaries, hybrid, paths, severity
+from threatcode.engine.context import AnalysisContext
 from threatcode.engine.hybrid import HybridEngine
+from threatcode.engine.rules.loader import Rule
 from threatcode.ir.graph import InfraGraph
-from threatcode.models.threat import Severity, ThreatSource
+from threatcode.ir.nodes import InfraNode
+from threatcode.models.attack_path import AttackPath
+from threatcode.models.report import ThreatReport
+from threatcode.models.threat import Severity, Threat, ThreatSource
+from threatcode.parsers.base import ParsedEdge, ParsedOutput
 
 
 class TestHybridEngine:
@@ -55,13 +67,6 @@ class TestHybridEngine:
         assert len(rds_threats) == 1
         assert rds_threats[0].severity == Severity.CRITICAL
 
-    def test_boundary_threats_generated(self, simple_s3_graph: InfraGraph) -> None:
-        engine = HybridEngine()
-        report = engine.analyze(simple_s3_graph)
-
-        boundary_threats = [t for t in report.threats if t.source == ThreatSource.BOUNDARY]
-        assert len(boundary_threats) > 0
-
     def test_secure_bucket_has_fewer_threats(self, simple_s3_graph: InfraGraph) -> None:
         engine = HybridEngine()
         report = engine.analyze(simple_s3_graph)
@@ -98,3 +103,533 @@ class TestHybridEngine:
         assert len(critical_only) <= len(all_threats)
         for t in critical_only:
             assert t.severity >= Severity.CRITICAL
+
+
+def _threat(tid: str, source: ThreatSource, **overrides: Any) -> Threat:
+    fields: dict[str, Any] = {
+        "id": tid,
+        "title": f"Threat {tid}",
+        "description": "d",
+        "stride_category": "information_disclosure",
+        "severity": Severity.HIGH,
+        "source": source,
+        "resource_type": "aws_s3_bucket",
+        "resource_address": "aws_s3_bucket.public_assets",
+    }
+    fields.update(overrides)
+    return Threat(**fields)
+
+
+class TestPhaseOrder:
+    def test_phases_run_in_the_documented_order(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+        original_run_rules = HybridEngine._run_rules
+
+        def fake_rules(self: HybridEngine, graph: InfraGraph, report: ThreatReport) -> list[Threat]:
+            calls.append("rules")
+            return original_run_rules(self, graph, report)
+
+        def fake_boundaries(graph: InfraGraph) -> list[Threat]:
+            calls.append("boundaries")
+            return []
+
+        def fake_severity(report: ThreatReport, graph: InfraGraph) -> None:
+            calls.append("severity")
+
+        def fake_paths(graph: InfraGraph, threats: list[Threat]) -> list[AttackPath]:
+            calls.append("paths")
+            return []
+
+        def fake_llm(
+            graph: InfraGraph, threats: list[Threat], client: Any, config: Any
+        ) -> tuple[list[Threat], dict[str, Any]]:
+            calls.append("llm")
+            return [], {"status": "skipped"}
+
+        monkeypatch.setattr(HybridEngine, "_run_rules", fake_rules)
+        monkeypatch.setattr(boundaries, "analyze", fake_boundaries)
+        monkeypatch.setattr(severity, "apply", fake_severity)
+        monkeypatch.setattr(paths, "find", fake_paths)
+        monkeypatch.setattr(hybrid, "run_llm_phase", fake_llm)
+
+        HybridEngine().analyze(simple_s3_graph)
+
+        assert calls == ["rules", "boundaries", "severity", "paths", "llm"]
+
+    def test_secret_findings_land_between_rule_and_boundary_threats(
+        self, simple_s3_parsed: ParsedOutput
+    ) -> None:
+        # only a declared flow across zones yields a boundary threat (WP-3-1), so declare one
+        simple_s3_parsed.edges.append(ParsedEdge("aws_instance.web", "aws_db_instance.main"))
+        graph = InfraGraph.from_parsed(simple_s3_parsed)
+        ctx = AnalysisContext(secret_findings=[_threat("s1", ThreatSource.SECRET)])
+        report = HybridEngine().analyze(graph, context=ctx)
+
+        sources = [t.source for t in report.threats]
+        first_secret = sources.index(ThreatSource.SECRET)
+        assert all(s == ThreatSource.RULE for s in sources[:first_secret])
+        assert first_secret > 0
+        assert sources[first_secret + 1] == ThreatSource.BOUNDARY
+
+    def test_severity_phase_sees_every_non_llm_threat(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[int] = []
+        monkeypatch.setattr(
+            severity, "apply", lambda report, graph: seen.append(len(report.threats))
+        )
+        report = HybridEngine().analyze(
+            simple_s3_graph,
+            context=AnalysisContext(external_findings=[_threat("e1", ThreatSource.SCANNER)]),
+        )
+        assert seen == [len(report.threats)]
+
+    def test_attack_paths_from_the_paths_phase_land_on_the_report(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = AttackPath(id="p1", entry="internet", target="aws_db_instance.db")
+        received: list[list[Threat]] = []
+
+        def fake_paths(graph: InfraGraph, threats: list[Threat]) -> list[AttackPath]:
+            received.append(list(threats))
+            return [path]
+
+        monkeypatch.setattr(paths, "find", fake_paths)
+        report = HybridEngine().analyze(simple_s3_graph)
+
+        assert report.attack_paths == [path]
+        assert report.to_dict()["attack_paths"][0]["id"] == "p1"
+        assert received and len(received[0]) == len(report.threats)
+
+    def test_the_severity_and_paths_phases_fill_in_the_report(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        data = report.to_dict()
+        # The one public bucket gives one path from the internet to it
+        assert [(p.entry, p.target) for p in report.attack_paths] == [
+            ("internet", "aws_s3_bucket.public_assets")
+        ]
+        assert [p["id"] for p in data["attack_paths"]] == [report.attack_paths[0].id]
+        # Severity is adjusted for some findings and left alone for the rest
+        adjusted = [t for t in report.threats if t.effective_severity is not None]
+        assert adjusted
+        assert any(t.effective_severity is None for t in report.threats)
+        assert report.rule_errors == []
+        assert "rule_errors" not in data
+        assert "llm" not in data
+
+    def test_rules_only_run_records_a_skipped_llm_status(self, simple_s3_graph: InfraGraph) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        assert report.llm is not None
+        assert report.llm["status"] == "skipped"
+        assert report.llm["threat_count"] == 0
+
+    def test_threat_order_and_ids_are_deterministic(self, simple_s3_graph: InfraGraph) -> None:
+        a = HybridEngine().analyze(simple_s3_graph)
+        b = HybridEngine().analyze(simple_s3_graph)
+        assert [t.id for t in a.threats] == [t.id for t in b.threats]
+        assert len({t.id for t in a.threats}) == len(a.threats)
+
+
+class TestContextMerge:
+    def test_secret_and_external_findings_are_added(self, simple_s3_graph: InfraGraph) -> None:
+        base = HybridEngine().analyze(simple_s3_graph)
+        ctx = AnalysisContext(
+            input_label="scan",
+            secret_findings=[_threat("s1", ThreatSource.SECRET)],
+            external_findings=[_threat("e1", ThreatSource.SCANNER, tool="trivy")],
+        )
+        report = HybridEngine().analyze(simple_s3_graph, context=ctx)
+
+        assert len(report.threats) == len(base.threats) + 2
+        by_id = {t.id: t for t in report.threats}
+        assert by_id["s1"].source == ThreatSource.SECRET
+        assert by_id["e1"].tool == "trivy"
+        # Secret findings come before ingested findings.
+        ids = [t.id for t in report.threats]
+        assert ids.index("s1") < ids.index("e1")
+
+    def test_duplicate_ids_are_dropped(self, simple_s3_graph: InfraGraph) -> None:
+        rule_threat_id = HybridEngine().analyze(simple_s3_graph).threats[0].id
+        ctx = AnalysisContext(
+            secret_findings=[
+                _threat("s1", ThreatSource.SECRET),
+                _threat("s1", ThreatSource.SECRET, title="again"),
+            ],
+            external_findings=[
+                _threat("s1", ThreatSource.SCANNER),
+                _threat(rule_threat_id, ThreatSource.SCANNER),
+            ],
+        )
+        report = HybridEngine().analyze(simple_s3_graph, context=ctx)
+
+        ids = [t.id for t in report.threats]
+        assert ids.count("s1") == 1
+        assert ids.count(rule_threat_id) == 1
+        kept = next(t for t in report.threats if t.id == "s1")
+        assert kept.source == ThreatSource.SECRET
+        assert kept.title == "Threat s1"
+
+    def test_no_context_means_no_extra_findings(self, simple_s3_graph: InfraGraph) -> None:
+        with_ctx = HybridEngine().analyze(simple_s3_graph, context=AnalysisContext())
+        without = HybridEngine().analyze(simple_s3_graph)
+        assert [t.id for t in with_ctx.threats] == [t.id for t in without.threats]
+
+    def test_context_defaults(self) -> None:
+        ctx = AnalysisContext()
+        assert ctx.input_label == ""
+        assert ctx.secret_findings == []
+        assert ctx.external_findings == []
+        other = AnalysisContext()
+        ctx.secret_findings.append(_threat("s", ThreatSource.SECRET))
+        assert other.secret_findings == []
+
+
+class TestRuleIsolation:
+    @staticmethod
+    def _raise_for(rule_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        original = hybrid.matches_rule
+
+        def flaky(rule: Rule, node: InfraNode) -> bool:
+            if rule.id == rule_id and node.resource_type.startswith(rule.resource_type):
+                raise TypeError("boom")
+            return original(rule, node)
+
+        monkeypatch.setattr(hybrid, "matches_rule", flaky)
+
+    def test_failing_rule_does_not_abort_the_analysis(
+        self,
+        simple_s3_graph: InfraGraph,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.delenv("THREATCODE_STRICT_RULES", raising=False)
+        baseline = HybridEngine().analyze(simple_s3_graph)
+        self._raise_for("S3_NO_ENCRYPTION", monkeypatch)
+
+        with caplog.at_level("WARNING", logger="threatcode.engine.hybrid"):
+            report = HybridEngine().analyze(simple_s3_graph)
+
+        assert not [t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION"]
+        # Every other rule still produced its findings.
+        expected = [t.id for t in baseline.threats if t.rule_id != "S3_NO_ENCRYPTION"]
+        assert [t.id for t in report.threats] == expected
+
+        assert report.rule_errors
+        for entry in report.rule_errors:
+            assert entry["rule_id"] == "S3_NO_ENCRYPTION"
+            assert entry["node_id"].startswith("aws_s3_bucket.")
+            assert "TypeError" in entry["error"]
+            assert "boom" in entry["error"]
+        assert report.to_dict()["rule_errors"] == report.rule_errors
+
+        # One warning per rule even though several nodes failed.
+        assert len(report.rule_errors) > 1
+        warnings = [r for r in caplog.records if "S3_NO_ENCRYPTION" in r.getMessage()]
+        assert len(warnings) == 1
+
+    def test_strict_env_reraises_for_builtin_rules(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._raise_for("S3_NO_ENCRYPTION", monkeypatch)
+        monkeypatch.setenv("THREATCODE_STRICT_RULES", "1")
+        with pytest.raises(TypeError, match="boom"):
+            HybridEngine().analyze(simple_s3_graph)
+
+    def test_strict_env_other_values_do_not_reraise(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._raise_for("S3_NO_ENCRYPTION", monkeypatch)
+        monkeypatch.setenv("THREATCODE_STRICT_RULES", "0")
+        report = HybridEngine().analyze(simple_s3_graph)
+        assert report.rule_errors
+
+    def test_strict_env_does_not_reraise_for_custom_rules(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        rule_file = tmp_path / "custom.yml"
+        rule_file.write_text(
+            "rules:\n"
+            "  - id: CUSTOM_BUCKET_RULE\n"
+            "    title: Custom\n"
+            "    description: Custom rule\n"
+            "    stride_category: tampering\n"
+            "    severity: low\n"
+            "    resource_type: aws_s3_bucket\n"
+            "    condition:\n"
+            "      acl: {equals: private}\n",
+            encoding="utf-8",
+        )
+        self._raise_for("CUSTOM_BUCKET_RULE", monkeypatch)
+        monkeypatch.setenv("THREATCODE_STRICT_RULES", "1")
+
+        report = HybridEngine(extra_rule_paths=[rule_file]).analyze(simple_s3_graph)
+
+        assert {e["rule_id"] for e in report.rule_errors} == {"CUSTOM_BUCKET_RULE"}
+        assert any(t.rule_id == "S3_PUBLIC_ACCESS" for t in report.threats)
+
+    def test_healthy_run_has_no_rule_errors(
+        self, simple_s3_graph: InfraGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("THREATCODE_STRICT_RULES", "1")
+        report = HybridEngine().analyze(simple_s3_graph)
+        assert report.rule_errors == []
+
+
+class TestRuleThreatMetadata:
+    def test_threats_from_one_rule_do_not_share_metadata(self, simple_s3_graph: InfraGraph) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        same_rule = [t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION"]
+        assert len(same_rule) >= 2
+        a, b = same_rule[0], same_rule[1]
+        assert a.metadata == b.metadata
+        assert a.metadata is not b.metadata
+
+        a.metadata["tampered"] = True
+        a.metadata.setdefault("mitre", {}).setdefault("techniques", []).append("T0000")
+        assert "tampered" not in b.metadata
+        assert "T0000" not in b.metadata.get("mitre", {}).get("techniques", [])
+
+    def test_mutating_a_threat_does_not_reach_the_rule(self, simple_s3_graph: InfraGraph) -> None:
+        engine = HybridEngine()
+        report = engine.analyze(simple_s3_graph)
+        threat = next(t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION")
+        threat.metadata["tampered"] = True
+        threat.mitre_techniques.append("T0000")
+
+        rule = next(r for r in engine._rules if r.id == "S3_NO_ENCRYPTION")
+        assert "tampered" not in rule.metadata
+        assert "T0000" not in rule.metadata.get("mitre", {}).get("techniques", [])
+        again = engine.analyze(simple_s3_graph)
+        fresh = next(t for t in again.threats if t.rule_id == "S3_NO_ENCRYPTION")
+        assert "tampered" not in fresh.metadata
+        assert "T0000" not in fresh.mitre_techniques
+
+
+class TestRuleLocations:
+    @staticmethod
+    def _graph(**node_extra: Any) -> InfraGraph:
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        resource = ParsedResource(
+            resource_type="aws_s3_bucket",
+            address="aws_s3_bucket.logs",
+            name="logs",
+            provider="aws",
+            properties={"bucket": "logs"},
+            source_location="infra/main.tf",
+            start_line=12,
+            end_line=19,
+            **node_extra,
+        )
+        return InfraGraph.from_parsed(ParsedOutput(resources=[resource]))
+
+    def test_a_rule_threat_carries_the_location_of_its_node(self) -> None:
+        report = HybridEngine().analyze(self._graph())
+        threats = [t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION"]
+        assert len(threats) == 1
+        assert threats[0].location_file == "infra/main.tf"
+        assert threats[0].location_start_line == 12
+        assert threats[0].location_end_line == 19
+
+    def test_a_node_without_a_location_leaves_the_fields_unset(self) -> None:
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        bare = ParsedResource(
+            resource_type="aws_s3_bucket", address="aws_s3_bucket.x", name="x", provider="aws"
+        )
+        report = HybridEngine().analyze(InfraGraph.from_parsed(ParsedOutput(resources=[bare])))
+        threat = next(t for t in report.threats if t.rule_id == "S3_NO_ENCRYPTION")
+        assert (threat.location_file, threat.location_start_line, threat.location_end_line) == (
+            "",
+            None,
+            None,
+        )
+        data = threat.to_dict()
+        assert "location_file" not in data
+        assert "location_start_line" not in data
+
+    def test_the_location_reaches_the_serialized_threat(self) -> None:
+        report = HybridEngine().analyze(self._graph())
+        data = next(t for t in report.to_dict()["threats"] if t["rule_id"] == "S3_NO_ENCRYPTION")
+        assert data["location_file"] == "infra/main.tf"
+        assert data["location_start_line"] == 12
+        assert data["location_end_line"] == 19
+
+    def test_threat_ids_do_not_depend_on_the_location(self) -> None:
+        located = HybridEngine().analyze(self._graph())
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        bare = ParsedResource(
+            resource_type="aws_s3_bucket",
+            address="aws_s3_bucket.logs",
+            name="logs",
+            provider="aws",
+            properties={"bucket": "logs"},
+        )
+        plain = HybridEngine().analyze(InfraGraph.from_parsed(ParsedOutput(resources=[bare])))
+        assert [t.id for t in located.threats] == [t.id for t in plain.threats]
+
+
+class TestDataSources:
+    @staticmethod
+    def _graph() -> InfraGraph:
+        from threatcode.parsers.base import ParsedOutput, ParsedResource
+
+        managed = ParsedResource(
+            resource_type="aws_s3_bucket", address="aws_s3_bucket.m", name="m", provider="aws"
+        )
+        looked_up = ParsedResource(
+            resource_type="aws_s3_bucket",
+            address="data.aws_s3_bucket.d",
+            name="d",
+            provider="aws",
+            mode="data",
+        )
+        return InfraGraph.from_parsed(ParsedOutput(resources=[managed, looked_up]))
+
+    def test_data_sources_are_not_counted_as_scanned_resources(self) -> None:
+        graph = self._graph()
+        assert graph.node_count == 2
+        assert HybridEngine().analyze(graph).scanned_resources == 1
+
+    def test_no_rule_evaluates_a_data_source(self) -> None:
+        report = HybridEngine().analyze(self._graph())
+        assert {t.resource_address for t in report.threats if t.rule_id} == {"aws_s3_bucket.m"}
+
+    def test_a_graph_without_data_sources_counts_every_node(
+        self, simple_s3_graph: InfraGraph
+    ) -> None:
+        report = HybridEngine().analyze(simple_s3_graph)
+        assert report.scanned_resources == simple_s3_graph.node_count
+
+
+def _candidates(engine: HybridEngine, resource_type: str) -> list[Rule]:
+    engine._ensure_index()
+    return engine._rules_for(resource_type)
+
+
+def _brute_force(engine: HybridEngine, graph: InfraGraph) -> list[tuple[str, str]]:
+    """Every rule against every managed node, in load order, with no index."""
+    found: list[tuple[str, str]] = []
+    for node in graph.nodes.values():
+        if node.mode == "data":
+            continue
+        for rule in engine._rules:
+            if hybrid.matches_rule(rule, node):
+                found.append((rule.id, node.id))
+    return found
+
+
+class TestRuleIndex:
+    FIXTURES = (
+        "terraform/simple_s3.plan.json",
+        "terraform/multi_service_insecure.plan.json",
+        "terraform/multi_service_secure.plan.json",
+        "terraform/simple.tf",
+        "realistic/01_aws_ecommerce_platform.json",
+        "realistic/02_azure_kubernetes_cluster.tf",
+        "realistic/03_aws_data_pipeline.yaml",
+        "realistic/05_hybrid_vpn_datacenter.tf",
+        "realistic/10_aws_gaming_backend.json",
+    )
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_indexed_evaluation_matches_testing_every_rule(self, fixture: str) -> None:
+        from tests.helpers.scan import FIXTURES_DIR, scan_files
+
+        graph = scan_files([FIXTURES_DIR / fixture]).graph
+        engine = HybridEngine()
+        report = ThreatReport()
+        indexed = [(t.rule_id, t.resource_address) for t in engine._run_rules(graph, report)]
+        assert indexed == _brute_force(engine, graph)
+        if "secure" not in fixture or "insecure" in fixture:
+            assert indexed, fixture
+
+    @staticmethod
+    def _rule(rule_id: str, *types: str) -> Rule:
+        return Rule(
+            id=rule_id,
+            title=rule_id,
+            description="",
+            stride_category="tampering",
+            severity="low",
+            resource_types=tuple(types),
+            condition={"zzz_never_set": {"not_exists": True}},
+        )
+
+    def test_exact_and_glob_rules_come_back_in_load_order(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [
+            self._rule("A_EXACT", "aws_s3_bucket"),
+            self._rule("B_GLOB", "aws_s3_*"),
+            self._rule("C_EXACT", "aws_s3_bucket"),
+            self._rule("D_OTHER", "aws_vpc"),
+            self._rule("E_MIXED", "aws_s3_bucket", "aws_kms*"),
+        ]
+        ids = [r.id for r in _candidates(engine, "aws_s3_bucket")]
+        assert ids == ["A_EXACT", "B_GLOB", "C_EXACT", "E_MIXED"]
+
+    def test_a_rule_with_several_matching_entries_is_considered_once(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("MIXED", "aws_s3_bucket", "aws_s3_*", "aws_s3_bucket")]
+        assert [r.id for r in _candidates(engine, "aws_s3_bucket")] == ["MIXED"]
+
+    def test_a_type_no_rule_names_gets_no_rules(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("A", "aws_s3_bucket"), self._rule("B", "aws_kms*")]
+        assert _candidates(engine, "aws_vpc") == []
+
+    def test_exact_entries_do_not_match_by_prefix(self) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("A", "aws_s3_bucket")]
+        assert _candidates(engine, "aws_s3_bucket_versioning") == []
+
+    def test_replacing_the_rule_list_rebuilds_the_index(self, simple_s3_graph: InfraGraph) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("ONLY", "aws_s3_bucket")]
+        # the condition holds for any node that lacks a property nobody sets
+        report = engine.analyze(simple_s3_graph)
+        assert {t.rule_id for t in report.threats if t.source == ThreatSource.RULE} == {"ONLY"}
+
+    def test_glob_rules_are_evaluated_for_matching_nodes(self, simple_s3_graph: InfraGraph) -> None:
+        engine = HybridEngine()
+        engine._rules = [self._rule("GLOB", "aws_s3_*")]
+        report = engine.analyze(simple_s3_graph)
+        buckets = {
+            n.id for n in simple_s3_graph.nodes.values() if n.resource_type.startswith("aws_s3_")
+        }
+        assert {t.resource_address for t in report.threats if t.rule_id == "GLOB"} == buckets
+
+    def test_every_builtin_rule_is_reachable_through_the_index(self) -> None:
+        engine = HybridEngine()
+        engine._ensure_index()
+        indexed = {r.id for rules in engine._exact_rules.values() for _i, r in rules}
+        indexed |= {r.id for _i, r in engine._glob_rules}
+        assert indexed == {r.id for r in engine._rules}
+
+
+class TestPhaseSignaturesAreUnchanged:
+    def test_phase_function_signatures(self) -> None:
+        import inspect
+
+        from threatcode.engine.llm.phase import run_llm_phase
+
+        assert list(inspect.signature(boundaries.analyze).parameters) == ["graph"]
+        assert list(inspect.signature(severity.apply).parameters) == ["report", "graph"]
+        assert list(inspect.signature(paths.find).parameters) == ["graph", "threats"]
+        assert list(inspect.signature(run_llm_phase).parameters) == [
+            "graph",
+            "threats",
+            "client",
+            "config",
+        ]
+        assert list(inspect.signature(HybridEngine.analyze).parameters) == [
+            "self",
+            "graph",
+            "input_file",
+            "context",
+        ]

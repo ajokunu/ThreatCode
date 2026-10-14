@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.apps.sidecar-mix",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.001"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.apps.sidecar-mix",
+    "rule_id": "K8S_NO_SECCOMP_PROFILE",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.apps.sidecar-mix",
+    "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  }
+]

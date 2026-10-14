@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "google_compute_firewall.ssh",
+    "rule_id": "GCP_FW_SSH_OPEN",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1133"
+    ]
+  }
+]

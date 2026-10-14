@@ -1,68 +1,135 @@
+# Storage accounts and containers.
+#
+# The https and public access rules accept both the azurerm 3.x and the 4.x attribute names
+# (enable_https_traffic_only and https_traffic_only_enabled, allow_blob_public_access and
+# allow_nested_items_to_be_public), so a configuration is judged the same whichever provider
+# version wrote it.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: AZURE_STORAGE_NO_HTTPS
-    title: Azure storage account allows HTTP
+    title: Storage account accepts unencrypted HTTP
     description: >
-      The storage account allows non-HTTPS traffic.
+      The storage account does not require secure transfer, so clients can read and write data
+      over plain HTTP and the traffic can be read or altered on the path.
+      The provider turns this on by default, so the account was configured to allow it.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
     resource_type: azurerm_storage_account
     condition:
-      enable_https_traffic_only:
-        equals: false
+      any_of:
+        - enable_https_traffic_only:
+            equals: false
+        - https_traffic_only_enabled:
+            equals: false
     mitigation: >
-      Set enable_https_traffic_only to true.
+      Set https_traffic_only_enabled (enable_https_traffic_only before azurerm 4.0) to true.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
 
   - id: AZURE_STORAGE_PUBLIC_ACCESS
-    title: Azure storage with public blob access
+    title: Storage account allows public access to blobs
     description: >
-      The storage account allows public blob access.
+      The storage account allows containers and blobs to be made publicly readable without
+      authentication (allow_nested_items_to_be_public, allow_blob_public_access before azurerm
+      3.0).
+      The provider default is true, so an account that never sets the attribute allows it.
+      This only permits public containers: a container's own access type decides whether data is
+      actually exposed.
     stride_category: information_disclosure
-    severity: high
+    severity: medium
+    confidence: heuristic
+    root_cause: storage-public-blobs
     resource_type: azurerm_storage_account
     condition:
-      allow_blob_public_access:
-        equals: true
+      any_of:
+        - allow_blob_public_access:
+            equals: true
+        # The nested attribute is filled with its default (true) when absent, so an account that
+        # still uses the legacy name and sets it to false must not fire on that default.
+        - all_of:
+            - allow_nested_items_to_be_public:
+                equals: true
+            - not:
+                allow_blob_public_access:
+                  equals: false
     mitigation: >
-      Disable public blob access.
+      Set allow_nested_items_to_be_public (allow_blob_public_access before azurerm 3.0) to false
+      and share data with private endpoints or short-lived shared access signatures.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
-  - id: AZURE_STORAGE_NO_NETWORK_RULES
-    title: Azure storage without network rules
+  - id: AZURE_STORAGE_CONTAINER_PUBLIC
+    title: Storage container allows anonymous read access
     description: >
-      The storage account has no network access restrictions.
+      The container's access type is blob or container, so anyone on the internet can read its
+      blobs (and, for container, list them) without credentials.
     stride_category: information_disclosure
-    severity: medium
-    resource_type: azurerm_storage_account
+    severity: high
+    confidence: definitive
+    root_cause: storage-public-blobs
+    resource_type: azurerm_storage_container
     condition:
-      network_rules:
-        not_exists: true
+      container_access_type:
+        matches_any: ["blob", "container"]
     mitigation: >
-      Configure network rules to restrict access.
+      Set container_access_type to private and grant access with Microsoft Entra roles or shared
+      access signatures.
     metadata:
       mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+        techniques: ["T1530"]
 
-  - id: AZURE_STORAGE_NO_SOFT_DELETE
-    title: Azure storage without soft delete
+  - id: AZURE_STORAGE_NO_NETWORK_RULES
+    title: Storage account network access is not restricted
     description: >
-      Blob soft delete is not enabled.
-    stride_category: denial_of_service
+      The storage account has no firewall that denies traffic by default: it has no network
+      rules, or its default action is Allow, and public network access is not turned off.
+      Any client on the internet that holds a key or token can reach the account.
+      Network rules set with the separate azurerm_storage_account_network_rules resource are
+      taken into account.
+    stride_category: information_disclosure
     severity: medium
+    confidence: absence
+    root_cause: storage-network-open
     resource_type: azurerm_storage_account
     condition:
-      blob_properties:
+      all_of:
+        - derived.network_default_deny:
+            equals: false
+        - public_network_access_enabled:
+            not_equals: false
+    mitigation: >
+      Add network_rules with default_action Deny and the subnets and addresses that need access,
+      or disable public network access and use private endpoints.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+
+  - id: AZURE_STORAGE_NO_SOFT_DELETE
+    title: Storage account blobs have no soft delete retention
+    description: >
+      The storage account configures no blob delete retention policy, so a deleted or
+      overwritten blob cannot be restored.
+      An attacker or a mistaken script that deletes data is final.
+      Azure may enable soft delete on its own for accounts created some ways, so the finding
+      applies to what the configuration declares.
+    stride_category: denial_of_service
+    severity: low
+    confidence: absence
+    root_cause: no-recovery-window
+    resource_type: azurerm_storage_account
+    condition:
+      blob_properties.delete_retention_policy:
         not_exists: true
     mitigation: >
-      Enable blob soft delete.
+      Add a delete_retention_policy block to blob_properties with at least 7 days.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]

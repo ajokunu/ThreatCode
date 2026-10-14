@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "service": {
+      "type": "sse",
+      "url": "https://mcp.example.com/sse"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/09_aws_healthcare_hipaa.yaml.
+fixture: 09_aws_healthcare_hipaa.yaml
+must_find:
+  - resource: TempUploadsBucket
+    rule_ids: [S3_NO_ENCRYPTION]
+    kind: unencrypted_storage
+    why: 'TODO: Add KMS encryption before GA. Ticket: HIPAA-1247'
+  - resource: EmergencyAdminRole
+    rule_ids: [IAM_WILDCARD_ACTION]
+    kind: wildcard_iam
+    why: 'break-glass role with policy EmergencyFullAccess allowing Action "*" on "*" (SEC-1034)'
+  - resource: ReportGeneratorFunction
+    rule_ids: [LAMBDA_NO_VPC]
+    kind: no_vpc
+    why: 'Moved this out of VPC because it kept timing out; TODO: Re-evaluate VPC placement (HIPAA-1189)'
+must_not_find:
+  - resource: PatientRecordsBucket
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING, S3_PUBLIC_ACCESS]
+    why: 'KMS encryption, versioning, logging, a public access block and object lock are all configured'
+  - resource: AuditLogsBucket
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING]
+    why: 'KMS encryption and versioning are configured'
+  - resource: CloudTrailBucketPolicy
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING, S3_NO_LOGGING]
+    why: 'a bucket policy companion is not a bucket'
+  - resource: AuroraInstanceA
+    rule_ids: [RDS_NO_ENCRYPTION, RDS_NO_BACKUP]
+    why: 'a cluster member inherits storage encryption and backups from AuroraCluster'
+  - resource: AuroraInstanceB
+    rule_ids: [RDS_NO_ENCRYPTION, RDS_NO_BACKUP]
+    why: 'a cluster member inherits storage encryption and backups from AuroraCluster'

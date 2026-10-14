@@ -1,0 +1,25 @@
+[
+  {
+    "resource_address": "AdminFunction",
+    "rule_id": "LAMBDA_NO_VPC",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  },
+  {
+    "resource_address": "OrdersFunction",
+    "rule_id": "LAMBDA_NO_VPC",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": []
+  },
+  {
+    "resource_address": "AdminFunction",
+    "rule_id": "LAMBDA_OVERPERMISSIVE_ROLE",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

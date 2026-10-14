@@ -1,0 +1,105 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_key_vault.kv",
+          "mode": "managed",
+          "type": "azurerm_key_vault",
+          "name": "kv",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "name": "kv-prod",
+            "location": "eastus",
+            "resource_group_name": "rg-sec",
+            "tenant_id": "00000000-0000-0000-0000-000000000000",
+            "sku_name": "standard",
+            "purge_protection_enabled": false,
+            "soft_delete_retention_days": 90,
+            "public_network_access_enabled": true
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_key_vault.kv",
+      "mode": "managed",
+      "type": "azurerm_key_vault",
+      "name": "kv",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "kv-prod",
+          "location": "eastus",
+          "resource_group_name": "rg-sec",
+          "tenant_id": "00000000-0000-0000-0000-000000000000",
+          "sku_name": "standard",
+          "purge_protection_enabled": false,
+          "soft_delete_retention_days": 90,
+          "public_network_access_enabled": true
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_key_vault.kv",
+          "mode": "managed",
+          "type": "azurerm_key_vault",
+          "name": "kv",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "name": {
+              "constant_value": "kv-prod"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-sec"
+            },
+            "tenant_id": {
+              "constant_value": "00000000-0000-0000-0000-000000000000"
+            },
+            "sku_name": {
+              "constant_value": "standard"
+            },
+            "purge_protection_enabled": {
+              "constant_value": false
+            },
+            "soft_delete_retention_days": {
+              "constant_value": 90
+            },
+            "public_network_access_enabled": {
+              "constant_value": true
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

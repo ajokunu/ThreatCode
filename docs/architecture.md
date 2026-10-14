@@ -1,233 +1,161 @@
 # Architecture
 
-ThreatCode is a multi-scanner security analysis pipeline. Input flows through auto-detection, parsing, graph construction, and parallel scanning engines before being serialized to one of eight output formats.
+ThreatCode turns infrastructure code into a graph, decides which parts of the graph an attacker can reach, and reports the weaknesses on the way.
+This page follows one scan from the command line to the report.
 
----
+## Pipeline
 
-## Pipeline Overview
-
-```
-Input Files / Container Images
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Auto-Detection Layer                    │
-│  Priority-ordered parser registry detects format        │
-│  from filename, extension, and content heuristics       │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Parser Layer                          │
-│  Terraform Plan JSON  ▸  HCL  ▸  CloudFormation        │
-│  Dockerfile  ▸  Kubernetes  ▸  Lockfiles (10 formats)  │
-│  OCI Registry Client  ▸  Layer Extractor                │
-│                                                          │
-│  Output: ParsedOutput { resources: ParsedResource[] }   │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│           Infrastructure Graph (NetworkX)                │
-│                                                          │
-│  InfraNode:                                              │
-│    resource_type, category (NodeCategory enum)          │
-│    trust_zone (TrustZone enum), properties, provider    │
-│                                                          │
-│  Edges: DEPENDENCY, CONTAINMENT, NETWORK_FLOW,          │
-│         IAM_BINDING, DATA_FLOW                          │
-│                                                          │
-│  Trust zones: internet → dmz → private → data → mgmt    │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Scanning Engines                        │
-│                                                          │
-│  ① HybridEngine (threat modeling)                       │
-│     - YAML rule matching (228 built-in rules)           │
-│     - Trust boundary crossing detection                  │
-│     - Optional LLM architectural analysis               │
-│                                                          │
-│  ② SecretScanner                                        │
-│     - 24 regex patterns + keyword pre-filter            │
-│     - Binary detection, allow-list, redaction           │
-│                                                          │
-│  ③ VulnerabilityScanner                                 │
-│     - SQLite offline DB (OSV bulk data)                 │
-│     - semver / PEP 440 / RPM version comparison        │
-│                                                          │
-│  ④ ImageScanner                                         │
-│     - OS detection + APK/DPKG/RPM package parsing      │
-│     - OS advisory matching                              │
-│     - Application lockfile detection in images         │
-│                                                          │
-│  ⑤ LicenseScanner                                      │
-│     - SPDX classification                               │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Output Formatters                       │
-│                                                          │
-│  JSON  ▸  SARIF 2.1.0  ▸  Markdown  ▸  Bitbucket       │
-│  ATT&CK Navigator  ▸  SVG Diagram  ▸  CycloneDX 1.5    │
-│  Table (image)  ▸  Diff                                 │
-└─────────────────────────────────────────────────────────┘
+```text
+paths ──> discovery ──> parsers ──> graph ──> enrichment ──> exposure ──> reachability
+                                                                              │
+reports <── formatters <── suppressions <── [ rules ─ context ─ boundaries ─ severity ─ paths ─ LLM ]
 ```
 
----
+`threatcode.pipeline.run_scan` runs the whole sequence, and the command line, `threatcode.scan` and `threatcode.analyze` all call it, so they cannot disagree.
 
-## Parser Layer
+1. **Discovery** (`threatcode.discovery`) walks the named paths and groups what it finds into *units*: a Terraform module directory, a plan, a Helm chart, a template, a manifest, a Dockerfile, an MCP config.
+   It reads only regular files, never follows a symlink out of the tree, and counts what it skipped.
+2. **Parsers** (`threatcode.parsers`) turn each unit into a `ParsedOutput`: resources, the references between them, source lines and diagnostics.
+3. **The graph** (`threatcode.ir.graph.InfraGraph`) joins every unit into one graph.
+   It turns references into typed edges, gives each node a category and a trust zone, and qualifies addresses that two units share.
+4. **Enrichment** (`threatcode.ir.enrich`) folds companion resources into their parents, so a bucket's versioning, encryption and public access block become facts under `derived.*` that a rule can read.
+5. **Exposure** decides, for every node, whether the configuration puts it within reach of the internet, keeps it off the internet, or says nothing.
+6. **Reachability** (`threatcode.ir.reachability`) adds the directed edges an attacker follows, starting from a synthetic `internet` node.
+7. **The engine** (`threatcode.engine.hybrid.HybridEngine`) runs its phases in order: rules, secret and scanner findings, boundary crossings, contextual severity, attack paths and the optional LLM review.
+8. **Suppressions and the baseline** remove accepted findings before the gate is computed.
+9. **Formatters** render the result.
 
-### Auto-Detection Registry
+## Parsers
 
-Parsers are registered with a priority value. Lower priority = tried first.
+A parser is registered with a detector and a factory.
+The registry asks each detector in priority order, lowest first, and the first that claims a file parses it.
+A file that a parser claims but cannot parse is an input error and exit 2, never a silent skip.
 
-| Priority | Parser | Detection |
-|----------|--------|-----------|
-| 5 | LockfileParser | Filename matches known lockfile names |
-| 10 | TerraformPlanParser | JSON with `planned_values` or `format_version` |
-| 20 | CloudFormationParser | YAML/JSON with `AWSTemplateFormatVersion` or `Resources` + descriptor |
-| 22 | KubernetesParser | YAML with `apiVersion` AND `kind` |
-| 25 | DockerfileParser | Filename `Dockerfile`, `Dockerfile.*`, `*.dockerfile` |
-| 30 | TerraformHCLParser | `.tf` extension |
+<!-- gen:parsers -->
+| Parser | Priority | File extensions |
+| --- | --- | --- |
+| `helm` | 8 | `.yaml`, `.yml` |
+| `terraform_plan` | 10 | `.json` |
+| `mcp_config` | 15 | `.json` |
+| `cloudformation` | 20 | `.cfn`, `.json`, `.template`, `.yaml`, `.yml` |
+| `kubernetes` | 22 | `.json`, `.yaml`, `.yml` |
+| `dockerfile` | 25 | by content |
+| `terraform_hcl` | 30 | `.json`, `.tf`, `.tofu` |
+<!-- /gen:parsers -->
 
-Register custom parsers:
+Every parser produces `ParsedResource` objects with the same fields, so the graph does not care where a resource came from:
 
-```python
-from threatcode.parsers import register_parser
-register_parser("my_format", my_parse_fn, my_detect_fn, priority=50)
-```
+| Field | Meaning |
+|-------|---------|
+| `resource_type`, `address`, `name`, `provider` | What it is and how it is addressed (`aws_s3_bucket.logs`). |
+| `properties` | Attribute names and values as the rules read them. A value the parser cannot determine is `values.Unknown`, never absent and never text. |
+| `references` | Attribute path to the raw reference strings written there, for example `ingress[].security_groups`. The graph resolves them to typed edges. |
+| `dependencies` | Explicit dependencies such as `depends_on`. |
+| `start_line`, `end_line`, `source_location` | Where the block is, so a finding points at it. |
+| `mode` | `managed` for a resource the input creates, `data` for one it looks up (context only, rules never run on it). |
+| `meta` | Bookkeeping such as `count`, `for_each` and the module instance, invisible to rules. |
+| `trust_zone`, `boundary`, `evidence` | A zone or boundary the input declares, and whether the properties come from configuration (a missing property is a fact) or from a design (a missing property is unknown). |
 
-### ParsedResource Structure
+A parser reports what it could not analyse as `Diagnostic` objects with a code from a closed registry (`hcl.module_call_skipped`, `helm.fallback_render`, `cfn.unresolved_intrinsic`).
+Warnings become coverage gaps.
 
-Every parser normalizes resources into `ParsedResource`:
+To add a parser, see [API reference](api-reference.md#register-a-custom-parser).
 
-```python
-@dataclass
-class ParsedResource:
-    resource_type: str       # e.g. "aws_s3_bucket", "kubernetes_pod"
-    address: str             # Unique address within the file
-    name: str                # Human-readable name
-    provider: str            # "aws", "docker", "kubernetes", "npm", ...
-    properties: dict         # All resource attributes
-    dependencies: list[str]  # Addresses of resources this depends on
-    module: str              # Terraform module path (if applicable)
-    source_location: str     # "file.tf:42"
-```
+## The graph
 
----
+Nodes carry a category, a trust zone and an exposure.
 
-## Infrastructure Graph (InfraGraph)
+- **Categories:** compute, storage, network, database, iam, serverless, cdn, dns, monitoring, messaging, container, secret, api and unknown.
+  A data store, a secret store (keys, secrets, parameters, certificates, Kubernetes Secrets) and an API are separate categories because they play different roles on a path.
+- **Trust zones:** internet, dmz, private, data and management.
+  The zone follows the category, with property overrides: a data store stays in `data` even when it is public, and gains `exposure: internet` instead, so it can be the end of an attack path rather than an entry.
+- **Exposure:** `internet`, `internal` or `unknown`.
+  Only a flag the configuration states as true counts; `(known after apply)`, a variable and the string `"false"` do not.
 
-The graph is a NetworkX `DiGraph`. Each node is an `InfraNode`:
+Provider defaults that a plan materialises but HCL and CloudFormation leave out (for example an EKS cluster's public endpoint) are filled in only for HCL and CloudFormation input, never for a plan or a design.
 
-### NodeCategory Enum
+### Edges
 
-| Value | Maps to (DFD) | Example Resources |
-|-------|--------------|-------------------|
-| `compute` | Process | EC2, VM, Lambda, Pod, ECS |
-| `storage` | Data Store | S3, Blob, GCS bucket |
-| `network` | Data Flow | VPC, Subnet, Load Balancer, SG |
-| `database` | Data Store | RDS, DynamoDB, CosmosDB, Cloud SQL |
-| `iam` | External Entity | IAM Role, Service Account, RBAC |
-| `serverless` | Process | Lambda, Azure Functions, Cloud Functions |
-| `cdn` | Data Flow | CloudFront, Azure CDN |
-| `dns` | Data Flow | Route53, Azure DNS |
-| `monitoring` | Process | CloudWatch, Azure Monitor |
-| `messaging` | Data Flow | SNS, SQS, Pub/Sub, Service Bus |
-| `container` | Process | EKS, AKS, GKE, K8s workloads |
-| `unknown` | Process | Unclassified resources |
+| Type | Meaning |
+|------|---------|
+| `containment` | The source is placed in the target (instance in subnet, subnet in VPC). |
+| `dependency` | The source references the target. `relation` says how: `security_group`, `encrypts_with`, `references`. A security group attachment is wiring, not traffic. |
+| `network_flow` | The source can send traffic to the target. |
+| `data_flow` | A flow of data that the input declares. |
+| `iam_binding` | The source assumes or uses the target's permissions: `assumes`, `instance_profile`, `attaches`, `has_policy`, `can_assume`, `resource_policy`, `permission`. |
 
-### TrustZone Enum
+**An edge exists only because the input names its target.**
+There is no "first VPC" guess and no matching on names.
+A literal that names nothing makes no edge, and a literal `vpc_id` binds only when the input has exactly one VPC.
+Ambiguity is a diagnostic, not a guess.
 
-| Zone | Description |
-|------|-------------|
-| `internet` | Untrusted — externally reachable, no auth |
-| `dmz` | Semi-trusted — edge services, load balancers, public APIs |
-| `private` | Trusted — internal services, private subnets |
-| `data` | Sensitive — databases, file storage, data warehouses |
-| `management` | Administrative — IAM, monitoring, bastion hosts |
+*Structural* edges (containment, dependency) say how things are wired.
+*Reachability* edges (network flow, data flow, IAM binding) say what an attacker who controls the source can reach.
+Attack paths follow reachability edges only, so a VPC that merely contains two subnets never joins them.
+Reachability edges carry `source` (where the fact came from), `via` (the nodes that enable it), `protocol`, `ports`, `world_open` and `definite`.
+Two facts about one pair merge into one edge.
 
-### Edge Inference
+Reachability is modeled for:
 
-The graph engine automatically infers edges from resource properties:
+- **AWS:** security group rules between groups and from the internet, load balancer listeners and target groups, CloudFront origins, API Gateway integrations and Lambda permissions, Lambda function URLs, public buckets and public EKS endpoints, Auto Scaling groups and ECS services, and IAM: instance profiles, trust policies, attached and inline policies, and resource policies.
+- **Kubernetes:** Ingress to Service to workload, the Secrets a workload reads, the ServiceAccount it runs as, and the Roles and ClusterRoles a binding grants, including across files.
+- **MCP agent configs:** an enabled server that ingests untrusted content or is remote is entered from the internet, and content flows through the agent to the servers that read private data.
 
-- **Containment**: VPC → Subnet → EC2 (from `vpc_id`, `subnet_id` properties)
-- **IAM Binding**: Lambda → IAM Role (from `role`, `execution_role_arn` properties)
-- **Network Flow**: EC2 → RDS when both are in the same security group
-- **Dependency**: Explicit `depends_on` references in Terraform
+**Azure and GCP resources are not modeled for reachability.**
+They get rule findings, severities and ATT&CK mappings, but no exposure, no reachability edges and no attack paths.
 
-### Trust Boundary Crossing Detection
+## The engine
 
-A boundary crossing threat is generated any time an edge crosses two trust zones. The more trust zones spanned, the higher the severity. Internet → Data zone crossings are always critical.
+`HybridEngine.analyze` runs six phases, each in its own module:
 
----
+| Phase | Module | What it does |
+|-------|--------|--------------|
+| Rules | `engine.hybrid` | Every rule against every node of its resource type. A rule that raises is recorded in `coverage.rule_errors` and the scan continues. |
+| Context | `engine.context` | Secret findings and ingested scanner findings join the threat list. |
+| Boundaries | `engine.boundaries` | One finding per pair of resources whose traffic crosses a trust zone, from the flow edges only. |
+| Severity | `engine.severity` | Adds `effective_severity` and `severity_reason` when context changes a finding. The base severity is never touched. |
+| Paths | `engine.paths` | Searches for attack paths and tags the enabling findings with the path id. |
+| LLM | `engine.llm.phase` | The optional review. Its findings are advisory. |
 
-## Hybrid Engine
+### Rules
 
-The `HybridEngine` runs three analysis phases in sequence:
+A rule is a YAML condition over a node's properties, written once and applied to every node of its resource type.
+Conditions are evaluated three-valued: true, false or unknown, and a rule fires only on true.
+A value the parser marked `Unknown` makes every operator unknown, so an unresolved value never produces a finding and never counts as a pass, and on a design input a missing property is unknown instead of absent.
+Rule files are checked when they load: an unknown operator, a malformed path or a duplicate key stops the load with an error that names the file and the rule.
 
-**Phase 1 — Rule-based analysis**
+### Severity
 
-Each node's `properties` dict is evaluated against every loaded rule. Rules use a safe condition evaluator (`all_of`, `any_of`, `not_exists`, `equals`, `matches_any`, etc.) — no `eval()`.
+A finding keeps the base severity its rule assigns.
+The engine raises it one level for a weakness on a resource that the internet reaches over network flows (unless the finding states the exposure itself), and for any finding on a data store tagged with a sensitive classification.
+It lowers it one level for exposure marked intentional with a `Public=true`, `Intent=public` or `threatcode:intent=public` tag.
+The gate, SARIF `security-severity` and the reports use the effective severity.
 
-**Phase 2 — Boundary analysis**
+### Attack paths
 
-Graph traversal identifies trust boundary crossings. Each crossing generates a threat with STRIDE category `information_disclosure` or `elevation_of_privilege` depending on direction.
+An attack path runs from the `internet` node over reachability edges to a crown jewel: a data store, a secret store, an identity that may do everything, a Kubernetes Secret or cluster-admin grant, or an MCP server that reads private data.
+It ends at the first crown jewel it reaches, runs through at most 8 edges and visits no node twice.
+Monitoring nodes, networks, namespaces and companion resources are never targets and never part of a path.
 
-**Phase 3 — LLM analysis (optional)**
+Each hop lists the findings that enable it (`enabled_by`), the edge to the next hop (`via`) and the ATT&CK techniques of the step.
+A path is kept only when some finding enables a hop or the target.
+Its severity is the worst effective severity of the enabling findings, one level higher when the target is a tagged data store, and never above `high` unless every edge on it is definite.
+Routes that differ only by the instance of a counted resource are one path with `alternatives` counting the others.
+At most 5 routes per target and 100 paths are kept, and the search is bounded and says so when it stops early.
 
-A redacted representation of the graph is sent to the configured LLM for architectural threat identification. The LLM is prompted to return structured JSON (STRIDE category, severity, MITRE technique, affected resource, mitigation). All output is validated against the known schema before being included.
+### Limits
 
----
+The graph limits nodes, edges and the fan-out of each reachability rule (`--max-nodes`, `--max-edges`, `THREATCODE_MAX_FANOUT`), and every limit that cuts a result is a coverage gap that says so.
+See [security model](security-model.md) for the resource limits that protect the scan itself.
 
-## Container Image Pipeline
+## Formatters
 
-```
-Image Reference
-     │
-     ▼
-ImageReference.parse()           — full Docker reference grammar
-     │
-     ▼
-RegistryClient.pull_manifest()   — bearer token auth, platform selection
-RegistryClient.pull_blob()       — SHA-256 verified download
-     │
-     ▼
-LayerExtractor.extract_from_blobs()
-     — decompress (gzip/zstd)
-     — apply layers in order
-     — whiteout handling (.wh. and .wh..wh..opq)
-     — path traversal protection
-     │
-     ▼
-ExtractedImage (temp filesystem)
-     │
-     ├─ OSDetector.detect()       — /etc/os-release + fallbacks
-     │
-     ├─ parse_os_packages()       — APK / DPKG / RPM header binary
-     │
-     ├─ find_app_dependencies()   — lockfiles + site-packages METADATA
-     │
-     ├─ ImageScanner._scan_os_packages()  — OS advisory DB lookup
-     │
-     ├─ VulnerabilityScanner      — ecosystem vuln DB lookup
-     │
-     ├─ SecretScanner (optional)  — pattern matching on image filesystem
-     │
-     └─ check_image_config()      — OCI config best-practice checks
-```
+`threatcode.formatters.FORMATTERS` is the one registry the command line, the config and the Python API read.
+Each formatter takes an `AnalysisResult` (the graph, the report, the scan root and the ingested sources) and returns text.
+SARIF and Bitbucket annotations use the scan root to write repository-relative paths.
 
----
+## LLM review
 
-## Security Architecture
-
-- **No `eval()` anywhere** — rule conditions use explicit Python comparison functions
-- **YAML `safe_load` only** — no arbitrary Python object deserialization
-- **Sandboxed rule loading** — symlinks blocked, 1 MB size limit, 1000 rule cap
-- **SSRF protection** - all HTTP calls (LLM, registry) validate resolved IPs against private/loopback ranges (the `ollama` and `local` LLM providers can opt in to local addresses with `llm.allow_local_network`)
-- **Redaction pipeline** — sensitive values stripped before LLM calls; reversible mapping maintained
-- **Path traversal protection** — OCI layer extraction rejects `..` path components before normalization
-- **Digest verification** — all downloaded blobs are SHA-256 verified before extraction
+The model sees a pseudonymized, allowlisted copy of the graph, never the input files, and its findings are validated, attributed to a resource of the scan and tagged as advisory.
+A finding that names no resource of the scan is quarantined in `llm.unattributed`.
+See [security](security.md).

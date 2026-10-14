@@ -1,0 +1,88 @@
+# ECR repositories and their repository policies.
+#
+# A repository policy is a separate resource (aws_ecr_repository_policy) in Terraform and an inline
+# property (RepositoryPolicyText) in CloudFormation.
+# threatcode.ir.enrichment.aws_network folds both into derived.policy_statements of the repository,
+# so the policy rule reports on the repository that is exposed.
+#
+# The registry can also scan every repository (aws_ecr_registry_scanning_configuration), which a
+# repository setting does not show, so the scanning rule is an absence.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
+rules:
+  - id: ECR_MUTABLE_TAGS
+    title: ECR repository allows image tags to be overwritten
+    description: >
+      image_tag_mutability is MUTABLE, which is also the default.
+      Anyone with push access can point a tag that is already deployed (such as latest or a
+      version number) at a different image, and the next deployment runs it.
+    stride_category: tampering
+    severity: medium
+    confidence: definitive
+    root_cause: image-tags-mutable
+    resource_type: aws_ecr_repository
+    condition:
+      any_of:
+        - image_tag_mutability:
+            not_exists: true
+        - image_tag_mutability:
+            equals: "MUTABLE"
+    mitigation: >
+      Set image_tag_mutability to IMMUTABLE and deploy images by tag that is never reused or by
+      digest.
+    metadata:
+      mitre:
+        techniques: ["T1525"]
+
+  - id: ECR_NO_SCAN_ON_PUSH
+    title: ECR repository does not scan images on push
+    description: >
+      image_scanning_configuration.scan_on_push is not true (it is false by default), so images are
+      not checked for known vulnerabilities when they are pushed.
+      A registry-level scanning configuration in the account scans the repository anyway, which the
+      repository does not show.
+    stride_category: tampering
+    severity: low
+    confidence: absence
+    root_cause: image-scanning-not-enabled
+    resource_type: aws_ecr_repository
+    condition:
+      image_scanning_configuration.scan_on_push:
+        not_equals: true
+    mitigation: >
+      Set image_scanning_configuration { scan_on_push = true }, or enable enhanced scanning for the
+      registry.
+    metadata: {}
+
+  - id: ECR_PUBLIC_POLICY
+    title: ECR repository policy allows any principal
+    description: >
+      The repository policy allows the principal "*" with no condition.
+      Anyone can then pull the images, which often hold source code, configuration and secrets, and
+      with a push action anyone can replace them.
+      A condition such as aws:PrincipalOrgID makes the policy specific and is not reported.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: image-repository-public
+    resource_type: aws_ecr_repository
+    condition:
+      derived.policy_statements:
+        any_item:
+          all_of:
+            - effect:
+                equals: "Allow"
+            - principals:
+                contains: "*"
+            - has_condition:
+                equals: false
+    mitigation: >
+      Name the accounts, roles or services that may pull, or add aws:PrincipalOrgID or
+      aws:PrincipalAccount to the statement.
+    metadata:
+      mitre:
+        techniques: ["T1530"]

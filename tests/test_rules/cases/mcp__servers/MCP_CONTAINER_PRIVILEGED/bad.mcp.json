@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "builder": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--cap-add", "NET_ADMIN", "--user", "root", "ghcr.io/acme/builder-mcp:1.4.2"]
+    }
+  }
+}

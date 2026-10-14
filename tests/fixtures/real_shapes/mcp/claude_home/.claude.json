@@ -1,0 +1,45 @@
+{
+  "numStartups": 214,
+  "installMethod": "native",
+  "autoUpdates": true,
+  "mcpServers": {
+    "memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory@2025.4.25"],
+      "env": {}
+    }
+  },
+  "projects": {
+    "/Users/dev/work/api": {
+      "allowedTools": [],
+      "history": [],
+      "mcpServers": {
+        "postgres": {
+          "type": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://readonly@db.work.example.com/api"],
+          "env": {}
+        }
+      },
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": true
+    },
+    "/Users/dev/personal/api": {
+      "allowedTools": [],
+      "history": [],
+      "mcpServers": {
+        "postgres": {
+          "type": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://postgres:postgres@localhost/api"],
+          "env": {}
+        }
+      },
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": ["scratch"],
+      "hasTrustDialogAccepted": true
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "AuditDLQ",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "AuthDLQ",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "NotificationQueue",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

@@ -1,0 +1,327 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "AppInstance",
+      "target": "AppInstanceProfile",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AppInstance",
+      "target": "AppSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AppInstance",
+      "target": "Database",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AppInstance",
+      "target": "PrivateSubnet",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AppInstanceProfile",
+      "target": "AppRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AppRole",
+      "target": "UploadsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AppSecurityGroup",
+      "target": "LoadBalancerSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AppSecurityGroup",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "Database",
+      "target": "DatabaseSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "Database",
+      "target": "DbSubnetGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSecurityGroup",
+      "target": "AppSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSecurityGroup",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DbSubnetGroup",
+      "target": "PrivateSubnet",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DbSubnetGroup",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "GatewayAttachment",
+      "target": "InternetGateway",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "GatewayAttachment",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "Listener",
+      "target": "LoadBalancer",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "Listener",
+      "target": "TargetGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LoadBalancer",
+      "target": "AppInstance",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LoadBalancer",
+      "target": "LoadBalancerSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "LoadBalancer",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "LoadBalancer",
+      "target": "PublicSubnet",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "LoadBalancerSecurityGroup",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnet",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnet",
+      "target": "Vpc",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetB",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetB",
+      "target": "Vpc",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "PublicRoute",
+      "target": "GatewayAttachment",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "PublicRoute",
+      "target": "InternetGateway",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PublicRoute",
+      "target": "PublicRouteTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PublicRouteTable",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "PublicSubnet",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "PublicSubnet",
+      "target": "Vpc",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PublicSubnetRouteTableAssociation",
+      "target": "PublicRouteTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "PublicSubnetRouteTableAssociation",
+      "target": "PublicSubnet",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TargetGroup",
+      "target": "AppInstance",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "TargetGroup",
+      "target": "Vpc",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "LoadBalancer",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "AppInstance": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "AppInstanceProfile": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "AppRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "AppSecurityGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "Database": {
+      "category": "database",
+      "zone": "data"
+    },
+    "DatabaseSecurityGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "DbSubnetGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "GatewayAttachment": {
+      "category": "network",
+      "zone": "internet"
+    },
+    "InternetGateway": {
+      "category": "network",
+      "zone": "internet"
+    },
+    "Listener": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "LoadBalancer": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "LoadBalancerSecurityGroup": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "PrivateSubnet": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PrivateSubnetB": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PublicRoute": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PublicRouteTable": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PublicSubnet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "PublicSubnetRouteTableAssociation": {
+      "category": "network",
+      "zone": "private"
+    },
+    "TargetGroup": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "UploadsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "Vpc": {
+      "category": "network",
+      "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    }
+  }
+}

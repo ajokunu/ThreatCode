@@ -1,0 +1,9 @@
+{
+  "edges": [],
+  "nodes": {
+    "Bucket": {
+      "category": "storage",
+      "zone": "data"
+    }
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "Bucket",
+      "target": "Key",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "Database",
+      "target": "Key",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "Function",
+      "target": "FunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "FunctionRole",
+      "target": "Table",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "Instance",
+      "target": "AppSecurityGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "Queue",
+      "target": "Key",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "Table",
+      "target": "Key",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "Trail",
+      "target": "Key",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "AppSecurityGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "Bucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "Database": {
+      "category": "database",
+      "zone": "data"
+    },
+    "Function": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "FunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "Instance": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "Key": {
+      "category": "secret",
+      "zone": "data"
+    },
+    "Queue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "Table": {
+      "category": "database",
+      "zone": "data"
+    },
+    "Trail": {
+      "category": "monitoring",
+      "zone": "management"
+    }
+  }
+}

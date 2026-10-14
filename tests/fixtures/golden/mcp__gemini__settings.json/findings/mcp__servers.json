@@ -1,0 +1,21 @@
+[
+  {
+    "resource_address": "mcp_server.search",
+    "rule_id": "MCP_PLAINTEXT_TRANSPORT",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040",
+      "T1557"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.search",
+    "rule_id": "MCP_REMOTE_NO_AUTH",
+    "severity": "low",
+    "stride": "spoofing",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

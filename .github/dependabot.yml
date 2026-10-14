@@ -1,0 +1,27 @@
+# Every GitHub Action in .github is pinned to a commit SHA, which goes stale without help.
+# Dependabot opens one pull request per ecosystem per week and keeps the "# vX.Y.Z" comment
+# next to each SHA in step.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/threatcode"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "deps"

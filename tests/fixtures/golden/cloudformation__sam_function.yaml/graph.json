@@ -1,0 +1,151 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "AdminFunction",
+      "target": "AdminFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AdminFunctionAdminPermission",
+      "target": "AdminFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AdminFunctionAdminPermission",
+      "target": "ServerlessRestApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReaderFunction",
+      "target": "ItemsTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReaderFunction",
+      "target": "ReaderFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ReaderFunctionConsume",
+      "target": "ReaderFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ReaderFunctionConsume",
+      "target": "WorkQueue",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "ReaderFunctionReadPermission",
+      "target": "ReaderFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReaderFunctionReadPermission",
+      "target": "ServerlessHttpApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReaderFunctionRole",
+      "target": "ItemsTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ServerlessHttpApi",
+      "target": "ReaderFunction",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ServerlessRestApi",
+      "target": "AdminFunction",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "WorkQueue",
+      "target": "ReaderFunction",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessHttpApi",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessRestApi",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "AdminFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AdminFunctionAdminPermission": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AdminFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "ItemsTable": {
+      "category": "database",
+      "zone": "data"
+    },
+    "PrivateFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ReaderFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ReaderFunctionConsume": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ReaderFunctionReadPermission": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ReaderFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "ServerlessHttpApi": {
+      "category": "api",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "ServerlessRestApi": {
+      "category": "api",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "WorkQueue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    }
+  }
+}

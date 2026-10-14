@@ -1,87 +1,146 @@
+# Rules on S3 buckets and on the resources that configure them.
+#
+# Since AWS provider v4 a bucket's versioning, encryption, logging, ACL, policy and public access
+# block are separate resources.
+# The rules read the facts the enrichment layer folds into the bucket (derived.*, see
+# threatcode/ir/enrichment/companions.py and aws_data.py), so a bucket that is configured through
+# its companions is judged on the effective configuration and the companions are never reported
+# themselves.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: S3_NO_ENCRYPTION
-    title: S3 bucket without server-side encryption
+    title: S3 bucket not encrypted with a customer-managed KMS key
     description: >
-      The S3 bucket does not have server-side encryption configured.
-      Data at rest may be accessible if storage media is compromised.
+      The bucket does not use a customer-managed KMS key (SSE-KMS) for its default encryption.
+      S3 already encrypts every new object with S3-managed keys (SSE-S3), so the data is
+      encrypted at rest; what is missing is a key you control.
+      With SSE-S3 anyone who can read an object can read its plaintext, whereas a
+      customer-managed key adds a second permission check in the key policy and an audit trail
+      of every decrypt in CloudTrail.
     stride_category: information_disclosure
-    severity: high
+    severity: low
+    confidence: absence
     resource_type: aws_s3_bucket
     condition:
-      any_of:
-        - server_side_encryption_configuration:
-            not_exists: true
-        - server_side_encryption_configuration:
-            is_empty: true
+      not:
+        derived.sse_algorithm:
+          matches_any: ["aws:kms", "aws:kms:dsse"]
     mitigation: >
-      Enable server-side encryption using AES-256 (SSE-S3) or
-      AWS KMS (SSE-KMS) via aws_s3_bucket_server_side_encryption_configuration.
+      Add an aws_s3_bucket_server_side_encryption_configuration resource whose
+      apply_server_side_encryption_by_default sets sse_algorithm to aws:kms with a
+      customer-managed kms_master_key_id, and turn on bucket_key_enabled to limit KMS cost.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: S3_PUBLIC_ACCESS
     title: S3 bucket allows public access
     description: >
-      The S3 bucket ACL or policy allows public read or write access.
-      This can lead to data exposure or unauthorized data modification.
+      The bucket is readable or writable by anyone.
+      Either its ACL is public-read, public-read-write or authenticated-read (any AWS account
+      holder) and the public access block does not ignore public ACLs, or a bucket policy
+      allows every principal with no condition that limits the caller (aws:PrincipalOrgID,
+      aws:SourceVpce, aws:SourceVpc, aws:SourceArn, aws:SourceAccount or aws:PrincipalArn)
+      and the public access block does not stop public policies.
+      Public buckets are how most cloud data breaches start.
     stride_category: information_disclosure
     severity: critical
+    confidence: definitive
+    root_cause: s3-public-access
     resource_type: aws_s3_bucket
     condition:
       any_of:
-        - acl:
-            matches_any: ["public-read", "public-read-write", "authenticated-read"]
-        - policy:
-            contains: '"Effect":"Allow","Principal":"*"'
+        - all_of:
+            - derived.acl:
+                matches_any: ["public-read", "public-read-write", "authenticated-read"]
+            - derived.public_access_block.block_public_acls:
+                not_equals: true
+            - derived.public_access_block.ignore_public_acls:
+                not_equals: true
+        - all_of:
+            - derived.allows_any_principal:
+                equals: true
+            - derived.public_access_block.block_public_policy:
+                not_equals: true
+            - derived.public_access_block.restrict_public_buckets:
+                not_equals: true
     mitigation: >
-      Set ACL to 'private' and use aws_s3_bucket_public_access_block
-      to block all public access at the bucket level.
+      Set the ACL to private, remove statements that name every principal from the bucket
+      policy or narrow them with aws:PrincipalOrgID, aws:SourceVpce or aws:SourceArn, and turn on
+      all four settings of aws_s3_bucket_public_access_block.
     metadata:
       mitre:
-        techniques: ["T1530", "T1190"]
-        tactics: ["TA0009", "TA0001"]
+        techniques: ["T1530"]
+
+  - id: S3_PUBLIC_ACCESS_BLOCK_DISABLED
+    title: S3 public access block does not block everything
+    description: >
+      An S3 public access block (for one bucket or for the whole account) leaves at least one of
+      its four settings off: block_public_acls, block_public_policy, ignore_public_acls and
+      restrict_public_buckets.
+      A setting that is left out is off, because the provider defaults each one to false.
+      The block is the guardrail that keeps a later ACL or bucket policy from making data public.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: definitive
+    root_cause: s3-public-access
+    resource_types: [aws_s3_bucket_public_access_block, aws_s3_account_public_access_block]
+    condition:
+      not:
+        all_of:
+          - block_public_acls:
+              equals: true
+          - block_public_policy:
+              equals: true
+          - ignore_public_acls:
+              equals: true
+          - restrict_public_buckets:
+              equals: true
+    mitigation: >
+      Set block_public_acls, block_public_policy, ignore_public_acls and restrict_public_buckets
+      to true, and add an aws_s3_account_public_access_block so new buckets start protected.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
 
   - id: S3_NO_VERSIONING
     title: S3 bucket without versioning
     description: >
-      The S3 bucket does not have versioning enabled.
-      Without versioning, deleted or overwritten objects cannot be recovered,
-      and tampering is harder to detect.
-    stride_category: tampering
+      Versioning is not enabled on the bucket, or it is suspended.
+      Without versions, an overwritten or deleted object cannot be recovered, so an attacker
+      or a faulty job that deletes data destroys it for good.
+    stride_category: denial_of_service
     severity: medium
+    confidence: absence
     resource_type: aws_s3_bucket
     condition:
-      any_of:
-        - versioning:
-            not_exists: true
-        - versioning.0.enabled:
-            equals: false
+      derived.versioning_enabled:
+        equals: false
     mitigation: >
-      Enable bucket versioning via aws_s3_bucket_versioning resource
-      to protect against accidental deletion and enable audit trails.
+      Add an aws_s3_bucket_versioning resource with versioning_configuration status Enabled, and
+      consider MFA delete and a lifecycle rule for old versions.
     metadata:
       mitre:
         techniques: ["T1485"]
-        tactics: ["TA0040"]
 
   - id: S3_NO_LOGGING
     title: S3 bucket without access logging
     description: >
-      The S3 bucket does not have access logging configured.
-      Without logging, unauthorized access attempts cannot be detected
-      and actions cannot be attributed to specific actors.
+      Server access logging is not configured for the bucket.
+      Requests to the bucket leave no record in the bucket owner's logs, so unauthorized access
+      cannot be reconstructed afterwards and actions cannot be attributed.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: absence
     resource_type: aws_s3_bucket
     condition:
-      logging:
-        not_exists: true
+      derived.logging_enabled:
+        equals: false
     mitigation: >
-      Enable server access logging via aws_s3_bucket_logging resource,
-      directing logs to a separate dedicated logging bucket.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add an aws_s3_bucket_logging resource that writes to a separate logging bucket, and
+      enable CloudTrail data events for buckets that hold sensitive data.

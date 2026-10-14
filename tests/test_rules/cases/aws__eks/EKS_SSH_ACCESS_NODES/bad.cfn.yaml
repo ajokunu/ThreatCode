@@ -1,0 +1,14 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Workers:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: main
+      NodeRole: arn:aws:iam::111122223333:role/cluster
+      Subnets: [subnet-0a1b2c3d, subnet-4e5f6a7b]
+      ScalingConfig:
+        DesiredSize: 2
+        MaxSize: 3
+        MinSize: 1
+      RemoteAccess:
+        Ec2SshKey: ops

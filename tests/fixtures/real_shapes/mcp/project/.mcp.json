@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch==2025.4.7"]
+    },
+    "filesystem-home": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/dev"]
+    },
+    "scratch": {
+      "disabled": true,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-everything"]
+    },
+    "analytics": {
+      "type": "http",
+      "url": "https://analytics.example.com/mcp?api_key=1f0e9d8c7b6a5f4e3d2c1b0a99887766"
+    }
+  }
+}

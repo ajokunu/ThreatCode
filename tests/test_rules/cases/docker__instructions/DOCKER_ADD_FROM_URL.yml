@@ -1,0 +1,8 @@
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      ADD --chown=app:app https://downloads.example.com/tool.tar.gz /opt/
+    good: |
+      FROM debian:12-slim
+      ADD --chown=app:app tool.tar.gz /opt/

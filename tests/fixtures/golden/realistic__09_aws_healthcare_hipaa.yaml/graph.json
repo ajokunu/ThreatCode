@@ -1,0 +1,724 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuditLogsBucket",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuroraCluster",
+      "target": "DatabaseSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuroraCluster",
+      "target": "DatabaseSubnetGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuroraCluster",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuroraInstanceA",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuroraInstanceA",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuroraInstanceA",
+      "target": "RDSMonitoringRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuroraInstanceB",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AuroraInstanceB",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AuroraInstanceB",
+      "target": "RDSMonitoringRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CacheSG",
+      "target": "LambdaSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CacheSG",
+      "target": "MedVaultVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CloudTrailBucketPolicy",
+      "target": "AuditLogsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CloudTrailBucketPolicy",
+      "target": "AuditLogsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "CloudTrailCWRole",
+      "target": "CloudTrailLogGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "CloudTrailLogGroup",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSG",
+      "target": "LambdaSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSG",
+      "target": "MedVaultVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSubnetGroup",
+      "target": "PrivateSubnetA",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSubnetGroup",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "DatabaseSubnetGroup",
+      "target": "PrivateSubnetC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuditLogsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuroraCluster",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuroraInstanceA",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "AuroraInstanceB",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "CloudTrailCWRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "HIPAAAlertsTopic",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "HL7ProcessorDLQ",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "HL7ProcessorFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "HL7ProcessorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "MedVaultKMSKey",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "PatientRecordsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "RDSMonitoringRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "RecordsApiDLQ",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "RecordsApiFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "RecordsApiRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "ReportGeneratorFunction",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "EmergencyAdminRole",
+      "target": "ReportGeneratorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "SessionCacheTable",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "EmergencyAdminRole",
+      "target": "TempUploadsBucket",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HIPAAAlertsSubscription",
+      "target": "HIPAAAlertsTopic",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HIPAAAlertsTopic",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HIPAACloudTrail",
+      "target": "AuditLogsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HIPAACloudTrail",
+      "target": "CloudTrailBucketPolicy",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HIPAACloudTrail",
+      "target": "CloudTrailCWRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HIPAACloudTrail",
+      "target": "CloudTrailLogGroup",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HIPAACloudTrail",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HIPAACloudTrail",
+      "target": "PatientRecordsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorDLQ",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "AuroraCluster",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HL7ProcessorFunction",
+      "target": "HL7ProcessorDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "HL7ProcessorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HL7ProcessorFunction",
+      "target": "LambdaSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "PatientRecordsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HL7ProcessorFunction",
+      "target": "PrivateSubnetA",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "HL7ProcessorFunction",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorFunction",
+      "target": "TempUploadsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorRole",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorRole",
+      "target": "HL7ProcessorDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorRole",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorRole",
+      "target": "PatientRecordsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "HL7ProcessorRole",
+      "target": "TempUploadsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "LambdaSG",
+      "target": "DatabaseSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "LambdaSG",
+      "target": "MedVaultVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "MedVaultKMSKey",
+      "target": "HL7ProcessorRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "MedVaultKMSKey",
+      "target": "RecordsApiRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "MedVaultKMSKey",
+      "target": "ReportGeneratorRole",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "MedVaultKMSKeyAlias",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PatientRecordsBucket",
+      "target": "AuditLogsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PatientRecordsBucket",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetA",
+      "target": "MedVaultVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetB",
+      "target": "MedVaultVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "PrivateSubnetC",
+      "target": "MedVaultVPC",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiDLQ",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiFunction",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiFunction",
+      "target": "AuroraCluster",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RecordsApiFunction",
+      "target": "LambdaSG",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiFunction",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiFunction",
+      "target": "PatientRecordsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RecordsApiFunction",
+      "target": "PrivateSubnetA",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RecordsApiFunction",
+      "target": "PrivateSubnetB",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "RecordsApiFunction",
+      "target": "RecordsApiDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiFunction",
+      "target": "RecordsApiRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiRole",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiRole",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiRole",
+      "target": "PatientRecordsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "RecordsApiRole",
+      "target": "RecordsApiDLQ",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReportGeneratorFunction",
+      "target": "AuditLogsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReportGeneratorFunction",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReportGeneratorFunction",
+      "target": "ReportGeneratorRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReportGeneratorRole",
+      "target": "AuditLogsBucket",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReportGeneratorRole",
+      "target": "AuroraCluster",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ReportGeneratorRole",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "SessionCacheTable",
+      "target": "MedVaultKMSKey",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "UnauthorizedAPICallsAlarm",
+      "target": "HIPAAAlertsTopic",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "AuditLogsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "AuroraCluster": {
+      "category": "database",
+      "zone": "data"
+    },
+    "AuroraInstanceA": {
+      "category": "database",
+      "zone": "data"
+    },
+    "AuroraInstanceB": {
+      "category": "database",
+      "zone": "data"
+    },
+    "CacheSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "CloudTrailBucketPolicy": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "CloudTrailCWRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "CloudTrailLogGroup": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "DatabaseSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "DatabaseSubnetGroup": {
+      "category": "network",
+      "zone": "private"
+    },
+    "EmergencyAdminRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "HIPAAAlertsSubscription": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "HIPAAAlertsTopic": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "HIPAACloudTrail": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "HL7ProcessorDLQ": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "HL7ProcessorFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "HL7ProcessorRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "LambdaSG": {
+      "category": "network",
+      "zone": "private"
+    },
+    "MedVaultKMSKey": {
+      "category": "secret",
+      "zone": "data"
+    },
+    "MedVaultKMSKeyAlias": {
+      "category": "secret",
+      "zone": "data"
+    },
+    "MedVaultVPC": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PatientRecordsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "PrivateSubnetA": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PrivateSubnetB": {
+      "category": "network",
+      "zone": "private"
+    },
+    "PrivateSubnetC": {
+      "category": "network",
+      "zone": "private"
+    },
+    "RDSMonitoringRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "RecordsApiDLQ": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "RecordsApiFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "RecordsApiRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "ReportGeneratorFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "ReportGeneratorRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "SessionCacheTable": {
+      "category": "database",
+      "zone": "data"
+    },
+    "TempUploadsBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "UnauthorizedAPICallsAlarm": {
+      "category": "monitoring",
+      "zone": "management"
+    }
+  }
+}

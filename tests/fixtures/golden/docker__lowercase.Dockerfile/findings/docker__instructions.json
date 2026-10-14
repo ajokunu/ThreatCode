@@ -1,0 +1,52 @@
+[
+  {
+    "resource_address": "dockerfile.run.3",
+    "rule_id": "DOCKER_APT_NO_CLEAN",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": []
+  },
+  {
+    "resource_address": "dockerfile.run.3",
+    "rule_id": "DOCKER_APT_NO_RECOMMENDS",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": []
+  },
+  {
+    "resource_address": "dockerfile.arg.1",
+    "rule_id": "DOCKER_ARG_SECRET",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.env.2",
+    "rule_id": "DOCKER_ENV_SECRET",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.4",
+    "rule_id": "DOCKER_RUN_CURL_PIPE",
+    "severity": "high",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.copy.5",
+    "rule_id": "DOCKER_SENSITIVE_FILE_COPY",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  }
+]

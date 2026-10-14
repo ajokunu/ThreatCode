@@ -1,0 +1,71 @@
+# Rules on Redshift clusters.
+#
+# publicly_accessible defaults to true in the Terraform provider, so a cluster that does not set
+# it is public; CloudFormation names no default and an omitted value is not judged.
+# Logging is read from the deprecated inline logging block or from an aws_redshift_logging
+# resource that points at the cluster (see threatcode/ir/enrichment/aws_data.py).
+# A literal master password is a secret, not a configuration setting: the secrets phase reports
+# it and attaches it to the cluster it exposes.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+rules:
+  - id: REDSHIFT_PUBLIC_ACCESS
+    title: Redshift cluster is publicly accessible
+    description: >
+      The cluster has publicly_accessible set to true (the Terraform default), which gives it a
+      public endpoint and a public address.
+      Whether it can be reached then depends only on its security group, so one permissive rule
+      exposes the data warehouse to the internet.
+    stride_category: information_disclosure
+    severity: critical
+    confidence: definitive
+    root_cause: redshift-public-endpoint
+    resource_type: aws_redshift_cluster
+    condition:
+      derived.publicly_accessible:
+        equals: true
+    mitigation: >
+      Set publicly_accessible to false and place the cluster in a private subnet group.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: REDSHIFT_NO_ENCRYPTION
+    title: Redshift cluster without encryption at rest
+    description: >
+      The cluster sets encrypted to false, so its data blocks, snapshots and backups are stored
+      unencrypted.
+      Anyone who obtains a snapshot or the underlying storage can read the data.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: redshift-unencrypted
+    resource_type: aws_redshift_cluster
+    condition:
+      encrypted:
+        equals: false
+    mitigation: >
+      Set encrypted to true with a customer-managed kms_key_id.
+    metadata:
+      mitre:
+        techniques: ["T1530"]
+
+  - id: REDSHIFT_NO_LOGGING
+    title: Redshift cluster without audit logging
+    description: >
+      Audit logging is not enabled for the cluster, neither through an inline logging block nor
+      through an aws_redshift_logging resource.
+      Connections, user activity and changes to users cannot be reviewed after an incident.
+    stride_category: repudiation
+    severity: low
+    confidence: absence
+    resource_type: aws_redshift_cluster
+    condition:
+      derived.logging_enabled:
+        equals: false
+    mitigation: >
+      Add an aws_redshift_logging resource that writes to an S3 bucket or CloudWatch.

@@ -1,0 +1,179 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ecr_repository.app",
+          "mode": "managed",
+          "type": "aws_ecr_repository",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "app",
+            "image_tag_mutability": "IMMUTABLE",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_ecr_repository_policy.app",
+          "mode": "managed",
+          "type": "aws_ecr_repository_policy",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "policy": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"pull\",\n      \"Effect\": \"Allow\",\n      \"Principal\": \"*\",\n      \"Action\": [\n        \"ecr:GetDownloadUrlForLayer\",\n        \"ecr:BatchGetImage\"\n      ],\n      \"Condition\": {\n        \"StringEquals\": {\n          \"aws:PrincipalOrgID\": \"o-a1b2c3d4e5\"\n        }\n      }\n    }\n  ]\n}"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_ecr_repository.app",
+      "mode": "managed",
+      "type": "aws_ecr_repository",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "app",
+          "image_tag_mutability": "IMMUTABLE",
+          "image_scanning_configuration": [
+            {
+              "scan_on_push": true
+            }
+          ],
+          "encryption_configuration": [
+            {
+              "encryption_type": "AES256",
+              "kms_key": ""
+            }
+          ],
+          "force_delete": null
+        },
+        "after_unknown": {
+          "registry_id": true,
+          "repository_url": true,
+          "tags_all": true,
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_ecr_repository_policy.app",
+      "mode": "managed",
+      "type": "aws_ecr_repository_policy",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "policy": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"pull\",\n      \"Effect\": \"Allow\",\n      \"Principal\": \"*\",\n      \"Action\": [\n        \"ecr:GetDownloadUrlForLayer\",\n        \"ecr:BatchGetImage\"\n      ],\n      \"Condition\": {\n        \"StringEquals\": {\n          \"aws:PrincipalOrgID\": \"o-a1b2c3d4e5\"\n        }\n      }\n    }\n  ]\n}"
+        },
+        "after_unknown": {
+          "registry_id": true,
+          "id": true,
+          "arn": true,
+          "repository": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ecr_repository.app",
+          "mode": "managed",
+          "type": "aws_ecr_repository",
+          "name": "app",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "app"
+            },
+            "image_tag_mutability": {
+              "constant_value": "IMMUTABLE"
+            },
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": {
+                  "constant_value": true
+                }
+              }
+            ],
+            "encryption_configuration": [
+              {
+                "encryption_type": {
+                  "constant_value": "AES256"
+                },
+                "kms_key": {
+                  "constant_value": ""
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_ecr_repository_policy.app",
+          "mode": "managed",
+          "type": "aws_ecr_repository_policy",
+          "name": "app",
+          "provider_config_key": "aws",
+          "expressions": {
+            "policy": {
+              "constant_value": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"pull\",\n      \"Effect\": \"Allow\",\n      \"Principal\": \"*\",\n      \"Action\": [\n        \"ecr:GetDownloadUrlForLayer\",\n        \"ecr:BatchGetImage\"\n      ],\n      \"Condition\": {\n        \"StringEquals\": {\n          \"aws:PrincipalOrgID\": \"o-a1b2c3d4e5\"\n        }\n      }\n    }\n  ]\n}"
+            },
+            "repository": {
+              "references": [
+                "aws_ecr_repository.app.name",
+                "aws_ecr_repository.app"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

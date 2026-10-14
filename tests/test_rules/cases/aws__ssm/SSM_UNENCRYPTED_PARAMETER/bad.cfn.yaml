@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  DbPassword:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /prod/db/password
+      Description: Database password
+      Type: String
+      Value: placeholder

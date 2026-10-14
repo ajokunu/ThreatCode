@@ -1,0 +1,46 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_instance_profile.app",
+      "target": "aws_iam_role.app",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.app",
+      "target": "aws_iam_role_policy.app_data",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.app",
+      "target": "data.aws_iam_policy_document.assume",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy.app_data",
+      "target": "aws_iam_role.app",
+      "type": "iam_binding"
+    }
+  ],
+  "nodes": {
+    "aws_iam_instance_profile.app": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.app": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role_policy.app_data": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "data.aws_iam_policy_document.assume": {
+      "category": "iam",
+      "zone": "management"
+    }
+  }
+}

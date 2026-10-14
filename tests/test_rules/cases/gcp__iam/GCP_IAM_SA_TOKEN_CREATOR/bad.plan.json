@@ -1,0 +1,85 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_folder_iam_binding.grant",
+          "mode": "managed",
+          "type": "google_folder_iam_binding",
+          "name": "grant",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "folder": "folders/1234567",
+            "role": "roles/iam.serviceAccountTokenCreator",
+            "members": [
+              "group:release@example.com"
+            ],
+            "condition": []
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_folder_iam_binding.grant",
+      "mode": "managed",
+      "type": "google_folder_iam_binding",
+      "name": "grant",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "folder": "folders/1234567",
+          "role": "roles/iam.serviceAccountTokenCreator",
+          "members": [
+            "group:release@example.com"
+          ],
+          "condition": []
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_folder_iam_binding.grant",
+          "mode": "managed",
+          "type": "google_folder_iam_binding",
+          "name": "grant",
+          "provider_config_key": "google",
+          "expressions": {
+            "folder": {
+              "constant_value": "folders/1234567"
+            },
+            "role": {
+              "constant_value": "roles/iam.serviceAccountTokenCreator"
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

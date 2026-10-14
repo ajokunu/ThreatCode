@@ -1,457 +1,167 @@
-"""ThreatCode — STRIDE threat model generator from Infrastructure-as-Code."""
+"""ThreatCode: STRIDE threat models and attack paths from infrastructure code and agent configs.
+
+The public API is ``scan`` (a report as a dict), ``analyze`` (the report and its graph) and
+``run_scan`` (everything, including the exit code and the coverage).
+All three go through the same pipeline as ``threatcode scan``, so a Python call and the command
+line cannot disagree.
+Names are loaded on first use, which keeps ``import threatcode`` and the CLI start-up fast.
+"""
 
 from __future__ import annotations
 
+import importlib
 import logging
-from pathlib import Path
+import os
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from threatcode.exceptions import ThreatCodeError as ThreatCodeError
-
-_logger = logging.getLogger(__name__)
+from threatcode.exceptions import (
+    ConfigError,
+    LLMError,
+    ParseError,
+    RuleLoadError,
+    ThreatCodeError,
+    UnsupportedFormatError,
+    UsageError,
+)
 
 if TYPE_CHECKING:
-    from threatcode.ir.graph import InfraGraph
-    from threatcode.models.analysis import AnalysisResult
-    from threatcode.models.finding import ScanReport as ScanReport
-    from threatcode.models.report import ThreatReport
+    from threatcode.models.analysis import AnalysisResult as AnalysisResult
+    from threatcode.models.report import ThreatReport as ThreatReport
+    from threatcode.models.threat import Severity as Severity
+    from threatcode.models.threat import Threat as Threat
+    from threatcode.pipeline import ScanRequest as ScanRequest
+    from threatcode.pipeline import ScanResult as ScanResult
+    from threatcode.pipeline import run_scan as run_scan
 
-__version__ = "0.9.1"
+__version__ = "1.0.0"
+
+__all__ = [
+    "AnalysisResult",
+    "ConfigError",
+    "LLMError",
+    "ParseError",
+    "RuleLoadError",
+    "ScanRequest",
+    "ScanResult",
+    "Severity",
+    "Threat",
+    "ThreatCodeError",
+    "ThreatReport",
+    "UnsupportedFormatError",
+    "UsageError",
+    "__version__",
+    "analyze",
+    "run_scan",
+    "scan",
+]
+
+# Names loaded on first access: public name -> (module, attribute).
+_LAZY: dict[str, tuple[str, str]] = {
+    "AnalysisResult": ("threatcode.models.analysis", "AnalysisResult"),
+    "ThreatReport": ("threatcode.models.report", "ThreatReport"),
+    "Severity": ("threatcode.models.threat", "Severity"),
+    "Threat": ("threatcode.models.threat", "Threat"),
+    "ScanRequest": ("threatcode.pipeline", "ScanRequest"),
+    "ScanResult": ("threatcode.pipeline", "ScanResult"),
+    "run_scan": ("threatcode.pipeline", "run_scan"),
+}
 
 
-def _run_pipeline(
-    input_path: str | Path,
-    *,
-    no_llm: bool = True,
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
-) -> tuple[InfraGraph, ThreatReport]:
-    """Shared analysis pipeline for scan() and analyze().
+def __getattr__(name: str) -> Any:
+    target = _LAZY.get(name)
+    if target is None:
+        raise AttributeError(f"module 'threatcode' has no attribute '{name}'")
+    value = getattr(importlib.import_module(target[0]), target[1])
+    globals()[name] = value
+    return value
 
-    Returns:
-        Tuple of (InfraGraph, ThreatReport).
 
-    Raises:
-        ThreatCodeError: On any analysis failure.
-    """
-    from threatcode.config import load_config
-    from threatcode.engine.hybrid import HybridEngine
-    from threatcode.ir.graph import InfraGraph
-    from threatcode.models.threat import Severity
-    from threatcode.parsers import detect_and_parse
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
 
-    cfg_path = Path(config_path) if config_path else None
-    config = load_config(cfg_path)
-    config.no_llm = no_llm
 
-    parsed = detect_and_parse(input_path)
-    graph = InfraGraph.from_parsed(parsed)
+def _run(
+    paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    options: dict[str, Any],
+) -> ScanResult:
+    from threatcode.pipeline import prepare_request, run_scan
 
-    extra = [Path(p) for p in (extra_rule_paths or [])]
-    engine = HybridEngine(config=config, extra_rule_paths=extra)
-    report = engine.analyze(graph, input_file=str(input_path))
-
-    if min_severity != "info":
-        try:
-            threshold = Severity(min_severity)
-        except ValueError as e:
-            raise ThreatCodeError(
-                f"Invalid severity '{min_severity}'. "
-                f"Valid values: critical, high, medium, low, info"
-            ) from e
-        report.threats = report.filter_by_severity(threshold)
-
-    return graph, report
+    if "output_format" in options:
+        raise TypeError(
+            "scan() and analyze() take no output_format: scan() returns a dict, and "
+            "threatcode.formatters.render(name, analysis) renders any other format"
+        )
+    named = [paths] if isinstance(paths, (str, os.PathLike)) else list(paths)
+    prepared = prepare_request(named, **options)
+    for notice in prepared.config.notices:
+        logging.getLogger("threatcode").warning("%s", notice)
+    result = run_scan(prepared.request)
+    repeated = result.report.duplicate_ids()
+    if repeated:
+        # An id names one finding in a diff and in an ignore entry; a repeat would merge two.
+        logging.getLogger("threatcode").warning(
+            "the report holds %d threat id(s) more than once, so a diff or an ignore entry "
+            "cannot tell the threats apart: %s",
+            len(repeated),
+            ", ".join(repeated[:5]),
+        )
+    coverage = result.coverage
+    if coverage.errors:
+        shown = "; ".join(
+            f"{e.get('file') or '.'}: {(str(e.get('message', '')).splitlines() or [''])[0]}"
+            for e in coverage.errors[:3]
+        )
+        more = len(coverage.errors) - 3
+        suffix = f" (and {more} more)" if more > 0 else ""
+        raise ThreatCodeError(
+            f"the scan could not analyse its input: {shown}{suffix}. "
+            "Use run_scan() to get the partial result with its coverage block."
+        )
+    if result.exit_code == 2:
+        # No input error, so this is strict mode with a coverage gap.
+        first = coverage.gaps[0] if coverage.gaps else {}
+        raise ThreatCodeError(
+            f"strict mode: the scan has {len(coverage.gaps) + coverage.rule_errors} coverage "
+            f"gap(s), the first is [{first.get('code', 'rule.error')}] "
+            f"{str(first.get('message', 'a rule failed')).splitlines()[0]}. "
+            "Use run_scan() to get the result with its coverage block."
+        )
+    return result
 
 
 def scan(
-    input_path: str | Path,
-    *,
-    no_llm: bool = True,
-    output_format: str = "json",
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
+    paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    **settings: Any,
 ) -> dict[str, Any]:
-    """Public API: scan an IaC file and return a threat report dict.
+    """Scan files and directories and return the threat report as a dict.
+
+    The dict is exactly what ``threatcode scan -f json`` prints: ``schema_version``, ``threats``,
+    ``attack_paths`` and a ``coverage`` block that says what was not analysed.
+    A finding never raises; an input that could not be analysed does.
 
     Args:
-        input_path: Path to terraform plan JSON, .tf file, or CFN template.
-        no_llm: If True, skip LLM analysis and use rules only.
-        output_format: Output format (json, sarif, markdown, bitbucket).
-        min_severity: Minimum severity to include (critical, high, medium, low, info).
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional YAML rule files to load.
-
-    Returns:
-        Threat report as a dictionary.
+        paths: A file or directory path, or several, or ``-`` for standard input.
+        **settings: ``fail_on``, ``min_severity``, ``strict``, ``config_path``,
+            ``extra_rule_paths``, ``llm`` (False unless set), ``dry_run``, ``ignore_file``,
+            ``no_ignore``, ``baseline``, ``write_baseline``, ``ingest``, ``stdin_name``,
+            ``no_timestamp``, ``max_nodes`` and ``max_edges``, each as the CLI flag of the same
+            name.
 
     Raises:
-        ThreatCodeError: On parsing, config, or analysis failures.
-        FileNotFoundError: If input_path does not exist.
+        ThreatCodeError: An input could not be analysed, or a setting is invalid.
+        UsageError: A named path does not exist.
     """
-    _graph, report = _run_pipeline(
-        input_path,
-        no_llm=no_llm,
-        min_severity=min_severity,
-        config_path=config_path,
-        extra_rule_paths=extra_rule_paths,
-    )
-    return report.to_dict()
+    return _run(paths, settings).to_dict()
 
 
 def analyze(
-    input_path: str | Path,
-    *,
-    no_llm: bool = True,
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
+    paths: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    **settings: Any,
 ) -> AnalysisResult:
-    """Public API: scan an IaC file and return graph + threat report.
+    """Like ``scan``, but return the graph and the report together.
 
-    Like scan(), but preserves the infrastructure graph for diagram rendering
-    and topology analysis.
-
-    Args:
-        input_path: Path to terraform plan JSON, .tf file, or CFN template.
-        no_llm: If True, skip LLM analysis and use rules only.
-        min_severity: Minimum severity to include (critical, high, medium, low, info).
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional YAML rule files to load.
-
-    Returns:
-        AnalysisResult with .graph (InfraGraph) and .report (ThreatReport).
-
-    Raises:
-        ThreatCodeError: On parsing, config, or analysis failures.
-        FileNotFoundError: If input_path does not exist.
+    The result has ``.graph`` (the infrastructure graph), ``.report`` and ``.attack_paths``, and
+    renders to SVG with ``.to_svg()``. Accepts the same settings as ``scan``.
     """
-    from threatcode.models.analysis import AnalysisResult
-
-    graph, report = _run_pipeline(
-        input_path,
-        no_llm=no_llm,
-        min_severity=min_severity,
-        config_path=config_path,
-        extra_rule_paths=extra_rule_paths,
-    )
-    return AnalysisResult(graph=graph, report=report)
-
-
-def scan_secrets(
-    path: str | Path,
-    *,
-    config_path: str | Path | None = None,
-) -> dict[str, Any]:
-    """Public API: scan files for hardcoded secrets.
-
-    Args:
-        path: File or directory to scan recursively.
-        config_path: Optional path to secret scan config YAML.
-
-    Returns:
-        Dict with ``total_secrets`` count and ``findings`` list.
-    """
-    from threatcode.engine.secrets.scanner import SecretScanner
-
-    scanner = SecretScanner()
-    findings = scanner.scan(str(path))
-    return {
-        "total_secrets": len(findings),
-        "findings": [f.to_dict() for f in findings],
-    }
-
-
-def scan_vulnerabilities(
-    input_path: str | Path,
-    *,
-    ignore_unfixed: bool = False,
-) -> dict[str, Any]:
-    """Public API: scan a lockfile for known vulnerabilities.
-
-    Requires a local vulnerability database — run ``threatcode db update``
-    first.
-
-    Args:
-        input_path: Path to a supported lockfile.
-        ignore_unfixed: If True, skip vulnerabilities without a fix.
-
-    Returns:
-        Dict with ``total_vulnerabilities``, ``dependencies_scanned``,
-        and ``findings`` list.
-
-    Raises:
-        ThreatCodeError: If the vulnerability database has not been created.
-        FileNotFoundError: If input_path does not exist.
-    """
-    from threatcode.engine.vulns.db import VulnDB
-    from threatcode.engine.vulns.scanner import VulnerabilityScanner
-    from threatcode.parsers import detect_and_parse
-
-    parsed = detect_and_parse(input_path)
-    deps = [r.properties for r in parsed.resources if r.resource_type.startswith("dependency_")]
-
-    if not deps:
-        return {"total_vulnerabilities": 0, "dependencies_scanned": 0, "findings": []}
-
-    db = VulnDB()
-    if not db.exists():
-        raise ThreatCodeError("Vulnerability database not found. Run 'threatcode db update' first.")
-
-    scanner = VulnerabilityScanner(db=db)
-    findings = scanner.scan_dependencies(deps, ignore_unfixed=ignore_unfixed)
-    return {
-        "total_vulnerabilities": len(findings),
-        "dependencies_scanned": len(deps),
-        "findings": [f.to_dict() for f in findings],
-    }
-
-
-def scan_all(
-    input_path: str | Path,
-    *,
-    scanners: tuple[str, ...] = ("misconfig",),
-    no_llm: bool = True,
-    min_severity: str = "info",
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
-    ignore_unfixed: bool = False,
-) -> dict[str, Any]:
-    """Public API: unified scan combining multiple scanner types.
-
-    Args:
-        input_path: Path to file or directory to scan.
-        scanners: Scanner types to run. Options: ``misconfig``, ``secret``,
-            ``vuln``, ``license``. Default: ``("misconfig",)``.
-        no_llm: If True, skip LLM analysis for misconfig scanner.
-        min_severity: Minimum severity for misconfig results.
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional YAML rule files for misconfig scanner.
-        ignore_unfixed: If True, skip unfixed vulnerabilities.
-
-    Returns:
-        Dict with per-scanner results keyed by scanner name.
-    """
-    result: dict[str, Any] = {"scanners": list(scanners)}
-
-    if "misconfig" in scanners:
-        try:
-            result["misconfig"] = scan(
-                input_path,
-                no_llm=no_llm,
-                min_severity=min_severity,
-                config_path=config_path,
-                extra_rule_paths=extra_rule_paths,
-            )
-        except Exception as e:
-            _logger.warning("Scanner misconfig failed: %s", e)
-            result["misconfig"] = {"error": str(e)}
-
-    if "secret" in scanners:
-        try:
-            result["secret"] = scan_secrets(input_path, config_path=config_path)
-        except Exception as e:
-            _logger.warning("Scanner secret failed: %s", e)
-            result["secret"] = {"error": str(e)}
-
-    if "vuln" in scanners:
-        try:
-            result["vuln"] = scan_vulnerabilities(input_path, ignore_unfixed=ignore_unfixed)
-        except Exception as e:
-            _logger.warning("Scanner vuln failed: %s", e)
-            result["vuln"] = {"error": str(e)}
-
-    if "license" in scanners:
-        try:
-            from threatcode.engine.licenses.scanner import LicenseScanner
-            from threatcode.parsers import detect_and_parse
-
-            parsed = detect_and_parse(input_path)
-            deps = [
-                r.properties for r in parsed.resources if r.resource_type.startswith("dependency_")
-            ]
-            scanner = LicenseScanner()
-            findings = scanner.scan_dependencies(deps)
-            result["license"] = {
-                "total_issues": len(findings),
-                "dependencies_scanned": len(deps),
-                "findings": [f.to_dict() for f in findings],
-            }
-        except Exception as e:
-            _logger.warning("Scanner license failed: %s", e)
-            result["license"] = {"error": str(e)}
-
-    return result
-
-
-def scan_filesystem(
-    target: str | Path,
-    *,
-    scanners: tuple[str, ...] = ("vuln", "secret", "misconfig", "license"),
-    ignore_unfixed: bool = False,
-    min_severity: str = "info",
-    no_llm: bool = True,
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
-    ignore_path: str | Path | None = None,
-) -> dict[str, Any]:
-    """Public API: scan a directory for vulnerabilities, secrets, misconfigs, and licenses.
-
-    Walks the directory tree, discovers lockfiles, IaC files, Dockerfiles,
-    and Kubernetes manifests, then runs the selected scanners.
-
-    Args:
-        target: Directory path to scan.
-        scanners: Scanner types to run (vuln, secret, misconfig, license).
-        ignore_unfixed: If True, skip vulnerabilities without a fix.
-        min_severity: Minimum severity to include.
-        no_llm: If True, skip LLM analysis for misconfig scanner.
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional rule files for misconfig scanner.
-        ignore_path: Optional path to .threatcodeignore file.
-
-    Returns:
-        Dict with per-scanner results and file discovery metadata.
-
-    Raises:
-        ThreatCodeError: If target is not a directory.
-    """
-    from threatcode.ignore import load_ignore_ids
-    from threatcode.scanner.fs import scan_filesystem as _fs_scan
-
-    result = _fs_scan(
-        target,
-        scanners=scanners,
-        ignore_unfixed=ignore_unfixed,
-        min_severity=min_severity,
-        no_llm=no_llm,
-        config_path=config_path,
-        extra_rule_paths=extra_rule_paths,
-    )
-
-    ignore_ids = load_ignore_ids(
-        search_dir=Path(target),
-        ignore_path=Path(ignore_path) if ignore_path else None,
-    )
-    if ignore_ids:
-        from threatcode.cli import _apply_ignore_to_result
-
-        _apply_ignore_to_result(result, ignore_ids)
-
-    return result
-
-
-def scan_repository(
-    repo_url: str,
-    *,
-    branch: str | None = None,
-    scanners: tuple[str, ...] = ("vuln", "secret", "misconfig", "license"),
-    ignore_unfixed: bool = False,
-    min_severity: str = "info",
-    no_llm: bool = True,
-    config_path: str | Path | None = None,
-    extra_rule_paths: list[str | Path] | None = None,
-) -> dict[str, Any]:
-    """Public API: clone a Git repository and scan it for security issues.
-
-    Performs a shallow clone and runs the filesystem scanner against it.
-
-    Args:
-        repo_url: Git repository URL (HTTPS or SSH).
-        branch: Branch to clone. Defaults to the repo's default branch.
-        scanners: Scanner types to run (vuln, secret, misconfig, license).
-        ignore_unfixed: If True, skip vulnerabilities without a fix.
-        min_severity: Minimum severity to include.
-        no_llm: If True, skip LLM analysis for misconfig scanner.
-        config_path: Optional path to .threatcode.yml config file.
-        extra_rule_paths: Additional rule files for misconfig scanner.
-
-    Returns:
-        Dict with scan results plus repository metadata.
-
-    Raises:
-        ThreatCodeError: If git is not installed or clone fails.
-    """
-    from threatcode.scanner.repo import scan_repository as _repo_scan
-
-    return _repo_scan(
-        repo_url,
-        branch=branch,
-        scanners=scanners,
-        ignore_unfixed=ignore_unfixed,
-        min_severity=min_severity,
-        no_llm=no_llm,
-        config_path=config_path,
-        extra_rule_paths=extra_rule_paths,
-    )
-
-
-def scan_image(
-    image_ref: str,
-    *,
-    platform: str = "linux/amd64",
-    ignore_unfixed: bool = False,
-    scan_secrets: bool = False,
-    scan_misconfig: bool = True,
-) -> dict[str, Any]:
-    """Public API: scan a container image for vulnerabilities.
-
-    Pulls the image from its registry, extracts all layers, detects the OS,
-    parses installed packages, and matches them against the vulnerability
-    database. Also scans application lockfiles found inside the image.
-
-    Args:
-        image_ref: Image reference (e.g. ``"nginx:latest"``, ``"ghcr.io/owner/repo:tag"``).
-        platform: Target platform for multi-arch images (e.g. ``"linux/arm64"``).
-        ignore_unfixed: If True, skip vulnerabilities without a fixed version.
-        scan_secrets: If True, scan the image filesystem for hardcoded secrets.
-        scan_misconfig: If True, check image config for security misconfigurations.
-
-    Returns:
-        Dict with image metadata, OS info, vulnerability findings, and
-        optional secret/misconfig findings.
-
-    Raises:
-        ThreatCodeError: On registry errors, extraction failures, or invalid references.
-    """
-    from threatcode.engine.vulns.db import VulnDB
-    from threatcode.image.auth import CredentialStore
-    from threatcode.image.layer import LayerExtractor
-    from threatcode.image.reference import ImageReference
-    from threatcode.image.registry import RegistryClient
-    from threatcode.image.scanner import ImageScanner
-
-    platform_parts = platform.split("/")
-    platform_os = platform_parts[0] if platform_parts else "linux"
-    platform_arch = platform_parts[1] if len(platform_parts) > 1 else "amd64"
-
-    ref = ImageReference.parse(image_ref)
-    with RegistryClient(
-        CredentialStore(),
-        platform_os=platform_os,
-        platform_arch=platform_arch,
-    ) as client:
-        manifest, _ = client.pull_manifest(ref)
-        config = client.pull_config(ref, manifest)
-        layer_blobs = [
-            client.pull_blob(ref, desc["digest"])
-            for desc in manifest.get("layers", [])
-            if desc.get("digest")
-        ]
-
-    extractor = LayerExtractor()
-    extracted = extractor.extract_from_blobs(layer_blobs, config)
-    try:
-        scanner = ImageScanner(
-            db=VulnDB(),
-            ignore_unfixed=ignore_unfixed,
-            scan_secrets=scan_secrets,
-            scan_misconfig=scan_misconfig,
-        )
-        result = scanner.scan_extracted(image_ref, extracted)
-    finally:
-        extracted.cleanup()
-
-    return result.to_dict()
+    return _run(paths, settings).analysis

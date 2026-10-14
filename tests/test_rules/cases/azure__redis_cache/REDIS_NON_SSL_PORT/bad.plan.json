@@ -1,0 +1,112 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_redis_cache.cache",
+          "mode": "managed",
+          "type": "azurerm_redis_cache",
+          "name": "cache",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "schema_version": 0,
+          "values": {
+            "name": "redis-cache",
+            "location": "eastus",
+            "resource_group_name": "rg-app",
+            "capacity": 2,
+            "family": "C",
+            "sku_name": "Standard",
+            "minimum_tls_version": "1.2",
+            "subnet_id": null,
+            "non_ssl_port_enabled": true,
+            "public_network_access_enabled": false
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "azurerm_redis_cache.cache",
+      "mode": "managed",
+      "type": "azurerm_redis_cache",
+      "name": "cache",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "redis-cache",
+          "location": "eastus",
+          "resource_group_name": "rg-app",
+          "capacity": 2,
+          "family": "C",
+          "sku_name": "Standard",
+          "minimum_tls_version": "1.2",
+          "subnet_id": null,
+          "non_ssl_port_enabled": true,
+          "public_network_access_enabled": false
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "azurerm": {
+        "name": "azurerm",
+        "full_name": "registry.terraform.io/hashicorp/azurerm"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_redis_cache.cache",
+          "mode": "managed",
+          "type": "azurerm_redis_cache",
+          "name": "cache",
+          "provider_config_key": "azurerm",
+          "expressions": {
+            "name": {
+              "constant_value": "redis-cache"
+            },
+            "location": {
+              "constant_value": "eastus"
+            },
+            "resource_group_name": {
+              "constant_value": "rg-app"
+            },
+            "capacity": {
+              "constant_value": 2
+            },
+            "family": {
+              "constant_value": "C"
+            },
+            "sku_name": {
+              "constant_value": "Standard"
+            },
+            "minimum_tls_version": {
+              "constant_value": "1.2"
+            },
+            "non_ssl_port_enabled": {
+              "constant_value": true
+            },
+            "public_network_access_enabled": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}

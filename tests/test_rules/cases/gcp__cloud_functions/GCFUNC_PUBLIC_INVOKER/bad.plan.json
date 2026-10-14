@@ -1,0 +1,184 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_cloudfunctions2_function.fn2",
+          "mode": "managed",
+          "type": "google_cloudfunctions2_function",
+          "name": "fn2",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "fn2",
+            "location": "us-central1",
+            "project": "shop-prod",
+            "build_config": [
+              {
+                "runtime": "python312",
+                "entry_point": "handler",
+                "source": []
+              }
+            ],
+            "service_config": [
+              {
+                "available_memory": "256M",
+                "ingress_settings": "ALLOW_ALL",
+                "max_instance_count": null,
+                "vpc_connector": null,
+                "security_level": "SECURE_ALWAYS",
+                "timeout_seconds": 60,
+                "all_traffic_on_latest_revision": true
+              }
+            ],
+            "event_trigger": [],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "google_cloudfunctions2_function_iam_member.invoker",
+          "mode": "managed",
+          "type": "google_cloudfunctions2_function_iam_member",
+          "name": "invoker",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "role": "roles/cloudfunctions.invoker",
+            "member": "allAuthenticatedUsers",
+            "condition": []
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_cloudfunctions2_function.fn2",
+      "mode": "managed",
+      "type": "google_cloudfunctions2_function",
+      "name": "fn2",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "fn2",
+          "location": "us-central1",
+          "project": "shop-prod",
+          "build_config": [
+            {
+              "runtime": "python312",
+              "entry_point": "handler",
+              "source": []
+            }
+          ],
+          "service_config": [
+            {
+              "available_memory": "256M",
+              "ingress_settings": "ALLOW_ALL",
+              "max_instance_count": null,
+              "vpc_connector": null,
+              "security_level": "SECURE_ALWAYS",
+              "timeout_seconds": 60,
+              "all_traffic_on_latest_revision": true
+            }
+          ],
+          "event_trigger": [],
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_cloudfunctions2_function_iam_member.invoker",
+      "mode": "managed",
+      "type": "google_cloudfunctions2_function_iam_member",
+      "name": "invoker",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "role": "roles/cloudfunctions.invoker",
+          "member": "allAuthenticatedUsers",
+          "condition": []
+        },
+        "after_unknown": {
+          "cloud_function": true,
+          "location": true,
+          "etag": true,
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_cloudfunctions2_function.fn2",
+          "mode": "managed",
+          "type": "google_cloudfunctions2_function",
+          "name": "fn2",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "fn2"
+            },
+            "location": {
+              "constant_value": "us-central1"
+            },
+            "project": {
+              "constant_value": "shop-prod"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "google_cloudfunctions2_function_iam_member.invoker",
+          "mode": "managed",
+          "type": "google_cloudfunctions2_function_iam_member",
+          "name": "invoker",
+          "provider_config_key": "google",
+          "expressions": {
+            "role": {
+              "constant_value": "roles/cloudfunctions.invoker"
+            },
+            "member": {
+              "constant_value": "allAuthenticatedUsers"
+            },
+            "cloud_function": {
+              "references": [
+                "google_cloudfunctions2_function.fn2.name",
+                "google_cloudfunctions2_function.fn2"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

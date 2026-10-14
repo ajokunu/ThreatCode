@@ -1,0 +1,10 @@
+{
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "mcp_server.docs",
+      "stride": "information_disclosure",
+      "target": "mcp_agent.config"
+    }
+  ]
+}

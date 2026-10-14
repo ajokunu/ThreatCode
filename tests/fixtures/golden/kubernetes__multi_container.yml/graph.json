@@ -1,0 +1,9 @@
+{
+  "edges": [],
+  "nodes": {
+    "kubernetes_deployment.apps.sidecar-mix": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

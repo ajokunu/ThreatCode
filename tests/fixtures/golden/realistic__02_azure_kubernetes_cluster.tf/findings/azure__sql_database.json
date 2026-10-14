@@ -1,0 +1,25 @@
+[
+  {
+    "resource_address": "azurerm_mssql_server.platform",
+    "rule_id": "MSSQL_NO_AUDITING",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "azurerm_mssql_server.platform",
+    "rule_id": "MSSQL_NO_THREAT_DETECTION",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "azurerm_mssql_server.platform",
+    "rule_id": "MSSQL_PUBLIC_ACCESS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

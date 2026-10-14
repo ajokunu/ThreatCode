@@ -1,0 +1,57 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.search",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.search",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.shop-03d170ec",
+      "target": "mcp_server.shop-03d170ec.db",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_server.search",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.shop-03d170ec.db",
+      "target": "mcp_agent.shop-03d170ec",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_agent.shop-03d170ec": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.search": {
+      "category": "compute",
+      "zone": "internet"
+    },
+    "mcp_server.shop-03d170ec.db": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

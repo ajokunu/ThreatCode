@@ -1,0 +1,10 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "mcp_server.internal-search",
+      "stride": "tampering",
+      "target": "mcp_agent.config"
+    }
+  ]
+}

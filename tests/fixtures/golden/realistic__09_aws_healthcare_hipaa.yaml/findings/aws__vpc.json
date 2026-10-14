@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "MedVaultVPC",
+    "rule_id": "VPC_NO_FLOW_LOGS",
+    "severity": "medium",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

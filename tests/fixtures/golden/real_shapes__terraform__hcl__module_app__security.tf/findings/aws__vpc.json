@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_security_group.lb",
+    "rule_id": "SG_WEB_PORT_OPEN_TO_WORLD",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

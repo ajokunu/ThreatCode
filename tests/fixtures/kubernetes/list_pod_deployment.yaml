@@ -1,0 +1,37 @@
+# kubectl get pod,deploy -o yaml: one List wrapping two objects, as it prints them.
+apiVersion: v1
+kind: List
+metadata:
+  resourceVersion: ""
+items:
+  - apiVersion: v1
+    kind: Pod
+    metadata:
+      name: debug-shell
+      namespace: ops
+      labels:
+        run: debug-shell
+    spec:
+      containers:
+        - name: shell
+          image: busybox:1.36
+          securityContext:
+            privileged: true
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: metrics
+      namespace: ops
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: metrics
+      template:
+        metadata:
+          labels:
+            app: metrics
+        spec:
+          containers:
+            - name: metrics
+              image: registry.example.com/ops/metrics:4.0.1

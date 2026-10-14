@@ -1,0 +1,66 @@
+[
+  {
+    "resource_address": "mcp_server.home-mount",
+    "rule_id": "MCP_BROAD_FILESYSTEM",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1005"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.device",
+    "rule_id": "MCP_CONTAINER_PRIVILEGED",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.etc-mount",
+    "rule_id": "MCP_CONTAINER_PRIVILEGED",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.net-admin",
+    "rule_id": "MCP_CONTAINER_PRIVILEGED",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.privileged-true",
+    "rule_id": "MCP_CONTAINER_PRIVILEGED",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.root-user",
+    "rule_id": "MCP_CONTAINER_PRIVILEGED",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1611"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.etc-mount",
+    "rule_id": "MCP_SENSITIVE_PATHS",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1005",
+      "T1552.001"
+    ]
+  }
+]

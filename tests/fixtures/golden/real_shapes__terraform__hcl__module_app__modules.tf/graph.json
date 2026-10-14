@@ -1,0 +1,9 @@
+{
+  "edges": [],
+  "nodes": {
+    "module.extra_subnets.aws_subnet.this": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

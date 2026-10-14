@@ -1,0 +1,48 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_cluster_role_binding.test-admin-binding",
+      "target": "kubernetes_service_account.test-ns.test-sa",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_network_policy.test-ns.allow-all",
+      "target": "kubernetes_deployment.test-ns.test-app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service_account.test-ns.test-sa",
+      "target": "kubernetes_cluster_role_binding.test-admin-binding",
+      "type": "iam_binding"
+    }
+  ],
+  "nodes": {
+    "kubernetes_cluster_role.overly-permissive": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_cluster_role_binding.test-admin-binding": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_deployment.test-ns.test-app": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_namespace.test-ns": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_network_policy.test-ns.allow-all": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_service_account.test-ns.test-sa": {
+      "category": "iam",
+      "zone": "management"
+    }
+  }
+}

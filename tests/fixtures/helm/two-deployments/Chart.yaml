@@ -1,0 +1,6 @@
+apiVersion: v2
+name: two-deployments
+description: Two Deployments named from different values, one of them privileged
+type: application
+version: 0.2.0
+appVersion: "3.4.0"

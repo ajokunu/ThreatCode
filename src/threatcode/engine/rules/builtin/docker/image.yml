@@ -1,161 +1,192 @@
+# Rules on the summary of the image a Dockerfile builds (resource type dockerfile_image).
+#
+# The summary describes the final build stage, following FROM <stage> inheritance, because
+# the final stage is the image that runs. A USER or HEALTHCHECK in an earlier build stage
+# says nothing about it. DOCKER_LATEST_TAG is the exception: it reads every stage, since a
+# floating tag in a build stage is still a supply chain input.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # EXPOSE 80 or 443 is normal and not a privilege escalation: a container does not need
+  # root to bind a low port when the runtime sets net.ipv4.ip_unprivileged_port_start.
+  - DOCKER_EXPOSED_PRIVILEGED_PORT
+
 rules:
   - id: DOCKER_NO_USER
-    title: No non-root USER instruction
+    title: Image runs as root because the final stage sets no USER
     description: >
-      The Dockerfile does not contain a USER instruction to switch from root.
-      Containers will run as root by default, increasing attack surface.
+      The final build stage never switches to a non-root user, so the container runs as root
+      unless the base image already does something else.
+      A process that runs as root gives an attacker who takes it over the most room to
+      escape the container or tamper with its filesystem.
+      A USER in an earlier build stage does not count: only the final stage runs.
     stride_category: elevation_of_privilege
-    severity: high
+    severity: medium
+    confidence: absence
+    root_cause: runtime-user-root
     resource_type: dockerfile_image
     condition:
       has_user:
         equals: false
     mitigation: >
-      Add a USER instruction to run the container as a non-root user.
+      Add a USER instruction with an unprivileged user (a numeric UID such as 10001 works
+      without creating an account) to the final stage.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
-
-  - id: DOCKER_LATEST_TAG
-    title: Base image uses latest or unspecified tag
-    description: >
-      The base image uses the 'latest' tag or no tag at all.
-      This makes builds non-reproducible and may pull vulnerable versions.
-    stride_category: tampering
-    severity: medium
-    resource_type: dockerfile_image
-    condition:
-      uses_latest_tag:
-        equals: true
-    mitigation: >
-      Pin the base image to a specific version tag or SHA256 digest.
-    metadata:
-      mitre:
-        techniques: ["T1195.002"]
-        tactics: ["TA0001"]
-
-  - id: DOCKER_EXPOSED_SSH
-    title: SSH port 22 exposed
-    description: >
-      Port 22 (SSH) is exposed in the Dockerfile.
-      SSH in containers is an anti-pattern and increases attack surface.
-    stride_category: information_disclosure
-    severity: medium
-    resource_type: dockerfile_image
-    condition:
-      has_ssh_exposed:
-        equals: true
-    mitigation: >
-      Remove port 22 exposure. Use docker exec or kubectl exec instead of SSH.
-    metadata:
-      mitre:
-        techniques: ["T1021"]
-        tactics: ["TA0008"]
-
-  - id: DOCKER_NO_HEALTHCHECK
-    title: Missing HEALTHCHECK instruction
-    description: >
-      The Dockerfile does not include a HEALTHCHECK instruction.
-      Without health checks, container orchestrators cannot detect unhealthy containers.
-    stride_category: denial_of_service
-    severity: low
-    resource_type: dockerfile_image
-    condition:
-      has_healthcheck:
-        equals: false
-    mitigation: >
-      Add a HEALTHCHECK instruction to enable container health monitoring.
-    metadata:
-      mitre:
-        techniques: ["T1499"]
-        tactics: ["TA0040"]
-
-  - id: DOCKER_MISSING_WORKDIR
-    title: No WORKDIR set
-    description: >
-      The Dockerfile does not set a WORKDIR instruction.
-      Commands will execute in the root directory, which may cause unexpected behavior.
-    stride_category: tampering
-    severity: low
-    resource_type: dockerfile_image
-    condition:
-      has_workdir:
-        equals: false
-    mitigation: >
-      Add a WORKDIR instruction to set an explicit working directory.
-    metadata:
-      mitre:
-        techniques: ["T1565.001"]
-        tactics: ["TA0040"]
 
   - id: DOCKER_ROOT_USER
-    title: USER set to root
+    title: Image runs as root because USER names root
     description: >
-      The Dockerfile explicitly sets USER to root.
-      Running as root increases the container's attack surface.
+      The final build stage sets USER to root or to UID 0, in any spelling (root, 0, root:root,
+      0:0).
+      Running as root gives an attacker who takes over the process the most room to escape
+      the container or tamper with its filesystem.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: definitive
+    root_cause: runtime-user-root
     resource_type: dockerfile_image
     condition:
       is_root_user:
         equals: true
     mitigation: >
-      Change the USER instruction to a non-root user.
+      Change the final USER instruction to an unprivileged user or numeric UID.
     metadata:
       mitre:
         techniques: ["T1611"]
-        tactics: ["TA0004"]
 
-  - id: DOCKER_EXPOSED_PRIVILEGED_PORT
-    title: Privileged port exposed
+  - id: DOCKER_LATEST_TAG
+    title: A base image uses a floating or missing tag
     description: >
-      A port below 1024 is exposed, requiring elevated privileges.
-    stride_category: elevation_of_privilege
-    severity: low
-    resource_type: dockerfile_image
-    condition:
-      has_privileged_port:
-        equals: true
-    mitigation: >
-      Use non-privileged ports (>= 1024) when possible.
-    metadata:
-      mitre:
-        techniques: ["T1611"]
-        tactics: ["TA0004"]
-
-  - id: DOCKER_NO_DIGEST_PIN
-    title: Base image not pinned by digest
-    description: >
-      The base image is referenced by tag instead of SHA256 digest.
-      Tags are mutable and can point to different images over time.
+      A FROM line names an image with the latest tag, another tag that moves (stable, edge,
+      nightly and similar) or no tag at all, which Docker reads as latest.
+      Two builds of the same Dockerfile can then pull different base images, so a compromised
+      or simply changed upstream image reaches production without a change to this file.
+      A FROM that names an earlier stage, scratch or an image pinned by digest is not judged,
+      and neither is a tag that comes from an ARG with no default.
     stride_category: tampering
     severity: medium
+    confidence: definitive
+    root_cause: unpinned-base-image
     resource_type: dockerfile_image
     condition:
-      has_digest_pin:
-        equals: false
+      uses_latest_tag:
+        equals: true
     mitigation: >
-      Pin base images to a specific SHA256 digest for reproducibility.
+      Pin every base image to a specific version tag, and to a SHA256 digest where the build
+      must be reproducible.
     metadata:
       mitre:
         techniques: ["T1195.002"]
-        tactics: ["TA0001"]
 
-  - id: DOCKER_NON_MINIMAL_BASE
-    title: Non-minimal base image used
+  - id: DOCKER_NO_DIGEST_PIN
+    title: Final base image is not pinned by digest
     description: >
-      The base image is a full OS image rather than a minimal variant.
-      Full images contain unnecessary packages that increase attack surface.
+      The image the final stage is built on is referenced by tag only.
+      Tags are mutable, so the same tag can later resolve to a different image.
+      Scratch, an earlier stage and a base whose name comes from an unresolved variable are
+      not judged; for a stage the base of that stage's own FROM chain is.
     stride_category: tampering
     severity: low
+    confidence: absence
+    root_cause: unpinned-base-image
+    resource_type: dockerfile_image
+    condition:
+      all_of:
+        - has_digest_pin:
+            equals: false
+        - base_kind:
+            equals: registry
+    mitigation: >
+      Pin the base image to its SHA256 digest, for example image:1.2.3@sha256:..., and let a
+      dependency bot propose updates.
+    metadata:
+      mitre:
+        techniques: ["T1195.002"]
+
+  - id: DOCKER_NON_MINIMAL_BASE
+    title: Final base image is a full operating system
+    description: >
+      The final stage is built on a full distribution image (ubuntu, debian, centos, fedora,
+      amazonlinux and similar) rather than a slim, minimal, alpine or distroless variant.
+      A full image carries a shell, a package manager and hundreds of packages the application
+      does not use, each one a possible vulnerability and a tool for an attacker.
+      Language runtime images such as python or node are not judged, because their size
+      depends on the tag.
+    stride_category: tampering
+    severity: low
+    confidence: heuristic
+    root_cause: oversized-image
     resource_type: dockerfile_image
     condition:
       is_non_minimal:
         equals: true
     mitigation: >
-      Use minimal base images like alpine, distroless, or slim variants.
+      Build the final stage on a minimal base such as a -slim or alpine variant or a
+      distroless image, and keep build tools in an earlier stage.
+    metadata: {}
+
+  - id: DOCKER_EXPOSED_SSH
+    title: SSH port 22 exposed
+    description: >
+      The final image declares port 22 (SSH), including inside a port range.
+      An SSH daemon in a container is an extra remote entry point that needs its own keys,
+      patching and logging.
+      EXPOSE only declares intent; whether a daemon listens is not known from the Dockerfile.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: heuristic
+    resource_type: dockerfile_image
+    condition:
+      has_ssh_exposed:
+        equals: true
+    mitigation: >
+      Remove the port 22 declaration and the SSH daemon.
+      Use docker exec or kubectl exec for access.
     metadata:
       mitre:
-        techniques: ["T1195.002"]
-        tactics: ["TA0001"]
+        techniques: ["T1021.004"]
+
+  - id: DOCKER_NO_HEALTHCHECK
+    title: Final stage has no HEALTHCHECK
+    description: >
+      The final build stage defines no HEALTHCHECK, or turns it off with HEALTHCHECK NONE.
+      Docker and Swarm then cannot tell a hung or crashed service from a healthy one, so an
+      attack that wedges the process goes unrecovered.
+      Kubernetes ignores HEALTHCHECK and uses probes, so this matters for Docker and Swarm
+      deployments.
+    stride_category: denial_of_service
+    severity: low
+    confidence: absence
+    resource_type: dockerfile_image
+    condition:
+      has_healthcheck:
+        equals: false
+    mitigation: >
+      Add a HEALTHCHECK instruction to the final stage, or define probes in the orchestrator.
+    metadata:
+      mitre:
+        techniques: ["T1499"]
+
+  - id: DOCKER_MISSING_WORKDIR
+    title: Final stage sets no WORKDIR
+    description: >
+      The final build stage never sets a WORKDIR, so relative paths resolve against the root
+      directory.
+      Application files then mix with system files, and a write through a relative path can
+      reach a directory the application was never meant to touch.
+    stride_category: tampering
+    severity: low
+    confidence: absence
+    resource_type: dockerfile_image
+    condition:
+      has_workdir:
+        equals: false
+    mitigation: >
+      Add a WORKDIR instruction to the final stage and use paths relative to it.
+    metadata: {}

@@ -1,70 +1,70 @@
+# Rules on KMS keys.
+#
+# The key policy is judged on its parsed statements (derived.allows_any_principal, see
+# threatcode/ir/enrichment/aws_data.py), so the spelling of the JSON does not matter and a
+# statement that names every principal but is limited to one organisation, account or source ARN
+# is not reported.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # Merged into KMS_KEY_EXPOSED: the two rules had the same condition and different severities.
+  - KMS_WILDCARD_POLICY
+  # deletion_window_in_days only sets the waiting period after the key is scheduled for deletion.
+  # It defaults to 30 days, the longest allowed, so leaving it out is the safest setting.
+  - KMS_NO_DELETION_PROTECTION
+
 rules:
   - id: KMS_KEY_ROTATION_DISABLED
     title: KMS key rotation disabled
     description: >
-      Automatic key rotation is not enabled for the KMS key.
-      This increases the risk of key compromise over time.
+      Automatic rotation is not enabled for the symmetric KMS key.
+      Without rotation the same key material protects all data for the life of the key, so a
+      single compromise of that material exposes everything ever encrypted with it.
+      Asymmetric keys and HMAC keys cannot be rotated automatically and are not reported.
     stride_category: information_disclosure
-    severity: medium
-    resource_type: aws_kms_key
-    condition:
-      enable_key_rotation:
-        equals: false
-    mitigation: >
-      Enable automatic key rotation.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
-
-  - id: KMS_WILDCARD_POLICY
-    title: KMS key with wildcard principal
-    description: >
-      The KMS key policy grants access to all principals.
-    stride_category: elevation_of_privilege
-    severity: high
-    resource_type: aws_kms_key
-    condition:
-      policy:
-        contains: '"Principal":"*"'
-    mitigation: >
-      Restrict KMS key policy to specific IAM principals.
-    metadata:
-      mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0004"]
-
-  - id: KMS_NO_DELETION_PROTECTION
-    title: KMS key without deletion protection
-    description: >
-      The KMS key does not have deletion window configured
-      to prevent accidental deletion.
-    stride_category: denial_of_service
     severity: low
+    confidence: absence
     resource_type: aws_kms_key
     condition:
-      deletion_window_in_days:
-        not_exists: true
+      all_of:
+        - any_of:
+            - enable_key_rotation:
+                equals: false
+            - enable_key_rotation:
+                not_exists: true
+        - any_of:
+            - customer_master_key_spec:
+                not_exists: true
+            - customer_master_key_spec:
+                equals: SYMMETRIC_DEFAULT
     mitigation: >
-      Set deletion_window_in_days to at least 7 days.
-    metadata:
-      mitre:
-        techniques: ["T1485"]
-        tactics: ["TA0040"]
+      Set enable_key_rotation to true.
+      AWS keeps the old key material, so data encrypted before a rotation stays readable.
 
   - id: KMS_KEY_EXPOSED
-    title: KMS key publicly accessible
+    title: KMS key policy allows every principal
     description: >
-      The KMS key policy may allow public access.
+      The key policy has an Allow statement whose principal is "*" (or {"AWS": "*"}), with no
+      condition that limits the caller such as aws:PrincipalOrgID, aws:SourceArn,
+      aws:SourceAccount, aws:PrincipalArn or kms:CallerAccount.
+      Any principal that IAM allows to call KMS can then use the key, and a statement that
+      includes administrative actions lets them rewrite the key policy.
+      Data encrypted with the key is only as private as the key.
     stride_category: information_disclosure
     severity: critical
+    confidence: definitive
+    root_cause: kms-open-key-policy
     resource_type: aws_kms_key
     condition:
-      policy:
-        contains: '"Effect":"Allow","Principal":"*"'
+      derived.allows_any_principal:
+        equals: true
     mitigation: >
-      Remove wildcard principals from the KMS key policy.
+      Name the accounts, roles or services that may use the key in Principal.
+      If a wildcard is unavoidable, add kms:CallerAccount or aws:PrincipalOrgID conditions.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]

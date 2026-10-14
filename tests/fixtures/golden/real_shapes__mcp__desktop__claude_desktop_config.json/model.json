@@ -1,0 +1,93 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.legacy-http-bridge",
+        "mcp_agent.config",
+        "mcp_server.git"
+      ],
+      "severity": "high",
+      "target": "mcp_server.git"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.remote-docs",
+        "mcp_agent.config",
+        "mcp_server.git"
+      ],
+      "severity": "high",
+      "target": "mcp_server.git"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.github"
+      ],
+      "severity": "critical",
+      "target": "mcp_server.github"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.legacy-http-bridge",
+        "mcp_agent.config",
+        "mcp_server.github"
+      ],
+      "severity": "high",
+      "target": "mcp_server.github"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.remote-docs",
+        "mcp_agent.config",
+        "mcp_server.github"
+      ],
+      "severity": "high",
+      "target": "mcp_server.github"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.legacy-http-bridge",
+        "mcp_agent.config",
+        "mcp_server.windows-files"
+      ],
+      "severity": "high",
+      "target": "mcp_server.windows-files"
+    },
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "mcp_server.remote-docs",
+        "mcp_agent.config",
+        "mcp_server.windows-files"
+      ],
+      "severity": "high",
+      "target": "mcp_server.windows-files"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "high",
+      "source": "mcp_server.legacy-http-bridge",
+      "stride": "information_disclosure",
+      "target": "mcp_agent.config"
+    },
+    {
+      "severity": "medium",
+      "source": "mcp_server.remote-docs",
+      "stride": "tampering",
+      "target": "mcp_agent.config"
+    }
+  ]
+}

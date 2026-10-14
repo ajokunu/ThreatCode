@@ -1,0 +1,86 @@
+[
+  {
+    "resource_address": "aws_s3_bucket.no_versioning",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.public_bucket",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.unencrypted",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.no_versioning",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_s3_bucket.public_bucket",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_s3_bucket.unencrypted",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "aws_s3_bucket.no_versioning",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.public_bucket",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.unencrypted",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.public_bucket",
+    "rule_id": "S3_PUBLIC_ACCESS",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

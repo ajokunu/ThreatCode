@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.web.name }}
+  namespace: shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: {{ .Values.web.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.web.name }}
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.web.image }}:{{ .Chart.AppVersion }}"
+          securityContext:
+            privileged: {{ .Values.web.privileged }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.worker.name }}
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.worker.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.worker.name }}
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image }}:{{ .Chart.AppVersion }}"

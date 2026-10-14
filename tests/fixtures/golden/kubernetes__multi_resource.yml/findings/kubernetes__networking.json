@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.test-ns.test-app",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  }
+]

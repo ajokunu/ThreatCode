@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "OverpermissiveRole",
+    "rule_id": "IAM_OVERPERMISSIVE_ROLE",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  },
+  {
+    "resource_address": "WildcardPolicy",
+    "rule_id": "IAM_WILDCARD_ACTION",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

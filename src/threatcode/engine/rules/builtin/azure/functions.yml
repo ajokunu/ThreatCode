@@ -1,72 +1,84 @@
+# Function Apps. The rules cover the legacy azurerm_function_app and the azurerm 3.x and 4.x
+# types azurerm_linux_function_app and azurerm_windows_function_app.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # Whether HTTP/2 is on is a performance setting, not an access control.
+  - FUNC_HTTP_V1
+
 rules:
   - id: FUNC_NO_MANAGED_IDENTITY
-    title: Function App without managed identity
+    title: Function App without a managed identity
     description: >
-      The Function App does not use a managed identity.
-      Service credentials must be managed manually.
+      The function app has no identity block, so it must hold static credentials to reach other
+      Azure services.
+      Static credentials are stored in settings, leak through logs and repositories, and do not
+      rotate on their own.
     stride_category: spoofing
-    severity: medium
-    resource_type: azurerm_function_app
+    severity: low
+    confidence: absence
+    root_cause: no-managed-identity
+    resource_types:
+      - azurerm_function_app
+      - azurerm_linux_function_app
+      - azurerm_windows_function_app
     condition:
       identity:
         not_exists: true
     mitigation: >
-      Enable a system-assigned or user-assigned managed identity.
+      Add an identity block with a system-assigned or user-assigned managed identity and grant it
+      the roles the function needs.
     metadata:
       mitre:
-        techniques: ["T1078"]
-        tactics: ["TA0001"]
-
-  - id: FUNC_HTTP_V1
-    title: Function App using HTTP trigger v1
-    description: >
-      The Function App uses HTTP extension version 1.
-      Version 2 provides improved security features.
-    stride_category: tampering
-    severity: low
-    resource_type: azurerm_function_app
-    condition:
-      site_config.http2_enabled:
-        equals: false
-    mitigation: >
-      Enable HTTP/2 in site_config for improved performance and security.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
+        techniques: ["T1078.004"]
 
   - id: FUNC_NO_HTTPS
-    title: Function App without HTTPS enforcement
+    title: Function App accepts unencrypted HTTP
     description: >
-      HTTPS-only is not enabled on the Function App.
-      Traffic can be intercepted over unencrypted HTTP.
+      HTTPS-only is off, so clients can invoke the functions over plain HTTP and the traffic,
+      including keys and tokens, can be read or altered on the path.
+      The provider default for https_only is false, so an app that never sets it accepts HTTP.
     stride_category: information_disclosure
     severity: high
-    resource_type: azurerm_function_app
+    confidence: definitive
+    resource_types:
+      - azurerm_function_app
+      - azurerm_linux_function_app
+      - azurerm_windows_function_app
     condition:
       https_only:
         equals: false
     mitigation: >
-      Set https_only to true to enforce HTTPS connections.
+      Set https_only to true.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
 
   - id: FUNC_PUBLIC_ACCESS
-    title: Function App allows public network access
+    title: Function App public endpoint with no IP restriction
     description: >
-      The Function App is publicly accessible from the internet.
-      Unauthorized users may invoke functions.
+      Public network access is on (the provider default is true) and site_config has no
+      ip_restriction, so the function endpoints are reachable from any address.
+      Public HTTP triggers are normal, so whether this matters depends on each function's
+      authorization level, which the configuration does not show.
     stride_category: information_disclosure
-    severity: medium
-    resource_type: azurerm_function_app
+    severity: low
+    confidence: heuristic
+    resource_types: [azurerm_linux_function_app, azurerm_windows_function_app]
     condition:
-      public_network_access_enabled:
-        equals: true
+      all_of:
+        - public_network_access_enabled:
+            equals: true
+        - site_config.ip_restriction:
+            not_exists: true
     mitigation: >
-      Disable public network access and use private endpoints or VNET integration.
+      Add ip_restriction rules, or disable public network access and use private endpoints or
+      virtual network integration, and require a function key or an identity provider on every
+      HTTP trigger.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]

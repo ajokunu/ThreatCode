@@ -1,0 +1,177 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.path-token",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.query-auth",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.userinfo",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.default-literal",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.docker-env",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.false-positives",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.flag-equals",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.flag-space",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.password-key",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.path-token",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.query-auth",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.userinfo",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.default-literal",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.docker-env",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.false-positives",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.flag-equals",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.flag-space",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.password-key",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_server.path-token",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_server.query-auth",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_server.userinfo",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.default-literal": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.docker-env": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.false-positives": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.flag-equals": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.flag-space": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.password-key": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.path-token": {
+      "category": "compute",
+      "zone": "internet"
+    },
+    "mcp_server.query-auth": {
+      "category": "compute",
+      "zone": "internet"
+    },
+    "mcp_server.userinfo": {
+      "category": "compute",
+      "zone": "internet"
+    }
+  }
+}

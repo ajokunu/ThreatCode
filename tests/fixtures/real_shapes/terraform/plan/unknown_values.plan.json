@@ -1,0 +1,698 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_kms_key.trail",
+          "mode": "managed",
+          "type": "aws_kms_key",
+          "name": "trail",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "customer_master_key_spec": "SYMMETRIC_DEFAULT",
+            "deletion_window_in_days": 30,
+            "description": "CloudTrail encryption",
+            "enable_key_rotation": true,
+            "is_enabled": true,
+            "key_usage": "ENCRYPT_DECRYPT",
+            "multi_region": false
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_s3_bucket.trail_logs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "trail_logs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "acme-trail-logs",
+            "force_destroy": false,
+            "object_lock_enabled": false
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_cloudtrail.encrypted",
+          "mode": "managed",
+          "type": "aws_cloudtrail",
+          "name": "encrypted",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "enable_log_file_validation": true,
+            "enable_logging": true,
+            "include_global_service_events": true,
+            "is_multi_region_trail": true,
+            "is_organization_trail": false,
+            "s3_bucket_name": "acme-trail-logs",
+            "name": "org-encrypted",
+            "sns_topic_name": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_cloudtrail.plain",
+          "mode": "managed",
+          "type": "aws_cloudtrail",
+          "name": "plain",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "enable_log_file_validation": true,
+            "enable_logging": true,
+            "include_global_service_events": true,
+            "is_multi_region_trail": true,
+            "is_organization_trail": false,
+            "s3_bucket_name": "acme-trail-logs",
+            "name": "org-plain",
+            "kms_key_id": null,
+            "sns_topic_name": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_sqs_queue.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "content_based_deduplication": false,
+            "delay_seconds": 0,
+            "fifo_queue": false,
+            "max_message_size": 262144,
+            "message_retention_seconds": 345600,
+            "name": "orders",
+            "receive_wait_time_seconds": 0,
+            "visibility_timeout_seconds": 30,
+            "sqs_managed_sse_enabled": null
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_sqs_queue.plain",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "plain",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "content_based_deduplication": false,
+            "delay_seconds": 0,
+            "fifo_queue": false,
+            "kms_master_key_id": null,
+            "max_message_size": 262144,
+            "message_retention_seconds": 345600,
+            "name": "plain",
+            "receive_wait_time_seconds": 0,
+            "sqs_managed_sse_enabled": null,
+            "visibility_timeout_seconds": 30
+          },
+          "sensitive_values": {}
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.audit",
+          "resources": [
+            {
+              "address": "module.audit.aws_cloudtrail.this",
+              "mode": "managed",
+              "type": "aws_cloudtrail",
+              "name": "this",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "enable_log_file_validation": true,
+                "enable_logging": true,
+                "include_global_service_events": true,
+                "is_multi_region_trail": true,
+                "is_organization_trail": false,
+                "s3_bucket_name": "acme-trail-logs",
+                "name": "audit",
+                "sns_topic_name": null
+              },
+              "sensitive_values": {}
+            },
+            {
+              "address": "module.audit.aws_cloudtrail.bare",
+              "mode": "managed",
+              "type": "aws_cloudtrail",
+              "name": "bare",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "enable_log_file_validation": true,
+                "enable_logging": true,
+                "include_global_service_events": true,
+                "is_multi_region_trail": true,
+                "is_organization_trail": false,
+                "s3_bucket_name": "acme-trail-logs",
+                "name": "audit-bare",
+                "kms_key_id": null,
+                "sns_topic_name": null
+              },
+              "sensitive_values": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_kms_key.trail",
+      "mode": "managed",
+      "type": "aws_kms_key",
+      "name": "trail",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "customer_master_key_spec": "SYMMETRIC_DEFAULT",
+          "deletion_window_in_days": 30,
+          "description": "CloudTrail encryption",
+          "enable_key_rotation": true,
+          "is_enabled": true,
+          "key_usage": "ENCRYPT_DECRYPT",
+          "multi_region": false
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "key_id": true,
+          "policy": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_s3_bucket.trail_logs",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "trail_logs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-trail-logs",
+          "force_destroy": false,
+          "object_lock_enabled": false
+        },
+        "after_unknown": {
+          "acceleration_status": true,
+          "acl": true,
+          "arn": true,
+          "bucket_domain_name": true,
+          "bucket_regional_domain_name": true,
+          "cors_rule": true,
+          "grant": true,
+          "hosted_zone_id": true,
+          "id": true,
+          "lifecycle_rule": true,
+          "logging": true,
+          "object_lock_configuration": true,
+          "policy": true,
+          "region": true,
+          "replication_configuration": true,
+          "request_payer": true,
+          "server_side_encryption_configuration": true,
+          "tags_all": true,
+          "versioning": true,
+          "website": true,
+          "website_domain": true,
+          "website_endpoint": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_cloudtrail.encrypted",
+      "mode": "managed",
+      "type": "aws_cloudtrail",
+      "name": "encrypted",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "enable_log_file_validation": true,
+          "enable_logging": true,
+          "include_global_service_events": true,
+          "is_multi_region_trail": true,
+          "is_organization_trail": false,
+          "s3_bucket_name": "acme-trail-logs",
+          "name": "org-encrypted",
+          "sns_topic_name": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "home_region": true,
+          "id": true,
+          "kms_key_id": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_cloudtrail.plain",
+      "mode": "managed",
+      "type": "aws_cloudtrail",
+      "name": "plain",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "enable_log_file_validation": true,
+          "enable_logging": true,
+          "include_global_service_events": true,
+          "is_multi_region_trail": true,
+          "is_organization_trail": false,
+          "s3_bucket_name": "acme-trail-logs",
+          "name": "org-plain",
+          "kms_key_id": null,
+          "sns_topic_name": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "home_region": true,
+          "id": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_sqs_queue.orders",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "content_based_deduplication": false,
+          "delay_seconds": 0,
+          "fifo_queue": false,
+          "max_message_size": 262144,
+          "message_retention_seconds": 345600,
+          "name": "orders",
+          "receive_wait_time_seconds": 0,
+          "visibility_timeout_seconds": 30,
+          "sqs_managed_sse_enabled": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "kms_master_key_id": true,
+          "tags_all": true,
+          "url": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_sqs_queue.plain",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "plain",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "content_based_deduplication": false,
+          "delay_seconds": 0,
+          "fifo_queue": false,
+          "kms_master_key_id": null,
+          "max_message_size": 262144,
+          "message_retention_seconds": 345600,
+          "name": "plain",
+          "receive_wait_time_seconds": 0,
+          "sqs_managed_sse_enabled": null,
+          "visibility_timeout_seconds": 30
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "tags_all": true,
+          "url": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "module.audit.aws_cloudtrail.this",
+      "module_address": "module.audit",
+      "mode": "managed",
+      "type": "aws_cloudtrail",
+      "name": "this",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "enable_log_file_validation": true,
+          "enable_logging": true,
+          "include_global_service_events": true,
+          "is_multi_region_trail": true,
+          "is_organization_trail": false,
+          "s3_bucket_name": "acme-trail-logs",
+          "name": "audit",
+          "sns_topic_name": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "home_region": true,
+          "id": true,
+          "kms_key_id": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "module.audit.aws_cloudtrail.bare",
+      "module_address": "module.audit",
+      "mode": "managed",
+      "type": "aws_cloudtrail",
+      "name": "bare",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "enable_log_file_validation": true,
+          "enable_logging": true,
+          "include_global_service_events": true,
+          "is_multi_region_trail": true,
+          "is_organization_trail": false,
+          "s3_bucket_name": "acme-trail-logs",
+          "name": "audit-bare",
+          "kms_key_id": null,
+          "sns_topic_name": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "home_region": true,
+          "id": true,
+          "tags_all": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "expressions": {
+          "region": {
+            "constant_value": "us-east-1"
+          }
+        }
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_kms_key.trail",
+          "mode": "managed",
+          "type": "aws_kms_key",
+          "name": "trail",
+          "provider_config_key": "aws",
+          "expressions": {
+            "deletion_window_in_days": {
+              "constant_value": 30
+            },
+            "description": {
+              "constant_value": "CloudTrail encryption"
+            },
+            "enable_key_rotation": {
+              "constant_value": true
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_s3_bucket.trail_logs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "trail_logs",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "acme-trail-logs"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_cloudtrail.encrypted",
+          "mode": "managed",
+          "type": "aws_cloudtrail",
+          "name": "encrypted",
+          "provider_config_key": "aws",
+          "expressions": {
+            "enable_log_file_validation": {
+              "constant_value": true
+            },
+            "enable_logging": {
+              "constant_value": true
+            },
+            "include_global_service_events": {
+              "constant_value": true
+            },
+            "is_multi_region_trail": {
+              "constant_value": true
+            },
+            "is_organization_trail": {
+              "constant_value": false
+            },
+            "s3_bucket_name": {
+              "references": [
+                "aws_s3_bucket.trail_logs.id",
+                "aws_s3_bucket.trail_logs"
+              ]
+            },
+            "name": {
+              "constant_value": "org-encrypted"
+            },
+            "kms_key_id": {
+              "references": [
+                "aws_kms_key.trail.arn",
+                "aws_kms_key.trail"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_cloudtrail.plain",
+          "mode": "managed",
+          "type": "aws_cloudtrail",
+          "name": "plain",
+          "provider_config_key": "aws",
+          "expressions": {
+            "enable_log_file_validation": {
+              "constant_value": true
+            },
+            "enable_logging": {
+              "constant_value": true
+            },
+            "include_global_service_events": {
+              "constant_value": true
+            },
+            "is_multi_region_trail": {
+              "constant_value": true
+            },
+            "is_organization_trail": {
+              "constant_value": false
+            },
+            "s3_bucket_name": {
+              "references": [
+                "aws_s3_bucket.trail_logs.id",
+                "aws_s3_bucket.trail_logs"
+              ]
+            },
+            "name": {
+              "constant_value": "org-plain"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_sqs_queue.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "orders",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "orders"
+            },
+            "kms_master_key_id": {
+              "references": [
+                "aws_kms_key.trail.arn",
+                "aws_kms_key.trail"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_sqs_queue.plain",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "plain",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "plain"
+            }
+          },
+          "schema_version": 0
+        }
+      ],
+      "module_calls": {
+        "audit": {
+          "source": "./modules/audit",
+          "expressions": {
+            "bucket": {
+              "references": [
+                "aws_s3_bucket.trail_logs.id",
+                "aws_s3_bucket.trail_logs"
+              ]
+            },
+            "kms_key_arn": {
+              "references": [
+                "aws_kms_key.trail.arn",
+                "aws_kms_key.trail"
+              ]
+            }
+          },
+          "module": {
+            "resources": [
+              {
+                "address": "aws_cloudtrail.this",
+                "mode": "managed",
+                "type": "aws_cloudtrail",
+                "name": "this",
+                "provider_config_key": "aws",
+                "expressions": {
+                  "enable_log_file_validation": {
+                    "constant_value": true
+                  },
+                  "enable_logging": {
+                    "constant_value": true
+                  },
+                  "include_global_service_events": {
+                    "constant_value": true
+                  },
+                  "is_multi_region_trail": {
+                    "constant_value": true
+                  },
+                  "is_organization_trail": {
+                    "constant_value": false
+                  },
+                  "name": {
+                    "constant_value": "audit"
+                  },
+                  "s3_bucket_name": {
+                    "references": [
+                      "var.bucket"
+                    ]
+                  },
+                  "kms_key_id": {
+                    "references": [
+                      "var.kms_key_arn"
+                    ]
+                  }
+                },
+                "schema_version": 0
+              },
+              {
+                "address": "aws_cloudtrail.bare",
+                "mode": "managed",
+                "type": "aws_cloudtrail",
+                "name": "bare",
+                "provider_config_key": "aws",
+                "expressions": {
+                  "enable_log_file_validation": {
+                    "constant_value": true
+                  },
+                  "enable_logging": {
+                    "constant_value": true
+                  },
+                  "include_global_service_events": {
+                    "constant_value": true
+                  },
+                  "is_multi_region_trail": {
+                    "constant_value": true
+                  },
+                  "is_organization_trail": {
+                    "constant_value": false
+                  },
+                  "name": {
+                    "constant_value": "audit-bare"
+                  },
+                  "s3_bucket_name": {
+                    "references": [
+                      "var.bucket"
+                    ]
+                  }
+                },
+                "schema_version": 0
+              }
+            ],
+            "variables": {
+              "bucket": {},
+              "kms_key_arn": {}
+            }
+          }
+        }
+      }
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

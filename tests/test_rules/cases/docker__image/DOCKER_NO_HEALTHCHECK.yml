@@ -1,0 +1,31 @@
+# A HEALTHCHECK in a build stage does not describe the image that runs, and HEALTHCHECK NONE
+# turns the inherited check off.
+cases:
+  - format: docker
+    bad: |
+      FROM golang:1.22 AS build
+      HEALTHCHECK CMD true
+      RUN go build -o /out/app ./cmd/app
+
+      FROM debian:12-slim
+      COPY --from=build /out/app /app
+    good: |
+      FROM golang:1.22 AS build
+      RUN go build -o /out/app ./cmd/app
+
+      FROM debian:12-slim
+      COPY --from=build /out/app /app
+      HEALTHCHECK CMD ["/app", "-healthcheck"]
+  - format: docker
+    bad: |
+      FROM debian:12-slim AS base
+      HEALTHCHECK CMD true
+
+      FROM base
+      HEALTHCHECK NONE
+    good: |
+      FROM debian:12-slim AS base
+      HEALTHCHECK CMD true
+
+      FROM base
+      COPY app /app

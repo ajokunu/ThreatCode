@@ -1,51 +1,68 @@
+# Rules on ElastiCache replication groups (Redis and Valkey).
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: ELASTICACHE_NO_ENCRYPTION_REST
     title: ElastiCache without encryption at rest
     description: >
-      ElastiCache replication group does not have encryption at rest.
+      Encryption at rest is turned off for the replication group.
+      Snapshots, the data on disk and the backups in S3 are readable by anyone who obtains them.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
     resource_type: aws_elasticache_replication_group
     condition:
       at_rest_encryption_enabled:
         equals: false
     mitigation: >
-      Enable at-rest encryption.
+      Set at_rest_encryption_enabled to true, with a customer-managed kms_key_id where key control
+      matters.
+      Encryption can only be chosen when the group is created.
     metadata:
       mitre:
         techniques: ["T1530"]
-        tactics: ["TA0009"]
 
   - id: ELASTICACHE_NO_ENCRYPTION_TRANSIT
     title: ElastiCache without encryption in transit
     description: >
-      ElastiCache does not encrypt data in transit.
+      Encryption in transit is turned off for the replication group.
+      Commands and data, including any AUTH token, cross the network in plaintext, where anyone
+      with access to the path can read or alter them.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
     resource_type: aws_elasticache_replication_group
     condition:
       transit_encryption_enabled:
         equals: false
     mitigation: >
-      Enable in-transit encryption.
+      Set transit_encryption_enabled to true and connect with TLS.
     metadata:
       mitre:
         techniques: ["T1557"]
-        tactics: ["TA0006"]
 
   - id: ELASTICACHE_NO_AUTH
     title: ElastiCache without authentication
     description: >
-      ElastiCache does not require authentication.
+      The replication group has neither an auth_token nor user groups (role-based access
+      control), so any client that can reach the endpoint can read and write every key.
+      The network is then the only protection.
     stride_category: spoofing
-    severity: high
+    severity: medium
+    confidence: absence
     resource_type: aws_elasticache_replication_group
     condition:
-      auth_token:
-        not_exists: true
+      all_of:
+        - auth_token:
+            not_exists: true
+        - user_group_ids:
+            not_exists: true
     mitigation: >
-      Configure an auth token for Redis AUTH.
+      Set user_group_ids to RBAC user groups, or set auth_token with transit encryption enabled.
     metadata:
       mitre:
         techniques: ["T1078"]
-        tactics: ["TA0001"]

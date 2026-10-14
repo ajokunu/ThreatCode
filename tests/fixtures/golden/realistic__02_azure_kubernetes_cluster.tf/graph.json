@@ -1,0 +1,186 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_container_registry.platform",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "azurerm_key_vault.platform",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_kubernetes_cluster.platform",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_kubernetes_cluster.platform",
+      "target": "azurerm_subnet.aks_nodes",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_kubernetes_cluster_node_pool.workloads",
+      "target": "azurerm_kubernetes_cluster.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_kubernetes_cluster_node_pool.workloads",
+      "target": "azurerm_subnet.aks_pods",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_linux_virtual_machine.jumpbox",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_mssql_database.inventory",
+      "target": "azurerm_mssql_server.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_mssql_database.orders",
+      "target": "azurerm_mssql_server.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "azurerm_mssql_server.platform",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_network_security_group.aks",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "azurerm_storage_account.data_lake",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.aks_nodes",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.aks_nodes",
+      "target": "azurerm_virtual_network.platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.aks_pods",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.aks_pods",
+      "target": "azurerm_virtual_network.platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.db",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_subnet.db",
+      "target": "azurerm_virtual_network.platform",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "azurerm_virtual_network.platform",
+      "target": "azurerm_resource_group.platform",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "azurerm_container_registry.platform": {
+      "category": "container",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "azurerm_key_vault.platform": {
+      "category": "secret",
+      "exposure": "internet",
+      "zone": "data"
+    },
+    "azurerm_kubernetes_cluster.platform": {
+      "category": "container",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "azurerm_kubernetes_cluster_node_pool.workloads": {
+      "category": "container",
+      "zone": "private"
+    },
+    "azurerm_linux_virtual_machine.jumpbox": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "azurerm_mssql_database.inventory": {
+      "category": "database",
+      "zone": "data"
+    },
+    "azurerm_mssql_database.orders": {
+      "category": "database",
+      "zone": "data"
+    },
+    "azurerm_mssql_server.platform": {
+      "category": "database",
+      "exposure": "internet",
+      "zone": "data"
+    },
+    "azurerm_network_security_group.aks": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "azurerm_resource_group.platform": {
+      "category": "unknown",
+      "zone": "private"
+    },
+    "azurerm_storage_account.data_lake": {
+      "category": "storage",
+      "exposure": "internet",
+      "zone": "data"
+    },
+    "azurerm_subnet.aks_nodes": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_subnet.aks_pods": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_subnet.db": {
+      "category": "network",
+      "zone": "private"
+    },
+    "azurerm_virtual_network.platform": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

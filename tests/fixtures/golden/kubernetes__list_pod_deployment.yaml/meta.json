@@ -1,0 +1,3 @@
+{
+  "input": "tests/fixtures/kubernetes/list_pod_deployment.yaml"
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "aws_ecr_repository.inference_images",
+    "rule_id": "ECR_MUTABLE_TAGS",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1525"
+    ]
+  },
+  {
+    "resource_address": "aws_ecr_repository.training_images",
+    "rule_id": "ECR_MUTABLE_TAGS",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1525"
+    ]
+  }
+]

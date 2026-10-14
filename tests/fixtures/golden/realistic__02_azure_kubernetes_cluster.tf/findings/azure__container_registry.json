@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "azurerm_container_registry.platform",
+    "rule_id": "ACR_ADMIN_ENABLED",
+    "severity": "high",
+    "stride": "spoofing",
+    "techniques": [
+      "T1078.004"
+    ]
+  },
+  {
+    "resource_address": "azurerm_container_registry.platform",
+    "rule_id": "ACR_PUBLIC_NETWORK_ACCESS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

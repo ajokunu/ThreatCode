@@ -1,90 +1,129 @@
+# Protections a WAFv2 web ACL should hold, and the rate limit of its rules.
+#
+# The managed rule groups live in web ACLs, so the missing protection rules look at the web ACL
+# as a whole: the rule blocks, and the rule groups it references that the scan holds.
+# A rule group on its own is only checked for the limit of its rate-based rules.
+# Each fact comes from threatcode.ir.enrichment.aws_network and is unknown when the rule list
+# cannot be read, and an unknown fact never produces a finding.
+# The rules that look for a missing protection stay quiet on a web ACL with no rules at all,
+# because WAF_EMPTY_RULES already says it.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: WAFV2_NO_SQL_INJECTION_RULE
-    title: WAF rule group missing SQL injection protection
+    title: WAF web ACL without SQL injection protection
     description: >
-      The WAF rule group does not include a SQL injection match statement.
-      Applications are exposed to SQL injection attacks.
+      The web ACL has no sqli_match_statement and does not use the AWS managed rule group
+      AWSManagedRulesSQLiRuleSet, so nothing in it recognizes SQL injection.
     stride_category: tampering
-    severity: high
-    resource_type: aws_wafv2_rule_group
+    severity: medium
+    confidence: absence
+    root_cause: waf-protection-missing
+    resource_type: aws_wafv2_web_acl
     condition:
-      has_sqli_rule:
-        equals: false
+      all_of:
+        - derived.has_rules:
+            equals: true
+        - derived.has_sqli_rule:
+            equals: false
     mitigation: >
-      Add a SqliMatchStatement rule to detect SQL injection attempts.
+      Add a managed_rule_group_statement for AWSManagedRulesSQLiRuleSet, or a rule with a
+      sqli_match_statement.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
 
   - id: WAFV2_NO_XSS_RULE
-    title: WAF rule group missing XSS protection
+    title: WAF web ACL without cross-site scripting protection
     description: >
-      The WAF rule group does not include a cross-site scripting match
-      statement. Applications are exposed to XSS attacks.
+      The web ACL has no xss_match_statement and does not use the AWS managed rule group
+      AWSManagedRulesCommonRuleSet, which holds the cross-site scripting rules.
     stride_category: tampering
-    severity: high
-    resource_type: aws_wafv2_rule_group
+    severity: medium
+    confidence: absence
+    root_cause: waf-protection-missing
+    resource_type: aws_wafv2_web_acl
     condition:
-      has_xss_rule:
-        equals: false
+      all_of:
+        - derived.has_rules:
+            equals: true
+        - derived.has_xss_rule:
+            equals: false
     mitigation: >
-      Add an XssMatchStatement rule to detect XSS attempts.
+      Add a managed_rule_group_statement for AWSManagedRulesCommonRuleSet, or a rule with an
+      xss_match_statement.
     metadata:
       mitre:
-        techniques: ["T1189"]
-        tactics: ["TA0001"]
+        techniques: ["T1190"]
 
   - id: WAFV2_RATE_LIMIT_HIGH
-    title: WAF rate limit threshold too high
+    title: WAF rate limit is very high
     description: >
-      The WAF rate-based rule has a threshold above 2000 requests per
-      5-minute window. This may not effectively limit abuse.
+      Every rate-based rule of the web ACL or rule group has a limit above 2000 requests per
+      evaluation window.
+      A client can send that many requests before it is blocked, which does little against
+      credential stuffing.
+      The limit that suits an application depends on its traffic, so this is a heuristic.
     stride_category: denial_of_service
-    severity: medium
-    resource_type: aws_wafv2_rule_group
+    severity: low
+    confidence: heuristic
+    resource_types:
+      - aws_wafv2_web_acl
+      - aws_wafv2_rule_group
     condition:
-      rate_limit:
+      derived.rate_limit:
         greater_than: 2000
     mitigation: >
-      Lower the rate limit threshold to an appropriate value.
+      Lower the limit to what a legitimate client sends, and add a stricter rule for login and
+      other sensitive paths.
     metadata:
       mitre:
         techniques: ["T1499"]
-        tactics: ["TA0040"]
 
   - id: WAFV2_NO_IP_REPUTATION
-    title: WAF rule group without IP reputation list
+    title: WAF web ACL without the IP reputation list
     description: >
-      The WAF rule group does not use AWS IP reputation lists.
-      Known malicious IP addresses are not blocked.
-    stride_category: tampering
-    severity: medium
-    resource_type: aws_wafv2_rule_group
-    condition:
-      has_ip_reputation:
-        equals: false
-    mitigation: >
-      Add the AWSManagedRulesAmazonIpReputationList managed rule group.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
-
-  - id: WAFV2_NO_GEO_BLOCKING
-    title: WAF rule group without geographic restrictions
-    description: >
-      The WAF rule group does not include geographic match conditions.
-      Requests from unauthorized regions are not blocked.
+      The web ACL does not use the AWS managed rule group AWSManagedRulesAmazonIpReputationList,
+      so requests from IP addresses AWS knows as malicious are not blocked.
     stride_category: tampering
     severity: low
-    resource_type: aws_wafv2_rule_group
+    confidence: absence
+    root_cause: waf-protection-missing
+    resource_type: aws_wafv2_web_acl
     condition:
-      has_geo_match:
-        equals: false
+      all_of:
+        - derived.has_rules:
+            equals: true
+        - derived.has_ip_reputation:
+            equals: false
     mitigation: >
-      Add geographic match conditions to restrict traffic by country.
+      Add a managed_rule_group_statement for AWSManagedRulesAmazonIpReputationList.
     metadata:
       mitre:
         techniques: ["T1190"]
-        tactics: ["TA0001"]
+
+  - id: WAFV2_NO_GEO_BLOCKING
+    title: WAF web ACL without geographic match rules
+    description: >
+      The web ACL has no geo_match_statement.
+      Requests from countries where the service has no customers are not blocked.
+      This is a posture choice, so it is reported at the lowest severity.
+    stride_category: tampering
+    severity: low
+    confidence: absence
+    resource_type: aws_wafv2_web_acl
+    condition:
+      all_of:
+        - derived.has_rules:
+            equals: true
+        - derived.has_geo_match:
+            equals: false
+    mitigation: >
+      Add a rule with a geo_match_statement that blocks the countries the service does not serve.
+    metadata:
+      mitre:
+        techniques: ["T1190"]

@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AuditLogTable",
+    "rule_id": "DYNAMODB_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

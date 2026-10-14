@@ -1,0 +1,16 @@
+resource "aws_s3_bucket" "assets" {
+  bucket = "acme-assets"
+}
+
+resource "aws_s3_bucket_acl" "assets" {
+  bucket = aws_s3_bucket.assets.id
+  acl    = "private"
+}
+
+resource "aws_s3_bucket_public_access_block" "assets" {
+  bucket                  = aws_s3_bucket.assets.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}

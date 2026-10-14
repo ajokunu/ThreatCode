@@ -1,0 +1,66 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "aws_lb.front",
+        "aws_instance.app[0]",
+        "aws_db_instance.orders"
+      ],
+      "severity": "high",
+      "target": "aws_db_instance.orders"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "aws_instance.app[0]",
+      "stride": "tampering",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_instance.app[1]",
+      "stride": "tampering",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lambda_function.worker",
+      "stride": "tampering",
+      "target": "aws_db_instance.orders"
+    },
+    {
+      "severity": "medium",
+      "source": "aws_lb.front",
+      "stride": "tampering"
+    },
+    {
+      "severity": "high",
+      "source": "aws_lb.front",
+      "stride": "tampering",
+      "target": "aws_instance.app[0]"
+    },
+    {
+      "severity": "high",
+      "source": "aws_lb.front",
+      "stride": "tampering",
+      "target": "aws_instance.app[1]"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.app[0]",
+      "rule_id": "EC2_IMDSV1"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "aws_instance.app[1]",
+      "rule_id": "EC2_IMDSV1"
+    }
+  ]
+}

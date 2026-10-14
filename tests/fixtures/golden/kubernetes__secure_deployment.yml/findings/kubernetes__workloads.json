@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.production.secure-app",
+    "rule_id": "K8S_EPHEMERAL_STORAGE_UNBOUNDED",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1499"
+    ]
+  }
+]

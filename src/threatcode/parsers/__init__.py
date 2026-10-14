@@ -1,23 +1,75 @@
-"""Parser auto-detection and dispatch via pluggable registry."""
+"""Parser auto-detection and dispatch via pluggable registry.
+
+``detect_and_parse`` reads a file once (BOM sniffing, strict UTF-8, size cap), loads it as
+JSON or YAML when the extension says so, and hands it to the first registered parser whose
+detector claims it. Once a detector has claimed a file, a parser failure is never reported
+as "unsupported format": it surfaces as a ``ParseError`` that names the parser and the file.
+"""
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from enum import IntEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from threatcode.exceptions import ParseError, UnsupportedFormatError
+from threatcode.constants import is_dockerfile_name, is_terraform_json_name, is_terraform_name
+from threatcode.exceptions import ParseError, ThreatCodeError, UnsupportedFormatError
+from threatcode.parsers._text import MAX_INPUT_SIZE_BYTES, decode_input
+from threatcode.parsers._yaml import load_yaml_documents
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from threatcode.parsers.base import BaseParser, ParsedOutput
 
-# Reject plan files larger than 50 MB to prevent resource exhaustion
-MAX_INPUT_SIZE_BYTES = 50 * 1024 * 1024
+__all__ = [
+    "MAX_INPUT_SIZE_BYTES",
+    "DuplicateParserError",
+    "ParseFileParser",
+    "ParserEntry",
+    "ParserPriority",
+    "detect_and_parse",
+    "is_dockerfile_name",
+    "looks_like_infrastructure",
+    "register_parser",
+]
+
+
+class ParserPriority(IntEnum):
+    """Order in which detectors run; a lower number is checked first."""
+
+    HELM = 8
+    TERRAFORM_PLAN = 10
+    MCP_CONFIG = 15
+    CLOUDFORMATION = 20
+    KUBERNETES = 22
+    DOCKERFILE = 25
+    TERRAFORM_HCL = 30
+    DEFAULT = 100
+
+
+class DuplicateParserError(ThreatCodeError, ValueError):
+    """Raised when a parser name is registered twice."""
+
+
+@runtime_checkable
+class ParseFileParser(Protocol):
+    """A parser that reads source text itself instead of a pre-parsed JSON or YAML value.
+
+    ``parse_text`` receives text the registry already decoded, so a file is read once.
+    ``parse_file`` is the same operation starting from a path, for direct callers.
+    """
+
+    def parse_file(self, path: Path) -> ParsedOutput: ...
+
+    def parse_text(self, text: str, source_path: str = "") -> ParsedOutput: ...
 
 
 @dataclass
@@ -28,7 +80,7 @@ class ParserEntry:
     detector: Callable[[Path, str, Any | None], bool]
     factory: Callable[[], BaseParser]
     extensions: frozenset[str] = field(default_factory=frozenset)
-    priority: int = 100
+    priority: int = ParserPriority.DEFAULT
 
 
 _REGISTRY: list[ParserEntry] = []
@@ -39,87 +91,253 @@ def register_parser(
     detector: Callable[[Path, str, Any | None], bool],
     factory: Callable[[], BaseParser],
     extensions: frozenset[str] | set[str] | None = None,
-    priority: int = 100,
+    priority: int = ParserPriority.DEFAULT,
 ) -> None:
     """Register a custom parser.
 
     Args:
-        name: Human-readable parser name.
-        detector: Function(path, content, parsed_data) → bool. Called to check if this
-            parser handles the given file. `parsed_data` is the JSON/YAML-parsed dict
+        name: Human-readable parser name, unique in the registry.
+        detector: Function(path, content, parsed_data) -> bool. Called to check if this
+            parser handles the given file. `parsed_data` is the JSON/YAML-parsed value
             if available, else None.
         factory: Callable that returns a BaseParser instance.
-        extensions: File extensions this parser handles (e.g., {".yaml", ".yml"}).
-        priority: Lower number = checked first. Built-in parsers use 10-30.
+        extensions: File extensions this parser handles (e.g., {".yaml", ".yml"}),
+            compared case-insensitively.
+        priority: Lower number = checked first. Built-in parsers use ParserPriority.
+
+    Raises:
+        DuplicateParserError: A parser with this name is already registered.
     """
+    if any(entry.name == name for entry in _REGISTRY):
+        raise DuplicateParserError(f"A parser named '{name}' is already registered")
     entry = ParserEntry(
         name=name,
         detector=detector,
         factory=factory,
-        extensions=frozenset(extensions or set()),
+        extensions=frozenset(ext.lower() for ext in (extensions or set())),
         priority=priority,
     )
     _REGISTRY.append(entry)
     _REGISTRY.sort(key=lambda e: e.priority)
 
 
+_SUPPORTED_INPUTS = (
+    "Terraform plan JSON (terraform show -json PLANFILE)",
+    "Terraform files: .tf, .tofu, .tf.json, or a directory of them",
+    "CloudFormation templates: YAML, JSON, .template",
+    "Kubernetes manifests: YAML or JSON",
+    "Helm charts (Chart.yaml)",
+    "Dockerfile and Containerfile",
+    "MCP client configs (.mcp.json, .vscode/mcp.json, claude_desktop_config.json)",
+)
+
+# Extensions that hold JSON or YAML, told apart by the first character.
+_AMBIGUOUS_SUFFIXES = frozenset({".template", ".cfn"})
+
+
 def detect_and_parse(path: str | Path) -> ParsedOutput:
-    """Auto-detect input format and parse it."""
+    """Auto-detect the input format and parse it.
+
+    A file goes to the first parser whose detector claims it. A directory is read as one
+    Terraform module when it holds .tf, .tofu or .tf.json files.
+
+    Raises:
+        FileNotFoundError: The path does not exist.
+        UnsupportedFormatError: No parser claims the input, or the JSON or YAML is invalid.
+        ParseError: The input is empty, not valid text, too large, or a parser that claimed
+            it failed.
+    """
     path = Path(path)
 
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
+    if path.is_dir():
+        return _parse_directory(path)
 
-    file_size = path.stat().st_size
-    if file_size > MAX_INPUT_SIZE_BYTES:
-        raise ParseError(
-            f"Input file {path.name} is {file_size / 1024 / 1024:.1f} MB, "
-            f"exceeding the {MAX_INPUT_SIZE_BYTES // 1024 // 1024} MB limit."
-        )
+    text = decode_input(path)
+    data = _preparse(path, text)
+    suffix = path.suffix.lower()
 
-    content = path.read_text(encoding="utf-8")
-
-    # Pre-parse structured data if possible
-    parsed_data: Any = None
-    if path.suffix == ".json":
-        try:
-            parsed_data = json.loads(content)
-        except json.JSONDecodeError as e:
-            parsed_data = _parse_jsonc_mcp_config(path, content)
-            if parsed_data is None:
-                raise UnsupportedFormatError(f"Invalid JSON: {e}") from e
-    elif path.suffix in (".yml", ".yaml"):
-        import yaml
-
-        try:
-            parsed_data = yaml.safe_load(content)
-        except yaml.YAMLError as e:
-            raise UnsupportedFormatError(f"Invalid YAML: {e}") from e
-
-    # Check registered parsers in priority order
     for entry in _REGISTRY:
-        if entry.extensions and path.suffix not in entry.extensions:
+        if entry.extensions and suffix not in entry.extensions:
             continue
         try:
-            if entry.detector(path, content, parsed_data):
-                parser = entry.factory()
-                if hasattr(parser, "parse_file") and parsed_data is None:
-                    return parser.parse_file(path)  # type: ignore[no-any-return]
-                data = parsed_data if parsed_data is not None else content
-                return parser.parse(data, source_path=str(path))
-        except (ParseError, UnsupportedFormatError):
+            claimed = entry.detector(path, text, data)
+        except ParseError:
+            # A detector may raise a ParseError to explain exactly why it rejects a file.
             raise
-        except Exception as exc:
-            logger.debug("Parser '%s' failed for %s: %s", entry.name, path.name, exc)
+        except Exception as exc:  # noqa: BLE001 - a broken detector must not hide the others
+            logger.debug("Detector '%s' failed for %s: %s", entry.name, path.name, exc)
             continue
+        if claimed:
+            return _run_parser(entry, path, text, data)
 
-    raise UnsupportedFormatError(
-        f"Cannot detect format for {path.name}. "
-        "Supported: terraform plan JSON, .tf files, CloudFormation YAML/JSON, "
-        "Dockerfile, Kubernetes YAML, Helm charts (Chart.yaml), "
-        "MCP client configs (.mcp.json, .vscode/mcp.json, claude_desktop_config.json), "
-        "lockfiles (package-lock.json, requirements.txt, mix.lock, pubspec.lock, conan.lock, etc.)"
-    )
+    raise _unsupported(path, data)
+
+
+# How much of the start of a file ``looks_like_infrastructure`` reads
+_SNIFF_BYTES = 64 * 1024
+_CFN_TYPE = r"(?:AWS|Custom|Alexa)::"
+# Every pattern is a single search with no unbounded gap between two parts, so a hostile file
+# cannot make the check quadratic; two-part conditions are two searches combined in code.
+_JSON_PLAN_MARKERS = re.compile(
+    r'"(?:terraform_version|planned_values|resource_changes|prior_state)"\s*:'
+)
+_JSON_FORMAT_VERSION = re.compile(r'"format_version"\s*:')
+_JSON_CFN_VERSION = re.compile(r'"AWSTemplateFormatVersion"\s*:')
+_JSON_RESOURCES = re.compile(r'"Resources"\s*:')
+_JSON_CFN_TYPE = re.compile(r'"Type"\s*:\s*"' + _CFN_TYPE)
+_JSON_API_VERSION = re.compile(r'"apiVersion"\s*:')
+_JSON_KIND = re.compile(r'"kind"\s*:')
+_YAML_CFN_VERSION = re.compile(r"^AWSTemplateFormatVersion\s*:", re.MULTILINE)
+_YAML_RESOURCES = re.compile(r"^Resources\s*:", re.MULTILINE)
+_YAML_CFN_TYPE = re.compile(r"\bType\s*:\s*['\"]?" + _CFN_TYPE)
+_YAML_API_VERSION = re.compile(r"^apiVersion\s*:", re.MULTILINE)
+_YAML_KIND = re.compile(r"^kind\s*:", re.MULTILINE)
+_TEMPLATE_DELIMITERS = ("{{", "{%")
+
+
+def looks_like_infrastructure(path: Path) -> bool:
+    """Whether the start of a JSON or YAML file reads as a plan, template or manifest.
+
+    This is for a file that could not be parsed: a truncated ``terraform show -json`` output, a
+    CloudFormation template or a Kubernetes manifest with a syntax error is not "some other JSON
+    or YAML file", and counting it as one would let a broken input pass as a clean scan.
+    A recognisable prefix is enough, so the check does not need the file to be well formed.
+    YAML with template delimiters (``{{ .Values.x }}``, ``{% if %}``) is a template for some
+    other tool and is not claimed, because its syntax errors are expected.
+
+    It reads at most 64 KiB and returns False for anything it cannot read.
+    """
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(_SNIFF_BYTES)
+    except OSError:
+        return False
+    head = raw.decode("utf-8", errors="replace").lstrip("\ufeff \t\r\n")
+    if head.startswith(("{", "[")):
+        return _json_looks_like_infrastructure(head)
+    if any(delimiter in head for delimiter in _TEMPLATE_DELIMITERS):
+        return False
+    return _yaml_looks_like_infrastructure(head)
+
+
+def _json_looks_like_infrastructure(head: str) -> bool:
+    if _JSON_FORMAT_VERSION.search(head) and _JSON_PLAN_MARKERS.search(head):
+        return True
+    if _JSON_CFN_VERSION.search(head):
+        return True
+    if _JSON_RESOURCES.search(head) and _JSON_CFN_TYPE.search(head):
+        return True
+    return bool(_JSON_API_VERSION.search(head) and _JSON_KIND.search(head))
+
+
+def _yaml_looks_like_infrastructure(head: str) -> bool:
+    if _YAML_CFN_VERSION.search(head):
+        return True
+    if _YAML_RESOURCES.search(head) and _YAML_CFN_TYPE.search(head):
+        return True
+    return bool(_YAML_API_VERSION.search(head) and _YAML_KIND.search(head))
+
+
+def _call_parser(name: str, path: Path, call: Callable[[], ParsedOutput]) -> ParsedOutput:
+    """Run a parser that claimed ``path``; any failure other than ParseError is wrapped."""
+    try:
+        return call()
+    except ParseError:
+        raise
+    except Exception as exc:
+        raise ParseError(
+            f"{name} parser failed on {path.name}: {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+@functools.cache
+def _takes_text(parser_class: type[BaseParser]) -> bool:
+    """Whether ``parse`` of a parser class accepts the decoded text it was loaded from."""
+    try:
+        return "text" in inspect.signature(parser_class.parse).parameters
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _run_parser(entry: ParserEntry, path: Path, text: str, data: Any) -> ParsedOutput:
+    def call() -> ParsedOutput:
+        parser = entry.factory()
+        if data is None and isinstance(parser, ParseFileParser):
+            return parser.parse_text(text, source_path=str(path))
+        if data is not None and _takes_text(type(parser)):
+            # The loaded value and its text, so the parser finds line numbers without reading
+            # the file again (and cannot read a different file than the one that was loaded)
+            return parser.parse(data, source_path=str(path), text=text)  # type: ignore[call-arg]
+        return parser.parse(data if data is not None else text, source_path=str(path))
+
+    return _call_parser(entry.name, path, call)
+
+
+def _parse_directory(path: Path) -> ParsedOutput:
+    """Parse a directory of Terraform files as one module."""
+    from threatcode.parsers.terraform_hcl import TerraformHCLParser
+
+    try:
+        has_terraform = any(
+            is_terraform_name(entry.name) and entry.is_file() and not entry.is_symlink()
+            for entry in path.iterdir()
+        )
+    except OSError as exc:
+        raise ParseError(f"Cannot read directory {path.name}: {exc.strerror or exc}") from exc
+    if not has_terraform:
+        raise UnsupportedFormatError(
+            f"Cannot detect format for {path.name}: it is a directory with no Terraform files.\n"
+            "A directory is read as one module when it holds .tf, .tofu or .tf.json files."
+        )
+    return _call_parser("terraform_hcl", path, lambda: TerraformHCLParser().parse_directory(path))
+
+
+# ── Pre-parsing ───────────────────────────────────────────────────────
+
+
+def _preparse(path: Path, text: str) -> Any:
+    """Load JSON or YAML according to the extension; None for everything else.
+
+    One YAML document is returned as is, several as a list, none as None.
+    """
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return _load_json(path, text)
+    if suffix in (".yml", ".yaml"):
+        return _load_yaml(path, text)
+    if suffix in _AMBIGUOUS_SUFFIXES:
+        if text.lstrip().startswith(("{", "[")):
+            return _load_json(path, text)
+        return _load_yaml(path, text)
+    return None
+
+
+def _load_json(path: Path, text: str) -> Any:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        data = _parse_jsonc_mcp_config(path, text)
+        if data is None:
+            raise UnsupportedFormatError(
+                f"Invalid JSON in {path.name}, line {e.lineno}: {e.msg}"
+            ) from e
+        return data
+    except RecursionError as e:
+        raise UnsupportedFormatError(f"Invalid JSON in {path.name}: nesting is too deep") from e
+
+
+def _load_yaml(path: Path, text: str) -> Any:
+    try:
+        # Kubernetes manifests routinely hold several documents separated by ---.
+        # One document stays a plain value; several become a list of documents.
+        docs = load_yaml_documents(text, source=path.name)
+    except UnsupportedFormatError:
+        raise
+    except ParseError as e:
+        raise UnsupportedFormatError(str(e)) from e
+    return docs[0] if len(docs) == 1 else (docs or None)
 
 
 def _parse_jsonc_mcp_config(path: Path, content: str) -> Any:
@@ -137,32 +355,111 @@ def _parse_jsonc_mcp_config(path: Path, content: str) -> Any:
         return None
 
 
+def _unsupported(path: Path, data: Any) -> UnsupportedFormatError:
+    lines = [f"Cannot detect format for {path.name}.", "Supported inputs:"]
+    lines.extend(f"  - {item}" for item in _SUPPORTED_INPUTS)
+    if isinstance(data, dict):
+        if "format_version" in data:
+            lines.append("Hint: no planned_values or resource_changes, so this is not a plan.")
+        else:
+            lines.append("Hint: needs apiVersion and kind, or Resources with AWS:: types.")
+    return UnsupportedFormatError("\n".join(lines))
+
+
 # ── Built-in parser registration ──────────────────────────────────────
+
+TERRAFORM_STATE_MESSAGE = (
+    "This is Terraform state, not a plan. "
+    "Run: terraform plan -out tfplan && terraform show -json tfplan"
+)
+TERRAFORM_DESTROY_MESSAGE = "this plan destroys every resource; there is nothing to model"
+
+
+def _planned_resource_count(planned: Any) -> int:
+    """Count the resources in a plan's planned_values, child modules included."""
+    if not isinstance(planned, dict):
+        return 0
+    count = 0
+    pending = [planned.get("root_module")]
+    while pending:
+        module = pending.pop()
+        if not isinstance(module, dict):
+            continue
+        resources = module.get("resources")
+        if isinstance(resources, list):
+            count += len(resources)
+        children = module.get("child_modules")
+        if isinstance(children, list):
+            pending.extend(children)
+    return count
+
+
+def _is_delete(change: Any) -> bool:
+    detail = change.get("change") if isinstance(change, dict) else None
+    return isinstance(detail, dict) and detail.get("actions") == ["delete"]
+
+
+def _destroys_everything(data: dict[str, Any]) -> bool:
+    """True when the plan deletes resources and plans none to exist afterwards."""
+    changes = data.get("resource_changes")
+    if not isinstance(changes, list):
+        return False
+    managed = [c for c in changes if not (isinstance(c, dict) and c.get("mode") == "data")]
+    if not managed or not all(_is_delete(c) for c in managed):
+        return False
+    return _planned_resource_count(data.get("planned_values")) == 0
 
 
 def _detect_terraform_plan(path: Path, content: str, data: Any) -> bool:
-    return (
-        path.suffix == ".json"
-        and isinstance(data, dict)
-        and ("planned_values" in data or "format_version" in data)
-    )
+    """Claim the JSON of `terraform show -json PLANFILE`.
+
+    A plan has format_version and planned_values or resource_changes. The same command on
+    state prints format_version and values with no planned_values; that and a plan that
+    only destroys are rejected with a message that names the right command.
+    """
+    if not isinstance(data, dict) or is_terraform_json_name(path.name):
+        return False
+    if "format_version" not in data:
+        return False
+    if "planned_values" not in data:
+        if "values" in data:
+            raise ParseError(TERRAFORM_STATE_MESSAGE)
+        if "resource_changes" not in data:
+            return False
+    if _destroys_everything(data):
+        raise ParseError(TERRAFORM_DESTROY_MESSAGE)
+    return True
+
+
+_CFN_TYPE_PREFIXES = ("AWS::", "Custom::", "Alexa::")
+_CFN_SECTION_KEYS = ("Description", "Parameters", "Outputs", "Mappings", "Conditions")
+
+
+def _is_cfn_resource(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    cfn_type = value.get("Type")
+    return isinstance(cfn_type, str) and cfn_type.startswith(_CFN_TYPE_PREFIXES)
 
 
 def _detect_cloudformation(path: Path, content: str, data: Any) -> bool:
     if not isinstance(data, dict):
         return False
-    if "AWSTemplateFormatVersion" in data:
+    # A version marker or a Transform (SAM, macros) is enough on its own.
+    if "AWSTemplateFormatVersion" in data or "Transform" in data:
         return True
-    # Require "Resources" plus at least one other CFN-specific key to avoid false positives
-    if "Resources" in data and any(
-        k in data for k in ("Description", "Parameters", "Outputs", "Mappings", "Conditions")
-    ):
+    resources = data.get("Resources")
+    if not isinstance(resources, dict):
+        return False
+    # A template without a version still has resources typed AWS::, Custom:: or Alexa::.
+    if any(_is_cfn_resource(value) for value in resources.values()):
         return True
-    return False
+    # Older heuristic: Resources next to another CloudFormation-only section.
+    return any(key in data for key in _CFN_SECTION_KEYS)
 
 
 def _detect_terraform_hcl(path: Path, content: str, data: Any) -> bool:
-    return path.suffix == ".tf"
+    return is_terraform_name(path.name)
 
 
 def _factory_terraform_plan() -> BaseParser:
@@ -188,29 +485,28 @@ register_parser(
     detector=_detect_terraform_plan,
     factory=_factory_terraform_plan,
     extensions=frozenset({".json"}),
-    priority=10,
+    priority=ParserPriority.TERRAFORM_PLAN,
 )
 
 register_parser(
     name="cloudformation",
     detector=_detect_cloudformation,
     factory=_factory_cloudformation,
-    extensions=frozenset({".json", ".yml", ".yaml"}),
-    priority=20,
+    extensions=frozenset({".json", ".yml", ".yaml", ".template", ".cfn"}),
+    priority=ParserPriority.CLOUDFORMATION,
 )
 
 register_parser(
     name="terraform_hcl",
     detector=_detect_terraform_hcl,
     factory=_factory_terraform_hcl,
-    extensions=frozenset({".tf"}),
-    priority=30,
+    extensions=frozenset({".tf", ".tofu", ".json"}),
+    priority=ParserPriority.TERRAFORM_HCL,
 )
 
 
 def _detect_dockerfile(path: Path, content: str, data: Any) -> bool:
-    name = path.name.lower()
-    return name == "dockerfile" or name.startswith("dockerfile.") or name.endswith(".dockerfile")
+    return is_dockerfile_name(path.name)
 
 
 def _factory_dockerfile() -> BaseParser:
@@ -223,19 +519,40 @@ register_parser(
     name="dockerfile",
     detector=_detect_dockerfile,
     factory=_factory_dockerfile,
-    extensions=frozenset(),  # No extension filter — uses filename detection
-    priority=25,
+    extensions=frozenset(),  # No extension filter: detection uses the file name
+    priority=ParserPriority.DOCKERFILE,
 )
 
 
-def _detect_kubernetes(path: Path, content: str, data: Any) -> bool:
-    if not isinstance(data, dict):
-        return False
+def _is_kubernetes_doc(doc: Any) -> bool:
     # Must have apiVersion and kind, and NOT be a CloudFormation template
-    if "apiVersion" in data and "kind" in data:
-        if "AWSTemplateFormatVersion" not in data and "Resources" not in data:
-            return True
-    return False
+    return (
+        isinstance(doc, dict)
+        and "apiVersion" in doc
+        and "kind" in doc
+        and "AWSTemplateFormatVersion" not in doc
+        and "Resources" not in doc
+    )
+
+
+def _is_kubernetes_list(doc: Any) -> bool:
+    # kubectl wraps several objects in a List or <Kind>List with the objects under items
+    if not isinstance(doc, dict):
+        return False
+    kind = doc.get("kind")
+    return (
+        isinstance(kind, str)
+        and (kind == "List" or kind.endswith("List"))
+        and isinstance(doc.get("items"), list)
+    )
+
+
+def _detect_kubernetes(path: Path, content: str, data: Any) -> bool:
+    if isinstance(data, list):
+        # A multi-document file: it is claimed when any document is a Kubernetes object,
+        # because manifests are often mixed with other YAML.
+        return any(_is_kubernetes_doc(doc) or _is_kubernetes_list(doc) for doc in data)
+    return _is_kubernetes_doc(data) or _is_kubernetes_list(data)
 
 
 def _factory_kubernetes() -> BaseParser:
@@ -248,8 +565,8 @@ register_parser(
     name="kubernetes",
     detector=_detect_kubernetes,
     factory=_factory_kubernetes,
-    extensions=frozenset({".yml", ".yaml"}),
-    priority=22,
+    extensions=frozenset({".yml", ".yaml", ".json"}),
+    priority=ParserPriority.KUBERNETES,
 )
 
 
@@ -270,28 +587,7 @@ register_parser(
     detector=_detect_helm_chart,
     factory=_factory_helm,
     extensions=frozenset({".yaml", ".yml"}),
-    priority=8,
-)
-
-
-def _detect_lockfile(path: Path, content: str, data: Any) -> bool:
-    from threatcode.constants import LOCKFILE_NAMES
-
-    return path.name in LOCKFILE_NAMES
-
-
-def _factory_lockfile() -> BaseParser:
-    from threatcode.parsers.lockfile import LockfileParser
-
-    return LockfileParser()
-
-
-register_parser(
-    name="lockfile",
-    detector=_detect_lockfile,
-    factory=_factory_lockfile,
-    extensions=frozenset(),
-    priority=5,
+    priority=ParserPriority.HELM,
 )
 
 
@@ -312,5 +608,5 @@ register_parser(
     detector=_detect_mcp_config,
     factory=_factory_mcp_config,
     extensions=frozenset({".json"}),
-    priority=15,
+    priority=ParserPriority.MCP_CONFIG,
 )

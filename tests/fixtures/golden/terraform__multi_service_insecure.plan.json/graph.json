@@ -1,0 +1,171 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_db_instance.no_backup_db",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_db_instance.public_db",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_default_security_group.default_open",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.public_web",
+      "target": "aws_subnet.public",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.unmonitored",
+      "target": "aws_subnet.public",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_internet_gateway.igw",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.public_rt",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.ipv6_open",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.wide_open",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.public",
+      "target": "aws_vpc.main",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_s3_bucket.public_bucket",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "aws_db_instance.no_backup_db": {
+      "category": "database",
+      "zone": "data"
+    },
+    "aws_db_instance.public_db": {
+      "category": "database",
+      "exposure": "internet",
+      "zone": "data"
+    },
+    "aws_default_security_group.default_open": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "aws_iam_policy.wildcard_policy": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.overpermissive_role": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_user.no_mfa_user": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.public_web": {
+      "category": "compute",
+      "zone": "dmz"
+    },
+    "aws_instance.unencrypted_ebs": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_instance.unmonitored": {
+      "category": "compute",
+      "zone": "dmz"
+    },
+    "aws_internet_gateway.igw": {
+      "category": "network",
+      "zone": "internet"
+    },
+    "aws_lambda_function.admin_lambda": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lambda_function.no_dlq_lambda": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_lambda_function.no_vpc_lambda": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "aws_route_table.public_rt": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_s3_bucket.no_versioning": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket.public_bucket": {
+      "category": "storage",
+      "exposure": "internet",
+      "zone": "data"
+    },
+    "aws_s3_bucket.unencrypted": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_security_group.ipv6_open": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "aws_security_group.wide_open": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "aws_subnet.public": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "aws_vpc.main": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpc.secondary": {
+      "category": "network",
+      "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    }
+  }
+}

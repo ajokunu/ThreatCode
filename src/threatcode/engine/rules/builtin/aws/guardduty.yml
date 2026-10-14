@@ -1,72 +1,77 @@
+# Rules on GuardDuty detectors.
+#
+# The datasources block is where S3, Kubernetes audit log and malware protection are switched
+# on or off for a detector.
+# A missing detection is a gap, not an attack technique, so these rules map to no ATT&CK
+# technique and use the repudiation category.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: GUARDDUTY_NOT_ENABLED
-    title: GuardDuty detector is not enabled
+    title: GuardDuty detector is turned off
     description: >
-      The GuardDuty detector is configured but not enabled.
-      Disabled detectors do not generate security findings.
+      The detector has enable set to false, so GuardDuty produces no findings.
+      Credential theft, crypto mining and unusual API calls in the account go unreported.
     stride_category: repudiation
     severity: high
+    confidence: definitive
+    root_cause: guardduty-detection-off
     resource_type: aws_guardduty_detector
     condition:
       enable:
         equals: false
     mitigation: >
-      Set enable to true on the GuardDuty detector.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Set enable to true on the detector.
 
   - id: GUARDDUTY_NO_S3_PROTECTION
-    title: GuardDuty S3 protection disabled
+    title: GuardDuty S3 protection turned off
     description: >
-      S3 data event monitoring is not enabled in GuardDuty.
-      Threats against S3 data will not be detected.
-    stride_category: information_disclosure
+      The detector turns off S3 data event monitoring in its datasources block.
+      Suspicious reads, deletes and policy changes on S3 objects are not analysed.
+    stride_category: repudiation
     severity: medium
+    confidence: definitive
+    root_cause: guardduty-detection-off
     resource_type: aws_guardduty_detector
     condition:
       datasources.s3_logs.enable:
         equals: false
     mitigation: >
-      Enable S3 protection in the GuardDuty detector datasources.
-    metadata:
-      mitre:
-        techniques: ["T1530"]
-        tactics: ["TA0009"]
+      Set datasources.s3_logs.enable to true.
 
   - id: GUARDDUTY_NO_EKS_PROTECTION
-    title: GuardDuty EKS protection disabled
+    title: GuardDuty EKS protection turned off
     description: >
-      EKS audit log monitoring is not enabled in GuardDuty.
-      Kubernetes-level threats will not be detected.
-    stride_category: information_disclosure
+      The detector turns off Kubernetes audit log monitoring in its datasources block.
+      Suspicious API calls to the cluster, such as a new cluster-admin binding, are not analysed.
+    stride_category: repudiation
     severity: medium
+    confidence: definitive
+    root_cause: guardduty-detection-off
     resource_type: aws_guardduty_detector
     condition:
       datasources.kubernetes.audit_logs.enable:
         equals: false
     mitigation: >
-      Enable EKS audit log monitoring in GuardDuty.
-    metadata:
-      mitre:
-        techniques: ["T1613"]
-        tactics: ["TA0007"]
+      Set datasources.kubernetes.audit_logs.enable to true.
 
   - id: GUARDDUTY_NO_MALWARE_SCAN
-    title: GuardDuty malware protection disabled
+    title: GuardDuty malware protection turned off
     description: >
-      Malware protection is not enabled in GuardDuty.
-      Malicious files on EBS volumes will not be detected.
-    stride_category: tampering
-    severity: medium
+      The detector turns off malware scanning of the EBS volumes of instances that have
+      findings.
+      A compromised instance is not scanned for malware.
+    stride_category: repudiation
+    severity: low
+    confidence: definitive
+    root_cause: guardduty-detection-off
     resource_type: aws_guardduty_detector
     condition:
       datasources.malware_protection.scan_ec2_instance_with_findings.ebs_volumes.enable:
         equals: false
     mitigation: >
-      Enable malware protection scanning for EBS volumes.
-    metadata:
-      mitre:
-        techniques: ["T1587.001"]
-        tactics: ["TA0042"]
+      Set datasources.malware_protection.scan_ec2_instance_with_findings.ebs_volumes.enable to true.

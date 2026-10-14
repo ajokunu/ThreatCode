@@ -1,0 +1,75 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "internet",
+      "target": "mcp_server.tracker",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "mcp_server.web",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.files",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.tracker",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_agent.config",
+      "target": "mcp_server.web",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.files",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "mcp_server.tracker",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "mcp_server.web",
+      "target": "mcp_agent.config",
+      "type": "data_flow"
+    }
+  ],
+  "nodes": {
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    },
+    "mcp_agent.config": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.files": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "mcp_server.tracker": {
+      "category": "compute",
+      "zone": "internet"
+    },
+    "mcp_server.web": {
+      "category": "compute",
+      "zone": "private"
+    }
+  }
+}

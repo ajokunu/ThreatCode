@@ -1,0 +1,26 @@
+# Planted issues and hardened resources of tests/fixtures/realistic/03_aws_data_pipeline.yaml.
+fixture: 03_aws_data_pipeline.yaml
+must_find:
+  - resource: ProcessedDataBucket
+    rule_ids: [S3_NO_ENCRYPTION]
+    kind: unencrypted_storage
+    why: 'NOTE: encryption not configured - data team says it is "just aggregates" (SEC-2341)'
+  - resource: AthenaResultsBucket
+    rule_ids: [S3_PUBLIC_ACCESS]
+    kind: public_access
+    why: 'Publicly readable for dashboarding tool integration: AccessControl PublicRead'
+  - resource: RedshiftCluster
+    rule_ids: [SECRET_GENERIC_PASSWORD]
+    kind: hardcoded_secret
+    why: 'MasterUserPassword is the literal "WarehouseP@ss2026"'
+  - resource: LambdaProcessorRole
+    rule_ids: [IAM_WILDCARD_ACTION]
+    kind: wildcard_iam
+    why: 'policy LambdaFullAccess allows Action "*" on Resource "*"'
+must_not_find:
+  - resource: RawDataBucket
+    rule_ids: [S3_NO_ENCRYPTION, S3_NO_VERSIONING]
+    why: 'BucketEncryption (KMS) and VersioningConfiguration (Enabled) are set'
+  - resource: GlueCrawlerRole
+    rule_ids: [IAM_WILDCARD_ACTION]
+    why: 'only the AWSGlueServiceRole managed policy is attached'

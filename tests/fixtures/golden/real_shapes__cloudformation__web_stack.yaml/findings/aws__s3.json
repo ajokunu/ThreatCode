@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "UploadsBucket",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

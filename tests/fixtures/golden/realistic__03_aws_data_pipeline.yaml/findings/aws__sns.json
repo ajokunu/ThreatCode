@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "AlertTopic",
+    "rule_id": "SNS_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

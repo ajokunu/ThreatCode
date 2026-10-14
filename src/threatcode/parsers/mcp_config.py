@@ -1,32 +1,78 @@
 """MCP client configuration parser for ThreatCode.
 
-Turns each server entry in an MCP client config file into an ``mcp_server``
-resource. Supported shapes, checked against each client's documentation on
+Turns each server entry in an MCP client config file into an ``mcp_server`` resource, and
+each config scope into one synthetic ``mcp_agent`` resource that holds the union of what its
+servers let the agent do. Supported shapes, checked against each client's documentation on
 2026-10-01:
 
 - ``mcpServers`` object: Claude Desktop (``claude_desktop_config.json``),
   Claude Code (``.mcp.json``, and ``~/.claude.json`` including the
   per-project ``projects.<path>.mcpServers`` entries), Cursor
   (``.cursor/mcp.json``), Windsurf/Devin (``mcp_config.json``, remote servers
-  use ``serverUrl``) and the portable format VS Code and Copilot read
-  (``.mcp.json``, ``~/.copilot/mcp-config.json``).
+  use ``serverUrl``), Gemini CLI (``settings.json``, remote servers use ``httpUrl``) and the
+  portable format VS Code and Copilot read (``.mcp.json``, ``~/.copilot/mcp-config.json``).
 - ``servers`` object in VS Code's own ``.vscode/mcp.json``, which may contain
   comments (JSONC).
 
-The parser never connects to a server. It derives boolean properties that the
-YAML rules in ``engine/rules/builtin/mcp/`` match on, and it stores only the
-names of environment variables and headers, never their values.
+OpenCode (``mcp`` object with ``type: local|remote``) and Zed (``context_servers``) use other
+top-level keys and are not read: such a file is not claimed as an MCP config.
+A server entry with none of ``command``, ``url``, ``serverUrl`` or ``httpUrl`` gets transport
+``unknown`` and an ``mcp.unknown_entry`` diagnostic instead of a benign-looking record.
+
+The parser never connects to a server. It resolves each entry's effective launch
+(``_mcp_launch``), derives the boolean properties that the YAML rules in
+``engine/rules/builtin/mcp/`` match on, and stores only the names of environment variables
+and headers, never their values. Secret-bearing arguments are redacted in ``properties["args"]``.
 """
 
 from __future__ import annotations
 
+import hashlib
+import ipaddress
 import json
+import posixpath
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from urllib.parse import parse_qsl, urlparse
+from types import MappingProxyType
+from typing import Any, Final
+from urllib.parse import urlsplit
 
-from threatcode.parsers.base import BaseParser, ParsedOutput, ParsedResource
+from threatcode.diagnostics import Diagnostic
+from threatcode.exceptions import ParseError
+from threatcode.parsers._json_lines import json_line_index
+from threatcode.parsers._mcp_capabilities import (
+    CAN_EXFILTRATE_OR_ACT,
+    CAPABILITY_TAGS,
+    INGESTS_UNTRUSTED_CONTENT,
+    READS_PRIVATE_DATA,
+    ServerCapability,
+    aggregate,
+    basename_of,
+    normalize_name,
+    server_capability,
+)
+from threatcode.parsers._mcp_launch import (
+    EffectiveLaunch,
+    bind_mount_sources,
+    container_flags,
+    lacks_no_new_privileges,
+    resolve_launch,
+    unpinned_packages,
+)
+from threatcode.parsers._mcp_secrets import (
+    SecretHit,
+    redact_args,
+    redact_url,
+    scan_args,
+    scan_env,
+    scan_headers,
+    scan_url,
+    summarize,
+)
+from threatcode.parsers._text import decode_input
+from threatcode.parsers.base import BaseParser, ParsedEdge, ParsedOutput, ParsedResource
 
 # File names whose JSON may carry comments or trailing commas (VS Code JSONC).
 MCP_CONFIG_FILENAMES: frozenset[str] = frozenset(
@@ -39,65 +85,50 @@ MCP_CONFIG_FILENAMES: frozenset[str] = frozenset(
     }
 )
 
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"})
+# Keys that say how a server is reached; an entry with none of them is of unknown shape.
+_LAUNCH_KEYS: Final = ("command", "url", "serverUrl", "httpUrl")
 
-# Package runners that download and execute a package by name at launch.
-_NODE_RUNNERS = frozenset({"npx", "bunx"})
-_NODE_SUBCOMMAND_RUNNERS = frozenset({"pnpm", "yarn"})  # pnpm dlx, yarn dlx
-_PY_RUNNERS = frozenset({"uvx"})
-_CONTAINER_RUNTIMES = frozenset({"docker", "podman"})
-
-# Runner flags that take a value as the next argument.
-_NPX_FLAGS_WITH_VALUE = frozenset({"-p", "--package", "-c", "--call"})
-_UVX_FLAGS_WITH_VALUE = frozenset(
-    {"--from", "--with", "--python", "-p", "--index", "--index-url", "--extra-index-url"}
+_AUTH_HEADER_RE: Final = re.compile(
+    r"(?i)^(authorization|proxy-authorization|x-api-key|api-key|.*token.*)$"
 )
 
-# Published MCP servers whose purpose is running commands for the agent,
-# verified against the npm and PyPI registries on 2026-10-01.
-_SHELL_EXEC_PACKAGES = frozenset(
+# Published MCP servers whose purpose is running commands for the agent. The first five were
+# verified against the npm and PyPI registries on 2026-10-01; the SSH and iTerm entries were
+# added on 2026-10-07 from the packages' documented purpose and were not registry-checked.
+_SHELL_EXEC_PACKAGES: Final = frozenset(
     {
         "@wonderwhy-er/desktop-commander",  # "MCP server for terminal operations"
         "mcp-server-commands",  # "An MCP server to run arbitrary commands"
         "super-shell-mcp",  # "MCP server for executing shell commands"
         "mcp-shell-server",  # PyPI: "Execute shell commands via MCP protocol"
         "mcp-server-shell",  # PyPI: "shell command execution capabilities for LLMs"
+        "iterm-mcp",  # types commands into iTerm sessions
+        "ssh-mcp",  # runs commands over SSH
+        "mcp-server-ssh",  # runs commands over SSH
     }
 )
-_SHELL_NAME_TOKENS = frozenset({"shell", "terminal"})
+_SHELL_NAME_WORDS: Final = frozenset({"shell", "terminal"})
 
-# Arguments that grant a filesystem server the whole disk or home directory.
-_BROAD_PATH_RE = re.compile(
-    r"""^(
-        /                               # filesystem root
-      | ~/?                             # home directory
-      | \$HOME/?  | \$\{HOME\}/?        # home via environment
-      | \$\{userHome\}/?                # Cursor/VS Code home variable
-      | /Users/[^/]+/?                  # macOS home directory
-      | /home/[^/]+/?                   # Linux home directory
-      | /root/?
-      | [A-Za-z]:[\\/]*                 # whole Windows drive
-      | [A-Za-z]:[\\/]+Users[\\/]+[^\\/]+[\\/]*  # Windows home directory
-    )$""",
-    re.VERBOSE,
-)
 
-_SECRET_KEY_RE = re.compile(
-    r"(?i)(token|secret|passw|api[_-]?key|apikey|auth(?!ors?(?:_|\b))|credential|private[_-]?key"
-    r"|access[_-]?key)"
-)
-_PATH_LIKE_RE = re.compile(r"^(/|~|\./|\.\./|[A-Za-z]:[\\/])")
-_AUTH_HEADER_RE = re.compile(
-    r"(?i)^(authorization|proxy-authorization|x-api-key|api-key|.*token.*)$"
-)
+# ── JSONC ────────────────────────────────────────────────────────────
 
 
 def strip_jsonc(text: str) -> str:
-    """Remove // and /* */ comments and trailing commas outside JSON strings."""
+    """Remove ``//`` and ``/* */`` comments and trailing commas outside JSON strings.
+
+    A comma outside a string is dropped only when the next character that is neither
+    whitespace nor part of a comment is ``}`` or ``]``, so a value such as ``"abc,}"`` is
+    left alone.
+    Newlines inside block comments are kept, so line numbers still match the original text.
+    A leading byte order mark is dropped.
+    """
+    if text.startswith("\ufeff"):
+        text = text[1:]
     out: list[str] = []
     i = 0
     n = len(text)
     in_string = False
+    pending_comma: int | None = None  # index in out of a comma that may turn out trailing
     while i < n:
         ch = text[i]
         if in_string:
@@ -112,6 +143,7 @@ def strip_jsonc(text: str) -> str:
             continue
         if ch == '"':
             in_string = True
+            pending_comma = None
             out.append(ch)
             i += 1
         elif text.startswith("//", i):
@@ -119,11 +151,28 @@ def strip_jsonc(text: str) -> str:
             i = n if end == -1 else end
         elif text.startswith("/*", i):
             end = text.find("*/", i + 2)
-            i = n if end == -1 else end + 2
-        else:
+            stop = n if end == -1 else end + 2
+            out.append("\n" * text.count("\n", i, stop))
+            i = stop
+        elif ch == ",":
+            pending_comma = len(out)
             out.append(ch)
             i += 1
-    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+        elif ch in "}]":
+            if pending_comma is not None:
+                out[pending_comma] = ""
+                pending_comma = None
+            out.append(ch)
+            i += 1
+        else:
+            if not ch.isspace():
+                pending_comma = None
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+# ── Detection ────────────────────────────────────────────────────────
 
 
 def is_mcp_config(path: Path, data: Any) -> bool:
@@ -143,7 +192,49 @@ def is_mcp_config(path: Path, data: Any) -> bool:
 
 
 def _looks_like_server(entry: Any) -> bool:
-    return isinstance(entry, dict) and any(k in entry for k in ("command", "url", "type"))
+    return isinstance(entry, dict) and any(k in entry for k in (*_LAUNCH_KEYS, "type"))
+
+
+# ── Parser ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class _Scope:
+    """One place a config holds servers: the file itself, or one project of ``~/.claude.json``."""
+
+    client_format: str
+    servers: dict[str, Any]
+    pointer: str  # JSON pointer of the servers object
+    disabled: frozenset[str] = frozenset()
+    project_path: str = ""
+
+    @property
+    def label(self) -> str:
+        """The readable project name, or empty for the file's own scope."""
+        return Path(self.project_path).name or "project" if self.project_path else ""
+
+    @property
+    def project_hash(self) -> str:
+        """A stable short hash of the full project path, so equal basenames never collide."""
+        if not self.project_path:
+            return ""
+        return hashlib.sha256(self.project_path.encode("utf-8")).hexdigest()[:8]
+
+    @property
+    def slug(self) -> str:
+        if not self.project_path:
+            return ""
+        base = re.sub(r"[^A-Za-z0-9_-]+", "_", self.label).strip("_") or "project"
+        return f"{base}-{self.project_hash}"
+
+
+@dataclass
+class _Built:
+    resource: ParsedResource
+    capability: ServerCapability
+    disabled: bool
+    line: int | None
+    unknown_entry: bool
 
 
 class MCPConfigParser(BaseParser):
@@ -156,114 +247,360 @@ class MCPConfigParser(BaseParser):
             return ParsedOutput(source_path=source_path, format_type="mcp_config")
 
         content = _read_text(source_path)
-        resources: list[ParsedResource] = []
+        line_index = json_line_index(strip_jsonc(content)) if content else {}
 
-        for scope, client_format, servers in _server_groups(data):
-            for name, entry in servers.items():
-                if not isinstance(entry, dict):
-                    continue
-                address = f"mcp_server.{name}" if not scope else f"mcp_server.{scope}.{name}"
-                resources.append(
-                    ParsedResource(
-                        resource_type="mcp_server",
-                        address=address,
-                        name=str(name),
-                        provider="mcp",
-                        properties=_server_properties(str(name), entry, client_format, data),
-                        source_location=_locate(source_path, content, str(name)),
-                    )
-                )
+        resources: list[ParsedResource] = []
+        edges: list[ParsedEdge] = []
+        diagnostics: list[Diagnostic] = []
+
+        for scope in _scopes(data):
+            built = [
+                self._build_server(str(name), entry, scope, data, source_path, line_index)
+                for name, entry in scope.servers.items()
+                if isinstance(entry, dict)
+            ]
+            for item in built:
+                resources.append(item.resource)
+                diagnostics.extend(_server_diagnostics(item, source_path))
+            agent = _agent_for(scope, built, source_path, line_index)
+            if agent is not None:
+                resources.append(agent[0])
+                edges.extend(agent[1])
 
         return ParsedOutput(
             resources=resources,
+            edges=edges,
+            diagnostics=diagnostics,
             source_path=source_path,
             format_type="mcp_config",
         )
 
+    def _build_server(
+        self,
+        name: str,
+        entry: dict[str, Any],
+        scope: _Scope,
+        root: dict[str, Any],
+        source_path: str,
+        line_index: dict[str, int],
+    ) -> _Built:
+        address = f"mcp_server.{scope.slug}.{name}" if scope.slug else f"mcp_server.{name}"
+        properties, capability, unknown_entry = _server_properties(name, entry, scope, root)
+        line = line_index.get(f"{scope.pointer}/{_escape_pointer(name)}")
+        resource = ParsedResource(
+            resource_type="mcp_server",
+            address=address,
+            name=name,
+            provider="mcp",
+            properties=properties,
+            source_location=source_path,
+            start_line=line,
+        )
+        return _Built(resource, capability, bool(properties["disabled"]), line, unknown_entry)
 
-def _server_groups(data: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
-    """Return (scope, client_format, servers) groups found in the config."""
-    groups: list[tuple[str, str, dict[str, Any]]] = []
+
+def _escape_pointer(token: str) -> str:
+    return token.replace("~", "~0").replace("/", "~1")
+
+
+def _string_list(value: Any) -> frozenset[str]:
+    if isinstance(value, list):
+        return frozenset(v for v in value if isinstance(v, str))
+    return frozenset()
+
+
+def _scopes(data: dict[str, Any]) -> list[_Scope]:
+    """The scopes found in the config: the file's own, then each project of ``~/.claude.json``."""
+    scopes: list[_Scope] = []
+    own_disabled = _string_list(data.get("disabledMcpServers")) | _string_list(
+        data.get("disabledMcpjsonServers")
+    )
     if isinstance(data.get("mcpServers"), dict):
-        groups.append(("", "mcpServers", data["mcpServers"]))
-    if isinstance(data.get("servers"), dict) and "mcpServers" not in data:
-        groups.append(("", "vscode", data["servers"]))
+        scopes.append(_Scope("mcpServers", data["mcpServers"], "/mcpServers", own_disabled))
+    elif isinstance(data.get("servers"), dict):
+        scopes.append(_Scope("vscode", data["servers"], "/servers", own_disabled))
     projects = data.get("projects")
     if isinstance(projects, dict):
         for project_path, project in projects.items():
             if isinstance(project, dict) and isinstance(project.get("mcpServers"), dict):
-                scope = Path(str(project_path)).name or "project"
-                groups.append((scope, "mcpServers", project["mcpServers"]))
-    return groups
+                disabled = _string_list(project.get("disabledMcpServers")) | _string_list(
+                    project.get("disabledMcpjsonServers")
+                )
+                scopes.append(
+                    _Scope(
+                        "mcpServers",
+                        project["mcpServers"],
+                        f"/projects/{_escape_pointer(str(project_path))}/mcpServers",
+                        disabled,
+                        str(project_path),
+                    )
+                )
+    return scopes
 
 
-def _server_properties(
-    name: str, entry: dict[str, Any], client_format: str, root: dict[str, Any]
-) -> dict[str, Any]:
-    command = str(entry.get("command") or "")
-    args = [str(a) for a in entry.get("args") or [] if isinstance(a, str | int | float)]
-    env = _mapping(entry.get("env"))
-    headers = _mapping(entry.get("headers"))
-    url = str(entry.get("url") or entry.get("serverUrl") or "")
-
-    transport = str(entry.get("type") or entry.get("transport") or "")
-    if not transport:
-        transport = "stdio" if command else ("http" if url else "unknown")
-    is_remote = bool(url) and transport != "stdio"
-
-    parsed_url = urlparse(url) if url else None
-    host = (parsed_url.hostname or "").lower() if parsed_url else ""
-    is_loopback = host in _LOOPBACK_HOSTS or host.startswith("127.")
-    scheme = parsed_url.scheme if parsed_url else ""
-    uses_plaintext = scheme in ("http", "ws") and not is_loopback
-
-    secret_keys = _literal_secret_keys(env, "env") + _literal_secret_keys(headers, "header")
-    if parsed_url:
-        query = dict(parse_qsl(parsed_url.query))
-        secret_keys += _literal_secret_keys(query, "url")
-
-    has_auth = (
-        any(_AUTH_HEADER_RE.match(str(k)) for k in headers)
-        or any(k in entry for k in ("oauth", "auth", "headersHelper"))
-        or bool(parsed_url and parsed_url.username)
-    )
-
-    unpinned = _unpinned_packages(command, args)
-    container_flags = _container_flags(command, args)
-    broad_paths = _broad_filesystem_paths(name, command, args)
-    shell_exec = _exposes_shell_exec(name, command, args)
-    sandbox = entry.get("sandbox") if client_format == "vscode" else None
-
-    return {
-        "server_name": name,
-        "client_format": client_format,
-        "transport": transport,
-        "command": command,
-        "args": args,
-        "env_keys": sorted(str(k) for k in env),
-        "header_keys": sorted(str(k) for k in headers),
-        "url_scheme": scheme,
-        "url_host": host,
-        "is_remote": is_remote,
-        "is_loopback": is_loopback,
-        "uses_plaintext_transport": uses_plaintext and is_remote,
-        "has_configured_auth": has_auth,
-        "remote_without_configured_auth": is_remote and not has_auth,
-        "has_literal_secret": bool(secret_keys),
-        "literal_secret_keys": secret_keys,
-        "package_unpinned": bool(unpinned),
-        "unpinned_packages": unpinned,
-        "broad_filesystem_access": bool(broad_paths),
-        "broad_filesystem_paths": broad_paths,
-        "exposes_shell_exec": shell_exec,
-        "container_privileged": bool(container_flags),
-        "container_flags": container_flags,
-        "sandbox_enabled": bool(sandbox) or _vscode_sandbox_enabled(root),
-    }
+# ── Server properties ────────────────────────────────────────────────
 
 
 def _mapping(value: Any) -> dict[Any, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _scalar_args(values: Any) -> list[str]:
+    return [
+        str(a) for a in values or [] if isinstance(a, str | int | float) and not isinstance(a, bool)
+    ]
+
+
+def _command_and_args(entry: dict[str, Any]) -> tuple[str, list[str]]:
+    """``command`` and ``args``, also reading a list command and Zed-style ``{path, args}``."""
+    raw = entry.get("command")
+    args = _scalar_args(entry.get("args"))
+    if isinstance(raw, list):
+        words = _scalar_args(raw)
+        return (words[0] if words else ""), words[1:] + args
+    if isinstance(raw, dict):
+        return str(raw.get("path") or ""), _scalar_args(raw.get("args")) + args
+    return (str(raw) if isinstance(raw, str) else ""), args
+
+
+def is_loopback_host(host: str) -> bool:
+    """True for ``localhost``, ``*.localhost`` and loopback IP literals; nothing else.
+
+    ``127.attacker.com`` and ``127.0.0.1.nip.io`` are ordinary names, so they are not loopback.
+    """
+    name = host.strip().strip("[]").lower().rstrip(".")
+    if not name:
+        return False
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(name)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback
+
+
+def _url_parts(url: str) -> tuple[str, str]:
+    """Scheme and lower-cased host of a URL; empty strings for text that is not a URL."""
+    try:
+        parts = urlsplit(url)
+        return parts.scheme.lower(), (parts.hostname or "").lower()
+    except ValueError:
+        return "", ""
+
+
+# Every property an MCP resource can carry, by resource type.
+# A rule may read a property of an ``mcp_*`` resource only if it is listed here: the provenance
+# gate (tests/test_engine/test_rule_property_provenance.py) fails a rule that reads anything
+# else, because such a rule can never fire, and it fails when the parser emits a property this
+# table does not list or this table lists one the parser never emits.
+PRODUCED: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "mcp_server": frozenset(
+            {
+                "args",
+                "bridge",
+                "bridge_allow_http",
+                "broad_filesystem_access",
+                "broad_filesystem_paths",
+                "capability_known",
+                "capability_tags",
+                "client_format",
+                "command",
+                "container_flags",
+                "container_lacks_no_new_privileges",
+                "container_privileged",
+                "disabled",
+                "env_keys",
+                "exposes_sensitive_paths",
+                "exposes_shell_exec",
+                "has_configured_auth",
+                "has_high_confidence_secret",
+                "has_literal_secret",
+                "has_possible_secret",
+                "header_keys",
+                "is_loopback",
+                "is_remote",
+                "launch_wrappers",
+                "literal_secret_arg_indexes",
+                "literal_secret_keys",
+                "package_name",
+                "package_unpinned",
+                "project_hash",
+                "remote_without_configured_auth",
+                "runner",
+                "sandbox_enabled",
+                "scope",
+                "secret_confidence",
+                "sensitive_filesystem_paths",
+                "server_name",
+                "transport",
+                "unpinned_packages",
+                "unpinned_reasons",
+                "url_host",
+                "url_scheme",
+                "uses_plaintext_transport",
+            }
+        ),
+        "mcp_agent": frozenset(
+            {
+                CAN_EXFILTRATE_OR_ACT,
+                INGESTS_UNTRUSTED_CONTENT,
+                READS_PRIVATE_DATA,
+                "capabilities",
+                "client_format",
+                "enabled_server_count",
+                "project_hash",
+                "scope",
+                "server_count",
+                "unknown_capability_servers",
+            }
+        ),
+    }
+)
+
+
+def _server_properties(
+    name: str, entry: dict[str, Any], scope: _Scope, root: dict[str, Any]
+) -> tuple[dict[str, Any], ServerCapability, bool]:
+    command, args = _command_and_args(entry)
+    launch = resolve_launch(command, args)
+    env = _mapping(entry.get("env"))
+    headers = _mapping(entry.get("headers"))
+    url_value = next(
+        (entry[k] for k in ("url", "serverUrl", "httpUrl") if isinstance(entry.get(k), str)), ""
+    )
+    native_url = str(url_value)
+    bridged = bool(launch.bridge and launch.remote_url)
+    url = native_url or (launch.remote_url if bridged else "")
+
+    no_launch_key = not any(entry.get(k) for k in _LAUNCH_KEYS)
+    transport = str(entry.get("type") or entry.get("transport") or "")
+    if bridged and transport in ("", "stdio"):
+        transport = "stdio-bridge"
+    elif not transport:
+        transport = "stdio" if command else ("http" if native_url else "unknown")
+    if no_launch_key:
+        transport = "unknown"
+    is_remote = bool(url) and transport != "stdio"
+
+    scheme, host = _url_parts(url) if url else ("", "")
+    is_loopback = is_loopback_host(host) if host else False
+    uses_plaintext = scheme in ("http", "ws") and not is_loopback and is_remote
+
+    # ── Secrets: env, headers, URL and arguments
+    hits: list[SecretHit] = scan_env(env) + scan_headers(headers)
+    url_has_auth = False
+    if url:
+        url_scan = scan_url(url)
+        for hit in url_scan.hits:
+            if bridged and not native_url:
+                hit.origin = launch.remote_url_origin
+                hit.redact = _redact_url_text
+        hits += url_scan.hits
+        url_has_auth = url_scan.has_userinfo or url_scan.has_query_credential
+        url_has_auth = url_has_auth or any(h.label.endswith(":path") for h in url_scan.hits)
+    hits += scan_args(launch)
+    labels, arg_indexes, confidence = summarize(hits)
+    redacted_args = redact_args(args, hits, launch.split_origins)
+
+    all_header_names = [str(k) for k in headers] + list(launch.extra_headers)
+    has_auth = (
+        any(_AUTH_HEADER_RE.match(h) for h in all_header_names)
+        or any(k in entry for k in ("oauth", "auth", "headersHelper"))
+        or url_has_auth
+    )
+
+    # ── Pinning
+    unpinned = unpinned_packages(launch)
+
+    # ── Container and filesystem exposure
+    flags = container_flags(launch)
+    broad: list[str] = []
+    sensitive: list[str] = []
+    for source in bind_mount_sources(launch):
+        normalized = normalize_path(source)
+        if is_system_mount(normalized):
+            flags.append(f"-v {source}")
+        if is_broad_path(normalized):
+            broad.append(source)
+        if is_sensitive_path(normalized):
+            sensitive.append(source)
+    for path in _filesystem_candidates(launch):
+        normalized = normalize_path(path)
+        if is_broad_path(normalized):
+            broad.append(path)
+        if is_sensitive_path(normalized):
+            sensitive.append(path)
+    broad = list(dict.fromkeys(broad))
+    sensitive = list(dict.fromkeys(sensitive))
+
+    shell_exec = _exposes_shell_exec(launch)
+    disabled = (
+        entry.get("disabled") is True or entry.get("enabled") is False or name in scope.disabled
+    )
+    sandbox = entry.get("sandbox") if scope.client_format == "vscode" else None
+
+    capability = server_capability(
+        launch.package_name,
+        container=bool(launch.container_runtime),
+        exposes_shell_exec=shell_exec,
+        reaches_private_files=bool(broad or sensitive),
+        remote_server=is_remote and not is_loopback,
+    )
+
+    properties: dict[str, Any] = {
+        "server_name": name,
+        "client_format": scope.client_format,
+        "scope": scope.label,
+        "transport": transport,
+        "command": launch.inner_argv[0].text if -1 in launch.split_origins else command,
+        "args": redacted_args,
+        "env_keys": sorted(str(k) for k in env),
+        "header_keys": sorted(set(all_header_names)),
+        "url_scheme": scheme,
+        "url_host": host,
+        "is_remote": is_remote,
+        "is_loopback": is_loopback,
+        "uses_plaintext_transport": uses_plaintext,
+        "bridge": launch.bridge,
+        "bridge_allow_http": launch.allow_http,
+        "has_configured_auth": has_auth,
+        "remote_without_configured_auth": is_remote and not is_loopback and not has_auth,
+        "has_literal_secret": bool(hits),
+        "has_high_confidence_secret": confidence == "high",
+        "has_possible_secret": confidence == "medium",
+        "secret_confidence": confidence or "",
+        "literal_secret_keys": labels,
+        "literal_secret_arg_indexes": arg_indexes,
+        "runner": launch.runner,
+        "package_name": launch.package_name,
+        "launch_wrappers": list(launch.wrappers),
+        "package_unpinned": bool(unpinned),
+        "unpinned_packages": [spec for spec, _reason in unpinned],
+        "unpinned_reasons": [f"{spec}: {reason}" for spec, reason in unpinned],
+        "broad_filesystem_access": bool(broad),
+        "broad_filesystem_paths": broad,
+        "exposes_sensitive_paths": bool(sensitive),
+        "sensitive_filesystem_paths": sensitive,
+        "exposes_shell_exec": shell_exec,
+        "container_privileged": bool(flags),
+        "container_flags": flags,
+        "container_lacks_no_new_privileges": lacks_no_new_privileges(launch),
+        "sandbox_enabled": bool(sandbox) or _vscode_sandbox_enabled(root),
+        "disabled": disabled,
+        "capability_tags": sorted(capability.tags),
+        "capability_known": capability.known,
+    }
+    if scope.project_path:
+        properties["project_hash"] = scope.project_hash
+    return properties, capability, no_launch_key
+
+
+def _redact_url_text(text: str) -> str:
+    return redact_url(text)
 
 
 def _vscode_sandbox_enabled(root: dict[str, Any]) -> bool:
@@ -271,282 +608,280 @@ def _vscode_sandbox_enabled(root: dict[str, Any]) -> bool:
     return isinstance(sandbox, dict) and bool(sandbox)
 
 
-# ── Secret detection ─────────────────────────────────────────────────
+# ── Filesystem paths ─────────────────────────────────────────────────
+
+_HOME_RE: Final = re.compile(
+    r"^(?:~|\$\{(?:env:)?(?:HOME|USERPROFILE|userHome)\}|\$env:(?:HOME|USERPROFILE)"
+    r"|\$(?:HOME|USERPROFILE)|%(?:USERPROFILE|HOMEPATH|HOME)%)(?=/|$)",
+    re.IGNORECASE,
+)
+_DRIVE_RE: Final = re.compile(r"^[A-Za-z]:(?:/|$)")
+_BROAD_PATH_RE: Final = re.compile(
+    r"""^(?:
+        /                                  # filesystem root
+      | ~ | ~/\.\.                         # the home directory and its parent
+      | /(?:Users|home)                    # the parent of every home directory
+      | /(?:Users|home)/[^/]+              # a home directory
+      | /root
+      | /(?:mnt|Volumes|media)             # mount points
+      | /mnt/[a-z]                         # a Windows drive under WSL
+      | [A-Za-z]:/?                        # a whole Windows drive
+      | [A-Za-z]:/Users(?:/[^/]+)?         # C:\\Users and a Windows home directory
+    )$""",
+    re.VERBOSE,
+)
+_CREDENTIAL_DIRS: Final = frozenset(
+    {".ssh", ".aws", ".gnupg", ".kube", ".config", ".azure", ".docker", ".netrc", ".npmrc"}
+)
+_SYSTEM_DIRS: Final = ("/etc", "/var/run", "/run", "/proc", "/sys", "/dev", "/boot", "/private/etc")
+# Path-taking flags of any server: --allowed-directories=/, --root /home, --workspace ~
+_PATH_FLAG_RE: Final = re.compile(
+    r"(?i)^--?(?:[a-z0-9]+-)*(?:dirs?|directory|directories|paths?|roots?|folders?|workspaces?"
+    r"|repos?|repository|files?)$"
+)
+_FILESYSTEM_WORDS: Final = frozenset({"filesystem", "fs"})
 
 
-def _is_placeholder(value: str) -> bool:
-    v = value.strip()
-    return (
-        not v
-        or "${" in v
-        or bool(re.fullmatch(r"<[^<>]+>", v))
-        or bool(re.fullmatch(r"\$[A-Za-z_][A-Za-z0-9_]*", v))
+def normalize_path(raw: str) -> str:
+    """Normalize a path argument for classification.
+
+    Home variables of every client (``~``, ``$HOME``, ``${HOME}``, ``${env:HOME}``,
+    ``${userHome}``, ``%USERPROFILE%``, ``$env:USERPROFILE``) become ``~``, backslashes become
+    slashes, ``.`` and ``..`` are resolved lexically and trailing slashes are dropped.
+    """
+    text = raw.strip().strip("\"'").replace("\\", "/")
+    text = _HOME_RE.sub("~", text)
+    text = re.sub(r"/{2,}", "/", text)
+    drive = _DRIVE_RE.match(text)
+    if drive:
+        letter, rest = text[0].upper(), text[2:]
+        normalized = posixpath.normpath("/" + rest.lstrip("/")) if rest.strip("/") else "/"
+        return f"{letter}:{normalized}" if normalized != "/" else f"{letter}:/"
+    if text.startswith("~"):
+        tail = text[1:].lstrip("/")
+        if not tail:
+            return "~"
+        resolved = posixpath.normpath("/home_/" + tail)
+        if resolved == "/home_":
+            return "~"
+        if resolved == "/":
+            return "~/.."
+        return "~" + resolved[len("/home_") :]
+    if not text:
+        return ""
+    normalized = posixpath.normpath(text)
+    return "/" if normalized in ("//", "/") else normalized
+
+
+def _is_pathlike(text: str) -> bool:
+    s = text.strip().strip("\"'")
+    return bool(
+        s.startswith(("/", "~", "./", "../", "\\\\"))
+        or _HOME_RE.match(s.replace("\\", "/"))
+        or re.match(r"^[A-Za-z]:[\\/]", s)
     )
 
 
-def _literal_secret_keys(values: dict[Any, Any], kind: str) -> list[str]:
-    """Return ``kind:key`` labels for entries that hold a literal credential."""
-    from threatcode.engine.secrets.builtin import get_builtin_rules
+def is_broad_path(normalized: str) -> bool:
+    """A filesystem or drive root, a mount point, or a home directory or its parent."""
+    return bool(_BROAD_PATH_RE.match(normalized))
 
+
+def is_system_mount(normalized: str) -> bool:
+    """The root, the container runtime socket or a system directory (``/etc``, ``/proc``...)."""
+    if normalized == "/" or normalized.endswith("docker.sock"):
+        return True
+    return any(normalized == d or normalized.startswith(d + "/") for d in _SYSTEM_DIRS)
+
+
+def is_sensitive_path(normalized: str) -> bool:
+    """A credential directory, the keychain, the runtime socket or a system directory."""
+    if not normalized:
+        return False
+    parts = [p for p in normalized.split("/") if p]
+    if any(p in _CREDENTIAL_DIRS for p in parts):
+        return True
+    if "Library/Keychains" in normalized or normalized.endswith("docker.sock"):
+        return True
+    if re.match(r"^[A-Za-z]:/Windows(?:/|$)", normalized):
+        return True
+    return any(normalized == d or normalized.startswith(d + "/") for d in _SYSTEM_DIRS)
+
+
+def _is_filesystem_server(launch: EffectiveLaunch) -> bool:
+    name = launch.package_name
+    if not name:
+        return False
+    words = {w for w in re.split(r"[-_.]", basename_of(name)) if w}
+    return bool(words & _FILESYSTEM_WORDS)
+
+
+def _filesystem_candidates(launch: EffectiveLaunch) -> list[str]:
+    """Path arguments of the server program worth classifying.
+
+    A path given to a named path flag counts on any server.
+    A bare positional path counts for a filesystem server, where it is an allowed root.
+    A server that takes some other positional path (``node server.js /home/me``) is not
+    guessed at.
+    """
+    fs_server = _is_filesystem_server(launch)
     found: list[str] = []
-    rules = get_builtin_rules()
-    for key, raw in values.items():
-        if not isinstance(raw, str | int | float) or isinstance(raw, bool):
+    tokens = [t.text for t in launch.server_args]
+    previous_flag = ""
+    for text in tokens:
+        if text.startswith("-"):
+            flag, eq, value = text.partition("=")
+            previous_flag = flag
+            if eq and _is_pathlike(value) and (_PATH_FLAG_RE.match(flag) or fs_server):
+                found.append(value)
             continue
-        value = str(raw)
-        if _is_placeholder(value):
-            continue
-        # A bearer value is a literal secret unless the token part is a placeholder.
-        token = re.sub(r"(?i)^(bearer|basic|token)\s+", "", value)
-        if _is_placeholder(token):
-            continue
-        line = f"{key}={value}"
-        pattern_hit = any(
-            r.regex.search(line) and not r.is_allowed(line)
-            for r in rules
-            if not r.keywords or any(kw.lower() in line.lower() for kw in r.keywords)
-        )
-        key_hit = (
-            bool(_SECRET_KEY_RE.search(str(key)))
-            and len(token) >= 8
-            and not _PATH_LIKE_RE.match(token)
-        )
-        if pattern_hit or key_hit:
-            found.append(f"{kind}:{key}")
+        if _is_pathlike(text) and (fs_server or _PATH_FLAG_RE.match(previous_flag)):
+            found.append(text)
+        previous_flag = ""
     return found
 
 
-# ── Supply chain pinning ─────────────────────────────────────────────
+# ── Shell exposure ───────────────────────────────────────────────────
 
 
-def _basename(command: str) -> str:
-    name = re.split(r"[\\/]", command.strip())[-1].lower()
-    return name[:-4] if name.endswith((".exe", ".cmd")) else name
+def _exposes_shell_exec(launch: EffectiveLaunch) -> bool:
+    """True when the launched package is a known shell server or is named as one.
 
-
-def _first_positional(args: list[str], flags_with_value: frozenset[str]) -> tuple[str, str]:
-    """Return (package, --from/--package value) from a runner's argument list."""
-    from_value = ""
-    skip = False
-    for i, arg in enumerate(args):
-        if skip:
-            skip = False
-            continue
-        if arg in flags_with_value:
-            if arg in ("--from", "-p", "--package") and i + 1 < len(args):
-                from_value = from_value or args[i + 1]
-            skip = True
-            continue
-        if arg.startswith("--from=") or arg.startswith("--package="):
-            from_value = from_value or arg.split("=", 1)[1]
-            continue
-        if arg.startswith("-"):
-            continue
-        return arg, from_value
-    return "", from_value
-
-
-def _npm_spec_pinned(spec: str) -> bool:
-    body = spec[1:] if spec.startswith("@") else spec
-    if "@" not in body:
+    Only the package position of the effective launch is read: the package (or the
+    ``--from`` value), the module of ``python -m`` and the image repository.
+    A directory in an argument path such as ``/home/me/mcp-shell-docs/server.js`` is never a
+    package, so it cannot match.
+    """
+    name = normalize_name(launch.package_name)
+    if not name:
         return False
-    version = body.rsplit("@", 1)[1]
-    return bool(version) and version.lower() not in ("latest", "next", "*", "x")
-
-
-def _py_spec_pinned(spec: str) -> bool:
-    if "==" in spec:
+    if name in _SHELL_EXEC_PACKAGES or basename_of(name) in _SHELL_EXEC_PACKAGES:
         return True
-    # For VCS URLs (git+ssh://git@host/repo@tag) only the last path segment can pin.
-    tail = spec.rsplit("/", 1)[-1] if "://" in spec else spec
-    if "@" in tail:
-        version = tail.rsplit("@", 1)[1]
-        return bool(version) and version.lower() != "latest"
-    return False
+    words = {w for w in re.split(r"[-_.]", basename_of(name)) if w}
+    return "mcp" in words and bool(words & _SHELL_NAME_WORDS)
 
 
-def _image_pinned(image: str) -> bool:
-    if "@sha256:" in image:
-        return True
-    last = image.rsplit("/", 1)[-1]
-    if ":" not in last:
-        return False
-    return last.rsplit(":", 1)[1].lower() != "latest"
+# ── Agent node ───────────────────────────────────────────────────────
 
 
-def _unpinned_packages(command: str, args: list[str]) -> list[str]:
-    runner = _basename(command)
-    if runner in _NODE_SUBCOMMAND_RUNNERS:
-        if not args or args[0] != "dlx":
-            return []
-        runner, args = "npx", args[1:]
-    if runner in _NODE_RUNNERS:
-        package, from_value = _first_positional(args, _NPX_FLAGS_WITH_VALUE)
-        spec = from_value or package
-        return [spec] if spec and not _npm_spec_pinned(spec) else []
-    if runner in _PY_RUNNERS:
-        package, from_value = _first_positional(args, _UVX_FLAGS_WITH_VALUE)
-        spec = from_value or package
-        return [spec] if spec and not _py_spec_pinned(spec) else []
-    if runner in _CONTAINER_RUNTIMES:
-        image = _container_image(args)
-        return [image] if image and not _image_pinned(image) else []
-    return []
-
-
-# ── Container launch flags ───────────────────────────────────────────
-
-_DOCKER_FLAGS_WITH_VALUE = frozenset(
-    {
-        "-e",
-        "--env",
-        "--env-file",
-        "-v",
-        "--volume",
-        "--mount",
-        "--network",
-        "--net",
-        "--name",
-        "-p",
-        "--publish",
-        "-u",
-        "--user",
-        "-w",
-        "--workdir",
-        "--cap-add",
-        "--cap-drop",
-        "--pid",
-        "--ipc",
-        "--entrypoint",
-        "--platform",
-        "-l",
-        "--label",
-        "--security-opt",
-    }
-)
-
-
-def _docker_run_args(command: str, args: list[str]) -> list[str] | None:
-    if _basename(command) not in _CONTAINER_RUNTIMES:
+def _agent_for(
+    scope: _Scope,
+    built: list[_Built],
+    source_path: str,
+    line_index: dict[str, int],
+) -> tuple[ParsedResource, list[ParsedEdge]] | None:
+    """The synthetic ``mcp_agent`` of one scope, wired to its enabled servers."""
+    enabled = [b for b in built if not b.disabled]
+    if not enabled:
         return None
-    if args[:1] == ["run"]:
-        return args[1:]
-    if args[:2] == ["container", "run"]:
-        return args[2:]
-    return None
+    capabilities = aggregate((b.resource.name, b.capability) for b in enabled)
+    address = f"mcp_agent.{scope.slug}" if scope.slug else "mcp_agent.config"
+    name = scope.label or (Path(source_path).name if source_path else "config")
+    tags = capabilities.tags
+    properties: dict[str, Any] = {
+        "client_format": scope.client_format,
+        "scope": scope.label,
+        "server_count": len(built),
+        "enabled_server_count": len(enabled),
+        "capabilities": [t for t in CAPABILITY_TAGS if t in tags],
+        READS_PRIVATE_DATA: READS_PRIVATE_DATA in tags,
+        INGESTS_UNTRUSTED_CONTENT: INGESTS_UNTRUSTED_CONTENT in tags,
+        CAN_EXFILTRATE_OR_ACT: CAN_EXFILTRATE_OR_ACT in tags,
+        "unknown_capability_servers": list(capabilities.unknown_servers),
+    }
+    if scope.project_path:
+        properties["project_hash"] = scope.project_hash
+    start = line_index.get(scope.pointer)
+    agent = ParsedResource(
+        resource_type="mcp_agent",
+        address=address,
+        name=name,
+        provider="mcp",
+        properties=properties,
+        source_location=source_path,
+        start_line=start,
+    )
+    edges: list[ParsedEdge] = []
+    for item in enabled:
+        server = item.resource.address
+        props = item.resource.properties
+        # What the edge carries, for the boundary analysis that reads it. A configured credential
+        # shows the flow is authenticated; the lack of one shows nothing, because a client that
+        # follows the MCP authorization spec discovers OAuth when it connects, so the flag is
+        # left off rather than set to False
+        carried: dict[str, Any] = {"protocol": props["url_scheme"] or "stdio"}
+        if props["has_configured_auth"]:
+            carried["authenticated"] = True
+        # The agent calls the server, and the server's content comes back into the agent
+        edges.append(
+            ParsedEdge(
+                address,
+                server,
+                "iam_binding",
+                {"relation": "invokes", **carried},
+                declared=False,
+            )
+        )
+        edges.append(
+            ParsedEdge(
+                server,
+                address,
+                "data_flow",
+                {"relation": "returns_content", **carried},
+                declared=False,
+            )
+        )
+    return agent, edges
 
 
-def _container_image(args: list[str]) -> str:
-    run_args = _docker_run_args("docker", args)
-    if run_args is None:
-        return ""
-    skip = False
-    for arg in run_args:
-        if skip:
-            skip = False
-            continue
-        if arg in _DOCKER_FLAGS_WITH_VALUE:
-            skip = True
-            continue
-        if arg.startswith("-"):
-            continue
-        return arg
-    return ""
+def _server_diagnostics(item: _Built, source_path: str) -> list[Diagnostic]:
+    name = item.resource.name
+    found: list[Diagnostic] = []
+    if item.unknown_entry:
+        found.append(
+            Diagnostic(
+                "warning",
+                "mcp.unknown_entry",
+                f"MCP server '{name}' has none of command, url, serverUrl or httpUrl, so how it "
+                "is launched is unknown and it was not analysed",
+                source_path,
+                item.line,
+            )
+        )
+    if not item.disabled and not item.capability.known:
+        found.append(
+            Diagnostic(
+                "info",
+                "mcp.unknown_capability",
+                f"MCP server '{name}' is not in the capability table, so it adds no capability "
+                "to the agent beyond what its own entry proves",
+                source_path,
+                item.line,
+            )
+        )
+    return found
 
 
-def _option_values(run_args: list[str], names: tuple[str, ...]) -> list[str]:
-    values: list[str] = []
-    for i, arg in enumerate(run_args):
-        for name in names:
-            if arg == name and i + 1 < len(run_args):
-                values.append(run_args[i + 1])
-            elif arg.startswith(name + "="):
-                values.append(arg.split("=", 1)[1])
-    return values
-
-
-def _container_flags(command: str, args: list[str]) -> list[str]:
-    run_args = _docker_run_args(command, args)
-    if run_args is None:
-        return []
-    flags: list[str] = []
-    if "--privileged" in run_args:
-        flags.append("--privileged")
-    for net in _option_values(run_args, ("--network", "--net")):
-        if net == "host":
-            flags.append("--network=host")
-    for mode in _option_values(run_args, ("--pid", "--ipc", "--uts", "--userns")):
-        if mode == "host":
-            flags.append("host namespace")
-    for cap in _option_values(run_args, ("--cap-add",)):
-        if cap.upper() in ("ALL", "SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE"):
-            flags.append(f"--cap-add={cap}")
-    for opt in _option_values(run_args, ("--security-opt",)):
-        if opt.replace(":", "=") in ("seccomp=unconfined", "apparmor=unconfined"):
-            flags.append(f"--security-opt={opt}")
-    for vol in _option_values(run_args, ("-v", "--volume")):
-        source = vol.split(":", 1)[0]
-        if source == "/" or source.endswith("docker.sock"):
-            flags.append(f"-v {source}")
-    for mount in _option_values(run_args, ("--mount",)):
-        parts = dict(p.split("=", 1) for p in mount.split(",") if "=" in p)
-        source = parts.get("source") or parts.get("src") or ""
-        if source == "/" or source.endswith("docker.sock"):
-            flags.append(f"--mount {source}")
-    return flags
-
-
-# ── Filesystem and shell exposure ────────────────────────────────────
-
-
-def _broad_filesystem_paths(name: str, command: str, args: list[str]) -> list[str]:
-    haystack = " ".join([name, command, *args]).lower()
-    if "filesystem" not in haystack:
-        return []
-    return [a for a in args if _BROAD_PATH_RE.match(a.strip())]
-
-
-def _package_names(command: str, args: list[str]) -> list[str]:
-    names = [_basename(command)]
-    for arg in args:
-        if arg.startswith("-"):
-            continue
-        spec = arg[1:] if arg.startswith("@") else arg
-        base = re.split(r"==|@", spec, maxsplit=1)[0]
-        names.append(("@" + base) if arg.startswith("@") else base)
-    return names
-
-
-def _exposes_shell_exec(name: str, command: str, args: list[str]) -> bool:
-    candidates = [n.lower() for n in _package_names(command, args)]
-    if any(c in _SHELL_EXEC_PACKAGES for c in candidates):
-        return True
-    for candidate in candidates:
-        if "mcp" not in candidate:
-            continue
-        tokens = set(re.split(r"[-_/@.]", candidate))
-        if tokens & _SHELL_NAME_TOKENS:
-            return True
-    return False
-
-
-# ── Source locations ─────────────────────────────────────────────────
+# ── Source text ──────────────────────────────────────────────────────
 
 
 def _read_text(source_path: str) -> str:
     if not source_path:
         return ""
     try:
-        return Path(source_path).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
+        return decode_input(Path(source_path), allow_empty=True)
+    except (OSError, ParseError):
+        return ""  # unreadable text only loses line numbers
 
 
-def _locate(source_path: str, content: str, name: str) -> str:
-    """Return ``path:line`` for the first ``"name":`` key in the file."""
-    if not content:
-        return source_path
-    match = re.search(r'"' + re.escape(name) + r'"\s*:', content)
-    if not match:
-        return source_path
-    return f"{source_path}:{content.count(chr(10), 0, match.start()) + 1}"
+__all__ = [
+    "MCP_CONFIG_FILENAMES",
+    "MCPConfigParser",
+    "is_broad_path",
+    "is_loopback_host",
+    "is_mcp_config",
+    "is_sensitive_path",
+    "is_system_mount",
+    "normalize_path",
+    "strip_jsonc",
+]

@@ -1,0 +1,129 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_sqs_queue.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "orders"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_sqs_queue_policy.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue_policy",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "policy": "{\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-east-1:111122223333:orders\"}],\"Version\":\"2012-10-17\"}"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_sqs_queue.orders",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "orders"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_sqs_queue_policy.orders",
+      "mode": "managed",
+      "type": "aws_sqs_queue_policy",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "policy": "{\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-east-1:111122223333:orders\"}],\"Version\":\"2012-10-17\"}"
+        },
+        "after_unknown": {
+          "id": true,
+          "queue_url": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_sqs_queue.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "orders",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "orders"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_sqs_queue_policy.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue_policy",
+          "name": "orders",
+          "provider_config_key": "aws",
+          "expressions": {
+            "policy": {
+              "constant_value": "{\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:sqs:us-east-1:111122223333:orders\"}],\"Version\":\"2012-10-17\"}"
+            },
+            "queue_url": {
+              "references": [
+                "aws_sqs_queue.orders.id",
+                "aws_sqs_queue.orders"
+              ]
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

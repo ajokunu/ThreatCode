@@ -1,0 +1,20 @@
+[
+  {
+    "resource_address": "aws_iam_role.overpermissive_role",
+    "rule_id": "IAM_OVERPERMISSIVE_ROLE",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  },
+  {
+    "resource_address": "aws_iam_policy.wildcard_policy",
+    "rule_id": "IAM_WILDCARD_ACTION",
+    "severity": "critical",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  }
+]

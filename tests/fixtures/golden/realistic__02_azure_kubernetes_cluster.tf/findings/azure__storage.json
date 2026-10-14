@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "azurerm_storage_account.data_lake",
+    "rule_id": "AZURE_STORAGE_NO_NETWORK_RULES",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "azurerm_storage_account.data_lake",
+    "rule_id": "AZURE_STORAGE_NO_SOFT_DELETE",
+    "severity": "low",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  },
+  {
+    "resource_address": "azurerm_storage_account.data_lake",
+    "rule_id": "AZURE_STORAGE_PUBLIC_ACCESS",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

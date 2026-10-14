@@ -1,0 +1,93 @@
+[
+  {
+    "resource_address": "mcp_server.bridge-plain",
+    "rule_id": "MCP_PLAINTEXT_TRANSPORT",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1040",
+      "T1557"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.bridge-plain",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.bash-npx",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.deno",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.env-npx",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.npm-exec",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.pipx",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.pnpm-exec",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.uv-tool",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.win-npx",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

@@ -1,0 +1,98 @@
+{
+  "attack_paths": [
+    {
+      "entry": "internet",
+      "nodes": [
+        "internet",
+        "kubernetes_ingress.edge.portal",
+        "kubernetes_service.edge.portal",
+        "kubernetes_deployment.edge.portal",
+        "kubernetes_service_account.edge.portal-admin",
+        "kubernetes_cluster_role.everything"
+      ],
+      "severity": "high",
+      "target": "kubernetes_cluster_role.everything"
+    }
+  ],
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "kubernetes_ingress.edge.portal",
+      "stride": "information_disclosure"
+    },
+    {
+      "severity": "high",
+      "source": "kubernetes_ingress.edge.portal",
+      "stride": "tampering",
+      "target": "kubernetes_service.edge.portal"
+    }
+  ],
+  "effective_severity": [
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_ALLOW_PRIVILEGE_ESCALATION"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_AUTOMOUNT_SA_TOKEN"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_CAPABILITIES_NOT_DROPPED"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_DEFAULT_ALLOW_EGRESS"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_ingress.edge.portal",
+      "rule_id": "K8S_INGRESS_NO_TLS"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_NO_NETWORK_POLICY"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_NO_SECCOMP_PROFILE"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_NO_SECURITY_CONTEXT"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_NO_SECURITY_CONTEXT_DEFAULTS"
+    },
+    {
+      "base": "medium",
+      "effective": "high",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_RUN_AS_ROOT"
+    },
+    {
+      "base": "low",
+      "effective": "medium",
+      "resource_address": "kubernetes_deployment.edge.portal",
+      "rule_id": "K8S_WRITABLE_ROOT_FS"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "mcp_agent.config",
+    "rule_id": "MCP_LETHAL_TRIFECTA",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1567"
+    ]
+  }
+]

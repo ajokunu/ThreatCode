@@ -1,0 +1,13 @@
+{
+  "theme": "Default",
+  "mcpServers": {
+    "search": {
+      "httpUrl": "http://mcp.example.com/mcp",
+      "timeout": 15000
+    },
+    "local": {
+      "httpUrl": "http://127.0.0.1:9000/mcp",
+      "headers": {"Authorization": "Bearer ${LOCAL_TOKEN}"}
+    }
+  }
+}

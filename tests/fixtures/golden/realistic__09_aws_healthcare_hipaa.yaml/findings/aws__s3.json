@@ -1,0 +1,34 @@
+[
+  {
+    "resource_address": "TempUploadsBucket",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "AuditLogsBucket",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "TempUploadsBucket",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  },
+  {
+    "resource_address": "TempUploadsBucket",
+    "rule_id": "S3_NO_VERSIONING",
+    "severity": "medium",
+    "stride": "denial_of_service",
+    "techniques": [
+      "T1485"
+    ]
+  }
+]

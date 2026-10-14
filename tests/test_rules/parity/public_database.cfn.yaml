@@ -1,0 +1,11 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Orders:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: orders
+      Engine: postgres
+      DBInstanceClass: db.t3.medium
+      AllocatedStorage: "50"
+      PubliclyAccessible: true
+      StorageEncrypted: false

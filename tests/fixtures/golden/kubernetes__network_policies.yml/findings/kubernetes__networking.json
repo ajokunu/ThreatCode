@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.other.elsewhere",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.policy.exposed",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.other.elsewhere",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  }
+]

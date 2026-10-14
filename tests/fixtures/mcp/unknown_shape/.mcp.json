@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mystery": {
+      "type": "plugin",
+      "plugin": "acme-plugin"
+    },
+    "known": {
+      "command": "node",
+      "args": ["server.js"]
+    }
+  }
+}

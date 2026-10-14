@@ -6,28 +6,73 @@
 #   agentic_top_10: OWASP Top 10 for Agentic Applications 2026 (published 2025-12-09),
 #                   https://genai.owasp.org/
 #
-# The MCP config parser derives the boolean properties these rules match on;
-# see src/threatcode/parsers/mcp_config.py.
+# The MCP config parser derives the boolean properties these rules match on; see
+# src/threatcode/parsers/mcp_config.py. It resolves each server's effective launch first
+# (launchers, package runners, mcp-remote style bridges, docker run), so every rule below
+# reads the command a client really runs, not the wrapper around it.
+#
+# A server that is disabled (disabled: true, enabled: false or listed in disabledMcpServers)
+# keeps its node with disabled: true, and every rule below except the two secret rules skips
+# it. A credential stays in the file and in version control whether or not the server runs.
+#
+# Calibration (see the confidence key): definitive rules fire when the configuration proves
+# the condition, heuristic rules infer it from names or partial data and cap at high, and
+# absence rules fire because something is missing and cap at medium.
 rules:
   - id: MCP_SECRET_IN_CONFIG
     title: Literal credential in MCP server configuration
     description: >
-      An env variable, header or URL query parameter of this MCP server holds a
-      literal credential instead of a reference such as ${API_KEY},
-      ${env:API_KEY} or ${input:api-key}. MCP config files such as .mcp.json and
-      .vscode/mcp.json are meant to be committed and shared, so the credential
-      ends up in version control and on every machine that clones the repository.
+      An env variable, header, URL (userinfo password, query parameter) or launch
+      argument (-e KEY=value, --api-key=value, --header 'Authorization: Bearer ...') of
+      this MCP server holds a literal credential instead of a reference such as ${API_KEY},
+      ${env:API_KEY} or ${input:api-key}. The value matches a known provider token format,
+      has the shape of a random token under a credential-like name, or sits in an
+      Authorization-style header. MCP config files such as .mcp.json and .vscode/mcp.json
+      are meant to be committed and shared, so the credential ends up in version control
+      and on every machine that clones the repository. The value itself is never copied
+      into the report.
     stride_category: information_disclosure
     severity: critical
+    confidence: definitive
+    root_cause: mcp-literal-credential
     resource_type: mcp_server
     condition:
-      has_literal_secret:
+      has_high_confidence_secret:
         equals: true
     mitigation: >
       Remove the value from the file and rotate the credential. Reference it
       from the environment instead (${VAR} in Claude Code, ${env:VAR} in Cursor
       and Windsurf) or use a VS Code input variable (${input:id}) so the client
-      prompts for it and stores it securely.
+      prompts for it and stores it securely. For docker run, pass -e VAR with no value
+      and set the variable in the env block.
+    metadata:
+      mitre:
+        techniques: ["T1552.001"]
+        tactics: ["TA0006"]
+      owasp:
+        mcp_top_10: ["MCP01:2025"]
+        agentic_top_10: ["ASI03"]
+
+  - id: MCP_SECRET_LIKELY_IN_CONFIG
+    title: Likely literal credential in MCP server configuration
+    description: >
+      A value under a credential-like name (PASSWORD, SECRET, TOKEN, API_KEY and similar)
+      or a long token-like segment in the server URL is a literal, not a reference, but it
+      does not match a known token format and does not look random, so it may be a
+      placeholder or a low-value test credential. Check the value; if it is real, the
+      same exposure as MCP_SECRET_IN_CONFIG applies. URLs, booleans, file paths and names
+      such as TOKEN_URL, AUTH_TYPE or AWS_SECRET_NAME are not reported.
+    stride_category: information_disclosure
+    severity: medium
+    confidence: heuristic
+    root_cause: mcp-literal-credential
+    resource_type: mcp_server
+    condition:
+      has_possible_secret:
+        equals: true
+    mitigation: >
+      Replace the value with a reference (${VAR}, ${env:VAR} or ${input:id}), and rotate it
+      if it was ever a real credential.
     metadata:
       mitre:
         techniques: ["T1552.001"]
@@ -39,22 +84,29 @@ rules:
   - id: MCP_PLAINTEXT_TRANSPORT
     title: Remote MCP server over unencrypted HTTP
     description: >
-      The server URL uses http:// or ws:// to a host that is not loopback. Tool
-      calls, tool results and any credentials sent in headers cross the network
-      in cleartext, where anyone on the path can read or modify them.
+      The server URL, or the URL an mcp-remote, supergateway or mcp-proxy bridge connects
+      to, uses http:// or ws:// to a host that is not loopback. Only localhost, names ending
+      in .localhost and loopback IP literals are loopback: a name such as 127.attacker.com
+      is an ordinary remote host. Tool calls, tool results and any credentials sent in
+      headers cross the network in cleartext, where anyone on the path can read or modify
+      them.
     stride_category: information_disclosure
     severity: high
+    confidence: definitive
     resource_type: mcp_server
     condition:
-      uses_plaintext_transport:
-        equals: true
+      all_of:
+        - disabled:
+            equals: false
+        - uses_plaintext_transport:
+            equals: true
     mitigation: >
       Use an https:// (or wss://) URL. Reserve plain http for servers bound to
       localhost.
     metadata:
       mitre:
         techniques: ["T1040", "T1557"]
-        tactics: ["TA0006", "TA0009"]
+        tactics: ["TA0006", "TA0007", "TA0009"]
       owasp:
         mcp_top_10: ["MCP01:2025", "MCP07:2025"]
         agentic_top_10: ["ASI03"]
@@ -63,17 +115,21 @@ rules:
     title: Remote MCP server with no credentials configured
     description: >
       The config points at a remote MCP server but sets no Authorization or API
-      key header, no OAuth settings and no header helper. Clients that follow
-      the MCP authorization spec discover OAuth at connect time, so the server
+      key header, no credential in the URL, no OAuth settings and no header helper. Clients
+      that follow the MCP authorization spec discover OAuth at connect time, so the server
       may still require sign-in; the config alone cannot show that. If the
       server accepts anonymous calls, anyone who learns the URL can use its
       tools and data.
     stride_category: spoofing
     severity: low
+    confidence: absence
     resource_type: mcp_server
     condition:
-      remote_without_configured_auth:
-        equals: true
+      all_of:
+        - disabled:
+            equals: false
+        - remote_without_configured_auth:
+            equals: true
     mitigation: >
       Confirm the server requires authentication. Prefer servers that implement
       MCP OAuth authorization, or pass a credential through a header that
@@ -89,21 +145,29 @@ rules:
   - id: MCP_UNPINNED_PACKAGE
     title: MCP server launched from an unpinned package or image
     description: >
-      The server starts through npx, bunx, pnpm dlx, yarn dlx, uvx, docker or
-      podman with a package or image that has no fixed version (no @version,
-      ==version, image tag or digest, or a floating tag such as latest). Every
-      launch can fetch new code, so a compromised release, a typosquatted or
-      hallucinated package name, or a hijacked maintainer account runs on the
-      developer's machine with access to whatever the agent can reach.
+      The server starts through npx, bunx, pnpm dlx or exec, yarn dlx, bun x, npm exec,
+      uvx, uv tool run, uv run --with, pipx run, deno run npm:, docker or podman (also
+      behind cmd /c, bash -c, env and similar launchers) with a package or image that has
+      no exact version. By policy a semver range (^1.2.3, >=1), a partial version (1, 1.2),
+      a dist-tag (latest, beta, canary), a git branch and a floating image tag (latest,
+      stable, main, edge) all count as unpinned, because each can resolve to new code
+      without a change to the config. Every launch can fetch new code, so a compromised
+      release, a typosquatted or hallucinated package name, or a hijacked maintainer
+      account runs on the developer's machine with access to whatever the agent can reach.
     stride_category: tampering
     severity: medium
+    confidence: absence
     resource_type: mcp_server
     condition:
-      package_unpinned:
-        equals: true
+      all_of:
+        - disabled:
+            equals: false
+        - package_unpinned:
+            equals: true
     mitigation: >
-      Pin an exact version (npx -y package@1.2.3, uvx package==1.2.3) or an
-      image digest (image@sha256:...), and review changes before raising it.
+      Pin an exact version (npx -y package@1.2.3, uvx package==1.2.3), a 40-character
+      commit or a version tag for a git source, or an image digest (image@sha256:...) or
+      version tag, and review changes before raising it. A semver range is not a pin.
     metadata:
       mitre:
         techniques: ["T1195.002"]
@@ -113,18 +177,25 @@ rules:
         agentic_top_10: ["ASI04"]
 
   - id: MCP_BROAD_FILESYSTEM
-    title: Filesystem MCP server rooted at the whole disk or home directory
+    title: MCP server given the whole disk or a home directory
     description: >
-      A filesystem server is given /, a home directory or a whole Windows drive
-      as an allowed root. The agent can then read and change SSH keys, cloud
-      credentials, browser profiles and every other project on the machine,
-      and a prompt injection in any document it reads inherits that reach.
+      A server is given /, a drive root, /Users, /home, a mount point, a home directory or
+      its parent as a root, through an allowed-directories argument, a path-taking flag or a
+      docker bind mount (a filesystem server also through a positional path). Variables are
+      expanded first (~, $HOME, ${env:HOME}, ${userHome}, %USERPROFILE%), so the form the
+      client uses does not matter. The agent can then read and change SSH keys, cloud
+      credentials, browser profiles and every other project on the machine, and a prompt
+      injection in any document it reads inherits that reach.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: heuristic
     resource_type: mcp_server
     condition:
-      broad_filesystem_access:
-        equals: true
+      all_of:
+        - disabled:
+            equals: false
+        - broad_filesystem_access:
+            equals: true
     mitigation: >
       Pass only the project directories the agent needs as allowed roots, and
       keep credential directories such as ~/.ssh and ~/.aws out of them.
@@ -136,21 +207,54 @@ rules:
         mcp_top_10: ["MCP02:2025"]
         agentic_top_10: ["ASI02", "ASI03"]
 
+  - id: MCP_SENSITIVE_PATHS
+    title: MCP server can reach credential or system directories
+    description: >
+      A path given to the server (an allowed directory, a path flag or a docker bind mount)
+      is, or is inside, a credential directory (.ssh, .aws, .gnupg, .kube, .config, .azure,
+      .docker, the macOS keychain folder) or a system directory (/etc, /var/run, /proc,
+      /sys, /dev) or is the container runtime socket. This is narrower than a whole home
+      directory, but it names exactly the files an attacker who steers the agent wants.
+    stride_category: information_disclosure
+    severity: high
+    confidence: heuristic
+    resource_type: mcp_server
+    condition:
+      all_of:
+        - disabled:
+            equals: false
+        - exposes_sensitive_paths:
+            equals: true
+    mitigation: >
+      Remove the credential or system directory from the server's allowed paths and mounts.
+      Mount only the project directories the server needs, read-only where possible.
+    metadata:
+      mitre:
+        techniques: ["T1552.001", "T1005"]
+        tactics: ["TA0006", "TA0009"]
+      owasp:
+        mcp_top_10: ["MCP02:2025"]
+        agentic_top_10: ["ASI02", "ASI03"]
+
   - id: MCP_SHELL_EXEC
     title: MCP server gives the agent shell command execution
     description: >
-      The configured server exists to run shell or terminal commands for the
-      agent, either a package known for this (such as
-      @wonderwhy-er/desktop-commander, mcp-server-commands or mcp-shell-server)
-      or an MCP package whose name marks it as a shell or terminal server. Any
-      prompt injection that reaches the agent can then run arbitrary commands
-      with the user's privileges.
+      The package or image the server launches exists to run shell or terminal commands for
+      the agent, either a known one (such as @wonderwhy-er/desktop-commander,
+      mcp-server-commands, mcp-shell-server, iterm-mcp or ssh-mcp) or an MCP package whose
+      own name marks it as a shell or terminal server. Only the package itself is judged;
+      a directory with such a word in its name does not count. Any prompt injection that
+      reaches the agent can then run arbitrary commands with the user's privileges.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: heuristic
     resource_type: mcp_server
     condition:
-      exposes_shell_exec:
-        equals: true
+      all_of:
+        - disabled:
+            equals: false
+        - exposes_shell_exec:
+            equals: true
     mitigation: >
       Remove the server where a narrower tool would do. Otherwise run it in a
       container or sandbox without credentials, restrict it to an allowlist of
@@ -166,21 +270,28 @@ rules:
   - id: MCP_CONTAINER_PRIVILEGED
     title: Containerized MCP server launched with host-level privileges
     description: >
-      The server runs through docker run or podman run with --privileged, host
-      networking or another host namespace, a dangerous added capability, an
-      unconfined seccomp or AppArmor profile, or a bind mount of / or the
-      container runtime socket. Each of these lets code in the container reach
-      the host, which defeats the reason for containerizing the server.
+      The server runs through docker run or podman run with --privileged (any form that is
+      not =false), host networking or another host namespace, a dangerous added capability
+      (NET_ADMIN, NET_RAW, SYS_ADMIN, BPF and the rest of the shared list), a host device, an
+      explicit root user, an unconfined seccomp or AppArmor profile or no-new-privileges set
+      to false, or a bind mount of /, /etc, /var/run, /proc, /sys, /dev or the container
+      runtime socket. Each of these lets code in the container reach the host, which
+      defeats the reason for containerizing the server.
     stride_category: elevation_of_privilege
     severity: high
+    confidence: definitive
     resource_type: mcp_server
     condition:
-      container_privileged:
-        equals: true
+      all_of:
+        - disabled:
+            equals: false
+        - container_privileged:
+            equals: true
     mitigation: >
       Drop --privileged and host namespaces, mount only the directories the
       server needs (read-only where possible), never mount the Docker socket,
-      and add --cap-drop=ALL with only the capabilities the server requires.
+      and add --cap-drop=ALL and --security-opt no-new-privileges with only the
+      capabilities the server requires.
     metadata:
       mitre:
         techniques: ["T1611"]

@@ -1,0 +1,18 @@
+[
+  {
+    "resource_address": "aws_s3_bucket.vpn_logs",
+    "rule_id": "S3_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  },
+  {
+    "resource_address": "aws_s3_bucket.vpn_logs",
+    "rule_id": "S3_NO_LOGGING",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

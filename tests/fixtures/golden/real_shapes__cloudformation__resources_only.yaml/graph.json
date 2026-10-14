@@ -1,0 +1,17 @@
+{
+  "edges": [],
+  "nodes": {
+    "AuditBucket": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "AuditQueue": {
+      "category": "messaging",
+      "zone": "private"
+    },
+    "AuditTopic": {
+      "category": "messaging",
+      "zone": "private"
+    }
+  }
+}

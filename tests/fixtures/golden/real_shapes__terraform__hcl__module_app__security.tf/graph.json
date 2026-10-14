@@ -1,0 +1,35 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.app",
+      "target": "aws_security_group.lb",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.db",
+      "target": "aws_security_group.app",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "aws_security_group.app": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.bastion": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.db": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.lb": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    }
+  }
+}

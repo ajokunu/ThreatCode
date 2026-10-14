@@ -1,0 +1,72 @@
+[
+  {
+    "resource_address": "dockerfile.add.11",
+    "rule_id": "DOCKER_ADD_FROM_URL",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.copy.12",
+    "rule_id": "DOCKER_COPY_NO_CHOWN",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": []
+  },
+  {
+    "resource_address": "dockerfile.env.3",
+    "rule_id": "DOCKER_ENV_SECRET",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.env.4",
+    "rule_id": "DOCKER_ENV_SECRET",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.14",
+    "rule_id": "DOCKER_RUN_CURL_PIPE",
+    "severity": "high",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.8",
+    "rule_id": "DOCKER_RUN_CURL_PIPE",
+    "severity": "high",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.run.8",
+    "rule_id": "DOCKER_RUN_SUDO",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1548.003"
+    ]
+  },
+  {
+    "resource_address": "dockerfile.copy.12",
+    "rule_id": "DOCKER_SENSITIVE_FILE_COPY",
+    "severity": "high",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  }
+]

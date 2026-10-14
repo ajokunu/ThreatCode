@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "aws_sqs_queue.plain",
+    "rule_id": "SQS_NO_ENCRYPTION",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1530"
+    ]
+  }
+]

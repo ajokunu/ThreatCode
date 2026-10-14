@@ -1,0 +1,29 @@
+{
+  "disabledMcpServers": ["off-by-list"],
+  "mcpServers": {
+    "off-by-flag": {
+      "disabled": true,
+      "command": "npx",
+      "args": ["-y", "@acme/unpinned-mcp"]
+    },
+    "off-by-enabled": {
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@acme/unpinned-mcp"]
+    },
+    "off-by-list": {
+      "command": "npx",
+      "args": ["-y", "@acme/unpinned-mcp"]
+    },
+    "off-with-secret": {
+      "disabled": true,
+      "command": "node",
+      "args": ["server.js"],
+      "env": {"SERVICE_TOKEN": "a8f3k2m9q7w1z5x0"}
+    },
+    "on": {
+      "command": "npx",
+      "args": ["-y", "@acme/unpinned-mcp"]
+    }
+  }
+}

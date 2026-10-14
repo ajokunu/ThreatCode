@@ -1,54 +1,83 @@
+# Azure Monitor. Diagnostic settings name their log categories in a log block (azurerm 3.x) or
+# an enabled_log block (3.x with deprecation of log, and the only form in 4.x); both are read.
+#
+# These rules describe a gap in detection, so they use STRIDE repudiation and claim no
+# adversary technique.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
   - id: MONITOR_NO_ACTIVITY_LOG_ALERT
-    title: No activity log alert configured
+    title: Activity log alert is disabled
     description: >
-      No activity log alert is configured for critical operations.
-      Security-relevant changes will not trigger notifications.
+      The activity log alert sets enabled to false, so the operations it watches (policy
+      changes, network security group changes, deletions) raise no notification.
     stride_category: repudiation
     severity: medium
+    confidence: definitive
+    root_cause: no-detection
     resource_type: azurerm_monitor_activity_log_alert
     condition:
       enabled:
         equals: false
     mitigation: >
-      Create activity log alerts for critical operations like policy changes.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Set enabled to true, and make sure an action group notifies the people who respond.
 
   - id: MONITOR_NO_DIAGNOSTIC_SETTING
-    title: No diagnostic setting configured
+    title: Diagnostic setting collects no logs
     description: >
-      No diagnostic setting is configured. Platform logs and metrics
-      are not being collected for analysis.
+      The diagnostic setting has neither a log nor an enabled_log block, so it exports metrics
+      at most and no platform logs reach the destination.
     stride_category: repudiation
     severity: medium
+    confidence: absence
+    root_cause: no-audit-logging
     resource_type: azurerm_monitor_diagnostic_setting
     condition:
-      log:
-        not_exists: true
+      all_of:
+        - log:
+            not_exists: true
+        - enabled_log:
+            not_exists: true
     mitigation: >
-      Configure diagnostic settings to collect logs and metrics.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Add an enabled_log block for each log category or category group to collect, for example
+      category_group allLogs.
 
   - id: MONITOR_SHORT_RETENTION
-    title: Monitor log retention too short
+    title: Diagnostic log retention under 90 days
     description: >
-      Log retention is set to less than 90 days. Insufficient log
-      retention hampers incident investigation and compliance.
+      A log category of the diagnostic setting is kept for fewer than 90 days (a retention_policy
+      with days between 1 and 89), which is too short to investigate an incident that is found
+      late.
+      A retention of 0 days keeps the data indefinitely and is not reported.
     stride_category: repudiation
-    severity: medium
+    severity: low
+    confidence: definitive
+    root_cause: short-log-retention
     resource_type: azurerm_monitor_diagnostic_setting
     condition:
-      log.0.retention_policy.days:
-        less_than: 90
+      any_of:
+        - log:
+            any_item:
+              all_of:
+                - retention_policy.days:
+                    greater_than: 0
+                - retention_policy.days:
+                    less_than: 90
+                - retention_policy.enabled:
+                    not_equals: false
+        - enabled_log:
+            any_item:
+              all_of:
+                - retention_policy.days:
+                    greater_than: 0
+                - retention_policy.days:
+                    less_than: 90
+                - retention_policy.enabled:
+                    not_equals: false
     mitigation: >
-      Set log retention to at least 90 days.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Set the retention to at least 90 days, or send the logs to a Log Analytics workspace and
+      set the retention there.

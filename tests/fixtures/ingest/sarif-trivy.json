@@ -1,0 +1,125 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Trivy",
+          "version": "0.50.1",
+          "informationUri": "https://github.com/aquasecurity/trivy",
+          "rules": [
+            {
+              "id": "CVE-2021-23337",
+              "name": "LanguageSpecificPackageVulnerability",
+              "shortDescription": {
+                "text": "nodejs-lodash: command injection via template"
+              },
+              "fullDescription": {
+                "text": "Lodash versions prior to 4.17.21 are vulnerable to Command Injection via the template function."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://avd.aquasec.com/nvd/cve-2021-23337",
+              "help": {
+                "text": "Vulnerability CVE-2021-23337\nSeverity: HIGH\nPackage: lodash\nFixed Version: 4.17.21\nLink: [CVE-2021-23337](https://avd.aquasec.com/nvd/cve-2021-23337)\nLodash versions prior to 4.17.21 are vulnerable."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "7.2",
+                "tags": [
+                  "vulnerability",
+                  "security",
+                  "HIGH"
+                ]
+              }
+            },
+            {
+              "id": "AVD-AWS-0086",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "S3 Access block should block public ACL"
+              },
+              "fullDescription": {
+                "text": "S3 buckets should block public ACLs on buckets and any objects they contain."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/avd-aws-0086",
+              "help": {
+                "text": "Misconfiguration AVD-AWS-0086\nType: Terraform Security Check\nSeverity: HIGH\nCheck: S3 Access block should block public ACL\nMessage: No public access block so not blocking public acls"
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "8.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "HIGH"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CVE-2021-23337",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Package: lodash\nInstalled Version: 4.17.15\nVulnerability CVE-2021-23337\nSeverity: HIGH\nFixed Version: 4.17.21\nLink: [CVE-2021-23337](https://avd.aquasec.com/nvd/cve-2021-23337)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "services/api/package-lock.json",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "services/api/package-lock.json: lodash@4.17.15"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "AVD-AWS-0086",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Artifact: infra/main.tf\nType: terraform\nVulnerability AVD-AWS-0086\nSeverity: HIGH\nMessage: No public access block so not blocking public acls\nLink: [AVD-AWS-0086](https://avd.aquasec.com/misconfig/avd-aws-0086)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/main.tf",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 3,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/main.tf"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

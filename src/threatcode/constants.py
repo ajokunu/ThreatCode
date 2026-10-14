@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from threatcode.models.threat import Severity
-
 VALID_STRIDE_CATEGORIES: frozenset[str] = frozenset(
     {
         "spoofing",
@@ -29,48 +24,42 @@ VALID_SEVERITIES: frozenset[str] = frozenset(
 )
 
 
-def _severity_map() -> dict[str, Severity]:
-    """Lazy-load SEVERITY_MAP to avoid circular import with models.threat."""
-    from threatcode.models.threat import Severity
-
-    return {
-        "critical": Severity.CRITICAL,
-        "high": Severity.HIGH,
-        "medium": Severity.MEDIUM,
-        "low": Severity.LOW,
-        "info": Severity.INFO,
-    }
-
-
-def cvss_to_severity(score: float) -> Severity:
-    """Convert a CVSS score to a Severity enum value."""
-    from threatcode.models.threat import Severity
-
-    if score >= 9.0:
-        return Severity.CRITICAL
-    if score >= 7.0:
-        return Severity.HIGH
-    if score >= 4.0:
-        return Severity.MEDIUM
-    if score > 0:
-        return Severity.LOW
-    return Severity.INFO
-
-
-LOCKFILE_NAMES: frozenset[str] = frozenset(
-    {
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "requirements.txt",
-        "Pipfile.lock",
-        "poetry.lock",
-        "go.sum",
-        "Cargo.lock",
-        "Gemfile.lock",
-        "composer.lock",
-        "mix.lock",
-        "pubspec.lock",
-        "conan.lock",
-    }
+# File names (lower-cased) that hold a Dockerfile, and the prefixes and suffixes of the
+# variants: Dockerfile.dev, Dockerfile-dev, Dockerfile_api, app.dockerfile. Podman and
+# Buildah call the same file a Containerfile.
+_DOCKERFILE_NAMES = frozenset({"dockerfile", "containerfile"})
+_DOCKERFILE_PREFIXES = (
+    "dockerfile.",
+    "dockerfile-",
+    "dockerfile_",
+    "containerfile.",
+    "containerfile-",
+    "containerfile_",
 )
+_DOCKERFILE_SUFFIXES = (".dockerfile", ".containerfile")
+
+
+def is_dockerfile_name(name: str) -> bool:
+    """Return True if a file name (not a path) names a Dockerfile or Containerfile."""
+    lowered = name.lower()
+    return (
+        lowered in _DOCKERFILE_NAMES
+        or lowered.startswith(_DOCKERFILE_PREFIXES)
+        or lowered.endswith(_DOCKERFILE_SUFFIXES)
+    )
+
+
+# Terraform and OpenTofu source files. ``.tf.json`` is Terraform's JSON syntax, which CDK
+# for Terraform writes as ``cdk.tf.json``.
+TERRAFORM_JSON_SUFFIX = ".tf.json"
+_TERRAFORM_SUFFIXES = (".tf", ".tofu", TERRAFORM_JSON_SUFFIX)
+
+
+def is_terraform_name(name: str) -> bool:
+    """Return True for a file name Terraform or OpenTofu reads (case-insensitive)."""
+    return name.lower().endswith(_TERRAFORM_SUFFIXES)
+
+
+def is_terraform_json_name(name: str) -> bool:
+    """Return True for a file in Terraform's JSON syntax (``*.tf.json``)."""
+    return name.lower().endswith(TERRAFORM_JSON_SUFFIX)

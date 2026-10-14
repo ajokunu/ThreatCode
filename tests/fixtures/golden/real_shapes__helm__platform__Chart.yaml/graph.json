@@ -1,0 +1,80 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "kubernetes_deployment.default.release-platform",
+      "target": "kubernetes_service_account.default.platform-api",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_network_policy.default.release-platform",
+      "target": "kubernetes_deployment.default.release-platform",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_role_binding.default.release-platform-secrets",
+      "target": "kubernetes_role.default.release-platform-secrets",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_role_binding.default.release-platform-secrets",
+      "target": "kubernetes_service_account.default.platform-api",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service.default.release-platform",
+      "target": "kubernetes_deployment.default.release-platform",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service.default.release-redis",
+      "target": "kubernetes_stateful_set.default.release-redis",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_service_account.default.platform-api",
+      "target": "kubernetes_role.default.release-platform-secrets",
+      "type": "iam_binding"
+    }
+  ],
+  "nodes": {
+    "kubernetes_deployment.default.release-platform": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_network_policy.default.release-platform": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_role.default.release-platform-secrets": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_role_binding.default.release-platform-secrets": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_service.default.release-platform": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_service.default.release-redis": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_service_account.default.platform-api": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "kubernetes_stateful_set.default.release-redis": {
+      "category": "container",
+      "zone": "private"
+    }
+  }
+}

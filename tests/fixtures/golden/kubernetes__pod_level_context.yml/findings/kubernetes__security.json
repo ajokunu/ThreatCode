@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.apps.pod-level",
+    "rule_id": "K8S_DEFAULT_SERVICE_ACCOUNT",
+    "severity": "low",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.001"
+    ]
+  }
+]

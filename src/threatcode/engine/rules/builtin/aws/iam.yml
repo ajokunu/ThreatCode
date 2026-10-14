@@ -1,65 +1,164 @@
+# Rules on IAM policies, roles, users and groups.
+#
+# A policy is judged on its parsed statements, not on its text: the enrichment layer reads the
+# document in any spelling (compact or pretty-printed JSON, a list for Action, jsonencode(...) in
+# HCL, a CloudFormation mapping) and writes facts such as derived.allows_all_actions.
+# Only Allow statements count, so a Deny guardrail with Action "*" never fires.
+# See threatcode/ir/enrichment/aws_data.py for exactly what each fact means.
+#
+# The wildcard rules judge the resource that declares the policy: a standalone policy resource,
+# or a role, user or group that carries inline_policy blocks.
+# A role is not reported again for the standalone policies attached to it.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data
+#   absence     the rule fires because something is missing (never above medium)
+
+deprecated_ids:
+  # MFA is not an attribute of aws_iam_user, and the rule keyed on force_destroy and a tag that
+  # have nothing to do with it, so it fired on users with MFA and was silent on users without.
+  - IAM_NO_MFA
+
 rules:
   - id: IAM_WILDCARD_ACTION
-    title: IAM policy with wildcard actions
+    title: IAM policy allows every action on every resource
     description: >
-      The IAM policy grants wildcard (*) actions, providing unrestricted
-      access to AWS services. This violates least privilege and could
-      allow an attacker to escalate privileges across the account.
+      A statement in the policy allows all actions (Action "*") on all resources (Resource "*").
+      That is full administrator access.
+      Whoever holds the identity can read or destroy anything in the account and can grant
+      themselves further access, and a single leaked credential becomes a full account takeover.
+      Deny statements are not counted.
     stride_category: elevation_of_privilege
     severity: critical
-    resource_type: aws_iam_policy
+    confidence: definitive
+    root_cause: iam-admin-access
+    resource_types:
+      - aws_iam_policy
+      - aws_iam_role_policy
+      - aws_iam_user_policy
+      - aws_iam_group_policy
+      - aws_iam_role
+      - aws_iam_user
+      - aws_iam_group
     condition:
-      policy:
-        contains: '"Action":"*"'
+      derived.allows_all_actions:
+        equals: true
     mitigation: >
-      Replace wildcard actions with specific, scoped actions
-      following the principle of least privilege. Use AWS Access
-      Analyzer to identify required permissions.
+      Replace the wildcard with the specific actions and resources the identity needs.
+      Use IAM Access Analyzer policy generation to find them from CloudTrail activity.
     metadata:
       mitre:
         techniques: ["T1078.004"]
-        tactics: ["TA0001", "TA0003", "TA0004", "TA0005"]
 
-  - id: IAM_NO_MFA
-    title: IAM user without MFA requirement
+  - id: IAM_SERVICE_WILDCARD
+    title: IAM policy allows a wildcard over every action of a service
     description: >
-      The IAM user or login profile does not enforce multi-factor
-      authentication. Without MFA, compromised credentials alone
-      grant full access.
-    stride_category: spoofing
-    severity: high
-    resource_type: aws_iam_user
-    condition:
-      any_of:
-        - force_destroy:
-            equals: true
-        - tags.mfa_enforced:
-            not_exists: true
-    mitigation: >
-      Enforce MFA for all IAM users via IAM policy conditions
-      (aws:MultiFactorAuthPresent). Use virtual or hardware MFA devices.
-    metadata:
-      mitre:
-        techniques: ["T1078.004"]
-        tactics: ["TA0001", "TA0003", "TA0004", "TA0005"]
-
-  - id: IAM_OVERPERMISSIVE_ROLE
-    title: IAM role with overly broad assume role policy
-    description: >
-      The IAM role's trust policy allows assumption by overly broad
-      principals (e.g., all accounts, all services). This could allow
-      unintended entities to assume the role.
+      A statement allows every action of one AWS service (for example iam:* or s3:*) on all
+      resources, or allows every action (Action "*") on a limited set of resources.
+      iam:* alone lets the holder create administrators, and a service-wide grant on all
+      resources is far broader than any single workload needs.
+      A statement that allows every action on every resource is reported as IAM_WILDCARD_ACTION
+      instead, and a service wildcard on one named resource, such as s3:* on one bucket, is
+      not reported.
     stride_category: elevation_of_privilege
     severity: high
-    resource_type: aws_iam_role
+    confidence: definitive
+    root_cause: iam-excess-permissions
+    resource_types:
+      - aws_iam_policy
+      - aws_iam_role_policy
+      - aws_iam_user_policy
+      - aws_iam_group_policy
+      - aws_iam_role
+      - aws_iam_user
+      - aws_iam_group
     condition:
-      assume_role_policy:
-        contains: '"Principal":"*"'
+      derived.allows_service_wildcard:
+        equals: true
     mitigation: >
-      Restrict the assume role policy to specific, known principals.
-      Use conditions (e.g., aws:SourceAccount, aws:SourceArn) to
-      further limit role assumption.
+      List the actions the workload calls, and limit Resource to the ARNs it uses.
     metadata:
       mitre:
-        techniques: ["T1078.004", "T1098"]
-        tactics: ["TA0001", "TA0003", "TA0004"]
+        techniques: ["T1078.004"]
+
+  - id: IAM_PASSROLE_WILDCARD
+    title: IAM policy allows iam:PassRole on every resource
+    description: >
+      A statement allows iam:PassRole on all resources and is not limited by an
+      iam:PassedToService condition.
+      The holder can hand any role in the account, including an administrator role, to a
+      service they can start (a Lambda function, an EC2 instance, a Glue job) and then act
+      with that role's permissions.
+      This is one of the most common routes from a limited identity to full control.
+    stride_category: elevation_of_privilege
+    severity: high
+    confidence: definitive
+    root_cause: iam-excess-permissions
+    resource_types:
+      - aws_iam_policy
+      - aws_iam_role_policy
+      - aws_iam_user_policy
+      - aws_iam_group_policy
+      - aws_iam_role
+      - aws_iam_user
+      - aws_iam_group
+    condition:
+      derived.allows_passrole_wildcard:
+        equals: true
+    mitigation: >
+      Limit Resource to the ARNs of the roles the identity must pass, and add an
+      iam:PassedToService condition naming the service that receives the role.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+
+  - id: IAM_ADMIN_POLICY_ATTACHED
+    title: AWS managed AdministratorAccess policy attached
+    description: >
+      The AWS managed policy AdministratorAccess is attached to a role, user or group.
+      It allows every action on every resource, so the identity is a full account administrator.
+    stride_category: elevation_of_privilege
+    severity: critical
+    confidence: definitive
+    root_cause: iam-admin-access
+    resource_types:
+      - aws_iam_role_policy_attachment
+      - aws_iam_user_policy_attachment
+      - aws_iam_group_policy_attachment
+      - aws_iam_policy_attachment
+      - aws_iam_role
+      - aws_iam_user
+      - aws_iam_group
+    condition:
+      derived.admin_policy_attached:
+        equals: true
+    mitigation: >
+      Attach a policy that lists only the services and resources the identity needs.
+      Keep administrator access to a small, MFA-protected break-glass role.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]
+
+  - id: IAM_OVERPERMISSIVE_ROLE
+    title: IAM role can be assumed by any principal
+    description: >
+      The role's trust policy has an Allow statement whose principal is "*" (or {"AWS": "*"}),
+      with no condition that limits the caller such as aws:PrincipalOrgID, aws:SourceArn,
+      aws:SourceAccount or aws:PrincipalArn.
+      Any principal in any AWS account that is allowed to call sts:AssumeRole can then assume the
+      role and receive its permissions.
+    stride_category: elevation_of_privilege
+    severity: critical
+    confidence: definitive
+    root_cause: iam-open-trust
+    resource_type: aws_iam_role
+    condition:
+      derived.allows_any_principal:
+        equals: true
+    mitigation: >
+      Name the accounts, roles or services that may assume the role in Principal.
+      If a wildcard is unavoidable, add aws:PrincipalOrgID or aws:PrincipalArn conditions.
+    metadata:
+      mitre:
+        techniques: ["T1078.004"]

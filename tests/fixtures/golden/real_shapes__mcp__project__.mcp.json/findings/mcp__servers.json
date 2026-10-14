@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "mcp_server.filesystem-home",
+    "rule_id": "MCP_BROAD_FILESYSTEM",
+    "severity": "high",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1005"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.analytics",
+    "rule_id": "MCP_SECRET_IN_CONFIG",
+    "severity": "critical",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1552.001"
+    ]
+  },
+  {
+    "resource_address": "mcp_server.filesystem-home",
+    "rule_id": "MCP_UNPINNED_PACKAGE",
+    "severity": "medium",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

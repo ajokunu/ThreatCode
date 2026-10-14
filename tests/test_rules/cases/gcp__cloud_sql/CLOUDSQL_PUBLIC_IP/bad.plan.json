@@ -1,0 +1,139 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_sql_database_instance.main",
+          "mode": "managed",
+          "type": "google_sql_database_instance",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "schema_version": 0,
+          "values": {
+            "name": "main",
+            "database_version": "POSTGRES_15",
+            "region": "us-central1",
+            "deletion_protection": true,
+            "encryption_key_name": null,
+            "master_instance_name": null,
+            "settings": [
+              {
+                "tier": "db-custom-2-7680",
+                "activation_policy": "ALWAYS",
+                "availability_type": "ZONAL",
+                "backup_configuration": [],
+                "database_flags": [],
+                "ip_configuration": [
+                  {
+                    "ipv4_enabled": true,
+                    "ssl_mode": "ENCRYPTED_ONLY",
+                    "authorized_networks": [
+                      {
+                        "name": "everyone",
+                        "value": "0.0.0.0/0",
+                        "expiration_time": null
+                      }
+                    ]
+                  }
+                ],
+                "maintenance_window": []
+              }
+            ],
+            "timeouts": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "google_sql_database_instance.main",
+      "mode": "managed",
+      "type": "google_sql_database_instance",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "main",
+          "database_version": "POSTGRES_15",
+          "region": "us-central1",
+          "deletion_protection": true,
+          "encryption_key_name": null,
+          "master_instance_name": null,
+          "settings": [
+            {
+              "tier": "db-custom-2-7680",
+              "activation_policy": "ALWAYS",
+              "availability_type": "ZONAL",
+              "backup_configuration": [],
+              "database_flags": [],
+              "ip_configuration": [
+                {
+                  "ipv4_enabled": true,
+                  "ssl_mode": "ENCRYPTED_ONLY",
+                  "authorized_networks": [
+                    {
+                      "name": "everyone",
+                      "value": "0.0.0.0/0",
+                      "expiration_time": null
+                    }
+                  ]
+                }
+              ],
+              "maintenance_window": []
+            }
+          ],
+          "timeouts": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "google": {
+        "name": "google",
+        "full_name": "registry.terraform.io/hashicorp/google"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_sql_database_instance.main",
+          "mode": "managed",
+          "type": "google_sql_database_instance",
+          "name": "main",
+          "provider_config_key": "google",
+          "expressions": {
+            "name": {
+              "constant_value": "main"
+            },
+            "database_version": {
+              "constant_value": "POSTGRES_15"
+            },
+            "region": {
+              "constant_value": "us-central1"
+            },
+            "deletion_protection": {
+              "constant_value": true
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-05T12:00:00Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

@@ -1,0 +1,22 @@
+{
+  "boundary": [
+    {
+      "severity": "medium",
+      "source": "mcp_server.path-token",
+      "stride": "tampering",
+      "target": "mcp_agent.config"
+    },
+    {
+      "severity": "medium",
+      "source": "mcp_server.query-auth",
+      "stride": "tampering",
+      "target": "mcp_agent.config"
+    },
+    {
+      "severity": "medium",
+      "source": "mcp_server.userinfo",
+      "stride": "tampering",
+      "target": "mcp_agent.config"
+    }
+  ]
+}

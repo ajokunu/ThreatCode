@@ -1,0 +1,10 @@
+# sudo as a command counts, even behind env or a variable prefix; the word sudo as a package
+# name or an argument does not.
+cases:
+  - format: docker
+    bad: |
+      FROM debian:12-slim
+      RUN FOO=1 env sudo -E apt-get update
+    good: |
+      FROM debian:12-slim
+      RUN apt-get update && apt-get install -y --no-install-recommends sudo && rm -rf /var/lib/apt/lists/*

@@ -1,0 +1,537 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_cloudwatch_metric_alarm.vpn_tunnel_down",
+      "target": "aws_vpn_connection.ashburn_primary",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_ec2_transit_gateway_vpc_attachment.hub",
+      "target": "aws_ec2_transit_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_ec2_transit_gateway_vpc_attachment.hub",
+      "target": "aws_subnet.app_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_ec2_transit_gateway_vpc_attachment.hub",
+      "target": "aws_subnet.app_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_ec2_transit_gateway_vpc_attachment.hub",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_instance_profile.vpn_mgmt",
+      "target": "aws_iam_role.vpn_mgmt",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_iam_role_policy.vpn_mgmt",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_instance.internal_proxy",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_instance.vpn_concentrator",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role.vpn_mgmt",
+      "target": "aws_s3_bucket.vpn_logs",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_iam_role_policy.vpn_mgmt",
+      "target": "aws_iam_role.vpn_mgmt",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_iam_role_policy.vpn_mgmt",
+      "target": "aws_s3_bucket.vpn_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.internal_proxy",
+      "target": "aws_iam_instance_profile.vpn_mgmt",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.internal_proxy",
+      "target": "aws_security_group.internal_proxy",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.internal_proxy",
+      "target": "aws_subnet.app_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.vpn_concentrator",
+      "target": "aws_iam_instance_profile.vpn_mgmt",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.vpn_concentrator",
+      "target": "aws_instance.internal_proxy",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.vpn_concentrator",
+      "target": "aws_security_group.temp_debug",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_instance.vpn_concentrator",
+      "target": "aws_security_group.vpn_concentrator",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_instance.vpn_concentrator",
+      "target": "aws_subnet.dmz_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_internet_gateway.hub",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_nat_gateway.a",
+      "target": "aws_eip.nat_a",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_nat_gateway.a",
+      "target": "aws_internet_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_nat_gateway.a",
+      "target": "aws_subnet.dmz_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table.app",
+      "target": "aws_nat_gateway.a",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.app",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.app",
+      "target": "aws_vpn_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.data",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.data",
+      "target": "aws_vpn_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table.dmz",
+      "target": "aws_internet_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.dmz",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table.dmz",
+      "target": "aws_vpn_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.app_a",
+      "target": "aws_route_table.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.app_a",
+      "target": "aws_subnet.app_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.app_b",
+      "target": "aws_route_table.app",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.app_b",
+      "target": "aws_subnet.app_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.data_a",
+      "target": "aws_route_table.data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.data_a",
+      "target": "aws_subnet.data_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.data_b",
+      "target": "aws_route_table.data",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.data_b",
+      "target": "aws_subnet.data_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.dmz_a",
+      "target": "aws_route_table.dmz",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.dmz_a",
+      "target": "aws_subnet.dmz_a",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_route_table_association.dmz_b",
+      "target": "aws_route_table.dmz",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_route_table_association.dmz_b",
+      "target": "aws_subnet.dmz_b",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_lifecycle_configuration.vpn_logs",
+      "target": "aws_s3_bucket.vpn_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_public_access_block.vpn_logs",
+      "target": "aws_s3_bucket.vpn_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_s3_bucket_versioning.vpn_logs",
+      "target": "aws_s3_bucket.vpn_logs",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.internal_proxy",
+      "target": "aws_security_group.vpn_concentrator",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.internal_proxy",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.temp_debug",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_security_group.vpn_concentrator",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.app_a",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.app_b",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.data_a",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_subnet.data_b",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.dmz_a",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "aws_subnet.dmz_b",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_vpn_connection.ashburn_primary",
+      "target": "aws_customer_gateway.ashburn_dc",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_vpn_connection.ashburn_primary",
+      "target": "aws_vpn_gateway.hub",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "aws_vpn_gateway.hub",
+      "target": "aws_vpc.hub",
+      "type": "containment"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "aws_instance.vpn_concentrator",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "aws_cloudwatch_log_group.vpn": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_cloudwatch_metric_alarm.vpn_tunnel_down": {
+      "category": "monitoring",
+      "zone": "management"
+    },
+    "aws_customer_gateway.ashburn_dc": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_ec2_transit_gateway.hub": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_ec2_transit_gateway_vpc_attachment.hub": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_eip.nat_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_iam_instance_profile.vpn_mgmt": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role.vpn_mgmt": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_iam_role_policy.vpn_mgmt": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "aws_instance.internal_proxy": {
+      "category": "compute",
+      "zone": "private"
+    },
+    "aws_instance.vpn_concentrator": {
+      "category": "compute",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "aws_internet_gateway.hub": {
+      "category": "network",
+      "zone": "internet"
+    },
+    "aws_nat_gateway.a": {
+      "category": "network",
+      "zone": "dmz"
+    },
+    "aws_route_table.app": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table.data": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table.dmz": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.app_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.app_b": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.data_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.data_b": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.dmz_a": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_route_table_association.dmz_b": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_s3_bucket.vpn_logs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_lifecycle_configuration.vpn_logs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_public_access_block.vpn_logs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_s3_bucket_versioning.vpn_logs": {
+      "category": "storage",
+      "zone": "data"
+    },
+    "aws_security_group.internal_proxy": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_security_group.temp_debug": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "private"
+    },
+    "aws_security_group.vpn_concentrator": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_subnet.app_a": {
+      "category": "network",
+      "exposure": "internal",
+      "zone": "private"
+    },
+    "aws_subnet.app_b": {
+      "category": "network",
+      "exposure": "internal",
+      "zone": "private"
+    },
+    "aws_subnet.data_a": {
+      "category": "network",
+      "exposure": "internal",
+      "zone": "private"
+    },
+    "aws_subnet.data_b": {
+      "category": "network",
+      "exposure": "internal",
+      "zone": "private"
+    },
+    "aws_subnet.dmz_a": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "aws_subnet.dmz_b": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "aws_vpc.hub": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpn_connection.ashburn_primary": {
+      "category": "network",
+      "zone": "private"
+    },
+    "aws_vpn_gateway.hub": {
+      "category": "network",
+      "zone": "private"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    }
+  }
+}

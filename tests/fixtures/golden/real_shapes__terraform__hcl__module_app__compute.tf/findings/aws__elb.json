@@ -1,0 +1,9 @@
+[
+  {
+    "resource_address": "aws_lb.front",
+    "rule_id": "ELB_NO_ACCESS_LOGS",
+    "severity": "low",
+    "stride": "repudiation",
+    "techniques": []
+  }
+]

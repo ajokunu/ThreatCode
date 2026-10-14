@@ -1,0 +1,29 @@
+[
+  {
+    "resource_address": "google_compute_instance.vm",
+    "rule_id": "GCP_VM_DEFAULT_SA",
+    "severity": "medium",
+    "stride": "elevation_of_privilege",
+    "techniques": [
+      "T1078.004"
+    ]
+  },
+  {
+    "resource_address": "google_compute_instance.vm",
+    "rule_id": "GCP_VM_NO_SHIELDED",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1542.003"
+    ]
+  },
+  {
+    "resource_address": "google_compute_instance.vm",
+    "rule_id": "GCP_VM_PUBLIC_IP",
+    "severity": "medium",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1190"
+    ]
+  }
+]

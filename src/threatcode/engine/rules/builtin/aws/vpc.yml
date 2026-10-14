@@ -1,66 +1,173 @@
+# Security groups, the default security group and VPC flow logs.
+#
+# Security group rules read derived.ingress, the one list that folds inline ingress blocks and
+# the standalone aws_security_group_rule and aws_vpc_security_group_ingress_rule resources into
+# one shape: {cidr_blocks, ipv6_cidr_blocks, from_port, to_port, protocol, source_security_groups,
+# self}.
+# The port lists below are threatcode.vocab.ADMIN_PORTS and DATABASE_PORTS written out.
+# A test keeps them equal.
+#
+# Calibration: each rule declares how its condition was established.
+#   definitive  the configuration proves the condition
+#   heuristic   the condition is inferred from names or partial data (never above high)
+#   absence     the rule fires because something is missing (never above medium)
+
 rules:
-  - id: VPC_DEFAULT_SG_OPEN
-    title: Default security group allows traffic
+  - id: SG_UNRESTRICTED_INGRESS
+    title: Security group exposes an administration port, a database port or all traffic
     description: >
-      The default security group has not been locked down.
-      Any resource inadvertently placed in the default SG
-      may have unintended network access.
-    stride_category: elevation_of_privilege
+      An ingress rule allows 0.0.0.0/0 or ::/0 to reach every port, or a port that gives a
+      remote administrator a shell or a management plane (SSH, Telnet, RDP, WinRM) or a port of a
+      database, cache or search engine (SQL Server, Oracle, MySQL, PostgreSQL, CouchDB, Redis,
+      Cassandra, Elasticsearch, Memcached, MongoDB).
+      Anyone on the internet can then try to authenticate to the service or exploit it.
+      Rules from inline ingress blocks, aws_security_group_rule and
+      aws_vpc_security_group_ingress_rule are all read.
+      A world-open web port (80, 443) is reported by SG_WEB_PORT_OPEN_TO_WORLD instead.
+    stride_category: information_disclosure
+    severity: high
+    confidence: definitive
+    root_cause: security-group-world-open-ingress
+    resource_type: aws_security_group
+    condition:
+      derived.ingress:
+        any_item:
+          all_of:
+            - any_of:
+                - cidr_blocks:
+                    is_world_cidr: true
+                - ipv6_cidr_blocks:
+                    is_world_cidr: true
+            - port_overlaps:
+                [22, 23, 3389, 5985, 5986, 1433, 1521, 3306, 5432, 5984, 6379, 7000, 7001,
+                 9042, 9200, 9300, 11211, 27017]
+    mitigation: >
+      Allow the port only from known CIDR blocks or from the security group of the clients.
+      Reach administration ports through AWS Systems Manager Session Manager or a VPN instead of
+      the internet, and keep databases in private subnets with no world-open rule.
+    metadata:
+      mitre:
+        techniques: ["T1133", "T1190"]
+
+  - id: SG_WEB_PORT_OPEN_TO_WORLD
+    title: Security group allows the internet to reach a web port
+    description: >
+      An ingress rule allows 0.0.0.0/0 or ::/0 to reach port 80 or 443.
+      This is expected for a public load balancer and is reported at low severity so that it can
+      be confirmed: the group should be attached to the load balancer only, never to instances.
+      A rule that also opens an administration or database port, or all ports, is reported by
+      SG_UNRESTRICTED_INGRESS.
+    stride_category: information_disclosure
+    severity: low
+    confidence: definitive
+    root_cause: security-group-world-open-ingress
+    resource_type: aws_security_group
+    condition:
+      derived.ingress:
+        any_item:
+          all_of:
+            - any_of:
+                - cidr_blocks:
+                    is_world_cidr: true
+                - ipv6_cidr_blocks:
+                    is_world_cidr: true
+            - port_overlaps: [80, 443]
+            - not:
+                port_overlaps:
+                  [22, 23, 3389, 5985, 5986, 1433, 1521, 3306, 5432, 5984, 6379, 7000, 7001,
+                   9042, 9200, 9300, 11211, 27017]
+    mitigation: >
+      Attach the group to the load balancer only and let instances accept traffic from the load
+      balancer's security group.
+      Terminate TLS on the load balancer and redirect port 80 to 443.
+    metadata:
+      mitre:
+        techniques: ["T1190"]
+
+  - id: SG_TEMPORARY_OPEN
+    title: Security group named as temporary is open to the internet
+    description: >
+      The name, description or a tag of the group marks it as temporary (temp, tmp, debug, remove,
+      delete, todo or test), and an ingress rule allows 0.0.0.0/0 or ::/0.
+      Groups made for a short debugging session tend to stay in place after the work is done.
+      The name is a hint, not proof, so the finding is heuristic.
+    stride_category: information_disclosure
+    severity: low
+    confidence: heuristic
+    root_cause: security-group-world-open-ingress
+    resource_type: aws_security_group
+    condition:
+      all_of:
+        - derived.temporary_marker:
+            equals: true
+        - derived.ingress:
+            any_item:
+              any_of:
+                - cidr_blocks:
+                    is_world_cidr: true
+                - ipv6_cidr_blocks:
+                    is_world_cidr: true
+    mitigation: >
+      Delete the group when the work it was made for is finished, or give it a durable name and
+      restrict its sources to known CIDR blocks.
+    metadata: {}
+
+  - id: VPC_DEFAULT_SG_OPEN
+    title: Default security group has rules
+    description: >
+      The default security group of the VPC keeps an ingress or egress rule that allows traffic
+      from or to a CIDR block, a prefix list or another security group.
+      Any resource placed in the VPC without a security group lands in the default group and
+      inherits that access.
+      A rule that only allows members of the group to reach each other is not reported.
+    stride_category: information_disclosure
     severity: medium
+    confidence: definitive
     resource_type: aws_default_security_group
     condition:
       any_of:
         - ingress:
-            exists: true
+            any_item:
+              any_of:
+                - cidr_blocks:
+                    exists: true
+                - ipv6_cidr_blocks:
+                    exists: true
+                - security_groups:
+                    exists: true
+                - prefix_list_ids:
+                    exists: true
         - egress:
-            exists: true
+            any_item:
+              any_of:
+                - cidr_blocks:
+                    exists: true
+                - ipv6_cidr_blocks:
+                    exists: true
+                - security_groups:
+                    exists: true
+                - prefix_list_ids:
+                    exists: true
     mitigation: >
-      Remove all ingress and egress rules from the default
-      security group. Use dedicated security groups for each workload.
-    metadata:
-      mitre:
-        techniques: ["T1190"]
-        tactics: ["TA0001"]
-
-  - id: SG_UNRESTRICTED_INGRESS
-    title: Security group allows unrestricted ingress
-    description: >
-      The security group allows inbound traffic from 0.0.0.0/0
-      or ::/0, potentially exposing services to the entire internet.
-    stride_category: spoofing
-    severity: high
-    resource_type: aws_security_group
-    condition:
-      any_of:
-        - ingress:
-            contains: "0.0.0.0/0"
-        - ingress:
-            contains: "::/0"
-    mitigation: >
-      Restrict ingress rules to specific, known CIDR blocks or
-      security group references. Use VPC endpoints for AWS service access.
-    metadata:
-      mitre:
-        techniques: ["T1190", "T1046"]
-        tactics: ["TA0001", "TA0007"]
+      Manage the default security group with an aws_default_security_group resource that has no
+      ingress and no egress block, and give every workload its own security group.
+    metadata: {}
 
   - id: VPC_NO_FLOW_LOGS
-    title: VPC without flow logs enabled
+    title: VPC without flow logs
     description: >
-      The VPC does not have flow logs configured.
-      Without flow logs, network traffic patterns cannot be
-      analyzed for security incidents or anomalies.
+      No aws_flow_log in the scan targets this VPC.
+      Without flow logs the network traffic of the VPC cannot be reviewed after an incident.
+      A flow log whose target the scan cannot resolve leaves the finding out.
     stride_category: repudiation
     severity: medium
+    confidence: absence
+    root_cause: logging-not-enabled
     resource_type: aws_vpc
     condition:
-      tags.flow_logs_enabled:
-        not_exists: true
+      derived.has_flow_log:
+        equals: false
     mitigation: >
-      Enable VPC flow logs and direct them to CloudWatch Logs
-      or S3 for analysis. Consider using a REJECT-only filter
-      to reduce log volume while capturing blocked traffic.
-    metadata:
-      mitre:
-        techniques: ["T1562.008"]
-        tactics: ["TA0005"]
+      Create an aws_flow_log for the VPC and send it to CloudWatch Logs or S3.
+      Capturing rejected traffic only keeps the volume low.
+    metadata: {}

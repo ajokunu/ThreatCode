@@ -1,0 +1,38 @@
+[
+  {
+    "resource_address": "kubernetes_deployment.ops.metrics",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.ops.debug-shell",
+    "rule_id": "K8S_DEFAULT_ALLOW_EGRESS",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1048"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_deployment.ops.metrics",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  },
+  {
+    "resource_address": "kubernetes_pod.ops.debug-shell",
+    "rule_id": "K8S_NO_NETWORK_POLICY",
+    "severity": "low",
+    "stride": "information_disclosure",
+    "techniques": [
+      "T1046"
+    ]
+  }
+]

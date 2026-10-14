@@ -1,0 +1,11 @@
+[
+  {
+    "resource_address": "dockerfile.image.summary",
+    "rule_id": "DOCKER_NO_DIGEST_PIN",
+    "severity": "low",
+    "stride": "tampering",
+    "techniques": [
+      "T1195.002"
+    ]
+  }
+]

@@ -1,0 +1,42 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_network_policy.policy.deny-all-for-guarded",
+      "target": "kubernetes_deployment.policy.guarded",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "kubernetes_network_policy.policy.frontend-ingress-only",
+      "target": "kubernetes_deployment.policy.exposed",
+      "type": "dependency"
+    }
+  ],
+  "nodes": {
+    "kubernetes_deployment.other.elsewhere": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_deployment.policy.exposed": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_deployment.policy.guarded": {
+      "category": "container",
+      "zone": "private"
+    },
+    "kubernetes_network_policy.elsewhere-ns.other-namespace-policy": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_network_policy.policy.deny-all-for-guarded": {
+      "category": "network",
+      "zone": "private"
+    },
+    "kubernetes_network_policy.policy.frontend-ingress-only": {
+      "category": "network",
+      "zone": "private"
+    }
+  }
+}

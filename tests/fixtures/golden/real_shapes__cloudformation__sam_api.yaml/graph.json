@@ -1,0 +1,143 @@
+{
+  "edges": [
+    {
+      "crosses_trust_boundary": true,
+      "source": "AdminFunction",
+      "target": "AdminFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AdminFunction",
+      "target": "OrdersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "AdminFunctionAdminPermission",
+      "target": "AdminFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "AdminFunctionAdminPermission",
+      "target": "ServerlessHttpApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "OrdersFunction",
+      "target": "OrdersFunctionRole",
+      "type": "iam_binding"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "OrdersFunction",
+      "target": "OrdersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "OrdersFunctionCreatePermission",
+      "target": "OrdersFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "OrdersFunctionCreatePermission",
+      "target": "ServerlessRestApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": false,
+      "source": "OrdersFunctionListPermission",
+      "target": "OrdersFunction",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "OrdersFunctionListPermission",
+      "target": "ServerlessRestApi",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "OrdersFunctionRole",
+      "target": "OrdersTable",
+      "type": "dependency"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ServerlessHttpApi",
+      "target": "AdminFunction",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "ServerlessRestApi",
+      "target": "OrdersFunction",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessHttpApi",
+      "type": "network_flow"
+    },
+    {
+      "crosses_trust_boundary": true,
+      "source": "internet",
+      "target": "ServerlessRestApi",
+      "type": "network_flow"
+    }
+  ],
+  "nodes": {
+    "AdminFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AdminFunctionAdminPermission": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "AdminFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "OrdersFunction": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "OrdersFunctionCreatePermission": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "OrdersFunctionListPermission": {
+      "category": "serverless",
+      "zone": "private"
+    },
+    "OrdersFunctionRole": {
+      "category": "iam",
+      "zone": "management"
+    },
+    "OrdersTable": {
+      "category": "database",
+      "zone": "data"
+    },
+    "ServerlessHttpApi": {
+      "category": "api",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "ServerlessRestApi": {
+      "category": "api",
+      "exposure": "internet",
+      "zone": "dmz"
+    },
+    "internet": {
+      "category": "network",
+      "exposure": "internet",
+      "zone": "internet"
+    }
+  }
+}
