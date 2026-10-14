@@ -574,7 +574,8 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **Six pages described attack paths as outside suppressions and baselines,** which stopped being true; they now describe what `--write-baseline`, `--baseline` and `.threatcodeignore` do with paths, and a test baselines the demo stack and checks the exit code both ways.
 - **A scan of paths on different Windows drives works.**
   `threatcode scan C:\app D:\infra` used to stop with "the paths are on different drives".
-  The scan root is now the current directory, paths under it are relative to it, and a path on another drive is reported absolute with forward slashes.
+  The scan root is now the current directory and paths under it are relative to it.
+  A path on another drive is named by the drive and its place under the inputs on that drive (`D/net/main.tf`), never by an absolute path, so two files of one name stay apart in SARIF and the fingerprints do not change with the checkout.
 - **On Windows, SARIF and Bitbucket locations keep their directory.**
   A path with a drive letter was taken for one made on another machine and cut to its file name, so every location read `main.tf`; it is now made relative to the repository like any other path.
 - **Source paths use forward slashes on Windows** in resources, parser outputs and diagnostics, so the library and the golden recordings no longer carry `D:\a\repo\main.tf`.
