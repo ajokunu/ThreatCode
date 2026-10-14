@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from tests.hostile import generators as gen
+from tests.hostile import memory
 from tests.hostile.support import (
     DEFAULT_BUDGET_SECONDS,
     Outcome,
@@ -178,6 +179,26 @@ class TestBudgetMachinery:
         assert outcome.nodes == 1
         assert 0 < outcome.peak_mb < 1500
         assert outcome.seconds < DEFAULT_BUDGET_SECONDS
+
+    def test_the_peak_memory_of_this_process_is_read(self) -> None:
+        assert 10 < memory.peak_memory_mb() < 100_000
+
+    def test_a_platform_without_the_resource_module_reads_the_peak_working_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "resource", None)  # `import resource` raises ImportError
+        monkeypatch.setattr(memory, "_windows_peak_mb", lambda: 42.5)
+        assert memory.peak_memory_mb() == 42.5
+
+    def test_the_working_set_probe_says_nothing_off_windows(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "platform", "linux")
+        assert memory._windows_peak_mb() == 0.0
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="the probe calls psapi")
+    def test_the_working_set_probe_reads_the_peak_on_windows(self) -> None:
+        assert 10 < memory._windows_peak_mb() < 100_000
 
     def test_a_missing_file_is_a_clean_error_not_a_crash(self, tmp_path: Path) -> None:
         outcome = scan_in_child(tmp_path / "absent.tf")

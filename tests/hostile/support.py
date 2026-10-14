@@ -30,12 +30,13 @@ DEFAULT_MEMORY_BUDGET_MB = 1500.0
 
 _CHILD = textwrap.dedent(
     """
-    import json, resource, sys, time
+    import json, sys, time
     sys.path.insert(0, {repo!r})
     sys.path.insert(0, {src!r})
     from pathlib import Path
     from threatcode.exceptions import ThreatCodeError
     from tests.helpers.scan import scan_files
+    from tests.hostile.memory import peak_memory_mb
 
     started = time.monotonic()
     outcome = {{"status": "ok", "exception": None, "threatcode_error": False, "nodes": 0}}
@@ -48,9 +49,7 @@ _CHILD = textwrap.dedent(
         outcome["message"] = str(exc)[:200]
         outcome["threatcode_error"] = isinstance(exc, (ThreatCodeError, FileNotFoundError))
     outcome["seconds"] = time.monotonic() - started
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # Linux reports kilobytes, macOS bytes
-    outcome["peak_mb"] = peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
+    outcome["peak_mb"] = peak_memory_mb()
     print("OUTCOME " + json.dumps(outcome))
     """
 ).format(repo=str(REPO_ROOT), src=str(SRC))
