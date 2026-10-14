@@ -45,14 +45,15 @@ def make_chart(
     (directory / "templates").mkdir(parents=True, exist_ok=True)
     meta = {"apiVersion": "v2", "name": name, "version": "1.2.3", "appVersion": "4.5.6"}
     meta.update(chart or {})
-    (directory / "Chart.yaml").write_text(yaml.safe_dump(meta), encoding="utf-8")
+    # newline="\n": the text is written as it is, not with the line ending of the platform
+    (directory / "Chart.yaml").write_text(yaml.safe_dump(meta), encoding="utf-8", newline="\n")
     if values is not None:
         text = values if isinstance(values, str) else yaml.safe_dump(values)
-        (directory / "values.yaml").write_text(text, encoding="utf-8")
+        (directory / "values.yaml").write_text(text, encoding="utf-8", newline="\n")
     for relative, body in templates.items():
         target = directory / "templates" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(body, encoding="utf-8")
+        target.write_text(body, encoding="utf-8", newline="\n")
     return directory
 
 
@@ -77,6 +78,55 @@ def render(
 def expr(tmp_path: Path, expression: str, values: dict[str, Any] | None = None) -> str:
     """Evaluate one ``{{ expression }}`` and return what it prints."""
     return render(tmp_path, "{{ " + expression + " }}", values)
+
+
+class TestLineEndings:
+    """A chart checked out on Windows can have CRLF endings; the rendering does not change."""
+
+    TEMPLATE = (
+        "kind: ConfigMap\n"
+        "metadata:\n"
+        "  name: {{ .Release.Name }}\n"
+        "data:\n"
+        "  key: {{ .Values.key | quote }}\n"
+        "  list: |\n"
+        "    {{- .Values.key | nindent 4 }}\n"
+    )
+
+    def chart(self, root: Path, newline: str) -> Path:
+        directory = make_chart(root, {}, "key: v\n")
+        body = self.TEMPLATE.replace("\n", newline).encode()
+        (directory / "templates" / "t.yaml").write_bytes(body)
+        (directory / "values.yaml").write_bytes(b"key: v".replace(b"\n", newline.encode()) + b"\n")
+        return directory
+
+    def test_crlf_renders_the_same_text_as_lf(self, tmp_path: Path) -> None:
+        lf = render_chart(self.chart(tmp_path / "lf", "\n"))
+        crlf = render_chart(self.chart(tmp_path / "crlf", "\r\n"))
+        assert [f.text for f in crlf.files] == [f.text for f in lf.files]
+        assert "\r" not in crlf.files[0].text
+
+    def test_crlf_keeps_the_line_numbers(self, tmp_path: Path) -> None:
+        lf = render_chart(self.chart(tmp_path / "lf", "\n"))
+        crlf = render_chart(self.chart(tmp_path / "crlf", "\r\n"))
+        assert [crlf.files[0].template_line(n) for n in range(1, 8)] == [
+            lf.files[0].template_line(n) for n in range(1, 8)
+        ]
+
+    def test_a_template_read_for_its_line_numbers_has_lf_endings(self, tmp_path: Path) -> None:
+        from threatcode.parsers._helm_render import read_template
+
+        path = self.chart(tmp_path, "\r\n") / "templates" / "t.yaml"
+        text = read_template(path)
+        assert text is not None
+        assert "\r" not in text
+        assert text.count("\n") == self.TEMPLATE.count("\n")
+
+    def test_a_bare_carriage_return_in_a_template_is_left_alone(self, tmp_path: Path) -> None:
+        directory = make_chart(tmp_path, {})
+        (directory / "templates" / "t.yaml").write_bytes(b"a: 1\rb: 2\n")
+        out = render_chart(directory)
+        assert out.files[0].text == "a: 1\rb: 2\n"
 
 
 # ---------------------------------------------------------------------------------------

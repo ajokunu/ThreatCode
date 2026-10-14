@@ -2148,7 +2148,9 @@ def _read_text(path: Path, label: str, warnings: list[str]) -> str | None:
     except (ParseError, OSError) as exc:
         warnings.append(f"{label} could not be read: {exc}")
         return None
-    return _cap_lines(text, label, warnings)
+    # A chart checked out on Windows may have CRLF line endings. The rendered text, its line
+    # numbers and so the report are the same for either ending.
+    return _cap_lines(text.replace("\r\n", "\n"), label, warnings)
 
 
 def _cap_lines(text: str, label: str, warnings: list[str]) -> str:
