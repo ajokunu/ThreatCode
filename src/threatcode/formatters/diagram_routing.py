@@ -524,18 +524,30 @@ def _least_crossing_order(runs: list[_Run], colors: list[int], slots: list[float
     if n < 2 or n > _TRACK_SEARCH_MAX or len(runs) > _TRACK_SEARCH_RUNS_MAX:
         return identity
 
+    # Whether a stub crosses a run depends only on which side of the run the stub's own run
+    # sits, so the stub counts are summed per pair of track colors once. Scoring one ordering
+    # then costs colors squared, not runs squared, and the search stays cheap on a big plan.
+    up = [[0] * n for _ in range(n)]
+    down = [[0] * n for _ in range(n)]
+    for i, a in enumerate(runs):
+        for j, b in enumerate(runs):
+            if i == j or a.key == b.key:
+                continue
+            for x, direction in b.stubs:
+                if a.lo + 0.5 < x < a.hi - 0.5:
+                    if direction == _UP:
+                        up[colors[i]][colors[j]] += 1
+                    else:
+                        down[colors[i]][colors[j]] += 1
+
     def crossings(order: tuple[int, ...] | list[int]) -> int:
-        ys = [slots[order[c]] for c in colors]
         count = 0
-        for i, a in enumerate(runs):
-            for j, b in enumerate(runs):
-                if i == j or a.key == b.key:
-                    continue
-                for x, direction in b.stubs:
-                    if a.lo + 0.5 < x < a.hi - 0.5:
-                        above = ys[i] < ys[j]
-                        if (direction == _UP and above) or (direction == _DOWN and not above):
-                            count += 1
+        for ci in range(n):
+            y_i = slots[order[ci]]
+            for cj in range(n):
+                # A stub pointing up crosses a run that lies above its own run, one pointing
+                # down a run that lies below it (or level with it)
+                count += up[ci][cj] if y_i < slots[order[cj]] else down[ci][cj]
         return count
 
     best = identity

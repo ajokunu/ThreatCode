@@ -8,6 +8,7 @@ import time
 import xml.etree.ElementTree as ElementTree
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1652,19 +1653,78 @@ def _boundary_heavy_graph(total: int, types: int = 1) -> tuple[InfraGraph, list[
 
 
 class TestScale:
-    def test_300_node_boundary_heavy_plan_renders_fast(self) -> None:
+    def test_300_node_boundary_heavy_plan_renders_in_subquadratic_time(self) -> None:
+        # An absolute wall-clock bound fails on a loaded or traced (coverage) runner, so compare
+        # two sizes measured back to back: linear growth scales about 4x for 4x the input,
+        # quadratic about 16x. The best of three runs drops scheduler noise.
+        def best_of_three(total: int) -> float:
+            graph, threats = _boundary_heavy_graph(total)
+            report = _make_report(threats, total)
+            runs = []
+            for _ in range(3):
+                start = time.perf_counter()
+                format_diagram(report, graph, lod_threshold=None)
+                runs.append(time.perf_counter() - start)
+            return min(runs)
+
+        small = best_of_three(75)
+        large = best_of_three(300)
+        assert large < 10 * max(small, 0.01), f"{large:.2f}s for 300 nodes, {small:.2f}s for 75"
         graph, threats = _boundary_heavy_graph(300)
         report = _make_report(threats, 300)
-        start = time.perf_counter()
         svg = format_diagram(report, graph, lod_threshold=None)
-        elapsed = time.perf_counter() - start
-        assert elapsed < 3.0, f"{elapsed:.1f}s"
         root = ElementTree.fromstring(svg)
         # One label per distinct zone transition, not one per crossing connector
         labels = re.findall(r'class="edge-label">(.*?)</text>', svg)
         assert labels and len({t.split(" x")[0] for t in labels}) == len(labels)
         assert len(_label_boxes(root)) == len(labels)
         assert len(_node_boxes(root)) == 300
+
+    def test_the_track_order_search_matches_a_plain_count_of_crossings(self) -> None:
+        import itertools
+        import random
+
+        from threatcode.formatters import diagram_routing as routing
+
+        def plain_count(runs: list[Any], colors: list[int], ys: list[float]) -> int:
+            count = 0
+            for i, a in enumerate(runs):
+                for j, b in enumerate(runs):
+                    if i == j or a.key == b.key:
+                        continue
+                    for x, direction in b.stubs:
+                        if a.lo + 0.5 < x < a.hi - 0.5:
+                            above = ys[colors[i]] < ys[colors[j]]
+                            if (direction == routing._UP and above) or (
+                                direction == routing._DOWN and not above
+                            ):
+                                count += 1
+            return count
+
+        rng = random.Random(7)
+        for case in range(150):
+            n = rng.randint(2, 5)
+            runs = []
+            for i in range(rng.randint(2, 14)):
+                lo = rng.uniform(0, 300)
+                hi = lo + rng.uniform(1, 200)
+                stubs = tuple(
+                    (
+                        rng.choice([lo, hi, rng.uniform(lo, hi)]),
+                        rng.choice([routing._UP, routing._DOWN]),
+                    )
+                    for _ in range(2)
+                )
+                runs.append(routing._Run(lo, hi, (f"k{i // 2}", "t"), 1 + i % 2, stubs))
+            colors = [rng.randrange(n) for _ in runs]
+            slots = sorted(rng.sample(range(100), n))
+            ys = [float(y) for y in slots]
+            chosen = routing._least_crossing_order(runs, colors, ys)
+            best = min(
+                plain_count(runs, colors, [ys[o] for o in order])
+                for order in itertools.permutations(range(n))
+            )
+            assert plain_count(runs, colors, [ys[o] for o in chosen]) == best, case
 
     def test_default_render_of_300_nodes_is_fast_and_collapsed(self) -> None:
         graph, threats = _boundary_heavy_graph(300)
