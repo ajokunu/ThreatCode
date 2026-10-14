@@ -36,7 +36,9 @@ def posix_separators(path: str, *, sep: str | None = None) -> str:
     ``sep`` names a separator other than ``os.sep``.
     """
     separator = os.sep if sep is None else sep
-    return path if separator == "/" else path.replace(separator, "/")
+    if separator == "/" or not isinstance(path, str):  # a caller may hold None or a Path here
+        return path
+    return path.replace(separator, "/")
 
 
 def is_windows_flavor(pathmod: ModuleType = os.path) -> bool:

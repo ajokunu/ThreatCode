@@ -33,6 +33,10 @@ class TestPosixSeparators:
     def test_a_backslash_is_a_file_name_character_where_the_separator_is_a_slash(self) -> None:
         assert posix_separators("dir/a\\b.tf", sep="/") == "dir/a\\b.tf"
 
+    def test_a_value_that_is_not_a_string_is_left_for_its_owner(self) -> None:
+        assert posix_separators(None, sep="\\") is None  # type: ignore[arg-type]
+        assert posix_separators(b"a\\b", sep="\\") == b"a\\b"  # type: ignore[arg-type]
+
     def test_the_default_is_the_separator_of_this_platform(self) -> None:
         assert posix_separators(os.path.join("a", "b")) == "a/b"
 
