@@ -129,7 +129,8 @@ def scan_text(text: str, filename: str, directory: Path | None = None) -> ScanRe
     holds no reference to the file, so nothing needs the path to outlive the call.
     """
     name = Path(filename)
-    if name.is_absolute() or ".." in name.parts:
+    # `anchor` is a root or a drive: "/abs/main.tf" is not absolute on Windows, but it is rooted
+    if name.anchor or ".." in name.parts:
         raise ValueError(f"filename must be a relative name inside the scan directory: {filename}")
     if directory is not None:
         path = directory / name

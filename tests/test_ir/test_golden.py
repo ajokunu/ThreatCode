@@ -401,7 +401,9 @@ def test_recording_directories_are_named_after_their_input() -> None:
 
 def test_every_realistic_fixture_has_a_recording() -> None:
     expected = {
-        str(p.relative_to(REPO_ROOT)) for p in (FIXTURES / "realistic").iterdir() if p.is_file()
+        p.relative_to(REPO_ROOT).as_posix()
+        for p in (FIXTURES / "realistic").iterdir()
+        if p.is_file()
     }
     assert expected <= set(GOLDEN_INPUTS), sorted(expected - set(GOLDEN_INPUTS))
 

@@ -83,7 +83,7 @@ def _claimed_plans() -> dict[str, dict[str, object]]:
         for path in sorted((repo / directory).glob(pattern)):
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict) and "format_version" in data:
-                found[str(path.relative_to(repo))] = data
+                found[path.relative_to(repo).as_posix()] = data
     return found
 
 

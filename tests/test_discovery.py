@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -290,6 +291,9 @@ class TestSymlinksAndSpecialFiles:
         assert found.units == []
         assert [e["code"] for e in found.errors] == ["discovery.not_regular"]
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="no permission bit makes a directory unreadable on Windows"
+    )
     def test_an_unreadable_subdirectory_is_recorded_and_the_rest_is_found(
         self, tmp_path: Path
     ) -> None:

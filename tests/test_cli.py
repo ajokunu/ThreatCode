@@ -1680,8 +1680,21 @@ class TestHostileNamesNeverReachTheTerminal:
 
     EVIL = "evil\x1b[2J\x1b[Hpwned\x1b]0;TITLE\x07"
     UNSAFE = re.compile("[\x00-\x09\x0b-\x1f\x7f-\x9f]")
+    # A name for a file: Windows refuses the C0 controls (and <>:"|?*) in one, but accepts DEL
+    # and the C1 controls, among them 0x9b, the single-character form of the escape sequence
+    # introducer that some terminals obey
+    FILE_NAMES = (
+        pytest.param(
+            EVIL,
+            id="escape-sequences",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="Windows cannot name a file with a C0 control"
+            ),
+        ),
+        pytest.param("evil\x7f\x9b2J\x9d0;TITLE\x85pwned", id="delete-and-c1-controls"),
+    )
 
-    def _tree(self, root: Path) -> Path:
+    def _tree(self, root: Path, file_name: str | None = None) -> Path:
         config = {
             "mcpServers": {
                 self.EVIL: {"command": "npx", "args": ["-y", "some-server"]},
@@ -1692,22 +1705,26 @@ class TestHostileNamesNeverReachTheTerminal:
             }
         }
         write(root, ".mcp.json", json.dumps(config))
-        write(root, f"main{self.EVIL}.tf", bucket("b"))
+        write(root, f"main{file_name if file_name is not None else self.EVIL}.tf", bucket("b"))
         write(root, "modules/main.tf", 'module "net" {\n  source = "./modules/net"\n}\n')
         return root
 
+    @pytest.mark.parametrize("file_name", FILE_NAMES)
     def test_the_text_report_and_stderr_carry_no_raw_control_character(
-        self, tmp_path: Path
+        self, tmp_path: Path, file_name: str
     ) -> None:
-        tree = self._tree(tmp_path / "tree")
+        tree = self._tree(tmp_path / "tree", file_name)
         result = invoke("scan", tree, "-f", "text", "--fail-on", "none", "--strict")
         assert result.exit_code == 2
         for stream in (result.stdout, result.stderr):
             assert not self.UNSAFE.search(stream.replace("\n", " ").replace("\t", " "))
         assert "\\x07" in result.stdout
 
-    def test_an_error_message_that_quotes_the_input_is_inert(self, tmp_path: Path) -> None:
-        write(tmp_path, f"bad{self.EVIL}.tf", BAD_TF)
+    @pytest.mark.parametrize("file_name", FILE_NAMES)
+    def test_an_error_message_that_quotes_the_input_is_inert(
+        self, tmp_path: Path, file_name: str
+    ) -> None:
+        write(tmp_path, f"bad{file_name}.tf", BAD_TF)
         result = invoke("scan", tmp_path)
         assert result.exit_code == 2
         assert not self.UNSAFE.search(result.stderr.replace("\n", " "))
