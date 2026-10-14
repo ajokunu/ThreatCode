@@ -572,6 +572,17 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **The README and the getting-started page ran the first command only from a clone.**
   `examples/` is not in the pip package, so `threatcode scan examples/aws-webapp` failed after the documented install; both pages now clone the repository first, and a test fails when the first demo scan comes before the clone.
 - **Six pages described attack paths as outside suppressions and baselines,** which stopped being true; they now describe what `--write-baseline`, `--baseline` and `.threatcodeignore` do with paths, and a test baselines the demo stack and checks the exit code both ways.
+- **A scan of paths on different Windows drives works.**
+  `threatcode scan C:\app D:\infra` used to stop with "the paths are on different drives".
+  The scan root is now the current directory, paths under it are relative to it, and a path on another drive is reported absolute with forward slashes.
+- **On Windows, SARIF and Bitbucket locations keep their directory.**
+  A path with a drive letter was taken for one made on another machine and cut to its file name, so every location read `main.tf`; it is now made relative to the repository like any other path.
+- **Source paths use forward slashes on Windows** in resources, parser outputs and diagnostics, so the library and the golden recordings no longer carry `D:\a\repo\main.tf`.
+- **A rule path in a config that starts at a root (`/rules/a.yml`) is used as written on Windows** instead of being joined to the config directory.
+- **A Helm chart with CRLF line endings renders as it does with LF.**
+  A chart checked out on Windows with `core.autocrlf` carried its carriage returns into the rendered text and the placeholder tokens; the built-in renderer now reads chart files with `\r\n` as `\n`.
+- **`-o` and the generated files are written with LF on Windows,** where text mode wrote CRLF, so a report has the same bytes on every platform.
+  A `.gitattributes` file makes a Windows checkout use LF for the fixtures too.
 - **The generated options table listed `--version` twice,** and a test fails when any option table repeats an option.
 - **The `allow_local_network` error names all three allowed providers.**
 - **The pre-commit example pinned `v0.9.1`, a release that predates the hook;** it and the CI page say `main` until the first release of this line is tagged.
@@ -586,6 +597,8 @@ Four Docker rules that could never fire were revived on the properties the new p
 - **`tomli` is a development dependency;** the package never reads TOML, but it was installed for every Python 3.10 user.
 - **`scripts/check_golden_scope.py` called a deleted recording out of scope** when its globs were given unquoted, because the shell expanded them; its help and `CONTRIBUTING.md` say to quote them.
 - **Fixture paths in tests no longer depend on the working directory** (the Dockerfile parser and rule tests, and the Kubernetes parser tests).
+- **The test suite passes on Windows.**
+  The hostile-input harness read the memory of its child process with the Unix-only `resource` module, parametrized tests used strings of 200,000 characters as their ids (pytest keeps the id of the running test in an environment variable, which Windows limits to 32,767 characters, and a test fails if any id passes 1,000), and some tests wrote POSIX paths and file names that Windows does not accept.
 - **A permanently skipped test is gone,** and a test fails if an `expected.yml` entry is marked pending.
 
 ### Security
