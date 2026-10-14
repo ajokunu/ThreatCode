@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Literal, get_args
 
+from threatcode._paths import posix_separators
+
 Level = Literal["info", "warning", "error"]
 LEVELS: tuple[str, ...] = get_args(Level)
 
@@ -79,10 +81,12 @@ class Diagnostic:
     level: Level
     code: str
     message: str
+    # The file the diagnostic is about, written with forward slashes on every platform
     file: str = ""
     line: int | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "file", posix_separators(self.file))
         if self.level not in LEVELS:
             raise ValueError(f"Invalid diagnostic level '{self.level}': use one of {LEVELS}")
         if self.code not in _CODES:

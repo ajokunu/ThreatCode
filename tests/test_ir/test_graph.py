@@ -293,11 +293,19 @@ class TestNodeFields:
         assert (node.source_file, node.start_line) == ("Dockerfile", 3)
 
     def test_windows_path_is_not_mistaken_for_a_line(self) -> None:
+        # A parser reports a path with forward slashes on every platform (ParsedResource)
         parsed = ParsedOutput(
-            resources=[_pr("aws_vpc", "main", source_location="C:\\infra\\main.tf")]
+            resources=[_pr("aws_vpc", "main", source_location="C:/infra/main.tf")]
         )
         node = InfraGraph.from_parsed(parsed).nodes["aws_vpc.main"]
-        assert (node.source_file, node.start_line) == ("C:\\infra\\main.tf", None)
+        assert (node.source_file, node.start_line) == ("C:/infra/main.tf", None)
+
+    def test_windows_path_with_a_line_suffix_splits_at_the_line(self) -> None:
+        parsed = ParsedOutput(
+            resources=[_pr("aws_vpc", "main", source_location="C:/infra/main.tf:7")]
+        )
+        node = InfraGraph.from_parsed(parsed).nodes["aws_vpc.main"]
+        assert (node.source_file, node.start_line) == ("C:/infra/main.tf", 7)
 
     def test_parsed_resource_is_not_rewritten_by_the_graph(self) -> None:
         resource = _pr("dockerfile_run", "r", source_location="Dockerfile:12")

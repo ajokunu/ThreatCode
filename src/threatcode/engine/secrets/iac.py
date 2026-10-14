@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from threatcode._paths import posix_separators
 from threatcode.diagnostics import Diagnostic, register_code
 from threatcode.engine.mitre import tactics_for_techniques
 from threatcode.engine.secrets.config import SecretScanConfig
@@ -312,11 +313,13 @@ def _skipped(graph: InfraGraph, source: _SourceFile, why: str, level: str) -> No
 
 
 def _nodes_by_file(graph: InfraGraph, abs_to_rel: Mapping[str, str]) -> dict[str, list[InfraNode]]:
+    # A node names its file with forward slashes, whatever the platform; the keys are native paths
+    known = {posix_separators(absolute): relative for absolute, relative in abs_to_rel.items()}
     by_file: dict[str, list[InfraNode]] = {}
     for node in graph.nodes.values():
         if not node.source_file:
             continue
-        key = abs_to_rel.get(node.source_file) or node.source_file.replace("\\", "/")
+        key = known.get(node.source_file) or node.source_file.replace("\\", "/")
         by_file.setdefault(key, []).append(node)
     for nodes in by_file.values():
         nodes.sort(key=lambda n: (n.start_line or 0, n.id))
