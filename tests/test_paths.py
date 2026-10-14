@@ -12,7 +12,9 @@ from threatcode._paths import (
     WINDOWS_DRIVE_PATH,
     common_directory,
     inside,
+    is_absolute,
     is_windows_flavor,
+    posix_relative,
     posix_separators,
     relative_posix,
 )
@@ -85,6 +87,38 @@ class TestRelativePosix:
         self, relative: str, expected: bool
     ) -> None:
         assert inside(relative) is expected
+
+
+class TestPosixRelative:
+    def test_a_path_on_the_same_drive_is_relative(self) -> None:
+        assert posix_relative("C:\\work\\repo\\a\\b.tf", "C:\\work\\repo", pathmod=ntpath) == (
+            "a/b.tf"
+        )
+
+    def test_a_path_on_another_drive_keeps_its_absolute_form_with_forward_slashes(self) -> None:
+        found = posix_relative("C:\\Users\\me\\main.tf", "D:\\a\\repo", pathmod=ntpath)
+        assert found == "C:/Users/me/main.tf"
+
+    def test_a_path_outside_the_root_on_one_drive_climbs_out(self) -> None:
+        found = posix_relative("C:\\work\\other\\main.tf", "C:\\work\\repo", pathmod=ntpath)
+        assert found == "../other/main.tf"
+
+
+class TestIsAbsolute:
+    @pytest.mark.parametrize(
+        "path", ["C:\\work", "C:/work", "\\\\server\\share\\x", "/work", "\\work"]
+    )
+    def test_a_path_from_the_root_of_a_drive_is_absolute_on_windows(self, path: str) -> None:
+        assert is_absolute(path, pathmod=ntpath)
+
+    @pytest.mark.parametrize("path", ["work", "..\\work", "C:work", "", "./x"])
+    def test_a_path_from_somewhere_else_is_not(self, path: str) -> None:
+        assert not is_absolute(path, pathmod=ntpath)
+
+    def test_a_posix_path_is_absolute_when_it_starts_with_a_slash(self) -> None:
+        assert is_absolute("/work", pathmod=posixpath)
+        assert not is_absolute("work/x", pathmod=posixpath)
+        assert not is_absolute("\\work", pathmod=posixpath)
 
 
 class TestCommonDirectory:

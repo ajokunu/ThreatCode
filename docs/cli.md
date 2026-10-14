@@ -126,6 +126,8 @@ That page also lists the format name that was renamed, which still works, is hid
 Reports are reproducible.
 Findings are sorted by effective severity, then resource address, rule id and id.
 Every path in a report is POSIX and relative to the scan root, the common parent directory of the named paths, so the same tree gives byte-identical output wherever it is checked out.
+On Windows, paths on different drives have no common parent.
+The scan root is then the current directory, paths under it are relative to it, and a path on another drive is reported as it is, absolute and with forward slashes (`D:/other/main.tf`).
 `SOURCE_DATE_EPOCH` fixes the timestamp and `--no-timestamp` leaves it out.
 
 ### The coverage block

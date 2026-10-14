@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from threatcode._paths import common_directory, posix_relative
 from threatcode.constants import is_dockerfile_name, is_terraform_name
 from threatcode.diagnostics import register_code
 from threatcode.exceptions import UsageError
@@ -226,6 +227,10 @@ def scan_root(paths: Sequence[str], *, cwd: Path | None = None) -> Path:
     A directory is its own root candidate and a file contributes its parent, so
     ``scan infra/`` reports ``main.tf`` and ``scan a/x.tf b/y.tf`` reports ``a/x.tf`` and
     ``b/y.tf`` relative to their common parent.
+    On Windows, paths on different drives have no common parent.
+    The root is then the current directory, the paths under it are reported relative to it, and
+    a path on another drive is reported as it is, absolute and with forward slashes
+    (``D:/other/main.tf``), because no relative form of it exists.
     """
     here = Path(os.path.abspath(cwd or Path.cwd()))
     candidates: list[str] = []
@@ -237,14 +242,12 @@ def scan_root(paths: Sequence[str], *, cwd: Path | None = None) -> Path:
         candidates.append(absolute if os.path.isdir(absolute) else os.path.dirname(absolute))
     if not candidates:
         return here
-    try:
-        return Path(os.path.commonpath(candidates))
-    except ValueError as exc:
-        raise UsageError("the paths are on different drives, so they have no common root") from exc
+    common = common_directory(candidates)
+    return Path(common) if common is not None else here
 
 
 def _posix_relative(path: str | Path, root: Path) -> str:
-    return Path(os.path.relpath(path, root)).as_posix()
+    return posix_relative(path, root)
 
 
 def discover(

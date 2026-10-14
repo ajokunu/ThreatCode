@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from threatcode._paths import posix_relative
 from threatcode.config import (
     FAIL_ON_CHOICES,
     SEVERITY_CHOICES,
@@ -476,7 +477,7 @@ def _input_paths(request: ScanRequest, discovery: Discovery, stdin_name: str) ->
         if raw == STDIN_PATH:
             paths.append(stdin_name)
         else:
-            paths.append(Path(os.path.relpath(os.path.abspath(raw), discovery.root)).as_posix())
+            paths.append(posix_relative(os.path.abspath(raw), discovery.root))
     return sorted(set(paths))
 
 
@@ -770,11 +771,8 @@ def _posix_relative(value: str, root: Path) -> str:
         real_root = Path(os.path.realpath(root))
         real_path = Path(os.path.realpath(value))
         if _under(real_path, real_root):
-            return Path(os.path.relpath(real_path, real_root)).as_posix()
-    try:
-        return Path(os.path.relpath(value, root)).as_posix()
-    except ValueError:
-        return value.replace("\\", "/")
+            return posix_relative(real_path, real_root)
+    return posix_relative(value, root)
 
 
 def _under(path: Path, root: Path) -> bool:

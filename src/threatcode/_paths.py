@@ -18,6 +18,7 @@ __all__ = [
     "inside",
     "is_absolute",
     "is_windows_flavor",
+    "posix_relative",
     "posix_separators",
     "relative_posix",
 ]
@@ -65,6 +66,20 @@ def relative_posix(path: str, start: str, *, pathmod: ModuleType = os.path) -> s
     except ValueError:
         return None
     return relative.replace(pathmod.sep, "/")
+
+
+def posix_relative(
+    path: str | os.PathLike[str], root: str | os.PathLike[str], *, pathmod: ModuleType = os.path
+) -> str:
+    """``path`` relative to ``root`` as a POSIX path, ``..`` segments included.
+
+    A path on another drive than the root has no relative form; it is returned absolute, with
+    forward slashes (``C:/work/app/main.tf``), so the report still says which file it means.
+    """
+    relative = relative_posix(os.fspath(path), os.fspath(root), pathmod=pathmod)
+    if relative is not None:
+        return relative
+    return str(pathmod.abspath(path)).replace(pathmod.sep, "/")
 
 
 def inside(relative: str) -> bool:
