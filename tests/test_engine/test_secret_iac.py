@@ -553,3 +553,26 @@ class TestConfig:
         config = SecretScanConfig.from_mapping({"allow_patterns": [r"^Warehouse"]})
         threats, _ = _scan_tree(FIXTURES / "warehouse.yaml", config)
         assert threats == []
+
+
+class TestWindowsPaths:
+    """A node names its file with forward slashes; the files the scan reads are native paths."""
+
+    def test_a_node_is_found_by_the_native_path_of_its_file(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from threatcode.engine.secrets.iac import _nodes_by_file
+        from threatcode.parsers.base import ParsedResource
+
+        monkeypatch.setattr(os, "sep", "\\")  # a platform whose separator is a backslash
+        resource = ParsedResource(
+            "aws_s3_bucket",
+            "aws_s3_bucket.b",
+            "b",
+            "aws",
+            source_location="D:\\a\\repo\\infra\\main.tf",
+        )
+        graph = InfraGraph.from_parsed(ParsedOutput(resources=[resource]))
+        assert graph.nodes["aws_s3_bucket.b"].source_file == "D:/a/repo/infra/main.tf"
+        by_file = _nodes_by_file(graph, {"D:\\a\\repo\\infra\\main.tf": "infra/main.tf"})
+        assert list(by_file) == ["infra/main.tf"]
