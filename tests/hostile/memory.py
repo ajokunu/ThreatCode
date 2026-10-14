@@ -47,19 +47,27 @@ def _windows_peak_mb() -> float:
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.GetCurrentProcess.argtypes = ()
         kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-        psapi = ctypes.WinDLL("psapi", use_last_error=True)
-        psapi.GetProcessMemoryInfo.argtypes = (
-            wintypes.HANDLE,
-            ctypes.POINTER(ProcessMemoryCounters),
-            wintypes.DWORD,
-        )
-        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        process = kernel32.GetCurrentProcess()
         counters = ProcessMemoryCounters()
         counters.cb = ctypes.sizeof(ProcessMemoryCounters)
-        if not psapi.GetProcessMemoryInfo(
-            kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+        # Windows 7 and later export the call from kernel32 as K32GetProcessMemoryInfo, and
+        # psapi.dll has always exported it as GetProcessMemoryInfo
+        for library, name in (
+            ("kernel32", "K32GetProcessMemoryInfo"),
+            ("psapi", "GetProcessMemoryInfo"),
         ):
-            return 0.0
-        return counters.PeakWorkingSetSize / (1024 * 1024)
+            try:
+                function = getattr(ctypes.WinDLL(library, use_last_error=True), name)
+            except (OSError, AttributeError):
+                continue
+            function.argtypes = (
+                wintypes.HANDLE,
+                ctypes.POINTER(ProcessMemoryCounters),
+                wintypes.DWORD,
+            )
+            function.restype = wintypes.BOOL
+            if function(process, ctypes.byref(counters), counters.cb):
+                return counters.PeakWorkingSetSize / (1024 * 1024)
+        return 0.0
     except Exception:  # noqa: BLE001 - a probe that fails must not fail the scan it measures
         return 0.0
